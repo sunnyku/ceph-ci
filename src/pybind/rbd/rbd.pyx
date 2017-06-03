@@ -348,6 +348,8 @@ cdef extern from "rbd/librbd.h" nogil:
     int rbd_metadata_list(rbd_image_t image, const char *start, uint64_t max,
                           char *keys, size_t *key_len, char *values,
                           size_t *vals_len)
+    int64_t rbd_get_io_rate(rbd_image_t image)
+    int64_t rbd_get_byte_rate(rbd_image_t image)
 
 RBD_FEATURE_LAYERING = _RBD_FEATURE_LAYERING
 RBD_FEATURE_STRIPINGV2 = _RBD_FEATURE_STRIPINGV2
@@ -2408,6 +2410,26 @@ written." % (self.name, ret, length))
             ret = rbd_break_lock(self.image, _client, _cookie)
         if ret < 0:
             raise make_ex(ret, 'error unlocking image')
+
+    def qos_get_rate(self, rate_type = ''):
+        """
+        Get QoS rate of the image.
+        """
+        with nogil:
+            iops = rbd_get_io_rate(self.image)
+        with nogil:
+            bandwidth = rbd_get_byte_rate(self.image)
+        if rate_type == 'iops':
+            return iops
+        elif rate_type == 'bandwidth':
+            return bandwidth
+        elif rate_type == '':
+            return {
+                'iops'     : iops,
+                'bandwidth': bandwidth
+            }
+        else:
+            raise make_ex(-errno.EINVAL, 'error rate type %s ' % (rate_type,))
 
     def mirror_image_enable(self):
         """

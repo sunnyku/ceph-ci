@@ -205,6 +205,12 @@ namespace librbd {
 
     ZTracer::Endpoint trace_endpoint;
 
+    SafeTimer *m_report_timer = nullptr;
+    Mutex *report_timer_lock = nullptr;
+    Context *m_report_callback = nullptr;
+
+    op_stat_t m_perfstat;
+
     static bool _filter_metadata_confs(const string &prefix, std::map<string, bool> &configs,
                                        const map<string, bufferlist> &pairs, map<string, bufferlist> *res);
 
@@ -231,6 +237,10 @@ namespace librbd {
     void init_layout();
     void perf_start(std::string name);
     void perf_stop();
+    void perf_report_start();
+    void perf_report_stop();
+    void send_report();
+    void get_report_data(op_stat_t *rpdata);
     void set_read_flag(unsigned flag);
     int get_read_flags(librados::snap_t snap_id);
     int snap_set(cls::rbd::SnapshotNamespace in_snap_namespace,
@@ -333,6 +343,9 @@ namespace librbd {
                                          ContextWQ **op_work_queue);
     static void get_timer_instance(CephContext *cct, SafeTimer **timer,
                                    Mutex **timer_lock);
+    int get_image_perf(int64_t *pio, int64_t *pio_r = nullptr,
+                       int64_t *pio_w = nullptr, int64_t *pbdw = nullptr,
+                       int64_t *pbdw_r = nullptr, int64_t *pbdw_w = nullptr);
   };
 }
 

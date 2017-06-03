@@ -833,6 +833,9 @@ CEPH_RBD_API int rbd_update_watch(rbd_image_t image, uint64_t *handle,
  */
 CEPH_RBD_API int rbd_update_unwatch(rbd_image_t image, uint64_t handle);
 
+CEPH_RBD_API int64_t rbd_get_io_rate(rbd_image_t image);
+CEPH_RBD_API int64_t rbd_get_byte_rate(rbd_image_t image);
+
 #ifdef __cplusplus
 }
 #endif
