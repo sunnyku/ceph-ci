@@ -199,7 +199,11 @@ struct C_InvalidateCache : public Context {
       exclusive_lock(nullptr), object_map(nullptr),
       io_work_queue(nullptr), op_work_queue(nullptr),
       asok_hook(nullptr),
-      trace_endpoint("librbd")
+      trace_endpoint("librbd"),
+      client_qos_reservation(cct->_conf->rbd_client_qos_reservation),
+      client_qos_weight(cct->_conf->rbd_client_qos_weight),
+      client_qos_limit(cct->_conf->rbd_client_qos_limit),
+      client_qos_bandwidth(cct->_conf->rbd_client_qos_bandwidth)
   {
     md_ctx.dup(p);
     data_ctx.dup(p);
@@ -1072,7 +1076,11 @@ struct C_InvalidateCache : public Context {
         "rbd_journal_max_concurrent_object_sets", false)(
         "rbd_mirroring_resync_after_disconnect", false)(
         "rbd_mirroring_replay_delay", false)(
-        "rbd_skip_partial_discard", false);
+        "rbd_skip_partial_discard", false)(
+        "rbd_client_qos_reservation", false)(
+        "rbd_client_qos_weight", false)(
+        "rbd_client_qos_limit", false)(
+        "rbd_client_qos_bandwidth", false);
 
     md_config_t local_config_t;
     std::map<std::string, bufferlist> res;
@@ -1133,6 +1141,11 @@ struct C_InvalidateCache : public Context {
     ASSIGN_OPTION(mirroring_replay_delay, int64_t);
     ASSIGN_OPTION(skip_partial_discard, bool);
     ASSIGN_OPTION(blkin_trace_all, bool);
+    ASSIGN_OPTION(client_qos_reservation, int64_t);
+    ASSIGN_OPTION(client_qos_weight, int64_t);
+    ASSIGN_OPTION(client_qos_limit, int64_t);
+    ASSIGN_OPTION(client_qos_bandwidth, int64_t);
+
   }
 
   ExclusiveLock<ImageCtx> *ImageCtx::create_exclusive_lock() {
@@ -1254,4 +1267,27 @@ struct C_InvalidateCache : public Context {
 
     return 0;
   }
+
+  int ImageCtx::set_qos_quota(int res, int wgt, int lim, int bdw) {
+    if (res < 0 || wgt < 0 || lim < 0 || bdw < 0) {
+      ldout(cct, 0) << "Invalid QoS parameters: [ "
+                    << res << ", " << wgt << ", " << lim << " ]" << dendl;
+      return -1;
+    } else if (res || wgt || lim || bdw) {
+      data_ctx.set_qos_quota(res, wgt, lim, bdw);
+    } else {
+      ldout(cct, 5) << "Use default QoS parameters: [ "
+                    << client_qos_reservation << ", "
+                    << client_qos_weight << ", "
+                    << client_qos_limit << ", "
+                    << client_qos_bandwidth << " ]" << dendl;
+
+      data_ctx.set_qos_quota(client_qos_reservation,
+                             client_qos_weight,
+                             client_qos_limit,
+                             client_qos_bandwidth);
+    }
+    return 0;
+  }
+
 }
