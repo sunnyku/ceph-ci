@@ -130,6 +130,8 @@ private:
   std::string m_object_prefix;
   ParentInfo m_parent_md;
   cls::rbd::GroupSpec m_group_spec;
+  std::string m_last_metadata_key;
+  std::map<std::string, bufferlist> m_metadata;
 
   ::SnapContext m_snapc;
   std::vector<std::string> m_snap_names;
@@ -162,6 +164,9 @@ private:
 
   void send_v2_get_mutable_metadata();
   Context *handle_v2_get_mutable_metadata(int *result);
+
+  void send_v2_apply_metadata();
+  Context *handle_v2_apply_metadata(int *result);
 
   void send_v2_get_flags();
   Context *handle_v2_get_flags(int *result);
