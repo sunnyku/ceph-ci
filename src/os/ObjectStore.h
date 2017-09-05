@@ -2042,6 +2042,9 @@ public:
   virtual void inject_mdata_error(const ghobject_t &oid) {}
 
   virtual void compact() {}
+  virtual bool has_builtin_csum() const {
+    return false;
+  }
 };
 WRITE_CLASS_ENCODER(ObjectStore::Transaction)
 WRITE_CLASS_ENCODER(ObjectStore::Transaction::TransactionData)
