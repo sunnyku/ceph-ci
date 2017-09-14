@@ -151,6 +151,8 @@ cdef extern from "rados/librados.h" nogil:
     int rados_cluster_stat(rados_t cluster, rados_cluster_stat_t *result)
     int rados_cluster_fsid(rados_t cluster, char *buf, size_t len)
     int rados_blacklist_add(rados_t cluster, char *client_address, uint32_t expire_seconds)
+    void rados_set_osdmap_full_try(rados_ioctx_t io)
+    void rados_unset_osdmap_full_try(rados_ioctx_t io)
     int rados_application_enable(rados_ioctx_t io, const char *app_name,
                                  int force)
     int rados_application_list(rados_ioctx_t io, char *values,
@@ -193,6 +195,7 @@ cdef extern from "rados/librados.h" nogil:
     int rados_wait_for_latest_osdmap(rados_t cluster)
 
     int rados_ioctx_create(rados_t cluster, const char *pool_name, rados_ioctx_t *ioctx)
+    int rados_ioctx_create2(rados_t cluster, int64_t pool_id, rados_ioctx_t *ioctx)
     void rados_ioctx_destroy(rados_ioctx_t io)
     int rados_ioctx_pool_set_auid(rados_ioctx_t io, uint64_t auid)
     void rados_ioctx_locator_set_key(rados_ioctx_t io, const char *key)
@@ -1192,6 +1195,32 @@ Rados object in state %s." % self.state)
         if ret < 0:
             raise make_ex(ret, "error opening pool '%s'" % ioctx_name)
         io = Ioctx(ioctx_name)
+        io.io = ioctx
+        return io
+
+    @requires(('pool_id', int))
+    def open_ioctx2(self, pool_id):
+        """
+        Create an io context
+
+        The io context allows you to perform operations within a particular
+        pool.
+
+        :param pool_id: ID of the pool
+        :type pool_id: int
+
+        :raises: :class:`TypeError`, :class:`Error`
+        :returns: Ioctx - Rados Ioctx object
+        """
+        self.require_state("connected")
+        cdef:
+            rados_ioctx_t ioctx
+            int64_t _pool_id = pool_id
+        with nogil:
+            ret = rados_ioctx_create2(self.cluster, _pool_id, &ioctx)
+        if ret < 0:
+            raise make_ex(ret, "error opening pool id '%s'" % pool_id)
+        io = Ioctx(str(pool_id))
         io.io = ioctx
         return io
 
@@ -3575,6 +3604,20 @@ returned %d, but should return zero on success." % (self.name, ret))
             ret = rados_unlock(self.io, _key, _name, _cookie)
         if ret < 0:
             raise make_ex(ret, "Ioctx.rados_lock_exclusive(%s): failed to set lock %s on %s" % (self.name, name, key))
+
+    def set_osdmap_full_try(self):
+        """
+        Set global osdmap_full_try label to true
+        """
+        with nogil:
+            rados_set_osdmap_full_try(self.io)
+
+    def unset_osdmap_full_try(self):
+        """
+        Unset
+        """
+        with nogil:
+            rados_unset_osdmap_full_try(self.io)
 
     def application_enable(self, app_name, force=False):
         """
