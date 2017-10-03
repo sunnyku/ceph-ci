@@ -6530,6 +6530,8 @@ int BlueStore::_fsck(bool deep, bool repair)
   }
   sb_info.clear();
 
+  actual_statfs.internal_metadata = 0;
+  actual_statfs.omap_allocated = 0;
   if (!(actual_statfs == expected_statfs)) {
     derr << "fsck error: actual " << actual_statfs
 	 << " != expected " << expected_statfs << dendl;
@@ -6876,7 +6878,10 @@ int BlueStore::statfs(struct store_statfs_t *buf)
 {
   buf->reset();
 
+  buf->omap_allocated = db->estimate_prefix_size(PREFIX_OMAP);
+
   uint64_t bfree = alloc->get_free();
+
   if (bluefs) {
     // part of our shared device is "free" according to BlueFS, but we
     // can't touch bluestore_bluefs_min of it.
@@ -6905,6 +6910,11 @@ int BlueStore::statfs(struct store_statfs_t *buf)
     if (bluefs_shared_bdev != BlueFS::BDEV_DB) {
       buf->total += bluefs->get_total(BlueFS::BDEV_DB);
     }
+
+    // call any non-omap bluefs space "internal metadata"
+    buf->internal_metadata =
+      std::max(bluefs->get_used(), (uint64_t)cct->_conf->bluestore_bluefs_min)
+      - buf->omap_allocated;
   }
 
   {
