@@ -687,7 +687,7 @@ int64_t RocksDBStore::estimate_prefix_size(const string& prefix)
     db->GetApproximateSizes(cf, &r, 1, &size, flags);
   } else {
     rocksdb::Range r(prefix, prefix + "\xff\xff\xff\xff");
-    db->GetApproximateSizes(db->DefaultColumnFamily(),
+    db->GetApproximateSizes(default_cf,
 			    &r, 1, &size, flags);
   }
   return size;
