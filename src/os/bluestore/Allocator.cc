@@ -4,6 +4,7 @@
 #include "Allocator.h"
 #include "StupidAllocator.h"
 #include "BitmapAllocator.h"
+#include "AvlAllocator.h"
 #include "common/debug.h"
 
 #define dout_subsys ceph_subsys_bluestore
@@ -15,6 +16,8 @@ Allocator *Allocator::create(CephContext* cct, string type,
     return new StupidAllocator(cct);
   } else if (type == "bitmap") {
     return new BitmapAllocator(cct, size, block_size);
+  } else if (type == "avl") {
+    return new AvlAllocator(cct, size);
   }
   lderr(cct) << "Allocator::" << __func__ << " unknown alloc type "
 	     << type << dendl;
