@@ -124,6 +124,128 @@ public:
 };
 
 
+struct osdmap_manifest_t {
+  // all the maps we have pinned -- i.e., won't be removed unless
+  // they are inside a trim interval.
+  set<version_t> pinned;
+  // the last pruned version
+  version_t last_pruned;
+
+  osdmap_manifest_t() : last_pruned(0) { }
+
+  version_t get_last_pinned() const
+  {
+    set<version_t>::const_reverse_iterator it = pinned.crbegin();
+    if (it == pinned.crend()) {
+      ceph_assert(pinned.empty());
+      return 0;
+    }
+    return *it;
+  }
+
+  version_t get_first_pinned() const
+  {
+    set<version_t>::const_iterator it = pinned.cbegin();
+    if (it == pinned.cend()) {
+      ceph_assert(pinned.empty());
+      return 0;
+    }
+    return *it;
+  }
+
+  version_t get_last_pruned() const
+  {
+    return last_pruned;
+  }
+
+  void set_last_pruned(version_t v) {
+    last_pruned = v;
+  }
+
+  bool is_pinned(version_t v) const
+  {
+    return pinned.find(v) != pinned.end();
+  }
+
+  void pin(version_t v)
+  {
+    pinned.insert(v);
+  }
+
+  version_t get_lower_closest_pinned(version_t v) const
+  {
+    set<version_t>::const_iterator p = pinned.lower_bound(v);
+    if (p == pinned.cend()) {
+      return 0;
+    }
+
+    if (*p > v) {
+      if (p == pinned.cbegin()) {
+        return 0;
+      }
+      --p;
+    }
+
+    return *p;
+  }
+
+  version_t get_upper_closest_pinned(version_t v) const
+  {
+    set<version_t>::const_iterator p = pinned.upper_bound(v);
+    if (p == pinned.cend()) {
+      return 0;
+    }
+    return *p;
+  }
+
+  /* obtain the next prunable version
+   */
+  version_t get_next_prunable() const
+  {
+    return get_next_prunable(last_pruned);
+  }
+
+  version_t get_next_prunable(version_t v) const
+  {
+    version_t next = v;
+    if (next == 0) {
+      next = get_first_pinned();
+    }
+
+    while (++next < get_last_pinned()) {
+
+      if (is_pinned(next))
+        continue;
+
+      return next;
+    }
+    return 0;
+  }
+
+  void encode(bufferlist& bl) const
+  {
+    ENCODE_START(1, 1, bl);
+    ::encode(pinned, bl);
+    ::encode(last_pruned, bl);
+    ENCODE_FINISH(bl);
+  }
+
+  void decode(bufferlist::iterator& bl)
+  {
+    DECODE_START(1, bl);
+    ::decode(pinned, bl);
+    ::decode(last_pruned, bl);
+    DECODE_FINISH(bl);
+  }
+
+  void decode(bufferlist& bl) {
+    bufferlist::iterator p = bl.begin();
+    decode(p);
+  }
+
+};
+WRITE_CLASS_ENCODER(osdmap_manifest_t);
+
 class OSDMonitor : public PaxosService {
   CephContext *cct;
 
@@ -141,6 +263,9 @@ public:
 
   SimpleLRU<version_t, bufferlist> inc_osd_cache;
   SimpleLRU<version_t, bufferlist> full_osd_cache;
+
+  bool has_osdmap_manifest;
+  osdmap_manifest_t osdmap_manifest;
 
   bool check_failures(utime_t now);
   bool check_failure(utime_t now, int target_osd, failure_info_t& fi);
@@ -160,7 +285,7 @@ public:
   };
 
   // svc
-public:  
+public:
   void create_initial() override;
   void get_store_prefixes(std::set<string>& s) const override;
 
@@ -171,6 +296,22 @@ private:
   void on_active() override;
   void on_restart() override;
   void on_shutdown() override;
+
+  /* osdmap full map prune */
+  void update_osdmap_manifest();
+  bool is_prune_ongoing() const;
+  bool should_prune() const;
+  version_t _prune_interval(
+      MonitorDBStore::TransactionRef t,
+      version_t first,
+      version_t last);
+  void _prune_update_trimmed(
+      MonitorDBStore::TransactionRef tx,
+      version_t first);
+  void prune_pin_maps(version_t first, version_t last);
+  void prune_init();
+  bool do_prune(MonitorDBStore::TransactionRef tx);
+
   /**
    * we haven't delegated full version stashing to paxosservice for some time
    * now, making this function useless in current context.
@@ -528,6 +669,8 @@ public:
 
   int get_version(version_t ver, bufferlist& bl) override;
   int get_version_full(version_t ver, bufferlist& bl) override;
+  int get_inc(version_t ver, OSDMap::Incremental& inc);
+  int get_full_from_pinned_map(version_t ver, bufferlist& bl);
 
   epoch_t blacklist(const entity_addr_t& a, utime_t until);
 
