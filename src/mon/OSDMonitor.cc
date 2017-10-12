@@ -2983,6 +2983,9 @@ void OSDMonitor::send_incremental(epoch_t first,
     m->newest_map = osdmap.get_epoch();
     m->maps[first] = bl;
 
+    // share removed snaps during the gap
+    get_removed_snaps_range(first, m->oldest_map, &m->gap_removed_snaps);
+
     if (req) {
       mon->send_reply(req, m);
       session->osd_epoch = first;
@@ -3010,6 +3013,28 @@ void OSDMonitor::send_incremental(epoch_t first,
     session->osd_epoch = last;
     if (onetime || req)
       break;
+  }
+}
+
+void OSDMonitor::get_removed_snaps_range(
+  epoch_t start, epoch_t end,
+  mempool::osdmap::map<int64_t,OSDMap::snap_interval_set_t> *gap_removed_snaps)
+{
+  // we only care about pools that exist now.
+  for (auto& p : osdmap.get_pools()) {
+    auto& t = (*gap_removed_snaps)[p.first];
+    for (epoch_t epoch = start; epoch < end; ++epoch) {
+      string k = make_snap_epoch_key(p.first, epoch);
+      bufferlist v;
+      mon->store->get(OSD_SNAP_PREFIX, k, v);
+      if (v.length()) {
+	auto q = v.begin();
+	OSDMap::snap_interval_set_t snaps;
+	::decode(snaps, q);
+	t.union_of(snaps);
+      }
+    }
+    dout(10) << __func__ << " " << p.first << " " << t << dendl;
   }
 }
 
