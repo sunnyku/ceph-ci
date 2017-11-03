@@ -2045,6 +2045,9 @@ public:
   virtual bool has_builtin_csum() const {
     return false;
   }
+  virtual int tick() const {
+    return 0;
+  }
 };
 WRITE_CLASS_ENCODER(ObjectStore::Transaction)
 WRITE_CLASS_ENCODER(ObjectStore::Transaction::TransactionData)
