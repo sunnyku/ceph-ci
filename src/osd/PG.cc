@@ -1222,7 +1222,9 @@ void PG::calc_replicated_acting(
   vector<int> *want,
   set<pg_shard_t> *backfill,
   set<pg_shard_t> *acting_backfill,
-  ostream &ss)
+  ostream &ss,
+  CephContext *cct,
+  bool compat_mode)
 {
   ss << "calc_acting newest update on osd." << auth_log_shard->first
      << " with " << auth_log_shard->second
@@ -1231,13 +1233,61 @@ void PG::calc_replicated_acting(
   
   // select primary
   map<pg_shard_t,pg_info_t>::const_iterator primary;
-  if (up.size() &&
-      !all_info.find(up_primary)->second.is_incomplete() &&
-      all_info.find(up_primary)->second.last_update >=
-        auth_log_shard->second.log_tail) {
-    ss << "up_primary: " << up_primary << ") selected as primary" << std::endl;
-    primary = all_info.find(up_primary); // prefer up[0], all thing being equal
-  } else {
+  map<pg_shard_t,pg_info_t>::const_iterator up_primary_it;
+  if (up.size()) {
+    up_primary_it = all_info.find(up_primary);
+    assert(up_primary_it != all_info.end());
+    auto& up_primary_info = all_info.find(up_primary)->second;
+    if (up_primary_info.is_incomplete() ||
+        up_primary_info.last_update < auth_log_shard->second.log_tail) {
+      assert(!auth_log_shard->second.is_incomplete());
+      ss << " up_primary " << up_primary << " is incomplete or not recoverable,"
+         << " will do backfill. osd." << auth_log_shard_id
+         << " selected as primary instead"
+         << std::endl;
+      primary = auth_log_shard;
+    } else if (!compat_mode) {
+      if (up_primary_info.last_update == auth_log_shard->second.last_update) {
+        ss << " up_primary " << up_primary
+           << " has identical log as auth_log_shard, selected as primary"
+           << std::endl;
+        primary = up_primary_it;
+      } else if (restrict_to_up_acting) {
+        // caller is Recovered::Recovered()
+        ss << " up_primary " << up_primary
+           << " selected as primary because restrict_to_up_acting is set true"
+           << std::endl;
+        primary = up_primary_it;
+      } else {
+        // use the approximate magnitude of the difference in length of
+        // logs as the cost of recovery
+        version_t auth_version = auth_log_shard->second.last_update.version;
+        version_t candidate_version = up_primary_info.last_update.version;
+        uint64_t approx_entries = (auth_version > candidate_version) ?
+                                  (auth_version - candidate_version) :
+                                  (candidate_version - auth_version);
+        if (approx_entries >= cct->_conf->get_val<uint64_t>(
+            "osd_force_auth_log_shard_primary_min_pg_log_entries")) {
+          ss << " up_primary "<< up_primary
+             << " has too many (" << approx_entries << ") missing log entries, "
+             << " osd." << auth_log_shard_id
+             << " temporarily selected as primary instead"
+             << std::endl;
+          primary = auth_log_shard;
+        } else {
+          ss << " up_primary " << up_primary << " selected as primary"
+             << std::endl;
+          primary = up_primary_it;
+        }
+      }
+    } else {
+      // compatibility mode, choose up_primary unconditionally
+      ss << " up_primary " << up_primary << " selected as primary"
+         << " as we are currently in compatibility mode!"
+         << std::endl;
+      primary = up_primary_it;
+    }
+  } else { // empty up
     assert(!auth_log_shard->second.is_incomplete());
     ss << "up[0] needs backfill, osd." << auth_log_shard_id
        << " selected as primary instead" << std::endl;
@@ -1448,7 +1498,9 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id,
       &want,
       &want_backfill,
       &want_acting_backfill,
-      ss);
+      ss,
+      cct,
+      get_osdmap()->require_osd_release < CEPH_RELEASE_LUMINOUS);
   else
     calc_ec_acting(
       auth_log_shard,

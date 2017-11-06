@@ -1125,7 +1125,9 @@ public:
     vector<int> *want,
     set<pg_shard_t> *backfill,
     set<pg_shard_t> *acting_backfill,
-    ostream &ss);
+    ostream &ss,
+    CephContext *cct,
+    bool compat_mode);
   bool choose_acting(pg_shard_t &auth_log_shard,
 		     bool restrict_to_up_acting,
 		     bool *history_les_bound);
