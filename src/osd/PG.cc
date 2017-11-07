@@ -1434,6 +1434,78 @@ void PG::calc_replicated_acting(
   }
 }
 
+void PG::choose_async_recovery_replicated(
+  const map<pg_shard_t, pg_info_t> &all_info,
+  const pg_info_t &auth_info,
+  const vector<int> &want,
+  set<pg_shard_t> *async_recovery) const
+{
+  async_recovery->clear();
+  int max_async_recovery_targets = cct->_conf->get_val<uint64_t>(
+    "osd_max_async_recovery_targets");
+  if (max_async_recovery_targets == 0) {
+    dout(10) << __func__ << " osd_max_async_recovery_targets = 0"
+             << ", async_recovery cancelled" << dendl;
+    return;
+  }
+  if (want.size() <= pool.info.min_size) {
+    dout(10) << __func__ << " not enough replicas (" << want << ")"
+             << ", async_recovery cancelled" << dendl;
+    return;
+  }
+  vector<pair<uint64_t, pg_shard_t>> candidates_by_cost;
+  candidates_by_cost.reserve(want.size() - 1);
+  assert(!want.empty());
+  auto want_it = ++want.begin(); // skip primary
+  while (want_it != want.end()) {
+    pg_shard_t candidate(*want_it);
+    auto info_it = all_info.find(candidate);
+    assert(info_it != all_info.end());
+    auto &candidate_info = info_it->second;
+    // use the approximate magnitude of the difference in length of
+    // logs as the cost of recovery
+    auto auth_version = auth_info.last_update.version;
+    auto candidate_version = candidate_info.last_update.version;
+    uint64_t approx_log_entries = (auth_version > candidate_version) ?
+                                  (auth_version - candidate_version) :
+                                  (candidate_version - auth_version);
+    if (approx_log_entries > cct->_conf->get_val<uint64_t>(
+        "osd_async_recovery_min_pg_log_entries")) {
+      candidates_by_cost.push_back(make_pair(approx_log_entries, candidate));
+    }
+    ++want_it;
+  }
+
+  // sort by approximate log entries to recover, in descending order.
+  std::sort(candidates_by_cost.begin(), candidates_by_cost.end(),
+    [](const std::pair<uint64_t, pg_shard_t> &lhs,
+       const std::pair<uint64_t, pg_shard_t> &rhs) {
+      return lhs.first > rhs.first;
+    }
+  );
+
+  dout(10) << __func__ << " candidates by cost are: " << candidates_by_cost
+	   << dendl;
+
+  // take out as many osds as we can for async recovery, in order of cost
+  int max_condidates = want.size() - pool.info.min_size;
+  if (max_async_recovery_targets > max_condidates) {
+    max_async_recovery_targets = max_condidates;
+    dout(10) << __func__ << " not enough condidates, reset"
+             << "max_async_recovery_targets to " << max_async_recovery_targets
+             << dendl;
+  }
+  for (auto &ordered_candidate : candidates_by_cost) {
+    if (max_async_recovery_targets <= 0) {
+      break;
+    }
+    async_recovery->insert(ordered_candidate.second);
+    --max_async_recovery_targets;
+  }
+  dout(10) << __func__ << " done, async recovery targets: " << *async_recovery
+           << dendl;
+}
+
 /**
  * choose acting
  *
@@ -1579,8 +1651,25 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id,
       ++i) {
     assert(stray_set.find(*i) == stray_set.end());
   }
-  dout(10) << "choose_acting want " << want << " (== acting) backfill_targets " 
-	   << want_backfill << dendl;
+  set<pg_shard_t> want_async_recovery;
+  if (pool.info.is_replicated() &&
+      pool.info.min_size >= cct->_conf->get_val<uint64_t>(
+        "osd_min_replicated_pool_min_size_for_async_recovery")) {
+    choose_async_recovery_replicated(
+      all_info,
+      auth_log_shard->second,
+      want,
+      &want_async_recovery);
+  }
+  async_recovery_targets = want_async_recovery;
+  // verify that async_recovery_targets is a subset of actingbackfill
+  for (auto &p: async_recovery_targets) {
+    assert(actingbackfill.count(p));
+  }
+  dout(10) << __func__ << " want " << want << " (== acting) "
+           << " backfill_targets " << want_backfill
+           << " async_recovery_targets "<< want_async_recovery
+           << dendl;
   return true;
 }
 
@@ -2521,6 +2610,7 @@ void PG::clear_recovery_state()
     finish_recovery_op(soid, true);
   }
 
+  async_recovery_targets.clear();
   backfill_targets.clear();
   backfill_info.clear();
   peer_backfill_info.clear();

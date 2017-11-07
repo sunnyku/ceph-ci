@@ -855,7 +855,7 @@ protected:
   friend class OSD;
 
 public:
-  set<pg_shard_t> backfill_targets;
+  set<pg_shard_t> backfill_targets, async_recovery_targets;
 
   bool is_backfill_targets(pg_shard_t osd) {
     return backfill_targets.count(osd);
@@ -1128,6 +1128,11 @@ public:
     ostream &ss,
     CephContext *cct,
     bool compat_mode);
+  void choose_async_recovery_replicated(
+    const map<pg_shard_t, pg_info_t> &all_info,
+    const pg_info_t &auth_info,
+    const vector<int> &want,
+    set<pg_shard_t> *async_recovery) const;
   bool choose_acting(pg_shard_t &auth_log_shard,
 		     bool restrict_to_up_acting,
 		     bool *history_les_bound);
