@@ -2930,7 +2930,11 @@ int main(int argc, const char **argv)
   if (raw_storage_op) {
     store = RGWStoreManager::get_raw_storage(g_ceph_context);
   } else {
-    store = RGWStoreManager::get_storage(g_ceph_context, false, false, false, false, false);
+    bool run_sync_thread = false;
+    if (opt_cmd == OPT_DATA_SYNC_RUN) {
+      run_sync_thread = true;
+    }
+    store = RGWStoreManager::get_storage(g_ceph_context, false, false, false, run_sync_thread, false);
   }
   if (!store) {
     cerr << "couldn't init storage provider" << std::endl;
