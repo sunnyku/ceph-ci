@@ -1093,6 +1093,9 @@ map<pg_shard_t, pg_info_t>::const_iterator PG::find_best_info(
     // Disqualify anyone who is incomplete (not fully backfilled)
     if (p->second.is_incomplete())
       continue;
+    // Disqualify anyone who is not fully asynchronously recovered
+    if (p->second.is_not_fully_async_recovered())
+      continue;
     if (best == infos.end()) {
       best = p;
       continue;
@@ -1652,19 +1655,21 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id,
     assert(stray_set.find(*i) == stray_set.end());
   }
   set<pg_shard_t> want_async_recovery;
-  if (pool.info.is_replicated() &&
-      pool.info.min_size >= cct->_conf->get_val<uint64_t>(
-        "osd_min_replicated_pool_min_size_for_async_recovery")) {
-    choose_async_recovery_replicated(
-      all_info,
-      auth_log_shard->second,
-      want,
-      &want_async_recovery);
-  }
-  async_recovery_targets = want_async_recovery;
-  // verify that async_recovery_targets is a subset of actingbackfill
-  for (auto &p: async_recovery_targets) {
-    assert(actingbackfill.count(p));
+  if (get_osdmap()->require_osd_release >= CEPH_RELEASE_LUMINOUS) {
+    if (pool.info.is_replicated() &&
+        pool.info.min_size >= cct->_conf->get_val<uint64_t>(
+          "osd_min_replicated_pool_min_size_for_async_recovery")) {
+      choose_async_recovery_replicated(
+        all_info,
+        auth_log_shard->second,
+        want,
+        &want_async_recovery);
+    }
+    async_recovery_targets = want_async_recovery;
+    // verify that async_recovery_targets is a subset of actingbackfill
+    for (auto &p: async_recovery_targets) {
+      assert(actingbackfill.count(p));
+    }
   }
   dout(10) << __func__ << " want " << want << " (== acting) "
            << " backfill_targets " << want_backfill
@@ -3312,9 +3317,29 @@ void PG::add_log_entry(const pg_log_entry_t& e, bool applied)
   if (info.last_complete == info.last_update)
     info.last_complete = e.version;
   
-  // raise last_update.
-  assert(e.version > info.last_update);
-  info.log_head = info.last_update = e.version;
+  if (!skip_raise_last_update &&
+      info.last_backfill.is_max() && // exclude backfill targets
+      !applied) {
+    // we must be an async-recovery peer and we are currently hitting
+    // the first op that operates on a missing object, stop
+    // raise last_update until we catch up!
+    assert(!is_primary());
+    skip_raise_last_update = true;
+  } else if (skip_raise_last_update &&
+             applied &&
+             pg_log.get_missing().num_missing() == 0) {
+    // recovered
+    skip_raise_last_update = false;
+  }
+
+  assert(e.version > info.log_head);
+  if (skip_raise_last_update) {
+    // raise log_head only
+    info.log_head = e.version;
+  } else {
+    // raise both log_head and last_update.
+    info.log_head = info.last_update = e.version;
+  }
 
   // raise user_version, if it increased (it may have not get bumped
   // by all logged updates)
@@ -3359,6 +3384,7 @@ void PG::append_log(
     pg_log.roll_forward(&handler);
   }
 
+  bool need_reset_complete_to = false;
   for (vector<pg_log_entry_t>::const_iterator p = logv.begin();
        p != logv.end();
        ++p) {
@@ -3371,6 +3397,68 @@ void PG::append_log(
 	p->soid > info.last_backfill) {
       pg_log.roll_forward(&handler);
     }
+
+    // update async_recovery_targets' missing/missing_loc etc.
+    if (p->is_clone() || (p->soid.is_snapdir() && !p->is_delete())) {
+      // new object (create clone or snapdir of head object)
+      if (is_primary()) {
+        if (async_recovery_targets.empty())
+          continue;
+        bool any_missing = false;
+        for (auto &i : async_recovery_targets) {
+          auto it = peer_missing.find(i);
+          assert(it != peer_missing.end());
+          auto mit = it->second.get_items().find(p->soid.get_head());
+          if (mit != it->second.get_items().end()) {
+            it->second.add(p->soid, p->version, eversion_t(), p->is_delete());
+            any_missing = true;
+          }
+        }
+        if (any_missing) {
+          // consult head object, which should be also missing,
+          // for missing_loc
+          auto locations = missing_loc.get_locations(p->soid.get_head());
+          for (auto &location : locations) {
+            missing_loc.add_location(p->soid, location);
+          }
+        }
+      } else {
+        if (transaction_applied) {
+          continue;
+        }
+        // need the check below because we might be a backfill target...
+        if (pg_log.get_missing().is_missing(p->soid.get_head())) {
+          pg_log.missing_add(p->soid, p->version, eversion_t());
+          need_reset_complete_to = true;
+        }
+      }
+    } else {
+      // MODIFY|DELETE
+      if (is_primary()) {
+        for (auto &i : async_recovery_targets) {
+          auto it = peer_missing.find(i);
+          assert(it != peer_missing.end());
+          auto mit = it->second.get_items().find(p->soid);
+          if (mit != it->second.get_items().end()) {
+            it->second.revise_need(p->soid, p->version, p->is_delete());
+            missing_loc.revise_need(p->soid, p->version, p->is_delete());
+          }
+        }
+      } else {
+        if (transaction_applied) {
+          continue;
+        }
+        if (pg_log.get_missing().is_missing(p->soid)) {
+          pg_log.revise_need(p->soid, p->version, p->is_delete());
+          need_reset_complete_to = true;
+        }
+      }
+    }
+  }
+  if (need_reset_complete_to) {
+    // we changed missing above, hence we need to adjust
+    // pg_log.log.complete_to correspondingly
+    pg_log.reset_complete_to(nullptr);
   }
   auto last = logv.rbegin();
   if (is_primary() && last != logv.rend()) {
@@ -3542,10 +3630,14 @@ void PG::log_weirdness()
     osd->clog->error() << info.pgid
 		       << " info mismatch, log.tail " << pg_log.get_tail()
 		       << " != info.log_tail " << info.log_tail;
-  if (pg_log.get_head() != info.last_update)
-    osd->clog->error() << info.pgid
-		       << " info mismatch, log.head " << pg_log.get_head()
-		       << " != info.last_update " << info.last_update;
+  if (pg_log.get_head() != info.last_update) {
+    assert(pg_log.get_head() > info.last_update);
+    dout(0) << info.pgid
+            << " info mismatch, log.head " << pg_log.get_head() << " !="
+            << " info.last_update " << info.last_update << ","
+            << " assume it was an async-recovery peer previously"
+            << dendl;
+  }
 
   if (!pg_log.get_log().empty()) {
     // sloppy check
@@ -5260,7 +5352,11 @@ bool PG::append_log_entries_update_missing(
 				  info.last_backfill_bitwise,
 				  entries,
 				  &rollbacker);
-  info.last_update = info.log_head = pg_log.get_head();
+  if (skip_raise_last_update) {
+    info.log_head = pg_log.get_head();
+  } else {
+    info.log_head = info.last_update = pg_log.get_head();
+  }
 
   if (pg_log.get_missing().num_missing() == 0) {
     // advance last_complete since nothing else is missing!
@@ -5644,7 +5740,7 @@ void PG::start_peering_interval(
     osd->remove_want_pg_temp(info.pgid.pgid);
   }
   clear_primary_state();
-
+  skip_raise_last_update = false;
     
   // pg->on_*
   on_change(t);
@@ -5837,6 +5933,7 @@ ostream& operator<<(ostream& out, const PG& pg)
   if (pg.snap_trimq.size())
     out << " snaptrimq=" << pg.snap_trimq;
 
+  out << " srlu = " << (int)pg.skip_raise_last_update;
   out << "]";
 
 

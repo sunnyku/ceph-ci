@@ -668,6 +668,10 @@ public:
     missing.revise_have(oid, have);
   }
 
+  void revise_need(hobject_t oid, eversion_t need, bool is_delete) {
+    missing.revise_need(oid, need, is_delete);
+  }
+
   void missing_add(const hobject_t& oid, eversion_t need, eversion_t have) {
     missing.add(oid, need, have, false);
   }

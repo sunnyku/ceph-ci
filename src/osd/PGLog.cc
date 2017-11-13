@@ -383,6 +383,12 @@ void PGLog::merge_log(pg_info_t &oinfo, pg_log_t &olog, pg_shard_t fromosd,
   if (olog.head < log.head) {
     rewind_divergent_log(olog.head, info, rollbacker, dirty_info, dirty_big_info);
     changed = true;
+  } else if (info.last_update < log.head) {
+    // we must be one of the async_recovery_targets previously,
+    // throw out any divergent log entries first!
+    rewind_divergent_log(info.last_update, info, rollbacker, dirty_info,
+                         dirty_big_info);
+    changed = true;
   }
 
   // extend on head?

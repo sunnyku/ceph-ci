@@ -409,6 +409,15 @@ public:
       hoid <= peer_info[peer].last_backfill;
     if (!should_send)
       assert(is_backfill_targets(peer));
+    if (should_send && is_async_recovery_targets(peer)) {
+      auto it = peer_missing.find(peer);
+      assert(it != peer_missing.end());
+      should_send = !it->second.get_items().count(hoid);
+      if (!should_send) {
+        // should be missing head objects only
+        assert(hoid.is_head());
+      }
+    }
     return should_send;
   }
   

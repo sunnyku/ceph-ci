@@ -2353,6 +2353,7 @@ struct pg_info_t {
   bool dne() const { return history.epoch_created == 0; }
 
   bool is_incomplete() const { return !last_backfill.is_max(); }
+  bool is_not_fully_async_recovered() const { return log_head != last_update; }
 
   void encode(bufferlist& bl) const;
   void decode(bufferlist::iterator& p);

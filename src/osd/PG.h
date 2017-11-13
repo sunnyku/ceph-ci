@@ -485,10 +485,11 @@ public:
     void add_missing(const hobject_t &hoid, eversion_t need, eversion_t have) {
       needs_recovery_map[hoid] = pg_missing_item(need, have);
     }
-    void revise_need(const hobject_t &hoid, eversion_t need) {
+    void revise_need(const hobject_t &hoid, eversion_t need, bool is_delete) {
       auto it = needs_recovery_map.find(hoid);
       assert(it != needs_recovery_map.end());
       it->second.need = need;
+      it->second.set_delete(is_delete);
     }
 
     /// Adds info about a possible recovery source
@@ -855,10 +856,15 @@ protected:
   friend class OSD;
 
 public:
+  bool skip_raise_last_update = false;
   set<pg_shard_t> backfill_targets, async_recovery_targets;
 
   bool is_backfill_targets(pg_shard_t osd) {
     return backfill_targets.count(osd);
+  }
+
+  bool is_async_recovery_targets(pg_shard_t osd) {
+    return async_recovery_targets.count(osd);
   }
 
 protected:

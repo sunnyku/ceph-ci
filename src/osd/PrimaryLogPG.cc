@@ -612,8 +612,15 @@ bool PrimaryLogPG::is_degraded_or_backfilling_object(const hobject_t& soid)
     pg_shard_t peer = *i;
     auto peer_missing_entry = peer_missing.find(peer);
     if (peer_missing_entry != peer_missing.end() &&
-	peer_missing_entry->second.get_items().count(soid))
-      return true;
+	peer_missing_entry->second.get_items().count(soid)) {
+      if (!is_async_recovery_targets(peer) ||
+          !soid.is_head() || // consider head objects only
+          recovering.count(soid)) { // and block if we are already recovering it
+        return true;
+      } else {
+        continue;
+      }
+    }
 
     // Object is degraded if after last_backfill AND
     // we are backfilling it
@@ -949,6 +956,14 @@ int PrimaryLogPG::do_command(
     for (vector<int>::iterator p = acting.begin(); p != acting.end(); ++p)
       f->dump_unsigned("osd", *p);
     f->close_section();
+    if (!async_recovery_targets.empty()) {
+      f->open_array_section("async_recovery_targets");
+      for (set<pg_shard_t>::iterator p = async_recovery_targets.begin();
+           p != async_recovery_targets.end();
+           ++p)
+        f->dump_stream("shard") << *p;
+      f->close_section();
+    }
     if (!backfill_targets.empty()) {
       f->open_array_section("backfill_targets");
       for (set<pg_shard_t>::iterator p = backfill_targets.begin();
@@ -9209,7 +9224,11 @@ void PrimaryLogPG::op_applied(const eversion_t &applied_version)
   if (applied_version == eversion_t())
     return;
   assert(applied_version > last_update_applied);
-  assert(applied_version <= info.last_update);
+  // below is not true for async-recovery case.
+  // we can safely remove this because we know
+  // there can be no-scrub in-progress until pg is clean,
+  // and by then last_update should already catch up!
+  // assert(applied_version <= info.last_update);
   last_update_applied = applied_version;
   if (is_primary()) {
     if (scrubber.active) {
@@ -10690,7 +10709,7 @@ void PrimaryLogPG::do_update_log_missing(OpRequestRef &op)
     }
   }
   t.register_on_applied(
-    new C_OSD_OnApplied{this, get_osdmap()->get_epoch(), info.last_update});
+    new C_OSD_OnApplied{this, get_osdmap()->get_epoch(), info.log_head});
   int tr = osd->store->queue_transaction(
     osr.get(),
     std::move(t),
