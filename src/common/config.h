@@ -272,6 +272,8 @@ private:
   obs_map_t observers;
   changed_set_t changed;
 
+  vector<Option> subsys_options;
+
 public:
   ceph::logging::SubsystemMap subsys;
 
