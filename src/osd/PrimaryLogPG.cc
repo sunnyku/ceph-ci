@@ -11464,10 +11464,13 @@ bool PrimaryLogPG::start_recovery_ops(
   }
 
   if (needs_recovery()) {
-    // this shouldn't happen!
-    // We already checked num_missing() so we must have missing replicas
-    osd->clog->error() << info.pgid 
-                       << " Unexpected Error: recovery ending with missing replicas";
+    // This can technically happen, e.g., if we only have several
+    // missing objects on one or more replicas and we are currently
+    // unable to get_object_context() or get_recovery_read().
+    // Anyway, it is not fatal and we can safely retry later.
+    dout(1) << __func__ << " one or more replicas still have missing objects"
+            << " but we are unable to start recovery ops, will re-schedule later"
+            << dendl;
     return work_in_progress;
   }
 
