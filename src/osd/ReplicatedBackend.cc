@@ -654,6 +654,7 @@ void ReplicatedBackend::be_deep_scrub(
   const hobject_t &poid,
   uint32_t seed,
   ScrubMap::object &o,
+  const std::atomic<bool>& preempted,
   ThreadPool::TPHandle &handle,
   ScrubMap* const map)
 {
@@ -675,6 +676,10 @@ void ReplicatedBackend::be_deep_scrub(
     if (sleeptime != utime_t()) {
       lgeneric_derr(cct) << __func__ << " sleeping for " << sleeptime << dendl;
       sleeptime.sleep();
+    }
+    get_parent()->scrub_yield();
+    if (preempted) {
+      return;
     }
     handle.reset_tp_timeout();
     r = store->read(
@@ -739,6 +744,10 @@ void ReplicatedBackend::be_deep_scrub(
   uint64_t value_sum = 0;
   for (iter->seek_to_first(); iter->status() == 0 && iter->valid();
     iter->next(false)) {
+    get_parent()->scrub_yield();
+    if (preempted) {
+      return;
+    }
     ++keys_scanned;
     handle.reset_tp_timeout();
 
@@ -1072,6 +1081,8 @@ void ReplicatedBackend::do_repop(OpRequestRef op)
 
   // we better not be missing this.
   assert(!parent->get_log().get_missing().is_missing(soid));
+
+  parent->maybe_preempt_replica_scrub(soid);
 
   int ackerosd = m->get_source().num();
 
