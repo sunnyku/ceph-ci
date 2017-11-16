@@ -10862,6 +10862,19 @@ void PrimaryLogPG::remove_missing_object(const hobject_t &soid,
   assert(r == 0);
 }
 
+void PrimaryLogPG::maybe_preempt_replica_scrub(const hobject_t& oid)
+{
+  if (replica_scrubbing &&
+      replica_scrub_can_preempt &&
+      !replica_scrub_preempted &&
+      oid >= replica_scrub_start &&
+      oid < replica_scrub_end) {
+    dout(10) << __func__ << " preempting scrub in [" << replica_scrub_start
+	     << "," << replica_scrub_end << ") due to op on " << oid << dendl;
+    replica_scrub_preempted = true;
+  }
+}
+
 void PrimaryLogPG::finish_degraded_object(const hobject_t& oid)
 {
   dout(10) << __func__ << " " << oid << dendl;
@@ -11375,6 +11388,8 @@ void PrimaryLogPG::shutdown()
 {
   lock();
   on_shutdown();
+  wait_for_scrub();
+  wait_for_replica_scrub();
   unlock();
   osr->flush();
 }
