@@ -1449,7 +1449,6 @@ public:
 
     // common to both scrubs
     bool active;
-    int waiting_on;
     set<pg_shard_t> waiting_on_whom;
     int shallow_errors;
     int deep_errors;
@@ -1551,7 +1550,6 @@ public:
     // clear all state
     void reset() {
       active = false;
-      waiting_on = 0;
       waiting_on_whom.clear();
       if (active_rep_scrub) {
         active_rep_scrub = OpRequestRef();
