@@ -1961,7 +1961,6 @@ private:
 
   PerfCounters *logger = nullptr;
 
-  std::mutex reap_lock;
   list<CollectionRef> removed_collections;
 
   RWLock debug_read_error_lock = {"BlueStore::debug_read_error_lock"};
