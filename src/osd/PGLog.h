@@ -493,7 +493,14 @@ public:
     // actors
     void add(const pg_log_entry_t& e, bool applied = true) {
       if (!applied) {
-	assert(get_can_rollback_to() == head);
+        // This is only true for backfill_targets.
+        // For async_recovery_targets, however, depending on whether we are
+        // currently accessing a missing object, "applied" might be
+        // still able to switch from true to false, and hence fire
+        // the assert below.
+        // FIXME: uncomment this line when async recovery is also supported
+        // for erasure pools.
+        // assert(get_can_rollback_to() == head);
       }
 
       // make sure our buffers don't pin bigger buffers
