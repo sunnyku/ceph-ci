@@ -345,7 +345,8 @@ public:
   pg_info_t info;               ///< current pg info
   pg_info_t last_written_info;  ///< last written info
   __u8 info_struct_v;
-  static const __u8 cur_struct_v = 10;
+  static const __u8 cur_struct_v = 11;
+  // v11 is the new log_head addition
   // v10 is the new past_intervals encoding
   // v9 was fastinfo_key addition
   // v8 was the move to a per-pg pgmeta object

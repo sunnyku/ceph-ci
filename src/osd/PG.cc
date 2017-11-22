@@ -1734,7 +1734,7 @@ void PG::activate(ObjectStore::Transaction& t,
 			  << "] " << pi.last_backfill
 			 << " to " << info.last_update;
 
-	pi.last_update = info.last_update;
+	pi.log_head = pi.last_update = info.last_update;
 	pi.last_complete = info.last_update;
 	pi.set_last_backfill(hobject_t());
 	pi.last_epoch_started = info.last_epoch_started;
@@ -1795,7 +1795,7 @@ void PG::activate(ObjectStore::Transaction& t,
       }
 
       // peer now has 
-      pi.last_update = info.last_update;
+      pi.log_head = pi.last_update = info.last_update;
 
       // update our missing
       if (pm.num_missing() == 0) {
@@ -2238,8 +2238,8 @@ void PG::split_into(pg_t child_pgid, PG *child, unsigned split_bits)
   pg_log.split_into(child_pgid, split_bits, &(child->pg_log));
   child->info.last_complete = info.last_complete;
 
-  info.last_update = pg_log.get_head();
-  child->info.last_update = child->pg_log.get_head();
+  info.last_update = info.log_head = pg_log.get_head();
+  child->info.last_update = child->info.log_head = child->pg_log.get_head();
 
   child->info.last_user_version = info.last_user_version;
 
@@ -2862,7 +2862,7 @@ void PG::init(
   if (backfill) {
     dout(10) << __func__ << ": Setting backfill" << dendl;
     info.set_last_backfill(hobject_t());
-    info.last_complete = info.last_update;
+    info.last_complete = info.log_head = info.last_update;
     pg_log.mark_log_for_rewrite();
   }
 
@@ -2879,7 +2879,7 @@ void PG::init(
 
 void PG::upgrade(ObjectStore *store)
 {
-  assert(info_struct_v <= 10);
+  assert(info_struct_v <= 11);
   ObjectStore::Transaction t;
 
   assert(info_struct_v >= 7);
@@ -2906,6 +2906,11 @@ void PG::upgrade(ObjectStore *store)
       dout(20) << __func__ << " clearing past_intervals" << dendl;
       past_intervals.clear();
     }
+  }
+
+  // 10 -> 11
+  if (info_struct_v <= 10) {
+    info.log_head = info.last_update;
   }
 
   // update infover_key
@@ -3167,7 +3172,7 @@ void PG::add_log_entry(const pg_log_entry_t& e, bool applied)
   
   // raise last_update.
   assert(e.version > info.last_update);
-  info.last_update = e.version;
+  info.log_head = info.last_update = e.version;
 
   // raise user_version, if it increased (it may have not get bumped
   // by all logged updates)
@@ -3309,8 +3314,12 @@ int PG::read_info(
     p = values[fastinfo_key].begin();
     if (!p.end()) {
       pg_fast_info_t fast;
+      auto log_tail = info.log_tail;
       ::decode(fast, p);
       fast.try_apply_to(&info);
+      if (struct_v <= 10) {
+        info.log_tail = log_tail;
+      }
     }
     return 0;
   }
@@ -5109,7 +5118,7 @@ bool PG::append_log_entries_update_missing(
 				  info.last_backfill_bitwise,
 				  entries,
 				  &rollbacker);
-  info.last_update = pg_log.get_head();
+  info.last_update = info.log_head = pg_log.get_head();
 
   if (pg_log.get_missing().num_missing() == 0) {
     // advance last_complete since nothing else is missing!
@@ -5150,7 +5159,7 @@ void PG::merge_new_log_entries(
       pmissing,
       NULL,
       this);
-    pinfo.last_update = info.last_update;
+    pinfo.last_update = pinfo.log_head = info.last_update;
     pinfo.stats.stats_invalid = pinfo.stats.stats_invalid || invalidate_stats;
     rebuild_missing = rebuild_missing || invalidate_stats;
   }

@@ -1361,7 +1361,7 @@ public:
       }
     }
     log = IndexedLog(
-      info.last_update,
+      info.log_head,
       info.log_tail,
       on_disk_can_rollback_to,
       on_disk_rollback_info_trimmed_to,

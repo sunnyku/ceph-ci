@@ -9340,7 +9340,7 @@ void PrimaryLogPG::issue_repop(RepGather *repop, OpContext *ctx)
       // keep peer_info up to date
       if (pinfo.last_complete == pinfo.last_update)
 	pinfo.last_complete = ctx->at_version;
-      pinfo.last_update = ctx->at_version;
+      pinfo.last_update = pinfo.log_head = ctx->at_version;
     }
   }
 

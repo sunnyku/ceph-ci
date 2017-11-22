@@ -2297,6 +2297,7 @@ struct pg_info_t {
   version_t last_user_version; ///< last user object version applied to store
 
   eversion_t log_tail;         ///< oldest log entry.
+  eversion_t log_head;         ///< newest log entry.
 
   hobject_t last_backfill;     ///< objects >= this and < last_complete may be missing
   bool last_backfill_bitwise;  ///< true if last_backfill reflects a bitwise (vs nibblewise) sort
@@ -2317,6 +2318,7 @@ struct pg_info_t {
       l.last_interval_started == r.last_interval_started &&
       l.last_user_version == r.last_user_version &&
       l.log_tail == r.log_tail &&
+      l.log_head == r.log_head &&
       l.last_backfill == r.last_backfill &&
       l.last_backfill_bitwise == r.last_backfill_bitwise &&
       l.purged_snaps == r.purged_snaps &&
@@ -2375,7 +2377,7 @@ inline ostream& operator<<(ostream& out, const pg_info_t& pgi)
     out << " v " << pgi.last_update;
     if (pgi.last_complete != pgi.last_update)
       out << " lc " << pgi.last_complete;
-    out << " (" << pgi.log_tail << "," << pgi.last_update << "]";
+    out << " (" << pgi.log_tail << "," << pgi.log_head << "]";
   }
   if (pgi.is_incomplete())
     out << " lb " << pgi.last_backfill
@@ -2404,6 +2406,8 @@ struct pg_fast_info_t {
   eversion_t last_update;
   eversion_t last_complete;
   version_t last_user_version;
+  eversion_t log_head;
+  eversion_t log_tail;
   struct { // pg_stat_t stats
     eversion_t version;
     version_t reported_seq;
@@ -2433,6 +2437,8 @@ struct pg_fast_info_t {
     last_update = info.last_update;
     last_complete = info.last_complete;
     last_user_version = info.last_user_version;
+    log_head = info.log_head;
+    log_tail = info.log_tail;
     stats.version = info.stats.version;
     stats.reported_seq = info.stats.reported_seq;
     stats.last_fresh = info.stats.last_fresh;
@@ -2459,6 +2465,8 @@ struct pg_fast_info_t {
     info->last_update = last_update;
     info->last_complete = last_complete;
     info->last_user_version = last_user_version;
+    info->log_head = log_head;
+    info->log_tail = log_tail;
     info->stats.version = stats.version;
     info->stats.reported_seq = stats.reported_seq;
     info->stats.last_fresh = stats.last_fresh;
@@ -2482,7 +2490,7 @@ struct pg_fast_info_t {
   }
 
   void encode(bufferlist& bl) const {
-    ENCODE_START(1, 1, bl);
+    ENCODE_START(2, 1, bl);
     ::encode(last_update, bl);
     ::encode(last_complete, bl);
     ::encode(last_user_version, bl);
@@ -2504,10 +2512,12 @@ struct pg_fast_info_t {
     ::encode(stats.stats.sum.num_wr, bl);
     ::encode(stats.stats.sum.num_wr_kb, bl);
     ::encode(stats.stats.sum.num_objects_dirty, bl);
+    ::encode(log_head, bl);
+    ::encode(log_tail, bl);
     ENCODE_FINISH(bl);
   }
   void decode(bufferlist::iterator& p) {
-    DECODE_START(1, p);
+    DECODE_START(2, p);
     ::decode(last_update, p);
     ::decode(last_complete, p);
     ::decode(last_user_version, p);
@@ -2529,6 +2539,10 @@ struct pg_fast_info_t {
     ::decode(stats.stats.sum.num_wr, p);
     ::decode(stats.stats.sum.num_wr_kb, p);
     ::decode(stats.stats.sum.num_objects_dirty, p);
+    if (struct_v >= 2) {
+      ::decode(log_head, p);
+      ::decode(log_tail, p);
+    }
     DECODE_FINISH(p);
   }
 };
@@ -3499,22 +3513,23 @@ public:
   mempool::osd_pglog::list<pg_log_dup_t> dups;
 
   pg_log_t() = default;
-  pg_log_t(const eversion_t &last_update,
+  pg_log_t(const eversion_t &log_head,
 	   const eversion_t &log_tail,
 	   const eversion_t &can_rollback_to,
 	   const eversion_t &rollback_info_trimmed_to,
 	   mempool::osd_pglog::list<pg_log_entry_t> &&entries,
 	   mempool::osd_pglog::list<pg_log_dup_t> &&dup_entries)
-    : head(last_update), tail(log_tail), can_rollback_to(can_rollback_to),
+    : head(log_head), tail(log_tail), can_rollback_to(can_rollback_to),
       rollback_info_trimmed_to(rollback_info_trimmed_to),
-      log(std::move(entries)), dups(std::move(dup_entries)) {}
-  pg_log_t(const eversion_t &last_update,
+      log(std::move(entries)), dups(std::move(dup_entries)) {
+  }
+  pg_log_t(const eversion_t &log_head,
 	   const eversion_t &log_tail,
 	   const eversion_t &can_rollback_to,
 	   const eversion_t &rollback_info_trimmed_to,
 	   const std::list<pg_log_entry_t> &entries,
 	   const std::list<pg_log_dup_t> &dup_entries)
-    : head(last_update), tail(log_tail), can_rollback_to(can_rollback_to),
+    : head(log_head), tail(log_tail), can_rollback_to(can_rollback_to),
       rollback_info_trimmed_to(rollback_info_trimmed_to) {
     for (auto &&entry: entries) {
       log.push_back(entry);
