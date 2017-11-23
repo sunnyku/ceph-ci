@@ -243,6 +243,12 @@ struct osdmap_manifest_t {
     decode(p);
   }
 
+  void dump(Formatter *f) {
+    f->dump_unsigned("first_pinned", get_first_pinned());
+    f->dump_unsigned("last_pinned", get_last_pinned());
+    f->dump_unsigned("last_pruned", get_last_pruned());
+    f->dump_stream("pinned_maps") << pinned;
+  }
 };
 WRITE_CLASS_ENCODER(osdmap_manifest_t);
 
