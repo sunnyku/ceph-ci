@@ -21,6 +21,7 @@ install(TARGETS ceph_scratchtoolpp DESTINATION bin)
 add_executable(ceph_radosacl radosacl.cc)
 target_link_libraries(ceph_radosacl librados global)
 install(TARGETS ceph_radosacl DESTINATION bin)
+endif(WITH_TESTS)
 
 add_executable(ceph-osdomap-tool ceph_osdomap_tool.cc)
 target_link_libraries(ceph-osdomap-tool os global Boost::program_options)
@@ -34,7 +35,6 @@ install(TARGETS ceph-monstore-tool DESTINATION bin)
 install(PROGRAMS
   ceph-monstore-update-crush.sh
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/ceph)
-endif(WITH_TESTS)
 
 add_executable(ceph-objectstore-tool
   ceph_objectstore_tool.cc
