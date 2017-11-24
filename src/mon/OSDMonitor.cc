@@ -3829,6 +3829,9 @@ void OSDMonitor::tick()
 
   dout(10) << osdmap << dendl;
 
+  // always update osdmap manifest, regardless of being the leader.
+  update_osdmap_manifest();
+
   if (!mon->is_leader()) return;
 
   bool do_propose = false;
@@ -3839,8 +3842,15 @@ void OSDMonitor::tick()
   }
 
   // mark osds down?
-  if (check_failures(now))
+  if (check_failures(now)) {
     do_propose = true;
+  }
+
+  if (is_prune_ongoing() ||
+      (g_conf->get_val<bool>("mon_osdmap_full_prune_enabled") &&
+       should_prune())) {
+    do_propose = true;
+  }
 
   // mark down osds out?
 
