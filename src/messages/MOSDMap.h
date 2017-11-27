@@ -84,6 +84,9 @@ public:
       oldest_map = 0;
       newest_map = 0;
     }
+    if (header.version >= 3) {
+      ::decode(gap_removed_snaps, payload);
+    }
   }
   void encode_payload(uint64_t features) override {
     header.version = HEAD_VERSION;
