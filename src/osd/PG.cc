@@ -5673,7 +5673,7 @@ ostream& operator<<(ostream& out, const PG& pg)
   }
   if (!pg.snap_trimq.empty() ||
       pg.info.purged_snaps.size()) {
-    out << " rsq/ps=";
+    out << " stq/ps="; // snap trim queue / purged snaps
     // only show a count if the set is large
     if (pg.snap_trimq.num_intervals() > 8) {
       out << pg.snap_trimq.size();
