@@ -5047,7 +5047,7 @@ bool OSDMonitor::try_prune_purged_snaps()
 	// well wait for it to be fresh.
 	dout(20) << __func__ << "  we've already pruned " << pbegin
 		 << "~" << (pend - pbegin) << dendl;
-	break;  // next extent
+	break;  // next pool
       }
       if (pbegin && pbegin < end) {
 	// the tail of [begin,end) is purged, move end up
