@@ -7326,7 +7326,7 @@ boost::statechart::result PG::RecoveryState::Active::react(const AdvMap& advmap)
 	  overlap.intersection_of(pg->snap_trimq, added);
 	  lderr(pg->cct) << __func__ << " removed_snaps already contains "
 			 << overlap << dendl;
-	  bad = false;
+	  bad = true;
 	  pg->snap_trimq.union_of(added);
 	} else {
 	  pg->snap_trimq.insert(j.first, j.second);
@@ -7334,7 +7334,7 @@ boost::statechart::result PG::RecoveryState::Active::react(const AdvMap& advmap)
       }
       ldout(pg->cct,10) << __func__ << " new removed_snaps " << i->second
 			<< ", snap_trimq now " << pg->snap_trimq << dendl;
-      assert(!bad || pg->cct->_conf->osd_debug_verify_cached_snaps);
+      assert(!bad || !pg->cct->_conf->osd_debug_verify_cached_snaps);
       pg->dirty_info = true;
       pg->dirty_big_info = true;
     }
@@ -7351,13 +7351,14 @@ boost::statechart::result PG::RecoveryState::Active::react(const AdvMap& advmap)
 	  lderr(pg->cct) << __func__ << " purged_snaps does not contain "
 			 << rm << ", only " << overlap << dendl;
 	  pg->info.purged_snaps.subtract(overlap);
+	  bad = true;
 	} else {
 	  pg->info.purged_snaps.erase(k.first, k.second);
 	}
       }
       ldout(pg->cct,10) << __func__ << " new purged_snaps " << j->second
 			<< ", now " << pg->info.purged_snaps << dendl;
-      assert(!bad || pg->cct->_conf->osd_debug_verify_cached_snaps);
+      assert(!bad || !pg->cct->_conf->osd_debug_verify_cached_snaps);
       pg->dirty_info = true;
       pg->dirty_big_info = true;
     }
