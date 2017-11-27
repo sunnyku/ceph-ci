@@ -1273,10 +1273,9 @@ void OSDMonitor::encode_pending(MonitorDBStore::TransactionRef t)
   // removed_snaps
   if (tmp.require_osd_release >= CEPH_RELEASE_MIMIC) {
     for (auto& i : pending_inc.new_removed_snaps) {
-      auto poolid = i.first;
       {
 	// all snaps removed this epoch
-	string k = make_snap_epoch_key(poolid, pending_inc.epoch);
+	string k = make_snap_epoch_key(i.first, pending_inc.epoch);
 	bufferlist v;
 	::encode(i.second, v);
 	t->put(OSD_SNAP_PREFIX, k, v);
