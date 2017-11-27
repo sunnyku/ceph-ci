@@ -5050,7 +5050,8 @@ bool OSDMonitor::try_prune_purged_snaps()
 	break;  // next pool
       }
       if (pbegin && pbegin < end) {
-	// the tail of [begin,end) is purged, move end up
+	// the tail of [begin,end) is purged; shorten the range
+	assert(pbegin > begin);
 	end = pbegin;
       }
       to_prune.insert(begin, end - begin);
