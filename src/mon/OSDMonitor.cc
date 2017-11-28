@@ -1150,7 +1150,21 @@ void OSDMonitor::encode_pending(MonitorDBStore::TransactionRef t)
 	}
 
 	if (!p.second.removed_snaps.empty()) {
-	  // all snaps removed this epoch
+	  // Make all previously removed snaps appear to be removed in this
+	  // epoch.  this populates removed_snaps_queue.  The OSD will subtract
+	  // off its purged_snaps, as before, and this set will shrink over the
+	  // following epochs as the purged snaps are reported back through the
+	  // mgr.
+
+	  // different flavor of interval_set :(
+	  OSDMap::snap_interval_set_t removed;
+	  for (auto q = p.second.removed_snaps.begin();
+	       q != p.second.removed_snaps.end();
+	       ++q) {
+	    removed.insert(q.get_start(), q.get_len());
+	  }
+	  pending_inc.new_removed_snaps[p.first].union_of(removed);
+
 	  dout(10) << __func__ << " converting pool " << p.first
 		   << " with " << p.second.removed_snaps.size()
 		   << " legacy removed_snaps" << dendl;
