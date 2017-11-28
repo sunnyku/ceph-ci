@@ -84,12 +84,13 @@ public:
       oldest_map = 0;
       newest_map = 0;
     }
-    if (header.version >= 3) {
-      ::decode(gap_removed_snaps, payload);
+    if (header.version >= 4) {
+      ::decode(gap_removed_snaps, p);
     }
   }
   void encode_payload(uint64_t features) override {
     header.version = HEAD_VERSION;
+    header.compat_version = COMPAT_VERSION;
     ::encode(fsid, payload);
     if ((features & CEPH_FEATURE_PGID64) == 0 ||
 	(features & CEPH_FEATURE_PGPOOL3) == 0 ||
@@ -102,6 +103,7 @@ public:
 	header.version = 1;  // old old_client version
       else if ((features & CEPH_FEATURE_OSDENC) == 0)
 	header.version = 2;  // old pg_pool_t
+      header.compat_version = 0;
 
       // reencode maps using old format
       //
@@ -147,7 +149,7 @@ public:
       ::encode(oldest_map, payload);
       ::encode(newest_map, payload);
     }
-    if (header.version >= 3) {
+    if (header.version >= 4) {
       ::encode(gap_removed_snaps, payload);
     }
   }
