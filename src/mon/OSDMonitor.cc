@@ -2865,9 +2865,7 @@ bool OSDMonitor::prepare_remove_snaps(MonOpRequestRef op)
 	  newpi->set_snap_seq(*q);
 	}
 	newpi->set_snap_epoch(pending_inc.epoch);
-	if (osdmap.require_osd_release >= CEPH_RELEASE_MIMIC) {
-	  pending_inc.new_removed_snaps[p->first].insert(*q);
-	}
+	pending_inc.new_removed_snaps[p->first].insert(*q);
       }
     }
   }
@@ -11075,9 +11073,7 @@ bool OSDMonitor::prepare_pool_op(MonOpRequestRef op)
       snapid_t s = pp.snap_exists(m->name.c_str());
       if (s) {
 	pp.remove_snap(s);
-	if (osdmap.require_osd_release >= CEPH_RELEASE_MIMIC) {
-	  pending_inc.new_removed_snaps[m->pool].insert(s);
-	}
+	pending_inc.new_removed_snaps[m->pool].insert(s);
 	changed = true;
       }
     }
@@ -11095,9 +11091,7 @@ bool OSDMonitor::prepare_pool_op(MonOpRequestRef op)
   case POOL_OP_DELETE_UNMANAGED_SNAP:
     if (!pp.is_removed_snap(m->snapid)) {
       pp.remove_unmanaged_snap(m->snapid);
-      if (osdmap.require_osd_release >= CEPH_RELEASE_MIMIC) {
-	pending_inc.new_removed_snaps[m->pool].insert(m->snapid);
-      }
+      pending_inc.new_removed_snaps[m->pool].insert(m->snapid);
       changed = true;
     }
     break;
