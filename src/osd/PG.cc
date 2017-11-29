@@ -1654,7 +1654,10 @@ void PG::activate(ObjectStore::Transaction& t,
     interval_set<snapid_t> intersection;
     intersection.intersection_of(snap_trimq, info.purged_snaps);
     snap_trimq.subtract(intersection);
-    info.purged_snaps.swap(intersection);
+    if (get_osdmap()->require_osd_release >= CEPH_RELEASE_MIMIC) {
+      // remove pruned snaps from the set
+      info.purged_snaps.swap(intersection);
+    }
   }
 
   // init complete pointer
