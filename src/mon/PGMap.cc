@@ -1295,6 +1295,8 @@ void PGMap::calc_purged_snaps()
       unknown.insert(i.first.pool());
       purged_snaps.erase(i.first.pool());
       continue;
+    } else if (unknown.count(i.first.pool())) {
+      continue;
     }
     auto j = purged_snaps.find(i.first.pool());
     if (j == purged_snaps.end()) {
