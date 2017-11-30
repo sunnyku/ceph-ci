@@ -380,7 +380,7 @@ public:
 		   bool sameosds=false);
   void stat_pg_sub(const pg_t &pgid, const pg_stat_t &s,
 		   bool sameosds=false);
-  void calc_purged_snaps();
+  void calc_purged_snaps(CephContext *cct);
   void stat_osd_add(int osd, const osd_stat_t &s);
   void stat_osd_sub(int osd, const osd_stat_t &s);
   
@@ -388,7 +388,7 @@ public:
   void decode(bufferlist::iterator &bl);
 
   /// encode subset of our data to a PGMapDigest
-  void encode_digest(const OSDMap& osdmap,
+  void encode_digest(CephContext *cct, const OSDMap& osdmap,
 		     bufferlist& bl, uint64_t features);
 
   int64_t get_rule_avail(const OSDMap& osdmap, int ruleno) const;

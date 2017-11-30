@@ -1286,26 +1286,35 @@ void PGMap::stat_pg_sub(const pg_t &pgid, const pg_stat_t &s,
   }
 }
 
-void PGMap::calc_purged_snaps()
+void PGMap::calc_purged_snaps(CephContext *cct)
 {
   purged_snaps.clear();
   set<int64_t> unknown;
   for (auto& i : pg_stat) {
     if (i.second.state == 0) {
+      ldout(cct,20) << __func__ << " " << i.first << " adding " << i.first.pool()
+		    << " to unknown" << dendl;
       unknown.insert(i.first.pool());
       purged_snaps.erase(i.first.pool());
       continue;
     } else if (unknown.count(i.first.pool())) {
+	ldout(cct,20) << __func__ << " " << i.first << " " << i.first.pool() << " in unknown" << dendl;
       continue;
     }
     auto j = purged_snaps.find(i.first.pool());
     if (j == purged_snaps.end()) {
       // base case
+      ldout(cct,20) << __func__ << " " << i.first << " base case "
+		    << i.second.purged_snaps << dendl;
       purged_snaps[i.first.pool()] = i.second.purged_snaps;
     } else {
       j->second.intersection_of(i.second.purged_snaps);
+      ldout(cct,20) << __func__ << " " << i.first << " "
+		    << i.second.purged_snaps
+		    << " -> " << j->second << dendl;
     }
   }
+  ldout(cct,20) << __func__ << " result " << purged_snaps << dendl;
 }
 
 void PGMap::stat_osd_add(int osd, const osd_stat_t &s)
@@ -1326,11 +1335,11 @@ void PGMap::stat_osd_sub(int osd, const osd_stat_t &s)
   osd_last_seq[osd] = 0;
 }
 
-void PGMap::encode_digest(const OSDMap& osdmap,
+void PGMap::encode_digest(CephContext *cct, const OSDMap& osdmap,
 			  bufferlist& bl, uint64_t features)
 {
   get_rules_avail(osdmap, &avail_space_by_rule);
-  calc_purged_snaps();
+  calc_purged_snaps(cct);
   PGMapDigest::encode(bl, features);
 }
 
