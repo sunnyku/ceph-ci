@@ -1422,7 +1422,7 @@ void DaemonServer::send_report()
   auto m = new MMonMgrReport();
   py_modules.get_health_checks(&m->health_checks);
 
-  cluster_state.with_pgmap([&](const PGMap& pg_map) {
+  cluster_state.with_mutable_pgmap([&](PGMap& pg_map) {
       cluster_state.update_delta_stats();
 
       if (pending_service_map.epoch) {
@@ -1439,7 +1439,7 @@ void DaemonServer::send_report()
       cluster_state.with_osdmap([&](const OSDMap& osdmap) {
 	  // FIXME: no easy way to get mon features here.  this will do for
 	  // now, though, as long as we don't make a backward-incompat change.
-	  pg_map.encode_digest(osdmap, m->get_data(), CEPH_FEATURES_ALL);
+	  pg_map.encode_digest(cct, osdmap, m->get_data(), CEPH_FEATURES_ALL);
 	  dout(10) << pg_map << dendl;
 
 	  pg_map.get_health_checks(g_ceph_context, osdmap,
