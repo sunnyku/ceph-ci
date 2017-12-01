@@ -7355,6 +7355,7 @@ boost::statechart::result PG::RecoveryState::Active::react(const AdvMap& advmap)
       // purged snaps and (b) perhaps share more snaps that we have purged
       // but didn't fit in pg_stat_t.
       pg->publish_stats_to_osd();
+      pg->share_pg_info();
     }
   } else if (!pg->pool.newly_removed_snaps.empty()) {
     pg->snap_trimq.union_of(pg->pool.newly_removed_snaps);
