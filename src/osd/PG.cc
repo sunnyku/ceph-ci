@@ -5643,17 +5643,18 @@ ostream& operator<<(ostream& out, const PG& pg)
 	out << " u=" << unfound;
     }
   }
-  if (!pg.snap_trimq.empty() ||
-      pg.info.purged_snaps.size()) {
-    out << " stq/ps="; // snap trim queue / purged snaps
+  if (!pg.snap_trimq.empty()) {
+    out << " trimq=";
     // only show a count if the set is large
-    if (pg.snap_trimq.num_intervals() > 8) {
+    if (pg.snap_trimq.num_intervals() > 16) {
       out << pg.snap_trimq.size();
     } else {
       out << pg.snap_trimq;
     }
-    out << "/";
-    if (pg.info.purged_snaps.num_intervals() > 8) {
+  }
+  if (!pg.info.purged_snaps.empty()) {
+    out << " ps="; // snap trim queue / purged snaps
+    if (pg.info.purged_snaps.num_intervals() > 16) {
       out << pg.info.purged_snaps.size();
     } else {
       out << pg.info.purged_snaps;
