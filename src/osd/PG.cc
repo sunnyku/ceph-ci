@@ -1651,9 +1651,17 @@ void PG::activate(ObjectStore::Transaction& t,
 	}
       }
     }
-    interval_set<snapid_t> intersection;
-    intersection.intersection_of(snap_trimq, info.purged_snaps);
-    snap_trimq.subtract(intersection);
+    interval_set<snapid_t> purged;
+    purged.intersection_of(snap_trimq, info.purged_snaps);
+    snap_trimq.subtract(purged);
+
+    if (get_osdmap()->require_osd_release >= CEPH_RELEASE_MIMIC) {
+      // adjust purged_snaps: PG may have been inactive while snaps were pruned
+      // from the removed_snaps_queue in the osdmap.  update local purged_snaps
+      // reflect only those snaps that we thought were pruned and were still in
+      // the queue.
+      info.purged_snaps.swap(purged);
+    }
   }
 
   // init complete pointer
