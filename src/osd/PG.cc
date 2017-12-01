@@ -5564,8 +5564,8 @@ void PG::proc_primary_info(ObjectStore::Transaction &t, const pg_info_t &oinfo)
 
   update_history(oinfo.history);
 
-  if (info.purged_snaps != oinfo.purged_snaps) {
-    dout(10) << __func__ << " updating purged_snaps to " << oinfo.purge_snaps
+  if (!(info.purged_snaps == oinfo.purged_snaps)) {
+    dout(10) << __func__ << " updating purged_snaps to " << oinfo.purged_snaps
 	     << dendl;
     info.purged_snaps = oinfo.purged_snaps;
     dirty_info = true;
