@@ -7287,6 +7287,16 @@ PG::RecoveryState::Active::Active(my_context ctx)
 boost::statechart::result PG::RecoveryState::Active::react(const AdvMap& advmap)
 {
   PG *pg = context< RecoveryMachine >().pg;
+  if (pg->should_restart_peering(
+	advmap.up_primary,
+	advmap.acting_primary,
+	advmap.newup,
+	advmap.newacting,
+	advmap.lastmap,
+	advmap.osdmap)) {
+    ldout(pg->cct, 10) << "Active advmap interval change, fast return" << dendl;
+    return forward_event();
+  }
   ldout(pg->cct, 10) << "Active advmap" << dendl;
 
   if (advmap.osdmap->require_osd_release >= CEPH_RELEASE_MIMIC) {
