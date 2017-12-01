@@ -8435,6 +8435,9 @@ void OSD::handle_pg_notify(OpRequestRef op)
       continue;
     }
 
+    dout(10) << __func__ << " notify on " << it->first.info.pgid
+	     << " purged_snaps " << it->first.info.purged_snaps
+	     << dendl;
     handle_pg_peering_evt(
       spg_t(it->first.info.pgid.pgid, it->first.to),
       it->first.info.history, it->second,
