@@ -8707,6 +8707,8 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       return prepare_set_flag(op, CEPH_OSDMAP_NODEEP_SCRUB);
     else if (key == "notieragent")
       return prepare_set_flag(op, CEPH_OSDMAP_NOTIERAGENT);
+    else if (key == "nosnaptrim")
+      return prepare_set_flag(op, CEPH_OSDMAP_NOSNAPTRIM);
     else if (key == "sortbitwise") {
       return prepare_set_flag(op, CEPH_OSDMAP_SORTBITWISE);
     } else if (key == "recovery_deletes") {
@@ -8803,6 +8805,8 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       return prepare_unset_flag(op, CEPH_OSDMAP_NODEEP_SCRUB);
     else if (key == "notieragent")
       return prepare_unset_flag(op, CEPH_OSDMAP_NOTIERAGENT);
+    else if (key == "nosnaptrim")
+      return prepare_unset_flag(op, CEPH_OSDMAP_NOSNAPTRIM);
     else {
       ss << "unrecognized flag '" << key << "'";
       err = -EINVAL;
