@@ -3266,6 +3266,28 @@ void PG::handle_pg_trim(epoch_t epoch, int from, shard_id_t shard, eversion_t tr
   }
 }
 
+void PG::advance_pg_version()
+{
+  eversion_t next = get_next_version();
+  dout(10) << __func__ << " " << next << dendl;
+  if (info.last_update == info.last_complete) {
+    info.last_complete = next;
+  }
+  info.last_update = next;
+  pg_log.advance_head(next);
+  projected_last_update = next;
+
+  // keep peer_info up to date too
+  for (auto i : actingbackfill) {
+    if (i != get_primary()) {
+      pg_info_t &pinfo = peer_info[i];
+      if (pinfo.last_complete == pinfo.last_update)
+	pinfo.last_complete = next;
+      pinfo.last_update = next;
+    }
+  }
+}
+
 void PG::add_log_entry(const pg_log_entry_t& e, bool applied)
 {
   // raise last_complete only if we were previously up to date

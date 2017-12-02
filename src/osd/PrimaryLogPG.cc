@@ -14065,6 +14065,9 @@ boost::statechart::result PrimaryLogPG::AwaitAsyncWork::react(const DoSnapWork&)
 		       << pg->info.purged_snaps << ", snap_trimq now "
 		       << pg->snap_trimq << dendl;
 
+    // bump pg version
+    pg->advance_pg_version();
+
     ObjectStore::Transaction t;
     pg->dirty_big_info = true;
     pg->write_if_dirty(t);
