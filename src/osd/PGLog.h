@@ -660,6 +660,11 @@ public:
 
   void clear();
 
+  // advance head version, without adding any events.
+  void advance_head(eversion_t next) {
+    log.head = next;
+  }
+
   //////////////////// get or set missing ////////////////////
 
   const pg_missing_tracker_t& get_missing() const { return missing; }

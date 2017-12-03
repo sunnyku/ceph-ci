@@ -221,6 +221,7 @@ struct PGPool {
   pg_pool_t info;      
   SnapContext snapc;   // the default pool snapc, ready to go.
 
+  // these two sets are for < mimic only
   interval_set<snapid_t> cached_removed_snaps;      // current removed_snaps set
   interval_set<snapid_t> newly_removed_snaps;  // newly removed in the last epoch
 
@@ -234,10 +235,12 @@ struct PGPool {
     assert(pi);
     info = *pi;
     snapc = pi->get_snap_context();
-    pi->build_removed_snaps(cached_removed_snaps);
+    if (map->require_osd_release < CEPH_RELEASE_MIMIC) {
+      pi->build_removed_snaps(cached_removed_snaps);
+    }
   }
 
-  void update(OSDMapRef map);
+  void update(CephContext *cct, OSDMapRef map);
 };
 
 /** PG - Replica Placement Group
@@ -2627,6 +2630,9 @@ protected:
 
   epoch_t last_epoch;
 
+  /// most recently consumed osdmap's require_osd_version
+  unsigned last_require_osd_release = 0;
+
 protected:
   void reset_min_peer_features() {
     peer_features = CEPH_FEATURES_SUPPORTED_DEFAULT;
@@ -2761,6 +2767,8 @@ protected:
     return at_version;
   }
 
+  void advance_pg_version();
+  
   void add_log_entry(const pg_log_entry_t& e, bool applied);
   void append_log(
     const vector<pg_log_entry_t>& logv,

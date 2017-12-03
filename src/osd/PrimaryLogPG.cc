@@ -4139,8 +4139,12 @@ void PrimaryLogPG::kick_snap_trim()
   assert(is_active());
   assert(is_primary());
   if (is_clean() && !snap_trimq.empty()) {
-    dout(10) << __func__ << ": clean and snaps to trim, kicking" << dendl;
-    snap_trimmer_machine.process_event(KickTrim());
+    if (get_osdmap()->test_flag(CEPH_OSDMAP_NOSNAPTRIM)) {
+      dout(10) << __func__ << ": nosnaptrim set, not kicking" << dendl;
+    } else {
+      dout(10) << __func__ << ": clean and snaps to trim, kicking" << dendl;
+      snap_trimmer_machine.process_event(KickTrim());
+    }
   }
 }
 
@@ -14689,6 +14693,9 @@ boost::statechart::result PrimaryLogPG::AwaitAsyncWork::react(const DoSnapWork&)
     ldout(pg->cct, 10) << "purged_snaps now "
 		       << pg->info.purged_snaps << ", snap_trimq now "
 		       << pg->snap_trimq << dendl;
+
+    // bump pg version
+    pg->advance_pg_version();
 
     ObjectStore::Transaction t;
     pg->dirty_big_info = true;
