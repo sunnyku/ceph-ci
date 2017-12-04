@@ -27,6 +27,17 @@
 
 class CephContext;
 
+enum {
+  CONF_DEFAULT,
+  CONF_MON,
+  CONF_CONFFILE,
+  CONF_ENV,
+  CONF_OVERRIDE,
+  CONF_FINAL
+};
+
+extern const char *ceph_conf_level_name(int level);
+
 /** This class represents the current Ceph configuration.
  *
  * For Ceph daemons, this is the daemon configuration.  Log levels, caching
@@ -89,7 +100,10 @@ public:
   /**
    * The current values of all settings described by the schema
    */
-  std::map<std::string, map<int,Option::value_t>> values;
+  std::map<std::string, map<int32_t,Option::value_t>> values;
+
+  /// encoded, cached copy of of values
+  bufferlist values_bl;
 
   typedef enum {
     OPT_INT, OPT_LONGLONG, OPT_STR, OPT_DOUBLE, OPT_FLOAT, OPT_BOOL,
@@ -163,6 +177,9 @@ public:
 
   /// clear override value
   int rm_val(const std::string& key);
+
+  /// get encoded map<string,map<int32_t,string>> of entire config
+  void get_config_bl(bufferlist *bl);
 
   // Get a configuration value.
   // No metavariables will be returned (they will have already been expanded)
