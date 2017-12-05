@@ -883,7 +883,7 @@ std::vector<Option> get_global_options() {
     .set_default(1024)
     .set_description(""),
 
-    Option("mon_tick_interval", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    Option("mon_tick_interval", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(5)
     .set_description(""),
 
@@ -2332,11 +2332,19 @@ std::vector<Option> get_global_options() {
     .set_default(entity_addr_t())
     .set_description(""),
 
-    Option("osd_heartbeat_interval", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    Option("osd_heartbeat_interval", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(6)
     .set_description(""),
 
-    Option("osd_heartbeat_grace", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    Option("osd_heartbeat_base_interval", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(0.5)
+    .set_description(""),
+
+    Option("osd_tick_interval", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(1.0)
+    .set_description(""),
+
+    Option("osd_heartbeat_grace", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(20)
     .set_description(""),
 
@@ -2372,7 +2380,7 @@ std::vector<Option> get_global_options() {
     .set_default(600)
     .set_description(""),
 
-    Option("osd_mon_report_interval_min", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    Option("osd_mon_report_interval_min", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(5)
     .set_description(""),
 
