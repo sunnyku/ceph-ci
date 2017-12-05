@@ -40,6 +40,12 @@ def volumes(monkeypatch):
 
 
 @pytest.fixture
+def capture_run(monkeypatch, capture):
+    monkeypatch.setattr('ceph_volume.process.run', capture)
+    return capture
+
+
+@pytest.fixture
 def volume_groups(monkeypatch):
     monkeypatch.setattr('ceph_volume.process.call', lambda x: ('', '', 0))
     vgs = lvm_api.VolumeGroups()
