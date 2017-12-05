@@ -70,6 +70,7 @@ Say we have 50,000 osdmap epochs in the store, and we're using the
 defaults for all configurable options.
 
 ::
+
     -----------------------------------------------------------
     |1|2|..|10|11|..|100|..|1000|..|10000|10001|..|49999|50000|
     -----------------------------------------------------------
@@ -162,40 +163,41 @@ removed; in reality, these should be the criteria when ascertaining whether
 pruning has been started, not started, or has finished:
 
 * We will have not started pruning if ::
-  
-  invariant: first_committed > 1
-  last_pruned < first_committed
+
+    invariant: first_committed > 1
+ 
+    last_pruned < first_committed
 
 * We will have started pruning if ::
-  
-  invariant: first_committed > 0
-  invariant: !pinned.empty())
-  invariant: pinned.count(first_committed) == 1
-  invariant: last_pruned > 0
-  invariant: last_pruned < last_committed
-  
-  precond:  last_pruned > first_committed AND
-  last_pruned < pinned.last() AND
-  !finished_pruning
-  
-  postcond: last_pruned > first_committed AND
-  last_pruned < pinned.last() AND
-  upper_pinned(last_pruned) C pinned AND
-  lower_pinned(last_pruned) C pinned AND
-  upper_pinned(last_pruned) != lower_pinned(last_pruned)
+
+    invariant: first_committed > 0
+    invariant: !pinned.empty())
+    invariant: pinned.count(first_committed) == 1
+    invariant: last_pruned > 0
+    invariant: last_pruned < last_committed
+
+    precond: last_pruned > first_committed AND
+             last_pruned < pinned.last() AND
+             !finished_pruning
+
+    postcond: last_pruned > first_committed AND
+              last_pruned < pinned.last() AND
+              upper_pinned(last_pruned) C pinned AND
+              lower_pinned(last_pruned) C pinned AND
+              upper_pinned(last_pruned) != lower_pinned(last_pruned)
 
 * We will have finished pruning if ::
-  
-  invariant: first_committed > 0
-  invariant: !pinned.empty()
-  invariant: last_pruned > 0
-  invariant: last_pruned < last_committed
-  
-  (pinned.count(last_pruned + 1) AND (
-    last_pruned + 1 == pinned.last() OR
-    for each m1,m2 in pinned[last_pinned+1..pinned.last()]: m2 == m1+1
-  )) OR
-  last_pruned < first_committed
+
+    invariant: first_committed > 0
+    invariant: !pinned.empty()
+    invariant: last_pruned > 0
+    invariant: last_pruned < last_committed
+
+    (pinned.count(last_pruned + 1) AND (
+        last_pruned + 1 == pinned.last() OR
+        for each m1,m2 in pinned[last_pinned+1..pinned.last()]: m2 == m1+1
+    )) OR
+    last_pruned < first_committed
 
 Once we finish pruning maps, we will keep the manifest in the store, to
 allow us to easily find which maps have been pinned (instead of checking
