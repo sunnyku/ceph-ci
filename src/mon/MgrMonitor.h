@@ -78,7 +78,7 @@ public:
 
   bool in_use() const { return map.epoch > 0; }
 
-  version_t get_trim_to() const override;
+  version_t get_trim_to() override;
 
   void create_initial() override;
   void get_store_prefixes(std::set<string>& s) override;
