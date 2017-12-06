@@ -488,6 +488,7 @@ set(libcommon_files
   osd/OSDMapMapping.cc
   common/histogram.cc
   osd/osd_types.cc
+  osd/PGPeeringEvent.cc
   osd/OpRequest.cc
   common/blkdev.cc
   common/common_init.cc
