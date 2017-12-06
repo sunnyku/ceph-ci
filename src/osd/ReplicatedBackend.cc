@@ -715,8 +715,11 @@ void ReplicatedBackend::be_deep_scrub(
   bufferlist bl, hdrbl;
   int r;
   __u64 pos = 0;
+  bool skip_data_digest = store->has_builtin_csum() &&
+    g_conf->get_val<bool>("osd_skip_data_digest");
 
-  uint32_t fadvise_flags = CEPH_OSD_OP_FLAG_FADVISE_SEQUENTIAL | CEPH_OSD_OP_FLAG_FADVISE_DONTNEED;
+  uint32_t fadvise_flags = CEPH_OSD_OP_FLAG_FADVISE_SEQUENTIAL |
+                           CEPH_OSD_OP_FLAG_FADVISE_DONTNEED;
 
   while (true) {
     handle.reset_tp_timeout();
@@ -730,7 +733,9 @@ void ReplicatedBackend::be_deep_scrub(
     if (r <= 0)
       break;
 
-    h << bl;
+    if (!skip_data_digest) {
+      h << bl;
+    }
     pos += bl.length();
     bl.clear();
   }
@@ -740,8 +745,10 @@ void ReplicatedBackend::be_deep_scrub(
     o.read_error = true;
     return;
   }
-  o.digest = h.digest();
-  o.digest_present = true;
+  if (!skip_data_digest) {
+    o.digest = h.digest();
+    o.digest_present = true;
+  }
 
   bl.clear();
   r = store->omap_get_header(

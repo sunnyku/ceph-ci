@@ -5025,6 +5025,8 @@ int PrimaryLogPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
   ObjectState& obs = ctx->new_obs;
   object_info_t& oi = obs.oi;
   const hobject_t& soid = oi.soid;
+  bool skip_data_digest = osd->store->has_builtin_csum() &&
+    g_conf->get_val<bool>("osd_skip_data_digest");
 
   PGTransaction* t = ctx->op_t.get();
 
@@ -5838,12 +5840,18 @@ int PrimaryLogPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	    soid, op.extent.offset, op.extent.length, osd_op.indata, op.flags);
 	}
 
-	if (op.extent.offset == 0 && op.extent.length >= oi.size)
+	if (op.extent.offset == 0 && op.extent.length >= oi.size
+            && !skip_data_digest) {
 	  obs.oi.set_data_digest(osd_op.indata.crc32c(-1));
-	else if (op.extent.offset == oi.size && obs.oi.is_data_digest())
-	  obs.oi.set_data_digest(osd_op.indata.crc32c(obs.oi.data_digest));
-	else
+	} else if (op.extent.offset == oi.size && obs.oi.is_data_digest()) {
+          if (skip_data_digest) {
+            obs.oi.clear_data_digest();
+          } else {
+	    obs.oi.set_data_digest(osd_op.indata.crc32c(obs.oi.data_digest));
+          }
+	} else {
 	  obs.oi.clear_data_digest();
+        }
 	write_update_size_and_usage(ctx->delta_stats, oi, ctx->modified_ranges,
 				    op.extent.offset, op.extent.length);
 
@@ -5875,7 +5883,9 @@ int PrimaryLogPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	if (op.extent.length) {
 	  t->write(soid, 0, op.extent.length, osd_op.indata, op.flags);
 	}
-	obs.oi.set_data_digest(osd_op.indata.crc32c(-1));
+        if (!skip_data_digest) {
+	  obs.oi.set_data_digest(osd_op.indata.crc32c(-1));
+        }
 
 	write_update_size_and_usage(ctx->delta_stats, oi, ctx->modified_ranges,
 	    0, op.extent.length, true);
@@ -8383,8 +8393,16 @@ void PrimaryLogPG::finish_copyfrom(CopyFromCallback *cb)
   // CopyFromCallback fills this in for us
   obs.oi.user_version = ctx->user_at_version;
 
-  obs.oi.set_data_digest(cb->results->data_digest);
-  obs.oi.set_omap_digest(cb->results->omap_digest);
+  if (cb->results->is_data_digest()) {
+    obs.oi.set_data_digest(cb->results->data_digest);
+  } else {
+    obs.oi.clear_data_digest();
+  }
+  if (cb->results->is_omap_digest()) {
+    obs.oi.set_omap_digest(cb->results->omap_digest);
+  } else {
+    obs.oi.clear_omap_digest();
+  }
 
   obs.oi.truncate_seq = cb->results->truncate_seq;
   obs.oi.truncate_size = cb->results->truncate_size;
@@ -8575,11 +8593,16 @@ void PrimaryLogPG::finish_promote(int r, CopyResults *results,
     }
     tctx->new_obs.oi.size = results->object_size;
     tctx->new_obs.oi.user_version = results->user_version;
-    // Don't care src object whether have data or omap digest
-    if (results->object_size)
+    if (results->is_data_digest()) {
       tctx->new_obs.oi.set_data_digest(results->data_digest);
-    if (results->has_omap)
+    } else {
+      tctx->new_obs.oi.clear_data_digest();
+    }
+    if (results->is_omap_digest()) {
       tctx->new_obs.oi.set_omap_digest(results->omap_digest);
+    } else {
+      tctx->new_obs.oi.clear_omap_digest();
+    }
     tctx->new_obs.oi.truncate_seq = results->truncate_seq;
     tctx->new_obs.oi.truncate_size = results->truncate_size;
 
@@ -13702,7 +13725,9 @@ unsigned PrimaryLogPG::process_clones_to(const boost::optional<hobject_t> &head,
  */
 void PrimaryLogPG::scrub_snapshot_metadata(
   ScrubMap &scrubmap,
-  const map<hobject_t, pair<uint32_t, uint32_t>> &missing_digest)
+  const map<hobject_t,
+            pair<boost::optional<uint32_t>,
+                 boost::optional<uint32_t>>> &missing_digest)
 {
   dout(10) << __func__ << dendl;
 
@@ -14038,10 +14063,7 @@ void PrimaryLogPG::scrub_snapshot_metadata(
   if (head && head_error.errors)
     scrubber.store->add_snap_error(pool.id, head_error);
 
-  for (map<hobject_t,pair<uint32_t,uint32_t>>::const_iterator p =
-	 missing_digest.begin();
-       p != missing_digest.end();
-       ++p) {
+  for (auto p = missing_digest.begin(); p != missing_digest.end(); ++p) {
     if (p->first.is_snapdir())
       continue;
     dout(10) << __func__ << " recording digests for " << p->first << dendl;
@@ -14061,8 +14083,16 @@ void PrimaryLogPG::scrub_snapshot_metadata(
     OpContextUPtr ctx = simple_opc_create(obc);
     ctx->at_version = get_next_version();
     ctx->mtime = utime_t();      // do not update mtime
-    ctx->new_obs.oi.set_data_digest(p->second.first);
-    ctx->new_obs.oi.set_omap_digest(p->second.second);
+    if (p->second.first) {
+      ctx->new_obs.oi.set_data_digest(*p->second.first);
+    } else {
+      ctx->new_obs.oi.clear_data_digest();
+    }
+    if (p->second.second) {
+      ctx->new_obs.oi.set_omap_digest(*p->second.second);
+    } else {
+      ctx->new_obs.oi.clear_omap_digest();
+    }
     finish_ctx(ctx.get(), pg_log_entry_t::MODIFY);
 
     ctx->register_on_success(
