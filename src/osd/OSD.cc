@@ -7429,7 +7429,12 @@ OSDService::ScrubJob::ScrubJob(CephContext* cct,
     double r = rand() / (double)RAND_MAX;
     sched_time +=
       scrub_min_interval * cct->_conf->osd_scrub_interval_randomize_ratio * r;
-    deadline += scrub_max_interval;
+    if (scrub_max_interval == 0) {
+      deadline = utime_t();
+    } else {
+      deadline += scrub_max_interval;
+    }
+
   }
 }
 
@@ -7446,6 +7451,25 @@ bool OSD::scrub_time_permit(utime_t now)
   struct tm bdt;
   time_t tt = now.sec();
   localtime_r(&tt, &bdt);
+
+  bool day_permit = false;
+  if (cct->_conf->osd_scrub_begin_week_day < cct->_conf->osd_scrub_end_week_day) {
+    if (bdt.tm_wday >= cct->_conf->osd_scrub_begin_week_day && bdt.tm_wday < cct->_conf->osd_scrub_end_week_day) {
+      day_permit = true;
+    }
+  } else {
+    if (bdt.tm_wday >= cct->_conf->osd_scrub_begin_week_day || bdt.tm_wday < cct->_conf->osd_scrub_end_week_day) {
+      day_permit = true;
+    }
+  }
+
+  if (!day_permit) {
+    dout(20) << __func__ << " should run between week day " << cct->_conf->osd_scrub_begin_week_day
+            << " - " << cct->_conf->osd_scrub_end_week_day
+            << " now " << bdt.tm_wday << " = no" << dendl;
+    return false;
+  }
+
   bool time_permit = false;
   if (cct->_conf->osd_scrub_begin_hour < cct->_conf->osd_scrub_end_hour) {
     if (bdt.tm_hour >= cct->_conf->osd_scrub_begin_hour && bdt.tm_hour < cct->_conf->osd_scrub_end_hour) {
@@ -7530,7 +7554,7 @@ void OSD::sched_scrub()
 	break;
       }
 
-      if ((scrub.deadline >= now) && !(time_permit && load_is_low)) {
+      if ((scrub.deadline.is_zero() || scrub.deadline >= now) && !(time_permit && load_is_low)) {
         dout(10) << __func__ << " not scheduling scrub for " << scrub.pgid << " due to "
                  << (!time_permit ? "time not permit" : "high load") << dendl;
         continue;
