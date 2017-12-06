@@ -41,7 +41,7 @@ static ostream& _prefix(std::ostream *_dout, Monitor *mon,
 const static std::string command_descs_prefix = "mgr_command_descs";
 
 
-version_t MgrMonitor::get_trim_to() const
+version_t MgrMonitor::get_trim_to()
 {
   int64_t max = g_conf->get_val<int64_t>("mon_max_mgrmap_epochs");
   if (map.epoch > max) {
