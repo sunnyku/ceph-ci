@@ -319,6 +319,9 @@ public:
   bool is_deleting() const {
     return deleting;
   }
+  bool is_deleted() const {
+    return deleted;
+  }
   bool is_replica() const {
     return role > 0;
   }
@@ -327,7 +330,7 @@ public:
   }
   bool pg_has_reset_since(epoch_t e) {
     assert(is_locked());
-    return deleting || e < get_last_peering_reset();
+    return deleted || e < get_last_peering_reset();
   }
 
   bool is_ec_pg() const {
@@ -476,6 +479,7 @@ public:
 
   virtual void on_removal(ObjectStore::Transaction *t) = 0;
 
+  void _delete_some();
   void pg_remove_object(const ghobject_t& oid, ObjectStore::Transaction *t);
 
   // reference counting
@@ -570,6 +574,7 @@ protected:
 
 
   bool deleting;  // true while in removing or OSD is shutting down
+  bool deleted = false;
 
   ZTracer::Endpoint trace_endpoint;
 
@@ -1864,6 +1869,9 @@ protected:
 
   TrivialEvent(IntervalFlush)
 
+  TrivialEvent(DeleteStart)
+  TrivialEvent(DeleteSome)
+
   /* Encapsulates PG recovery process */
   class RecoveryState {
     void start_handle(RecoveryCtx *new_ctx);
@@ -1974,6 +1982,8 @@ protected:
     //       RepWaitBackfillReserved
     //       RepWaitRecoveryReserved
     //     Stray
+    //     Deleting
+    // Crashed
 
     struct Crashed : boost::statechart::state< Crashed, RecoveryMachine >, NamedState {
       explicit Crashed(my_context ctx);
@@ -2274,6 +2284,7 @@ protected:
       void exit();
     };
 
+    struct Deleting;
     struct RepNotRecovering;
     struct ReplicaActive : boost::statechart::state< ReplicaActive, Started, RepNotRecovering >, NamedState {
       explicit ReplicaActive(my_context ctx);
@@ -2291,7 +2302,8 @@ protected:
 	boost::statechart::custom_reaction< UnfoundRecovery >,
 	boost::statechart::custom_reaction< UnfoundBackfill >,
 	boost::statechart::custom_reaction< RemoteBackfillPreempted >,
-	boost::statechart::custom_reaction< RemoteRecoveryPreempted >
+	boost::statechart::custom_reaction< RemoteRecoveryPreempted >,
+	boost::statechart::transition<DeleteStart, Deleting>
 	> reactions;
       boost::statechart::result react(const QueryState& q);
       boost::statechart::result react(const MInfoRec& infoevt);
@@ -2442,9 +2454,8 @@ protected:
       void exit();
     };
 
-    struct Stray : boost::statechart::state< Stray, Started >, NamedState {
-      map<int, pair<pg_query_t, epoch_t> > pending_queries;
-
+    struct Stray : boost::statechart::state< Stray, Started >,
+	      NamedState {
       explicit Stray(my_context ctx);
       void exit();
 
@@ -2453,7 +2464,8 @@ protected:
 	boost::statechart::custom_reaction< MLogRec >,
 	boost::statechart::custom_reaction< MInfoRec >,
 	boost::statechart::custom_reaction< ActMap >,
-	boost::statechart::custom_reaction< RecoveryDone >
+	boost::statechart::custom_reaction< RecoveryDone >,
+	boost::statechart::transition<DeleteStart, Deleting>
 	> reactions;
       boost::statechart::result react(const MQuery& query);
       boost::statechart::result react(const MLogRec& logevt);
@@ -2462,6 +2474,19 @@ protected:
       boost::statechart::result react(const RecoveryDone&) {
 	return discard_event();
       }
+    };
+
+    struct Deleting : boost::statechart::state<Deleting, Started>, NamedState {
+      typedef boost::mpl::list <
+	boost::statechart::custom_reaction< ActMap >,
+	boost::statechart::custom_reaction< DeleteSome >
+	> reactions;
+      explicit Deleting(my_context ctx);
+      boost::statechart::result react(const ActMap &evt) {
+	return discard_event();
+      }
+      boost::statechart::result react(const DeleteSome &evt);
+      void exit();
     };
 
     struct GetLog;
@@ -2559,7 +2584,6 @@ protected:
       boost::statechart::result react(const QueryState& infoevt);
       void exit();
     };
-
 
     RecoveryMachine machine;
     PG *pg;
