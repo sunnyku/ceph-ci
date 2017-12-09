@@ -878,6 +878,8 @@ public:
   AsyncReserver<spg_t> snap_reserver;
   void queue_for_snap_trim(PG *pg);
   void queue_for_scrub(PG *pg, bool with_high_priority);
+  void queue_for_pg_delete(spg_t pgid, epoch_t e);
+  void finish_pg_delete(PG *pg);
 
 private:
   // -- pg recovery and associated throttling --
@@ -1621,6 +1623,7 @@ private:
   friend class PGOpItem;
   friend class PGPeeringItem;
   friend class PGRecovery;
+  friend class PGDelete;
 
   class ShardedOpWQ
     : public ShardedThreadPool::ShardedWQ<OpQueueItem>
@@ -1732,7 +1735,7 @@ private:
     void prune_pg_waiters(OSDMapRef osdmap, int whoami);
 
     /// clear cached PGRef on pg deletion
-    void clear_pg_pointer(spg_t pgid);
+    void clear_pg_pointer(PG *pg);
 
     /// clear pg_slots on shutdown
     void clear_pg_slots();
@@ -1835,6 +1838,11 @@ private:
   void dequeue_peering_evt(
     PG *pg,
     PGPeeringEventRef ref,
+    ThreadPool::TPHandle& handle);
+
+  void dequeue_delete(
+    PG *pg,
+    epoch_t epoch,
     ThreadPool::TPHandle& handle);
 
   friend class PG;
