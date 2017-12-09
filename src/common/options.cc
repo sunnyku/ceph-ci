@@ -4251,7 +4251,25 @@ std::vector<Option> get_global_options() {
     Option("debug_deliberately_leak_memory", Option::TYPE_BOOL, Option::LEVEL_DEV)
     .set_default(false)
     .set_description(""),
-  });
+
+    Option("mgr_op_latency_sample_interval", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(5)
+    .set_description(""),
+
+    Option("mgr_op_latency_in_us", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description(""),
+
+    Option("mgr_image_perf_cleanup_interval", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(300)
+    .set_description(""),
+
+    Option("mgr_image_perf_calc_interval", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(5)
+    .set_min(1)
+    .set_description(""),
+
+ });
 }
 
 std::vector<Option> get_rgw_options() {
@@ -5278,6 +5296,10 @@ static std::vector<Option> get_rbd_options() {
     Option("rbd_blkin_trace_all", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)
     .set_description("create a blkin trace for all RBD requests"),
+
+    Option("rbd_perf_report_interval", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(5.0)
+    .set_description(""),
 
     Option("rbd_validate_pool", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(true)

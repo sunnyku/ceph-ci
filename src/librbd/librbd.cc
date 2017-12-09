@@ -4096,3 +4096,23 @@ extern "C" void rbd_aio_release(rbd_completion_t c)
   comp->release();
 }
 
+extern "C" int64_t rbd_get_io_rate(rbd_image_t image)
+{
+  int64_t ret_iops;
+  librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
+  int r = ictx->get_image_perf(&ret_iops);
+  if (r < 0)
+    return 0;
+  return ret_iops;
+}
+
+extern "C" int64_t rbd_get_byte_rate(rbd_image_t image)
+{
+  int64_t ret_bps;
+  librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
+  int r = ictx->get_image_perf(nullptr, nullptr, nullptr, &ret_bps);
+  if (r < 0)
+    return 0;
+  return ret_bps;
+}
+
