@@ -14,6 +14,8 @@
 #include "librbd/image/RefreshParentRequest.h"
 #include "librbd/io/ImageRequestWQ.h"
 #include "librbd/journal/Policy.h"
+#include <boost/algorithm/string/predicate.hpp>
+#include "include/assert.h"
 
 #define dout_subsys ceph_subsys_rbd
 #undef dout_prefix
@@ -21,6 +23,9 @@
 
 namespace librbd {
 namespace image {
+namespace {
+  static uint64_t MAX_METADATA_ITEMS = 128;
+}
 
 using util::create_rados_callback;
 using util::create_async_context_callback;
@@ -285,9 +290,64 @@ Context *RefreshRequest<I>::handle_v2_get_mutable_metadata(int *result) {
     m_incomplete_update = true;
   }
 
+  send_v2_apply_metadata();
+  return nullptr;
+}
+
+template <typename I>
+void RefreshRequest<I>::send_v2_apply_metadata() {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << this << " " << __func__ << ": "
+                 << "start_key=" << m_last_metadata_key << dendl;
+
+  librados::ObjectReadOperation op;
+  cls_client::metadata_list_start(&op, m_last_metadata_key, MAX_METADATA_ITEMS);
+
+  using klass = RefreshRequest<I>;
+  librados::AioCompletion *comp =
+    create_rados_callback<klass, &klass::handle_v2_apply_metadata>(this);
+  m_out_bl.clear();
+  m_image_ctx.md_ctx.aio_operate(m_image_ctx.header_oid, comp, &op,
+                                  &m_out_bl);
+  comp->release();
+}
+
+template <typename I>
+Context *RefreshRequest<I>::handle_v2_apply_metadata(int *result) {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << this << " " << __func__ << ": r=" << *result << dendl;
+
+  std::map<std::string, bufferlist> metadata;
+  if (*result == 0) {
+    bufferlist::iterator it = m_out_bl.begin();
+    *result = cls_client::metadata_list_finish(&it, &metadata);
+  }
+
+  if (*result == -EOPNOTSUPP || *result == -EIO) {
+    ldout(cct, 10) << "config metadata not supported by OSD" << dendl;
+  } else if (*result < 0) {
+    lderr(cct) << "failed to retrieve metadata: " << cpp_strerror(*result)
+               << dendl;
+    return m_on_finish;
+  }
+
+  if (!metadata.empty()) {
+    m_metadata.insert(metadata.begin(), metadata.end());
+    m_last_metadata_key = metadata.rbegin()->first;
+    if (boost::starts_with(m_last_metadata_key,
+                           ImageCtx::METADATA_CONF_PREFIX)) {
+      send_v2_apply_metadata();
+      return nullptr;
+    }
+  }
+
+  m_image_ctx.apply_metadata(m_metadata);
+  m_image_ctx.set_qos_quota();
+
   send_v2_get_flags();
   return nullptr;
 }
+
 
 template <typename I>
 void RefreshRequest<I>::send_v2_get_flags() {

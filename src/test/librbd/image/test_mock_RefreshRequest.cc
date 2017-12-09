@@ -155,6 +155,16 @@ public:
     }
   }
 
+  void expect_get_metadata(MockRefreshImageCtx &mock_image_ctx, int r) {
+    auto &expect = EXPECT_CALL(get_mock_io_ctx(mock_image_ctx.md_ctx),
+                               exec(mock_image_ctx.header_oid, _, StrEq("rbd"), StrEq("metadata_list"), _, _, _));
+    if (r < 0) {
+      expect.WillOnce(Return(r));
+    } else {
+      expect.WillOnce(DoDefault());
+    }
+  }
+
   void expect_get_flags(MockRefreshImageCtx &mock_image_ctx, int r) {
     auto &expect = EXPECT_CALL(get_mock_io_ctx(mock_image_ctx.md_ctx),
                                exec(mock_image_ctx.header_oid, _, StrEq("rbd"), StrEq("get_flags"), _, _, _));

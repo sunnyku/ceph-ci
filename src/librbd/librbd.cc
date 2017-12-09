@@ -289,6 +289,7 @@ namespace librbd {
       return r;
     }
 
+    ictx->set_qos_quota();
     image.ctx = (image_ctx_t) ictx;
     tracepoint(librbd, open_image_exit, 0);
     return 0;
@@ -1862,6 +1863,30 @@ namespace librbd {
     return r;
   }
 
+  int Image::set_qos_quota(int res, int wgt, int lim, int bdw) {
+    ImageCtx *ictx = (ImageCtx *)ctx;
+    tracepoint(librbd, set_qos_quota_enter, ictx);
+    int retval = ictx->set_qos_quota(res, wgt, lim, bdw);
+    tracepoint(librbd, set_qos_quota_exit, retval);
+    return retval;
+  }
+
+  int Image::qos_spec_set(int rsv, int wgt, int lmt, int bdw) {
+    ImageCtx *ictx = (ImageCtx *)ctx;
+    return librbd::qos_spec_set(ictx, rsv, wgt, lmt, bdw);
+  }
+
+  int Image::qos_spec_get(int *rsv, int *wgt, int *lmt, int *bdw,
+                              int *fmeta_rwlb) {
+    ImageCtx *ictx = (ImageCtx *)ctx;
+    return librbd::qos_spec_get(ictx, rsv, wgt, lmt, bdw, fmeta_rwlb);
+  }
+
+  int Image::qos_spec_del() {
+    ImageCtx *ictx = (ImageCtx *)ctx;
+    return librbd::qos_spec_del(ictx);
+  }
+
 } // namespace librbd
 
 extern "C" void rbd_version(int *major, int *minor, int *extra)
@@ -2526,6 +2551,7 @@ extern "C" int rbd_open(rados_ioctx_t p, const char *name, rbd_image_t *image,
   int r = ictx->state->open(false);
   if (r >= 0) {
     *image = (rbd_image_t)ictx;
+    ictx->set_qos_quota();        // use meta config or default configuration from config_opt.h
   }
   tracepoint(librbd, open_image_exit, r);
   return r;
@@ -2548,6 +2574,7 @@ extern "C" int rbd_open_by_id(rados_ioctx_t p, const char *id,
   } else {
     *image = (rbd_image_t)ictx;
   }
+  ictx->set_qos_quota();        // use meta config or default configuration from config_opt.h
   tracepoint(librbd, open_image_exit, r);
   return r;
 }
@@ -4114,5 +4141,43 @@ extern "C" int64_t rbd_get_byte_rate(rbd_image_t image)
   if (r < 0)
     return 0;
   return ret_bps;
+}
+
+extern "C" int rbd_cache_disable(rbd_image_t image)
+{
+  librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
+  return librbd::rbd_cache_disable(ictx);
+}
+
+extern "C" int rbd_cache_remove(rbd_image_t image)
+{
+  librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
+  return librbd::rbd_cache_remove(ictx);
+}
+
+extern "C" int rbd_qos_set(rbd_image_t image,
+                              int reservation, int weight, int limit, int bandwidth)
+{
+  librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
+  int r = librbd::qos_spec_set(ictx, reservation, weight, limit, bandwidth);
+  if (r < 0) {
+    return r;
+  }
+  //return librbd::rbd_cache_disable(ictx);
+  return 0;
+}
+
+extern "C" int rbd_qos_get(rbd_image_t image,
+                              int *reservation, int *weight, int *limit, int *bandwidth,
+                              int *metaflag)
+{
+  librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
+  return librbd::qos_spec_get(ictx, reservation, weight, limit, bandwidth, metaflag);
+}
+
+extern "C" int rbd_qos_del(rbd_image_t image, int flag)
+{
+  librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
+  return librbd::qos_spec_del(ictx, flag);
 }
 
