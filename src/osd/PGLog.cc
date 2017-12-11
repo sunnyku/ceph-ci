@@ -257,7 +257,7 @@ void PGLog::proc_replica_log(
 
   if (lu < oinfo.last_update) {
     dout(10) << " peer osd." << from << " last_update now " << lu << dendl;
-    oinfo.last_update = lu;
+    oinfo.log_head = oinfo.last_update = lu;
   }
 
   if (omissing.have_missing()) {
@@ -304,7 +304,7 @@ void PGLog::rewind_divergent_log(eversion_t newhead,
   for (auto &&entry: divergent) {
     dout(10) << "rewind_divergent_log future divergent " << entry << dendl;
   }
-  info.last_update = newhead;
+  info.log_head = info.last_update = newhead;
 
   _merge_divergent_entries(
     log,
@@ -383,6 +383,12 @@ void PGLog::merge_log(pg_info_t &oinfo, pg_log_t &olog, pg_shard_t fromosd,
   if (olog.head < log.head) {
     rewind_divergent_log(olog.head, info, rollbacker, dirty_info, dirty_big_info);
     changed = true;
+  } else if (info.last_update < log.head) {
+    // we must be one of the async_recovery_targets previously,
+    // throw out any divergent log entries first!
+    rewind_divergent_log(info.last_update, info, rollbacker, dirty_info,
+                         dirty_big_info);
+    changed = true;
   }
 
   // extend on head?
@@ -436,7 +442,7 @@ void PGLog::merge_log(pg_info_t &oinfo, pg_log_t &olog, pg_shard_t fromosd,
       rollbacker,
       this);
 
-    info.last_update = log.head = olog.head;
+    info.log_head = info.last_update = log.head = olog.head;
 
     // We cannot rollback into the new log entries
     log.skip_can_rollback_to_to_head();

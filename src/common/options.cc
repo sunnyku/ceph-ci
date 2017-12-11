@@ -2664,6 +2664,22 @@ std::vector<Option> get_global_options() {
     .set_long_description("OSD will refuse to instantiate PG if the number of PG it serves exceeds this number.")
     .add_see_also("mon_max_pg_per_osd"),
 
+    Option("osd_force_auth_log_shard_primary_min_pg_log_entries", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(100)
+    .set_description("number of log entries difference above which to force auth_log_shard to be temp primary"),
+
+    Option("osd_async_recovery_min_pg_log_entries", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(100)
+    .set_description("number of entries difference above which to use asynchronous recovery when appropriate"),
+
+    Option("osd_min_replicated_pool_min_size_for_async_recovery", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(2)
+    .set_description("minimum replicated-pool min_size to enable asynchronous recovery"),
+
+    Option("osd_max_async_recovery_targets", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(2)
+    .set_description("maximum replicas allowed for asynchronous recovery"),
+
     Option("osd_op_complaint_time", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(30)
     .set_description(""),

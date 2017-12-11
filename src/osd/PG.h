@@ -345,7 +345,8 @@ public:
   pg_info_t info;               ///< current pg info
   pg_info_t last_written_info;  ///< last written info
   __u8 info_struct_v;
-  static const __u8 cur_struct_v = 10;
+  static const __u8 cur_struct_v = 11;
+  // v11 is the new log_head addition
   // v10 is the new past_intervals encoding
   // v9 was fastinfo_key addition
   // v8 was the move to a per-pg pgmeta object
@@ -484,10 +485,11 @@ public:
     void add_missing(const hobject_t &hoid, eversion_t need, eversion_t have) {
       needs_recovery_map[hoid] = pg_missing_item(need, have);
     }
-    void revise_need(const hobject_t &hoid, eversion_t need) {
+    void revise_need(const hobject_t &hoid, eversion_t need, bool is_delete) {
       auto it = needs_recovery_map.find(hoid);
       assert(it != needs_recovery_map.end());
       it->second.need = need;
+      it->second.set_delete(is_delete);
     }
 
     /// Adds info about a possible recovery source
@@ -854,10 +856,15 @@ protected:
   friend class OSD;
 
 public:
-  set<pg_shard_t> backfill_targets;
+  bool skip_raise_last_update = false;
+  set<pg_shard_t> backfill_targets, async_recovery_targets;
 
   bool is_backfill_targets(pg_shard_t osd) {
     return backfill_targets.count(osd);
+  }
+
+  bool is_async_recovery_targets(pg_shard_t osd) {
+    return async_recovery_targets.count(osd);
   }
 
 protected:
@@ -1131,7 +1138,14 @@ public:
     vector<int> *want,
     set<pg_shard_t> *backfill,
     set<pg_shard_t> *acting_backfill,
-    ostream &ss);
+    ostream &ss,
+    CephContext *cct,
+    bool compat_mode);
+  void choose_async_recovery_replicated(
+    const map<pg_shard_t, pg_info_t> &all_info,
+    const pg_info_t &auth_info,
+    const vector<int> &want,
+    set<pg_shard_t> *async_recovery) const;
   bool choose_acting(pg_shard_t &auth_log_shard,
 		     bool restrict_to_up_acting,
 		     bool *history_les_bound);

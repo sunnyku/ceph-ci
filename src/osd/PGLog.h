@@ -493,7 +493,14 @@ public:
     // actors
     void add(const pg_log_entry_t& e, bool applied = true) {
       if (!applied) {
-	assert(get_can_rollback_to() == head);
+        // This is only true for backfill_targets.
+        // For async_recovery_targets, however, depending on whether we are
+        // currently accessing a missing object, "applied" might be
+        // still able to switch from true to false, and hence fire
+        // the assert below.
+        // FIXME: uncomment this line when async recovery is also supported
+        // for erasure pools.
+        // assert(get_can_rollback_to() == head);
       }
 
       // make sure our buffers don't pin bigger buffers
@@ -668,6 +675,10 @@ public:
     missing.revise_have(oid, have);
   }
 
+  void revise_need(hobject_t oid, eversion_t need, bool is_delete) {
+    missing.revise_need(oid, need, is_delete);
+  }
+
   void missing_add(const hobject_t& oid, eversion_t need, eversion_t have) {
     missing.add(oid, need, have, false);
   }
@@ -758,10 +769,9 @@ public:
 	log.complete_to = log.log.end();
 	info.last_complete = info.last_update;
       }
+      auto oldest_need = missing.get_oldest_need();
       while (log.complete_to != log.log.end()) {
-	if (missing.get_items().at(
-	      missing.get_rmissing().begin()->second
-	      ).need <= log.complete_to->version)
+	if (oldest_need <= log.complete_to->version)
 	  break;
 	if (info.last_complete < log.complete_to->version)
 	  info.last_complete = log.complete_to->version;
@@ -774,12 +784,12 @@ public:
 
   void reset_complete_to(pg_info_t *info) {
     log.complete_to = log.log.begin();
-    while (!missing.get_items().empty() && log.complete_to->version <
-	   missing.get_items().at(
-	     missing.get_rmissing().begin()->second
-	     ).need) {
-      assert(log.complete_to != log.log.end());
-      ++log.complete_to;
+    auto oldest_need = missing.get_oldest_need();
+    if (oldest_need != eversion_t()) {
+      while (log.complete_to->version < oldest_need) {
+        assert(log.complete_to != log.log.end());
+        ++log.complete_to;
+      }
     }
     assert(log.complete_to != log.log.end());
     if (log.complete_to == log.log.begin()) {
@@ -1361,7 +1371,7 @@ public:
       }
     }
     log = IndexedLog(
-      info.last_update,
+      info.log_head,
       info.log_tail,
       on_disk_can_rollback_to,
       on_disk_rollback_info_trimmed_to,
