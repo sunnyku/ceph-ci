@@ -277,6 +277,17 @@ void ImageRequest<I>::fail(int r) {
 }
 
 template <typename I>
+uint64_t ImageRequest<I>::extents_length() {
+  uint64_t length = 0;
+  auto &extents = this->m_image_extents;
+
+  for (auto &extent : extents) {
+    length += extent.second;
+  }
+  return length;
+}
+
+template <typename I>
 ImageReadRequest<I>::ImageReadRequest(I &image_ctx, AioCompletion *aio_comp,
                                       Extents &&image_extents,
                                       ReadResult &&read_result, int op_flags,

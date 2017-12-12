@@ -99,6 +99,34 @@ public:
     return m_trace;
   }
 
+public:
+  virtual uint64_t tokens_requested(uint64_t flag) {
+    if (flag & RBD_QOS_READ_MASK) {
+      return 0;
+    }
+
+    if (flag & RBD_QOS_BPS_MASK) {
+      return this->extents_length();
+    }
+    return 1;
+  }
+
+  bool was_throttled(uint64_t flag) {
+    return m_throttled_flag & flag;
+  }
+
+  void set_throttled(uint64_t flag) {
+    m_throttled_flag |= flag;
+  }
+
+  bool were_all_throttled() {
+    return m_throttled_flag & RBD_QOS_MASK;
+  }
+
+protected:
+  std::atomic<uint64_t> m_throttled_flag { 0 };
+  uint64_t extents_length();
+
 protected:
   typedef std::list<ObjectRequestHandle *> ObjectRequests;
 
@@ -134,6 +162,18 @@ public:
   ImageReadRequest(ImageCtxT &image_ctx, AioCompletion *aio_comp,
                    Extents &&image_extents, ReadResult &&read_result,
                    int op_flags, const ZTracer::Trace &parent_trace);
+
+public:
+  uint64_t tokens_requested(uint64_t flag) override {
+    if (flag & RBD_QOS_WRITE_MASK) {
+      return 0;
+    }
+
+    if (flag & RBD_QOS_BPS_MASK) {
+      return this->extents_length();
+    }
+    return 1;
+  }
 
 protected:
   int clip_request() override;
@@ -303,6 +343,11 @@ public:
 
   bool is_write_op() const override {
     return true;
+  }
+
+public:
+  uint64_t tokens_requested(uint64_t flag) override {
+    return 0;
   }
 
 protected:

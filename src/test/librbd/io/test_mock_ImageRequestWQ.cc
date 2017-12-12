@@ -44,6 +44,10 @@ struct ImageRequest<librbd::MockTestImageCtx> {
   MOCK_CONST_METHOD0(start_op, void());
   MOCK_CONST_METHOD0(send, void());
   MOCK_CONST_METHOD1(fail, void(int));
+  MOCK_CONST_METHOD1(was_throttled, bool(uint64_t));
+  MOCK_CONST_METHOD0(were_all_throttled, bool());
+  MOCK_CONST_METHOD1(set_throttled, void(uint64_t));
+  MOCK_CONST_METHOD1(tokens_requested, uint64_t(uint64_t));
 
   ImageRequest() {
     s_instance = this;
@@ -78,6 +82,7 @@ struct ThreadPool::PointerWQ<librbd::io::ImageRequest<librbd::MockTestImageCtx>>
 
   MOCK_METHOD0(drain, void());
   MOCK_METHOD0(empty, bool());
+  MOCK_METHOD0(mock_empty, bool());
   MOCK_METHOD0(signal, void());
   MOCK_METHOD0(process_finish, void());
 
@@ -106,6 +111,9 @@ struct ThreadPool::PointerWQ<librbd::io::ImageRequest<librbd::MockTestImageCtx>>
     return dequeue();
   }
   virtual void process(ImageRequest *req) = 0;
+  virtual bool _empty() {
+    return mock_empty();
+  }
 
 };
 
@@ -139,6 +147,10 @@ struct TestMockIoImageRequestWQ : public TestMockFixture {
 
   void expect_queue(MockImageRequestWQ &image_request_wq) {
     EXPECT_CALL(image_request_wq, queue(_));
+  }
+
+  void expect_requeue(MockImageRequestWQ &image_request_wq) {
+    EXPECT_CALL(image_request_wq, requeue(_));
   }
 
   void expect_front(MockImageRequestWQ &image_request_wq,
@@ -194,6 +206,22 @@ struct TestMockIoImageRequestWQ : public TestMockFixture {
                     *on_finish = ctx;
                   }));
   }
+
+  void expect_set_throttled(MockImageRequest &mock_image_request) {
+    EXPECT_CALL(mock_image_request, set_throttled(_)).Times(6);
+  }
+
+  void expect_was_throttled(MockImageRequest &mock_image_request, bool value) {
+    EXPECT_CALL(mock_image_request, was_throttled(_)).Times(6).WillRepeatedly(Return(value));
+  }
+
+  void expect_tokens_requested(MockImageRequest &mock_image_request, uint64_t value) {
+    EXPECT_CALL(mock_image_request, tokens_requested(_)).WillOnce(Return(value));
+  }
+
+  void expect_all_throttled(MockImageRequest &mock_image_request, bool value) {
+    EXPECT_CALL(mock_image_request, were_all_throttled()).WillOnce(Return(value));
+  }
 };
 
 TEST_F(TestMockIoImageRequestWQ, AcquireLockError) {
@@ -246,10 +274,13 @@ TEST_F(TestMockIoImageRequestWQ, RefreshError) {
 
   MockTestImageCtx mock_image_ctx(*ictx);
 
+  auto mock_image_request = new MockImageRequest();
+  expect_was_throttled(*mock_image_request, false);
+  expect_set_throttled(*mock_image_request);
+
   InSequence seq;
   MockImageRequestWQ mock_image_request_wq(&mock_image_ctx, "io", 60, nullptr);
 
-  auto mock_image_request = new MockImageRequest();
   expect_is_write_op(*mock_image_request, true);
   expect_queue(mock_image_request_wq);
   auto *aio_comp = new librbd::io::AioCompletion();
@@ -273,6 +304,30 @@ TEST_F(TestMockIoImageRequestWQ, RefreshError) {
   ASSERT_EQ(0, aio_comp->wait_for_complete());
   ASSERT_EQ(-EPERM, aio_comp->get_return_value());
   aio_comp->release();
+}
+
+TEST_F(TestMockIoImageRequestWQ, IOPSQos) {
+  librbd::ImageCtx *ictx;
+  ASSERT_EQ(0, open_image(m_image_name, &ictx));
+
+  MockTestImageCtx mock_image_ctx(*ictx);
+
+  MockImageRequest mock_queued_image_request;
+  expect_was_throttled(mock_queued_image_request, false);
+  expect_set_throttled(mock_queued_image_request);
+
+  InSequence seq;
+  MockImageRequestWQ mock_image_request_wq(&mock_image_ctx, "io", 60, nullptr);
+
+  mock_image_request_wq.apply_qos_limit(1, RBD_QOS_IOPS_THROTTLE);
+
+  expect_front(mock_image_request_wq, &mock_queued_image_request);
+  expect_tokens_requested(mock_queued_image_request, 1);
+  expect_dequeue(mock_image_request_wq, &mock_queued_image_request);
+  expect_all_throttled(mock_queued_image_request, true);
+  expect_requeue(mock_image_request_wq);
+  expect_signal(mock_image_request_wq);
+  ASSERT_TRUE(mock_image_request_wq.invoke_dequeue() == nullptr);
 }
 
 } // namespace io
