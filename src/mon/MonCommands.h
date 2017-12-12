@@ -668,6 +668,10 @@ COMMAND("osd crush ls name=node,type=CephString,goodchars=goodchars=[A-Za-z0-9-_
 COMMAND("osd crush class ls", \
 	"list all crush device classes", \
 	"osd", "r", "cli,rest")
+COMMAND("osd crush class rm " \
+	"name=class,type=CephString,goodchars=[A-Za-z0-9-_]", \
+	"remove crush device class <class>", \
+	"osd", "rw", "cli,rest")
 COMMAND("osd crush class ls-osd " \
         "name=class,type=CephString,goodchars=[A-Za-z0-9-_]", \
         "list all osds belonging to the specific <class>", \

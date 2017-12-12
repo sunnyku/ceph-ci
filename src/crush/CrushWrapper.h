@@ -1259,6 +1259,7 @@ public:
     int *clone,
     map<int,map<int,vector<int>>> *cmap_item_weight);
   int rename_class(const string& srcname, const string& dstname);
+  bool class_is_in_use(int class_id, ostream *ss = nullptr);
   int populate_classes(
     const std::map<int32_t, map<int32_t, int32_t>>& old_class_bucket);
   int get_rules_by_class(const string &class_name, set<int> *rules);
