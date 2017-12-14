@@ -3631,7 +3631,6 @@ void PG::log_weirdness()
 		       << " info mismatch, log.tail " << pg_log.get_tail()
 		       << " != info.log_tail " << info.log_tail;
   if (pg_log.get_head() != info.last_update) {
-    assert(pg_log.get_head() > info.last_update);
     dout(0) << info.pgid
             << " info mismatch, log.head " << pg_log.get_head() << " !="
             << " info.last_update " << info.last_update << ","
