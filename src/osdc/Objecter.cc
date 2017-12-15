@@ -565,6 +565,7 @@ void Objecter::shutdown()
   if (m_request_state_hook) {
     AdminSocket* admin_socket = cct->get_admin_socket();
     admin_socket->unregister_command("objecter_requests");
+    admin_socket->unregister_command("dump_requests_rate");
     delete m_request_state_hook;
     m_request_state_hook = NULL;
   }

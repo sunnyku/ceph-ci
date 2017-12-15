@@ -282,6 +282,7 @@ namespace crimson {
       } // do_clean
 
       void do_svr_calc() {
+        DataGuard g(data_mtx);
         for (auto i = server_map.begin(); i != server_map.end(); i++) {
           i->second.rate_delta = i->second.sum_delta_self - i->second.sum_delta_prev;
           i->second.rate_rho   = i->second.sum_rho_self - i->second.sum_rho_prev;
