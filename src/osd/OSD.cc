@@ -6426,6 +6426,7 @@ void OSD::ms_fast_dispatch(Message *m)
 
   // peering event?
   switch (m->get_type()) {
+  case MSG_OSD_PG_TRIM:
   case MSG_OSD_BACKFILL_RESERVE:
   case MSG_OSD_RECOVERY_RESERVE:
     {
@@ -6637,9 +6638,6 @@ void OSD::dispatch_op(OpRequestRef op)
     break;
   case MSG_OSD_PG_INFO:
     handle_pg_info(op);
-    break;
-  case MSG_OSD_PG_TRIM:
-    handle_pg_trim(op);
     break;
   }
 }
@@ -8493,36 +8491,6 @@ void OSD::handle_pg_info(OpRequestRef op)
 	      from, p->first.from), p->first.info, p->first.epoch_sent)))
       );
   }
-}
-
-void OSD::handle_pg_trim(OpRequestRef op)
-{
-  const MOSDPGTrim *m = static_cast<const MOSDPGTrim*>(op->get_req());
-  assert(m->get_type() == MSG_OSD_PG_TRIM);
-
-  dout(7) << "handle_pg_trim " << *m << " from " << m->get_source() << dendl;
-
-  if (!require_osd_peer(op->get_req()))
-    return;
-
-  int from = m->get_source().num();
-  if (!require_same_or_newer_map(op, m->epoch, false))
-    return;
-
-  if (m->pgid.preferred() >= 0) {
-    dout(10) << "ignoring localized pg " << m->pgid << dendl;
-    return;
-  }
-
-  op->mark_started();
-
-  PG *pg = _lookup_lock_pg(m->pgid);
-  if(!pg) {
-    dout(10) << " don't have pg " << m->pgid << dendl;
-    return;
-  }
-  pg->handle_pg_trim(m->epoch, from, m->pgid.shard, m->trim_to);
-  pg->unlock();
 }
 
 void OSD::handle_force_recovery(Message *m)
