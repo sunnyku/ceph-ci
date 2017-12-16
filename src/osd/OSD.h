@@ -2026,7 +2026,6 @@ protected:
   void handle_pg_notify(OpRequestRef op);
   void handle_pg_log(OpRequestRef op);
   void handle_pg_info(OpRequestRef op);
-  void handle_pg_trim(OpRequestRef op);
 
   void handle_force_recovery(Message *m);
 
@@ -2110,6 +2109,7 @@ private:
     switch (m->get_type()) {
     case CEPH_MSG_OSD_OP:
     case CEPH_MSG_OSD_BACKOFF:
+    case MSG_OSD_PG_TRIM:
     case MSG_OSD_BACKFILL_RESERVE:
     case MSG_OSD_RECOVERY_RESERVE:
     case MSG_OSD_REPOP:

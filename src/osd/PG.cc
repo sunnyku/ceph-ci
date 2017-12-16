@@ -7736,6 +7736,20 @@ boost::statechart::result PG::RecoveryState::Active::react(const MNotifyRec& not
   return discard_event();
 }
 
+boost::statechart::result PG::RecoveryState::Active::react(const MTrim& trim)
+{
+  PG *pg = context< RecoveryMachine >().pg;
+  assert(pg->is_primary());
+
+  // peer is informing us of their last_complete_ondisk
+  ldout(pg->cct,10) << " replica osd." << trim.from << " lcod " << trim.trim_to << dendl;
+  pg->peer_last_complete_ondisk[pg_shard_t(trim.from, trim.shard)] = trim.trim_to;
+
+  // trim log when the pg is recovered
+  pg->calc_min_last_complete_ondisk();
+  return discard_event();
+}
+
 boost::statechart::result PG::RecoveryState::Active::react(const MInfoRec& infoevt)
 {
   PG *pg = context< RecoveryMachine >().pg;
@@ -7942,6 +7956,15 @@ boost::statechart::result PG::RecoveryState::ReplicaActive::react(const MLogRec&
   pg->merge_log(*t, logevt.msg->info, logevt.msg->log, logevt.from);
   assert(pg->pg_log.get_head() == pg->info.last_update);
 
+  return discard_event();
+}
+
+boost::statechart::result PG::RecoveryState::ReplicaActive::react(const MTrim& trim)
+{
+  PG *pg = context< RecoveryMachine >().pg;
+  // primary is instructing us to trim
+  pg->pg_log.trim(trim.trim_to, pg->info);
+  pg->dirty_info = true;
   return discard_event();
 }
 
