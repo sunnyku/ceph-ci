@@ -1976,7 +1976,7 @@ std::vector<Option> get_global_options() {
     .set_description(""),
 
     Option("osd_op_num_threads_per_shard_hdd", Option::TYPE_INT, Option::LEVEL_ADVANCED)
-    .set_default(1)
+    .set_default(2)
     .set_description(""),
 
     Option("osd_op_num_threads_per_shard_ssd", Option::TYPE_INT, Option::LEVEL_ADVANCED)
