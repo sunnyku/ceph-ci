@@ -265,11 +265,14 @@ public:
     return this;
   }
   void scrub_yield() {
+    bool di = dirty_info;
+    bool dbi = dirty_big_info;
+    dirty_info = dirty_big_info = false;
     unlock();
     sleep(0);
-    // lock directly, not via lock() helper, because we may see
-    // dirty_info=true (because a dirtying thread is in wait_for_*scrub).
-    _lock.Lock();
+    lock();
+    dirty_info = di;
+    dirty_big_info = dbi;
   }
 
   void on_local_recover(
