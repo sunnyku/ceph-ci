@@ -925,6 +925,7 @@ void ECBackend::handle_sub_write(
   const ZTracer::Trace &trace,
   Context *on_local_applied_sync)
 {
+  parent->maybe_preempt_replica_scrub(op.soid);
   if (msg)
     msg->mark_started();
   trace.event("handle_sub_write");
@@ -2421,6 +2422,7 @@ void ECBackend::be_deep_scrub(
   const hobject_t &poid,
   uint32_t seed,
   ScrubMap::object &o,
+  const std::atomic<bool>& preempted,
   ThreadPool::TPHandle &handle,
   ScrubMap* const map) {
   bufferhash h(-1); // we always used -1
@@ -2428,14 +2430,24 @@ void ECBackend::be_deep_scrub(
   uint64_t stride = cct->_conf->osd_deep_scrub_stride;
   if (stride % sinfo.get_chunk_size())
     stride += sinfo.get_chunk_size() - (stride % sinfo.get_chunk_size());
+  utime_t sleeptime;
+  sleeptime.set_from_double(cct->_conf->osd_debug_deep_scrub_sleep);
   uint64_t pos = 0;
   bool skip_data_digest = store->has_builtin_csum() &&
-    g_conf->get_val<bool>("osd_skip_data_digest");
+    g_conf->osd_skip_data_digest;
 
   uint32_t fadvise_flags = CEPH_OSD_OP_FLAG_FADVISE_SEQUENTIAL |
                            CEPH_OSD_OP_FLAG_FADVISE_DONTNEED;
 
   while (true) {
+    if (sleeptime != utime_t()) {
+      lgeneric_derr(cct) << __func__ << " sleeping for " << sleeptime << dendl;
+      sleeptime.sleep();
+    }
+    get_parent()->scrub_yield();
+    if (preempted) {
+      return;
+    }
     bufferlist bl;
     handle.reset_tp_timeout();
     r = store->read(
