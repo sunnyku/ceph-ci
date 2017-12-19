@@ -1976,7 +1976,7 @@ std::vector<Option> get_global_options() {
     .set_description(""),
 
     Option("osd_op_num_threads_per_shard_hdd", Option::TYPE_INT, Option::LEVEL_ADVANCED)
-    .set_default(1)
+    .set_default(2)
     .set_description(""),
 
     Option("osd_op_num_threads_per_shard_ssd", Option::TYPE_INT, Option::LEVEL_ADVANCED)
@@ -2637,6 +2637,10 @@ std::vector<Option> get_global_options() {
     .set_default(5)
     .set_description(""),
 
+    Option("osd_scrub_max_preemptions", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(5)
+    .set_description("Set the maximum number of times we will preempt a deep scrub due to a client operation before blocking client IO to complete the scrub"),
+
     Option("osd_deep_scrub_interval", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(7_day)
     .set_description(""),
@@ -2844,6 +2848,9 @@ std::vector<Option> get_global_options() {
     Option("osd_debug_verify_cached_snaps", Option::TYPE_BOOL, Option::LEVEL_DEV)
     .set_default(false)
     .set_description(""),
+
+    Option("osd_debug_deep_scrub_sleep", Option::TYPE_FLOAT, Option::LEVEL_DEV)
+    .set_default(0),
 
     Option("osd_enable_op_tracker", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(true)

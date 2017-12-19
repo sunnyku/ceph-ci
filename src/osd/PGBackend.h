@@ -132,6 +132,8 @@ typedef ceph::shared_ptr<const OSDMap> OSDMapRef;
 					eversion_t v,
 					Context *on_complete) = 0;
 
+     virtual void maybe_preempt_replica_scrub(const hobject_t& oid) = 0;
+
      /**
       * Bless a context
       *
@@ -289,6 +291,8 @@ typedef ceph::shared_ptr<const OSDMap> OSDMapRef;
      virtual bool check_failsafe_full(ostream &ss) = 0;
 
      virtual bool check_osdmap_full(const set<pg_shard_t> &missing_on) = 0;
+
+     virtual void scrub_yield() = 0;
 
      virtual ~Listener() {}
    };
@@ -559,6 +563,7 @@ typedef ceph::shared_ptr<const OSDMap> OSDMapRef;
    virtual bool auto_repair_supported() const = 0;
    void be_scan_list(
      ScrubMap &map, const vector<hobject_t> &ls, bool deep, uint32_t seed,
+     const std::atomic<bool>& preempted,
      ThreadPool::TPHandle &handle);
    bool be_compare_scrub_objects(
      pg_shard_t auth_shard,
@@ -594,6 +599,7 @@ typedef ceph::shared_ptr<const OSDMap> OSDMapRef;
      const hobject_t &poid,
      uint32_t seed,
      ScrubMap::object &o,
+     const std::atomic<bool>& preempted,
      ThreadPool::TPHandle &handle,
      ScrubMap* const map = nullptr) = 0;
    void be_large_omap_check(

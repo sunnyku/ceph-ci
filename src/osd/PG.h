@@ -1449,7 +1449,6 @@ public:
 
     // common to both scrubs
     bool active;
-    int waiting_on;
     set<pg_shard_t> waiting_on_whom;
     int shallow_errors;
     int deep_errors;
@@ -1508,6 +1507,11 @@ public:
     // deep scrub
     bool deep;
     uint32_t seed;
+    int preempt_left;
+    int preempt_divisor;
+    std::atomic<bool> preempted;
+    Cond preempt_cond;
+    bool scrubbing = false;
 
     list<Context*> callbacks;
     void add_callback(Context *context) {
@@ -1542,16 +1546,24 @@ public:
 
     bool is_chunky_scrub_active() const { return state != INACTIVE; }
 
-    // classic (non chunk) scrubs block all writes
-    // chunky scrubs only block writes to a range
+    // we allow some number of preemptions of the scrub, which mean we do
+    // not block.  then we start to block.  once we start blocking, we do
+    // not stop until the scrub range is completed.
     bool write_blocked_by_scrub(const hobject_t &soid) {
-      return (soid >= start && soid < end);
+      bool hit = (soid >= start && soid < end);
+      if (hit) {
+	if (preempt_left > 0) {
+	  preempted = true;
+	} else {
+	  return true;
+	}
+      }
+      return false;
     }
 
     // clear all state
     void reset() {
       active = false;
-      waiting_on = 0;
       waiting_on_whom.clear();
       if (active_rep_scrub) {
         active_rep_scrub = OpRequestRef();
@@ -1589,9 +1601,30 @@ public:
   } scrubber;
 
 protected:
+  void wait_for_scrub() {
+    while (scrubber.scrubbing) {
+      scrubber.preempted = true;
+      scrubber.preempt_cond.Wait(_lock);
+    }
+  }
+  
+protected:
   bool scrub_after_recovery;
 
   int active_pushes;
+
+  hobject_t replica_scrub_start, replica_scrub_end;
+  bool replica_scrubbing = false;
+  bool replica_scrub_can_preempt = false;
+  Cond replica_scrub_cond;
+  std::atomic<bool> replica_scrub_preempted = {false};
+
+  void wait_for_replica_scrub() {
+    while (replica_scrubbing) {
+      replica_scrub_preempted = true;
+      replica_scrub_cond.Wait(_lock);
+    }
+  }
 
   void repair_object(
     const hobject_t& soid, list<pair<ScrubMap::object, pg_shard_t> > *ok_peers,
@@ -1613,10 +1646,11 @@ protected:
     ThreadPool::TPHandle &handle);
   void _request_scrub_map(pg_shard_t replica, eversion_t version,
                           hobject_t start, hobject_t end, bool deep,
-			  uint32_t seed);
+			  uint32_t seed, bool allow_preemption);
   int build_scrub_map_chunk(
     ScrubMap &map,
     hobject_t start, hobject_t end, bool deep, uint32_t seed,
+    const std::atomic<bool>& preempted,
     ThreadPool::TPHandle &handle);
   /**
    * returns true if [begin, end) is good to scrub at this time

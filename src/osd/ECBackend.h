@@ -671,6 +671,7 @@ public:
     const hobject_t &obj,
     uint32_t seed,
     ScrubMap::object &o,
+    const std::atomic<bool>& preempted,
     ThreadPool::TPHandle &handle,
     ScrubMap* const map = nullptr) override;
   uint64_t be_get_ondisk_size(uint64_t logical_size) override {
