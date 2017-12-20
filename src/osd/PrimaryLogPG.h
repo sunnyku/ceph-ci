@@ -264,6 +264,16 @@ public:
   DoutPrefixProvider *get_dpp() override {
     return this;
   }
+  void scrub_yield() {
+    bool di = dirty_info;
+    bool dbi = dirty_big_info;
+    dirty_info = dirty_big_info = false;
+    unlock();
+    sleep(0);
+    lock();
+    dirty_info = di;
+    dirty_big_info = dbi;
+  }
 
   void on_local_recover(
     const hobject_t &oid,
@@ -296,6 +306,7 @@ public:
   void remove_missing_object(const hobject_t &oid,
 			     eversion_t v,
 			     Context *on_complete) override;
+  void maybe_preempt_replica_scrub(const hobject_t& oid) override;
 
   template<class T> class BlessedGenContext;
   class BlessedContext;
