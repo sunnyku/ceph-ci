@@ -1730,9 +1730,6 @@ protected:
   TrivialEvent(Load)
   TrivialEvent(GotInfo)
   TrivialEvent(NeedUpThru)
-  public:
-  TrivialEvent(NullEvt)
-  protected:
   TrivialEvent(Backfilled)
   TrivialEvent(LocalBackfillReserved)
   TrivialEvent(RejectRemoteReservation)
