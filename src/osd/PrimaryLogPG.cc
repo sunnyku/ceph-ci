@@ -11400,7 +11400,6 @@ void PrimaryLogPG::on_shutdown()
   deleting = true;
 
   wait_for_scrub();
-  wait_for_replica_scrub();
 
   if (recovery_queued) {
     recovery_queued = false;

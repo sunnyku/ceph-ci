@@ -1601,12 +1601,7 @@ public:
   } scrubber;
 
 protected:
-  void wait_for_scrub() {
-    while (scrubber.scrubbing) {
-      scrubber.preempted = true;
-      scrubber.preempt_cond.Wait(_lock);
-    }
-  }
+  void wait_for_scrub();
   
 protected:
   bool scrub_after_recovery;
@@ -1618,13 +1613,6 @@ protected:
   bool replica_scrub_can_preempt = false;
   Cond replica_scrub_cond;
   std::atomic<bool> replica_scrub_preempted = {false};
-
-  void wait_for_replica_scrub() {
-    while (replica_scrubbing) {
-      replica_scrub_preempted = true;
-      replica_scrub_cond.Wait(_lock);
-    }
-  }
 
   void repair_object(
     const hobject_t& soid, list<pair<ScrubMap::object, pg_shard_t> > *ok_peers,

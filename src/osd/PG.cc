@@ -4833,6 +4833,25 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
 	   << " [" << scrubber.start << "," << scrubber.end << ")" << dendl;
 }
 
+void PG::wait_for_scrub()
+{
+  dout(20) << __func__ << dendl;
+  bool di = dirty_info;
+  bool dbi = dirty_big_info;
+  dirty_info = dirty_big_info = false;
+  while (scrubber.scrubbing) {
+    scrubber.preempted = true;
+    scrubber.preempt_cond.Wait(_lock);
+  }
+  while (replica_scrubbing) {
+    replica_scrub_preempted = true;
+    replica_scrub_cond.Wait(_lock);
+  }
+  dirty_info = di;
+  dirty_big_info = dbi;
+  dout(20) << __func__ << " done" << dendl;
+}
+
 void PG::scrub_clear_state()
 {
   assert(is_locked());
@@ -5626,7 +5645,6 @@ void PG::on_new_interval()
 
   // make sure any friendly scrub threads have stopped.
   wait_for_scrub();
-  wait_for_replica_scrub();
 
   // initialize features
   acting_features = CEPH_FEATURES_SUPPORTED_DEFAULT;
