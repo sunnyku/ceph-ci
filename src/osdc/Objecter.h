@@ -738,7 +738,6 @@ struct ObjectOperation {
     mempool::osd_pglog::vector<pair<osd_reqid_t, version_t> > *out_reqids;
     uint64_t *out_truncate_seq;
     uint64_t *out_truncate_size;
-    interval_set<uint64_t> *out_extents;
     int *prval;
     C_ObjectOperation_copyget(object_copy_cursor_t *c,
 			      uint64_t *s,
@@ -754,7 +753,6 @@ struct ObjectOperation {
 			      mempool::osd_pglog::vector<pair<osd_reqid_t, version_t> > *oreqids,
 			      uint64_t *otseq,
 			      uint64_t *otsize,
-			      interval_set<uint64_t> *otextents,
 			      int *r)
       : cursor(c),
 	out_size(s), out_mtime(m),
@@ -764,7 +762,6 @@ struct ObjectOperation {
 	out_reqids(oreqids),
 	out_truncate_seq(otseq),
 	out_truncate_size(otsize),
-	out_extents(otextents),
 	prval(r) {}
     void finish(int r) override {
       // reqids are copied on ENOENT
@@ -807,9 +804,6 @@ struct ObjectOperation {
 	  *out_truncate_seq = copy_reply.truncate_seq;
 	if (out_truncate_size)
 	  *out_truncate_size = copy_reply.truncate_size;
-        if (out_extents) {
-          *out_extents = copy_reply.extents;
-        }
 	*cursor = copy_reply.cursor;
       } catch (buffer::error& e) {
 	if (prval)
@@ -834,7 +828,6 @@ struct ObjectOperation {
 		mempool::osd_pglog::vector<pair<osd_reqid_t, version_t> > *out_reqids,
 		uint64_t *truncate_seq,
 		uint64_t *truncate_size,
-		interval_set<uint64_t> *extents,
 		int *prval) {
     OSDOp& osd_op = add_op(CEPH_OSD_OP_COPY_GET);
     osd_op.op.copy_get.max = max;
@@ -848,7 +841,7 @@ struct ObjectOperation {
 				    out_omap_data, out_snaps, out_snap_seq,
 				    out_flags, out_data_digest,
 				    out_omap_digest, out_reqids, truncate_seq,
-				    truncate_size, extents, prval);
+				    truncate_size, prval);
     out_bl[p] = &h->bl;
     out_handler[p] = h;
   }
@@ -1271,7 +1264,6 @@ private:
 public:
   /*** track pending operations ***/
   // read
- public:
 
   struct OSDSession;
 
@@ -1754,9 +1746,8 @@ public:
 		 ping_tid(0),
 		 map_dne_bound(0) {}
 
-    // no copy!
-    const LingerOp &operator=(const LingerOp& r);
-    LingerOp(const LingerOp& o);
+    const LingerOp &operator=(const LingerOp& r) = delete;
+    LingerOp(const LingerOp& o) = delete;
 
     uint64_t get_cookie() {
       return reinterpret_cast<uint64_t>(this);
@@ -1926,6 +1917,9 @@ public:
   };
   bool _osdmap_full_flag() const;
   bool _osdmap_has_pool_full() const;
+  void _prune_snapc(
+    const mempool::osdmap::map<int64_t, OSDMap::snap_interval_set_t>& new_removed_snaps,
+    Op *op);
 
   bool target_should_be_paused(op_target_t *op);
   int _calc_target(op_target_t *t, Connection *con,
@@ -2043,7 +2037,7 @@ private:
     retry_writes_after_first_reply(cct->_conf->objecter_retry_writes_after_first_reply)
   {
     if (cct->_conf->objecter_mclock_service_tracker) {
-      qos_trk = ceph::make_unique<dmc::ServiceTracker<int>>();
+      qos_trk = std::make_unique<dmc::ServiceTracker<int>>();
     }
   }
   ~Objecter() override;
@@ -2088,14 +2082,16 @@ private:
   void set_osdmap_full_try() { osdmap_full_try = true; }
   void unset_osdmap_full_try() { osdmap_full_try = false; }
 
-  void _scan_requests(OSDSession *s,
-		      bool force_resend,
-		      bool cluster_full,
-		      map<int64_t, bool> *pool_full_map,
-		      map<ceph_tid_t, Op*>& need_resend,
-		      list<LingerOp*>& need_resend_linger,
-		      map<ceph_tid_t, CommandOp*>& need_resend_command,
-		      shunique_lock& sul);
+  void _scan_requests(
+    OSDSession *s,
+    bool skipped_map,
+    bool cluster_full,
+    map<int64_t, bool> *pool_full_map,
+    map<ceph_tid_t, Op*>& need_resend,
+    list<LingerOp*>& need_resend_linger,
+    map<ceph_tid_t, CommandOp*>& need_resend_command,
+    shunique_lock& sul,
+    const mempool::osdmap::map<int64_t,OSDMap::snap_interval_set_t> *gap_removed_snaps);
 
   int64_t get_object_hash_position(int64_t pool, const string& key,
 				   const string& ns);

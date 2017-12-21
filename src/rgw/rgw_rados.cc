@@ -5153,16 +5153,12 @@ int RGWRados::trim_usage(rgw_user& user, uint64_t start_epoch, uint64_t end_epoc
   usage_log_hash(cct, user_str, first_hash, index);
 
   hash = first_hash;
-
   do {
     int ret =  cls_obj_usage_log_trim(hash, user_str, start_epoch, end_epoch);
-    if (ret == -ENOENT)
-      goto next;
 
-    if (ret < 0)
+    if (ret < 0 && ret != -ENOENT)
       return ret;
 
-next:
     usage_log_hash(cct, user_str, hash, ++index);
   } while (hash != first_hash);
 
@@ -7445,7 +7441,9 @@ int RGWRados::rewrite_obj(RGWBucketInfo& dest_bucket_info, rgw_obj& obj)
   attrset.erase(RGW_ATTR_TAIL_TAG);
 
   return copy_obj_data(rctx, dest_bucket_info, read_op, obj_size - 1, obj, NULL, mtime, attrset,
-                       0, real_time(), NULL, NULL);
+                       0, real_time(),
+                       (obj.key.instance.empty() ? NULL : &(obj.key.instance)),
+                       NULL);
 }
 
 struct obj_time_weight {
@@ -8232,7 +8230,7 @@ int RGWRados::copy_obj_data(RGWObjectCtx& obj_ctx,
   append_rand_alpha(cct, tag, tag, 32);
 
   RGWPutObjProcessor_Atomic processor(obj_ctx,
-                                      dest_bucket_info, dest_obj.bucket, dest_obj.get_oid(),
+                                      dest_bucket_info, dest_obj.bucket, dest_obj.key.name,
                                       cct->_conf->rgw_obj_stripe_size, tag, dest_bucket_info.versioning_enabled());
   if (version_id) {
     processor.set_version_id(*version_id);
@@ -12690,9 +12688,9 @@ int RGWRados::list_gc_objs(int *index, string& marker, uint32_t max, bool expire
   return gc->list(index, marker, max, expired_only, result, truncated);
 }
 
-int RGWRados::process_gc()
+int RGWRados::process_gc(bool expired_only)
 {
-  return gc->process();
+  return gc->process(expired_only);
 }
 
 int RGWRados::list_lc_progress(const string& marker, uint32_t max_entries, map<string, int> *progress_map)
@@ -12954,10 +12952,7 @@ int RGWRados::cls_obj_usage_log_trim(string& oid, string& user, uint64_t start_e
     return r;
   }
 
-  ObjectWriteOperation op;
-  cls_rgw_usage_log_trim(op, user, start_epoch, end_epoch);
-
-  r = ref.ioctx.operate(ref.oid, &op);
+  r = cls_rgw_usage_log_trim(ref.ioctx, ref.oid, user, start_epoch, end_epoch);
   return r;
 }
 
@@ -13319,12 +13314,13 @@ int RGWRados::cls_user_complete_stats_sync(rgw_raw_obj& obj)
   return 0;
 }
 
-int RGWRados::cls_user_add_bucket(rgw_raw_obj& obj, const cls_user_bucket_entry& entry)
+int RGWRados::cls_user_add_bucket(rgw_raw_obj& obj, const cls_user_bucket_entry& entry,
+  bool update_stats)
 {
   list<cls_user_bucket_entry> l;
   l.push_back(entry);
 
-  return cls_user_update_buckets(obj, l, true);
+  return cls_user_update_buckets(obj, l, update_stats);
 }
 
 int RGWRados::cls_user_remove_bucket(rgw_raw_obj& obj, const cls_user_bucket& bucket)

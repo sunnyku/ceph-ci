@@ -20,7 +20,19 @@
       - mds remove_data_pool -> fs rm_data_pool
       - mds rm_data_pool -> fs rm_data_pool
 
+  * New CephFS file system attributes session_timeout and session_autoclose
+    are configurable via `ceph fs set`. The MDS config options
+    mds_session_timeout, mds_session_autoclose, and mds_max_file_size are now
+    obsolete.
+
 
 
 >= 12.2.2
 ---------
+
+- *CephFS*:
+
+  * The CephFS client now catches failures to clear dentries during startup
+    and refuses to start as consistency and untrimmable cache issues may
+    develop. The new option client_die_on_failed_dentry_invalidate (default:
+    true) may be turned off to allow the client to proceed (dangerous!).

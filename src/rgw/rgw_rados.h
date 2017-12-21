@@ -3535,7 +3535,7 @@ public:
   int gc_operate(string& oid, librados::ObjectReadOperation *op, bufferlist *pbl);
 
   int list_gc_objs(int *index, string& marker, uint32_t max, bool expired_only, std::list<cls_rgw_gc_obj_info>& result, bool *truncated);
-  int process_gc();
+  int process_gc(bool expired_only);
   int process_expire_objects();
   int defer_gc(void *ctx, const RGWBucketInfo& bucket_info, const rgw_obj& obj);
 
@@ -3565,7 +3565,7 @@ public:
                             list<cls_user_bucket_entry>& entries,
                             string *out_marker,
                             bool *truncated);
-  int cls_user_add_bucket(rgw_raw_obj& obj, const cls_user_bucket_entry& entry);
+  int cls_user_add_bucket(rgw_raw_obj& obj, const cls_user_bucket_entry& entry, bool update_stats);
   int cls_user_update_buckets(rgw_raw_obj& obj, list<cls_user_bucket_entry>& entries, bool add);
   int cls_user_complete_stats_sync(rgw_raw_obj& obj);
   int complete_sync_user_stats(const rgw_user& user_id);

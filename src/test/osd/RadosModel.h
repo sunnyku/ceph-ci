@@ -1992,11 +1992,11 @@ public:
 
   vector<bufferlist> checksums;
   vector<int> checksum_retvals;
-  uint32_t offset;
-  uint32_t length;
+  uint32_t offset = 0;
+  uint32_t length = 0;
   string tgt_oid;
   string tgt_pool_name;
-  uint32_t tgt_offset;
+  uint32_t tgt_offset = 0;
 
   ChunkReadOp(int n,
 	 RadosTestContext *context,
@@ -2245,22 +2245,6 @@ public:
     Mutex::Locker l(context->state_lock);
     context->oid_in_use.insert(oid);
     context->oid_not_in_use.erase(oid);
-
-    context->find_object(oid, &src_value); 
-
-    comp = context->rados.aio_create_completion();
-    rd_op.stat(NULL, NULL, NULL);
-    context->io_ctx.aio_operate(context->prefix+oid, comp, &rd_op,
-     			  librados::OPERATION_ORDER_READS_WRITES,
-     			  NULL);
-    comp->wait_for_safe();
-    if ((r = comp->get_return_value()) && !src_value.deleted()) {
-      cerr << "Error: oid " << oid << " stat returned error code "
-	   << r << std::endl;
-      ceph_abort();
-    }
-    context->update_object_version(oid, comp->get_version64());
-    comp->release();
 
     context->find_object(oid, &src_value); 
     context->find_object(oid_tgt, &tgt_value);

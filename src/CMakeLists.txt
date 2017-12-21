@@ -78,7 +78,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
   if(NOT CMAKE_BUILD_TYPE STREQUAL Debug)
     if(HAS_FORTIFY_SOURCE)
       set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2")
-      set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2")
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2")
     endif()
   endif()
   CHECK_C_COMPILER_FLAG(-fstack-protector-strong HAS_STACK_PROTECT)
@@ -140,15 +140,15 @@ else(no_yasm)
   endif(CMAKE_SYSTEM_PROCESSOR MATCHES "amd64|x86_64")
 endif(no_yasm)
 
-# require c++11
+# require c++14
 if(CMAKE_VERSION VERSION_LESS "3.1")
   include(CheckCXXCompilerFlag)
-  CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
-  if(NOT COMPILER_SUPPORTS_CXX11)
+  CHECK_CXX_COMPILER_FLAG("-std=c++14" COMPILER_SUPPORTS_CXX14)
+  if(NOT COMPILER_SUPPORTS_CXX14)
     message(FATAL_ERROR
-      "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support.")
+      "The compiler ${CMAKE_CXX_COMPILER} has no C++14 support.")
   endif()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
   include(CheckCCompilerFlag)
   CHECK_C_COMPILER_FLAG("-std=gnu99" COMPILER_SUPPORTS_GNU99)
   if(NOT COMPILER_SUPPORTS_GNU99)
@@ -157,7 +157,7 @@ if(CMAKE_VERSION VERSION_LESS "3.1")
   endif()
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
 else()
-  set(CMAKE_CXX_STANDARD 11)
+  set(CMAKE_CXX_STANDARD 14)
   set(CMAKE_CXX_EXTENSIONS OFF)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
   set(CMAKE_C_STANDARD 99)
@@ -173,7 +173,9 @@ if(CMAKE_COMPILER_IS_GNUCXX AND
   # use old gcc with new libstdc++, but it covers the most cases.
   #
   # libstdc++ 4.9 has O(n) list::size(), and its regex is buggy
-  message(WARNING "performance regression is expected due to an O(n) implementation of 'std::list::size()' in libstdc++ older than 5.1.0")
+  message(SEND_ERROR "performance regression is expected due to an O(n) "
+    "implementation of 'std::list::size()' in libstdc++ older than 5.1.0, "
+    "Please use GCC 5.1 and up.")
 endif()
 
 ## Handle diagnostics color if compiler supports them.

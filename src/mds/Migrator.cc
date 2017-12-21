@@ -802,10 +802,17 @@ void Migrator::export_dir(CDir *dir, mds_rank_t dest)
     return;
   }
 
-  if (!dir->inode->is_base() && dir->inode->get_projected_parent_dir()->inode->is_stray() &&
-      dir->inode->get_projected_parent_dir()->get_parent_dir()->ino() != MDS_INO_MDSDIR(dest)) {
-    dout(7) << "i won't export anything in stray" << dendl;
-    return;
+  CDir* parent_dir = dir->inode->get_projected_parent_dir();
+  if (parent_dir && parent_dir->inode->is_stray()) {
+    if (parent_dir->get_parent_dir()->ino() != MDS_INO_MDSDIR(dest)) {
+      dout(7) << "i won't export anything in stray" << dendl;
+      return;
+    }
+  } else {
+    if (!mds->is_stopping() && !dir->inode->is_exportable(dest)) {
+      dout(7) << "dir is export pinned" << dendl;
+      return;
+    }
   }
 
   if (dir->is_frozen() ||
@@ -815,16 +822,6 @@ void Migrator::export_dir(CDir *dir, mds_rank_t dest)
   }
   if (dir->state_test(CDir::STATE_EXPORTING)) {
     dout(7) << "already exporting" << dendl;
-    return;
-  }
-
-  if (!mds->is_stopping() && !dir->inode->is_exportable(dest)) {
-    dout(7) << "dir is export pinned" << dendl;
-    return;
-  }
-
-  if (dest == mds->get_nodeid() || !mds->mdsmap->is_up(dest)) {
-    dout(7) << "cannot export: dest " << dest << " is me or is not active" << dendl;
     return;
   }
 
@@ -3054,7 +3051,7 @@ void Migrator::decode_import_inode_caps(CInode *in, bool auth_cap,
   if (auth_cap)
     ::decode(in->get_mds_caps_wanted(), blp);
   if (!cap_map.empty() ||
-      (auth_cap && !in->get_mds_caps_wanted().empty())) {
+      (auth_cap && (in->get_caps_wanted() & ~CEPH_CAP_PIN))) {
     peer_exports[in].swap(cap_map);
     in->get(CInode::PIN_IMPORTINGCAPS);
   }

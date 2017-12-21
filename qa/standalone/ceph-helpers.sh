@@ -430,6 +430,7 @@ function run_mon() {
 
     ceph-mon \
         --id $id \
+	--osd-failsafe-full-ratio=.99 \
         --mon-osd-full-ratio=.99 \
         --mon-data-avail-crit=1 \
         --mon-data-avail-warn=5 \
@@ -520,6 +521,7 @@ function run_mgr() {
     ceph-mgr \
         --id $id \
         $EXTRA_OPTS \
+	--osd-failsafe-full-ratio=.99 \
         --debug-mgr 20 \
 	--debug-objecter 20 \
         --debug-ms 20 \
@@ -574,6 +576,7 @@ function run_osd() {
     local osd_data=$dir/$id
 
     local ceph_disk_args
+    ceph_disk_args+=" --verbose"
     ceph_disk_args+=" --statedir=$dir"
     ceph_disk_args+=" --sysconfdir=$dir"
     ceph_disk_args+=" --prepend-to-path="
@@ -593,6 +596,7 @@ function run_osd_bluestore() {
     local osd_data=$dir/$id
 
     local ceph_disk_args
+    ceph_disk_args+=" --verbose"
     ceph_disk_args+=" --statedir=$dir"
     ceph_disk_args+=" --sysconfdir=$dir"
     ceph_disk_args+=" --prepend-to-path="
@@ -712,6 +716,7 @@ function activate_osd() {
     local osd_data=$dir/$id
 
     local ceph_disk_args
+    ceph_disk_args+=" --verbose"
     ceph_disk_args+=" --statedir=$dir"
     ceph_disk_args+=" --sysconfdir=$dir"
     ceph_disk_args+=" --prepend-to-path="
@@ -1865,7 +1870,7 @@ function main() {
 
     export PATH=${CEPH_BUILD_VIRTUALENV}/ceph-disk-virtualenv/bin:${CEPH_BUILD_VIRTUALENV}/ceph-detect-init-virtualenv/bin:.:$PATH # make sure program from sources are preferred
     #export PATH=$CEPH_ROOT/src/ceph-disk/virtualenv/bin:$CEPH_ROOT/src/ceph-detect-init/virtualenv/bin:.:$PATH # make sure program from sources are preferred
-
+    export PYTHONWARNINGS=ignore
     export CEPH_CONF=/dev/null
     unset CEPH_ARGS
 

@@ -95,15 +95,11 @@ public:
     map<string, bufferlist> attrs; // xattrs
     uint64_t truncate_seq;
     uint64_t truncate_size;
-    interval_set<uint64_t> extents; // object logical extents map
     bool is_data_digest() {
       return flags & object_copy_data_t::FLAG_DATA_DIGEST;
     }
     bool is_omap_digest() {
       return flags & object_copy_data_t::FLAG_OMAP_DIGEST;
-    }
-    bool has_extents() {
-      return flags & object_copy_data_t::FLAG_EXTENTS;
     }
     CopyResults()
       : object_size(0), started_temp_obj(false),
@@ -155,8 +151,8 @@ public:
     map<uint64_t, CopyOpRef> chunk_cops;
     int num_chunk;
     bool failed;
-    uint64_t start_offset;
-    uint64_t last_offset;
+    uint64_t start_offset = 0;
+    uint64_t last_offset = 0;
     vector<OSDOp> chunk_ops;
   
     CopyOp(CopyCallback *cb_, ObjectContextRef _obc, hobject_t s,
@@ -851,6 +847,10 @@ protected:
       // requeue at front of scrub blocking queue if we are blocked by scrub
       for (auto &&p: to_req) {
 	if (scrubber.write_blocked_by_scrub(p.first.get_head())) {
+          for (auto& op : p.second) {
+            op->mark_delayed("waiting for scrub");
+          }
+
 	  waiting_for_scrub.splice(
 	    waiting_for_scrub.begin(),
 	    p.second,
@@ -1133,7 +1133,7 @@ protected:
   void write_update_size_and_usage(object_stat_sum_t& stats, object_info_t& oi,
 				   interval_set<uint64_t>& modified, uint64_t offset,
 				   uint64_t length, bool write_full=false);
-  void truncate_update_size_and_usage(
+  inline void truncate_update_size_and_usage(
     object_stat_sum_t& delta_stats,
     object_info_t& oi,
     uint64_t truncate_size);
@@ -1434,8 +1434,6 @@ public:
   void record_write_error(OpRequestRef op, const hobject_t &soid,
 			  MOSDOpReply *orig_reply, int r);
   void do_pg_op(OpRequestRef op);
-  void do_sub_op(OpRequestRef op);
-  void do_sub_op_reply(OpRequestRef op);
   void do_scan(
     OpRequestRef op,
     ThreadPool::TPHandle &handle);
@@ -1542,7 +1540,11 @@ private:
     void log_enter(const char *state_name);
     void log_exit(const char *state_name, utime_t duration);
     bool can_trim() {
-      return pg->is_clean() && !pg->scrubber.active && !pg->snap_trimq.empty();
+      return
+	pg->is_clean() &&
+	!pg->scrubber.active &&
+	!pg->snap_trimq.empty() &&
+	!pg->get_osdmap()->test_flag(CEPH_OSDMAP_NOSNAPTRIM);
     }
   } snap_trimmer_machine;
 
