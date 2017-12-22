@@ -366,6 +366,9 @@ private:
   void _pool_op_reply(MonOpRequestRef op,
                       int ret, epoch_t epoch, bufferlist *blp=NULL);
 
+  bool class_is_used_by_ecprofile(const string& class_name,
+                                  ostream *ss = nullptr);
+
   struct C_Booted : public C_MonOp {
     OSDMonitor *cmon;
     bool logit;

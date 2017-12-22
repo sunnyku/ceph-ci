@@ -7999,6 +7999,12 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       goto reply;
     }
 
+    if (class_is_used_by_ecprofile(device_class, &ts)) {
+      err = -EBUSY;
+      ss << "class '" << device_class << "' " << ts.str();
+      goto reply;
+    }
+
     set<int> osds;
     newcrush.get_devices_by_class(device_class, &osds);
     for (auto& p: osds) {
@@ -11965,4 +11971,32 @@ void OSDMonitor::_pool_op_reply(MonOpRequestRef op,
   MPoolOpReply *reply = new MPoolOpReply(m->fsid, m->get_tid(),
 					 ret, epoch, get_last_committed(), blp);
   mon->send_reply(op, reply);
+}
+
+bool OSDMonitor::class_is_used_by_ecprofile(const string& class_name,
+                                            ostream *ss)
+{
+  const auto &profiles = osdmap.get_erasure_code_profiles();
+  list<string> referenced_by;
+  for (auto &i: profiles) {
+    for (auto &j: i.second) {
+      if ("crush-device-class" == j.first && class_name == j.second) {
+        referenced_by.push_back(i.first);
+      }
+    }
+  }
+
+  if (referenced_by.empty()) {
+    return false;
+  }
+  if (ss) {
+    ostringstream os;
+    for (auto &p: referenced_by) {
+      os << "'" << p <<"',";
+    }
+    string out(os.str());
+    out.resize(out.size() - 1);
+    *ss << "still referenced by erasure-code-profile(s): " << out;
+  }
+  return true;
 }
