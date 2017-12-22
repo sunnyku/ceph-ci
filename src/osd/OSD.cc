@@ -4821,14 +4821,24 @@ void OSD::maybe_update_heartbeat_peers()
     }
   }
 
-  // include next and previous up osds to ensure we have a fully-connected set
   set<int> want, extras;
-  int next = osdmap->get_next_up_osd_after(whoami);
-  if (next >= 0)
-    want.insert(next);
-  int prev = osdmap->get_previous_up_osd_before(whoami);
-  if (prev >= 0 && prev != next)
-    want.insert(prev);
+  osdmap->get_random_up_osds_by_failure_domain(whoami,
+    cct->_conf->osd_heartbeat_min_peers, &want);
+  for (auto w : want) {
+    dout(10) << "want osd." << w << ", full location "
+             << osdmap->crush->get_full_location_ordered_string(w)
+             << dendl;
+  }
+  if (want.empty()) {
+    // include next and previous up osds to ensure
+    // we have a fully-connected set
+    int next = osdmap->get_next_up_osd_after(whoami);
+    if (next >= 0)
+      want.insert(next);
+    int prev = osdmap->get_previous_up_osd_before(whoami);
+    if (prev >= 0 && prev != next)
+      want.insert(prev);
+  }
 
   for (set<int>::iterator p = want.begin(); p != want.end(); ++p) {
     dout(10) << " adding neighbor peer osd." << *p << dendl;

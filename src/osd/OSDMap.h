@@ -959,6 +959,82 @@ public:
     return -1;
   }
 
+  void get_random_up_osds_by_failure_domain(int n,     // whoami
+                                            int limit, // how many
+                                            set<int> *out) const {
+    set<int> hosts;
+    crush->get_all_children_of_type(1, &hosts);
+    if (hosts.size() <= 1)
+      return;
+    // do fast out if we don't have enough hosts
+    bool direct_out = limit > (int)(hosts.size() - 1);
+    int failure_domain = crush->get_top_failure_domain();
+    map<string, set<int>> condidates_by_failure_domain;
+    int condidates_num = 0;
+    // first, try to randomized pick as many osds as possible,
+    // make sure they cover all hosts and arrange them by failure domain
+    for (auto h : hosts) {
+      if (crush->subtree_contains(h, n))
+        continue;
+      set<int> osds;
+      crush->get_children_of_type(h, 0, &osds);
+      if (osds.empty())
+        continue;
+      list<int> up_osds;
+      for (auto o : osds) {
+        if (is_up(o))
+          up_osds.push_back(o);
+      }
+      if (up_osds.empty())
+        continue;
+      int p = n % up_osds.size();
+      int c = 0;
+      for (auto o : up_osds) {
+        if (c == p) {
+          if (direct_out) {
+            out->insert(o);
+          } else {
+            auto loc = crush->get_full_location(o);
+            auto it = loc.find(crush->get_type_name(failure_domain));
+            if (it != loc.end()) {
+              condidates_by_failure_domain[it->second].insert(o);
+            } else {
+              string host_name = crush->get_item_name(h);
+              condidates_by_failure_domain[host_name].insert(o);
+            }
+            condidates_num++;
+          }
+          break;
+        }
+        c++;
+      }
+    }
+    if (direct_out)
+      return;
+    if (condidates_num <= limit) {
+      // all
+      for (auto c : condidates_by_failure_domain) {
+        auto &o = c.second;
+        out->insert(o.begin(), o.end());
+      }
+      return;
+    }
+    while (limit > 0) {
+      // pick up osds from different failure domains in turn
+      // in a breadth-first fashion, break out loop if we have
+      // collected enough
+      for (auto &c : condidates_by_failure_domain) {
+        auto &o = c.second;
+        if (o.empty())
+          continue;
+        auto it = o.begin();
+        out->insert(*it);
+        o.erase(it);
+        limit--;
+      }
+    }
+  }
+
   /**
    * get feature bits required by the current structure
    *
