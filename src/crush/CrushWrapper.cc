@@ -770,6 +770,60 @@ int CrushWrapper::get_children(int id, list<int> *children)
   return b->size;
 }
 
+void CrushWrapper::get_children_of_type(int id, int type, set<int> *children)
+{
+  if (id >= 0) {
+    if (type == 0) { // want leaf?
+      children->insert(id);
+    }
+    return;
+  }
+  crush_bucket *b = get_bucket(id);
+  if (IS_ERR(b)) {
+    return; // FIXME: assert?
+  }
+  if (b->type < type) {
+    // give up
+    return;
+  } else if (b->type == type) {
+    children->insert(b->id);
+    return;
+  }
+  for (unsigned n = 0; n < b->size; n++) {
+    get_children_of_type(b->items[n], type, children);
+  }
+  return;
+}
+
+void CrushWrapper::get_all_children_of_type(int type, set<int> *children)
+{
+  for (int i = 0; i < crush->max_buckets; ++i) {
+    crush_bucket *b = crush->buckets[i];
+    if (!b)
+      continue;
+    get_children_of_type(b->id, type, children);
+  }
+}
+
+int CrushWrapper::get_top_failure_domain()
+{
+  int type = 1; // default to host
+  for (unsigned i = 0; i < crush->max_rules; i++) {
+    crush_rule *rule = crush->rules[i];
+    if (!rule) {
+      continue;
+    }
+    for (unsigned s = 0; s < rule->len; ++s) {
+      if ((rule->steps[s].op == CRUSH_RULE_CHOOSELEAF_FIRSTN ||
+           rule->steps[s].op == CRUSH_RULE_CHOOSELEAF_INDEP) &&
+           rule->steps[s].arg2 > type) {
+        type = rule->steps[s].arg2;
+      }
+    }
+  }
+  return type;
+}
+
 int CrushWrapper::_get_leaves(int id, list<int> *leaves)
 {
   assert(leaves);

@@ -2341,7 +2341,7 @@ std::vector<Option> get_global_options() {
     .set_description(""),
 
     Option("osd_heartbeat_min_peers", Option::TYPE_INT, Option::LEVEL_ADVANCED)
-    .set_default(10)
+    .set_default(5)
     .set_description(""),
 
     Option("osd_heartbeat_use_min_delay_socket", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
