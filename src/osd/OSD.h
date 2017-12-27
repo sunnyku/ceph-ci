@@ -1607,6 +1607,178 @@ private:
   void update_opwq_tracker(OpRequestRef& op, ServerId& srv);
   dmc_op_tracker get_dmc_op_tracker(ServerId& srv);
 
+  struct LoadBalancer {
+    enum {
+      LB_MODE_NONE,
+      LB_MODE_CLIENT_OP_PRIORITIZED,
+      LB_MODE_RECOVERY_OP_PRIORITIZED,
+      LB_MODE_MAX
+    };
+
+    struct IdleState {
+      uint64_t last_sampled_op = 0;
+      utime_t idle_from;
+      bool idle = true;
+
+      void maybe_update(uint64_t op,
+                        utime_t now,
+                        int transit_to_idle_interval) {
+        if (op == last_sampled_op) {
+          // see if we have stayed idle enough to set idle bit
+          if (!idle && now - idle_from >= transit_to_idle_interval) {
+            idle = true;
+          }
+          return;
+        }
+        last_sampled_op = op;
+        idle_from = now; // reset timer
+        idle = false;
+      }
+      bool is_idle() const { return idle; }
+    };
+
+    OSD* osd;
+    IdleState cis;
+    IdleState ris;
+    string spec_applied;
+    std::mutex lock; // protect members below from changing
+    int enabled;
+    int mode;
+    int min_interval_transit_to_idle;
+    string spec_client_op_prioritized;
+    string spec_recovery_op_unlimited;
+    string spec_recovery_op_prioritized;
+
+    LoadBalancer(OSD *o) : osd(o) { _init_config(); };
+
+    void _init_config() {
+      std::unique_lock<std::mutex> l(lock);
+      enabled = osd->cct->_conf->get_val<bool>("osd_enable_load_balancer");
+      auto ms = osd->cct->_conf->get_val<string>("osd_lb_op_priority_mode");
+      if (ms == "client_op_prioritized") {
+        mode = LB_MODE_CLIENT_OP_PRIORITIZED;
+      } else {
+        mode = LB_MODE_RECOVERY_OP_PRIORITIZED;
+      }
+      min_interval_transit_to_idle = osd->cct->_conf->get_val<int64_t>(
+        "osd_lb_min_interval_transit_to_idle");
+      spec_client_op_prioritized = osd->cct->_conf->get_val<string>(
+        "osd_lb_spec_client_op_prioritized");
+      spec_recovery_op_unlimited = osd->cct->_conf->get_val<string>(
+        "osd_lb_spec_recovery_op_unlimited");
+      spec_recovery_op_prioritized = osd->cct->_conf->get_val<string>(
+        "osd_lb_spec_recovery_op_prioritized");
+    }
+    void update_config() {
+      _init_config();
+    }
+    void _reset_spec(const string &new_spec) {
+      osd->op_shardedwq.update_queue_config(
+        "osd_dmc_queue_spec_pullpush", new_spec);
+    }
+    void _maybe_update_spec() {
+      std::unique_lock<std::mutex> l(lock);
+      switch (mode) {
+      case LB_MODE_CLIENT_OP_PRIORITIZED:
+        if (!cis.is_idle()) {
+          if (spec_applied != spec_client_op_prioritized) {
+            lgeneric_subdout(osd->cct, osd, 10) << "load balancer -"
+              << " mode is LB_MODE_CLIENT_OP_PRIORITIZED, "
+              << " cis is busy, "
+              << " switch to spec_client_op_prioritized "
+              << spec_client_op_prioritized
+              << dendl;
+            _reset_spec(spec_client_op_prioritized);
+            spec_applied = spec_client_op_prioritized;
+          }
+        } else if (!ris.is_idle()) {
+          // no client op and there is recovery in-progress
+          if (spec_applied != spec_recovery_op_prioritized) {
+            lgeneric_subdout(osd->cct, osd, 10) << "load balancer -"
+              << " mode is LB_MODE_CLIENT_OP_PRIORITIZED, "
+              << " cis is idle and ris is busy, "
+              << " switch to spec_recovery_op_prioritized "
+              << spec_recovery_op_prioritized
+              << dendl;
+            _reset_spec(spec_recovery_op_prioritized);
+            spec_applied = spec_recovery_op_prioritized;
+          }
+        }
+        break;
+      case LB_MODE_RECOVERY_OP_PRIORITIZED:
+        if (!ris.is_idle()) {
+          if (!cis.is_idle()) {
+            if (spec_applied != spec_recovery_op_prioritized) {
+              lgeneric_subdout(osd->cct, osd, 10) << "load balancer -"
+                << " mode is LB_MODE_RECOVERY_OP_PRIORITIZED, "
+                << " but both ris and cis are busy, "
+                << " switch to spec_recovery_op_prioritized "
+                << spec_recovery_op_prioritized
+                << dendl;
+              _reset_spec(spec_recovery_op_prioritized);
+              spec_applied = spec_recovery_op_prioritized;
+            }
+          } else {
+            // no client op, switch to unlimited
+            // (so we can recover at full speed)
+            if (spec_applied != spec_recovery_op_unlimited) {
+              lgeneric_subdout(osd->cct, osd, 10) << "load balancer -"
+                << " mode is LB_MODE_RECOVERY_OP_PRIORITIZED, "
+                << " ris is busy and cis is idle, "
+                << " switch to spec_recovery_op_unlimited "
+                << spec_recovery_op_unlimited
+                << dendl;
+              _reset_spec(spec_recovery_op_unlimited);
+              spec_applied = spec_recovery_op_unlimited;
+            }
+          }
+        } else {
+          // no recovery op, stay unchanged
+        }
+      }
+    }
+    void sample() {
+      if (!enabled) {
+        lgeneric_subdout(osd->cct, osd, 10) << "load balancer - disabled"
+                                            << dendl;
+        return;
+      }
+
+      uint64_t cop = osd->logger->get(l_osd_op);
+      uint64_t rop = osd->logger->get(l_osd_pull) +
+                     osd->logger->get(l_osd_push);
+
+      lgeneric_subdout(osd->cct, osd, 5) << "load balancer -"
+        << " mode = " << mode
+        << " cop = " << cop
+        << " rop = " << rop
+        << " min_interval_transit_to_idle = " << min_interval_transit_to_idle
+        << " spec_client_op_prioritized = " << spec_client_op_prioritized
+        << " spec_recovery_op_unlimited = " << spec_recovery_op_unlimited
+        << " spec_recovery_op_prioritized = " << spec_recovery_op_prioritized
+        << " spec_applied " << spec_applied
+        << dendl;
+
+      utime_t now = ceph_clock_now();
+
+      cis.maybe_update(cop, now, min_interval_transit_to_idle);
+      ris.maybe_update(rop, now, min_interval_transit_to_idle);
+
+      lgeneric_subdout(osd->cct, osd, 10) << "load balancer -"
+        << " cis:"
+        << " last_sampled_op = " << cis.last_sampled_op
+        << " idle_from = " << cis.idle_from
+        << " idle = " << cis.idle
+        << " ris:"
+        << " last_sampled_op = " << ris.last_sampled_op
+        << " idle_from = " << ris.idle_from
+        << " idle = " << ris.idle
+        << dendl;
+
+      _maybe_update_spec();
+    }
+  } load_balancer;
+
   // -- op queue --
   enum class io_queue {
     prioritized,

@@ -1956,6 +1956,7 @@ OSD::OSD(CephContext *cct_, ObjectStore *store_,
   op_tracker(cct, cct->_conf->osd_enable_op_tracker,
                   cct->_conf->osd_num_op_tracker_shard),
   test_ops_hook(NULL),
+  load_balancer(this),
   op_queue(get_io_queue()),
   op_prio_cutoff(get_io_prio_cut()),
   op_shardedwq(
@@ -5277,6 +5278,7 @@ void OSD::tick_without_osd_lock()
   dout(10) << "tick_without_osd_lock" << dendl;
 
   service.os_tick();
+  load_balancer.sample();
 
   logger->set(l_osd_buf, buffer::get_total_alloc());
   logger->set(l_osd_history_alloc_bytes, SHIFT_ROUND_UP(buffer::get_history_alloc_bytes(), 20));
@@ -9922,6 +9924,13 @@ const char** OSD::get_tracked_conf_keys() const
     "osd_dmc_queue_spec_snaptrim",
     "osd_dmc_queue_spec_recovery",
     "osd_dmc_queue_spec_scrub",
+    // load balancer
+    "osd_enable_load_balancer",
+    "osd_lb_op_priority_mode",
+    "osd_lb_min_interval_transit_to_idle",
+    "osd_lb_spec_client_op_prioritized",
+    "osd_lb_spec_recovery_op_prioritized",
+    "osd_lb_spec_recovery_op_unlimited",
     NULL
   };
   return KEYS;
@@ -10006,6 +10015,15 @@ void OSD::handle_conf_change(const struct md_config_t *conf,
     if (pol.throttler_bytes && newval > 0) {
       pol.throttler_bytes->reset_max(newval);
     }
+  }
+
+  if (changed.count("osd_enable_load_balancer") ||
+      changed.count("osd_lb_op_priority_mode") ||
+      changed.count("osd_lb_min_interval_transit_to_idle") ||
+      changed.count("osd_lb_spec_client_op_prioritized") ||
+      changed.count("osd_lb_spec_recovery_op_prioritized") ||
+      changed.count("osd_lb_spec_recovery_op_unlimited")) {
+    load_balancer.update_config();
   }
 
   maybe_update_queue_config(conf, changed);
