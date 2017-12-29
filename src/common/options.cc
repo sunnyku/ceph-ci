@@ -2356,6 +2356,10 @@ std::vector<Option> get_global_options() {
     .set_default(false)
     .set_description(""),
 
+    Option("osd_heartbeat_use_cluster_network_only", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description(""),
+
     Option("osd_heartbeat_min_size", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(2000)
     .set_description(""),

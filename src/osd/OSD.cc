@@ -1042,7 +1042,8 @@ pair<ConnectionRef,ConnectionRef> OSDService::get_con_osd_hb(int peer, epoch_t f
     return ret;
   }
   ret.first = osd->hb_back_client_messenger->get_connection(next_map->get_hb_back_inst(peer));
-  if (next_map->get_hb_front_addr(peer) != entity_addr_t())
+  if (next_map->get_hb_front_addr(peer) != entity_addr_t() &&
+      !osd->cct->_conf->get_val<bool>("osd_heartbeat_use_cluster_network_only"))
     ret.second = osd->hb_front_client_messenger->get_connection(next_map->get_hb_front_inst(peer));
   release_map(next_map);
   return ret;
@@ -5022,6 +5023,9 @@ void OSD::handle_osd_ping(MOSDPing *m)
               i->second.last_rx_front = now;
               assert(unacknowledged > 0);
               --unacknowledged;
+              dout(20) << "handle_osd_ping got reply from osd." << from
+                       << " no front con, decrease unacknowledged by 1"
+                       << dendl;
             }
           } else if (m->get_connection() == i->second.con_front) {
             dout(25) << "handle_osd_ping got reply from osd." << from
