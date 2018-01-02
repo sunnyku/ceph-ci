@@ -4832,12 +4832,15 @@ void OSD::maybe_update_heartbeat_peers()
   }
 
   set<int> want, extras;
-  osdmap->get_random_up_osds_by_failure_domain(whoami,
-    cct->_conf->osd_heartbeat_min_peers, &want);
-  for (auto w : want) {
-    dout(10) << "want osd." << w << ", full location "
-             << osdmap->crush->get_full_location_ordered_string(w)
-             << dendl;
+  if (cct->_conf->get_val<bool>(
+      "osd_choose_heartbeat_peers_by_failure_domain")) {
+    osdmap->get_random_up_osds_by_failure_domain(whoami,
+      cct->_conf->osd_heartbeat_min_peers, &want);
+    for (auto w : want) {
+      dout(10) << "want osd." << w << ", full location "
+               << osdmap->crush->get_full_location_ordered_string(w)
+               << dendl;
+    }
   }
   if (want.empty()) {
     // include next and previous up osds to ensure
