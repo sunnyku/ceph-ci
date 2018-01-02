@@ -996,13 +996,14 @@ public:
           } else {
             auto loc = crush->get_full_location(o);
             auto it = loc.find(crush->get_type_name(failure_domain));
+            pair<set<int>::const_iterator, bool> r;
             if (it != loc.end()) {
-              condidates_by_failure_domain[it->second].insert(o);
+              r = condidates_by_failure_domain[it->second].insert(o);
             } else {
-              string host_name = crush->get_item_name(h);
-              condidates_by_failure_domain[host_name].insert(o);
+              r = condidates_by_failure_domain[crush->get_item_name(h)].insert(o);
             }
-            condidates_num++;
+            if (r.second) // increase counter only if insertion truly happens
+              condidates_num++;
           }
           break;
         }

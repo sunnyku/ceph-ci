@@ -2352,6 +2352,10 @@ std::vector<Option> get_global_options() {
     .set_default(5)
     .set_description(""),
 
+    Option("osd_choose_heartbeat_peers_by_failure_domain", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .set_description(""),
+
     Option("osd_heartbeat_use_min_delay_socket", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)
     .set_description(""),
