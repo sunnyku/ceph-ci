@@ -61,6 +61,15 @@
 
 #define CEPH_OSD_PROTOCOL    10 /* cluster internal */
 
+/*
+
+  lock ordering for pg map
+
+    PG::lock
+      ShardData::lock
+        OSD::pg_map_lock
+
+  */
 
 enum {
   l_osd_first = 10000,
@@ -232,7 +241,7 @@ class PrimaryLogPG;
 class AuthAuthorizeHandlerRegistry;
 
 class TestOpsSocketHook;
-struct C_CompleteSplits;
+struct C_FinishSplits;
 struct C_OpenPGs;
 class LogChannel;
 class CephContext;
@@ -1521,7 +1530,7 @@ private:
   void test_ops(std::string command, std::string args, ostream& ss);
   friend class TestOpsSocketHook;
   TestOpsSocketHook *test_ops_hook;
-  friend struct C_CompleteSplits;
+  friend struct C_FinishSplits;
   friend struct C_OpenPGs;
 
   // -- op queue --
@@ -1579,6 +1588,9 @@ private:
 	/// true if pg does/did not exist. if so all new items go directly to
 	/// to_process.  cleared by prune_pg_waiters.
 	bool waiting_for_pg = false;
+
+	/// one or more queued items doesn't need a pg
+	bool pending_nopg = false;
 
 	/// incremented by wake_pg_waiters; indicates racing _process threads
 	/// should bail out (their op has been requeued)
@@ -1857,6 +1869,7 @@ protected:
   map<spg_t, list<PGPeeringEventRef> > peering_wait_for_split;
   PGRecoveryStats pg_recovery_stats;
 
+  PGRef _lookup_pg(spg_t pgid);
   PG   *_lookup_lock_pg_with_map_lock_held(spg_t pgid);
   PG   *_lookup_lock_pg(spg_t pgid);
 
@@ -1871,10 +1884,15 @@ public:
   std::set<int> get_mapped_pools();
 
 protected:
-  PG   *_open_lock_pg(OSDMapRef createmap,
-		      spg_t pg, bool no_lockdep_check=false);
-
-  PG   *_create_lock_pg(
+  PGRef _open_pg(
+    OSDMapRef createmap, OSDMapRef servicemap,
+    spg_t pg);
+  PG *_open_lock_pg(
+    OSDMapRef createmap,
+    OSDMapRef servicemap,
+    spg_t pg,
+    bool no_lockdep_check=false);
+  PG *_create_lock_pg(
     OSDMapRef createmap,
     spg_t pgid,
     bool hold_map_lock,
@@ -1887,8 +1905,6 @@ protected:
     ObjectStore::Transaction& t);
 
   PG* _make_pg(OSDMapRef createmap, spg_t pgid);
-  void add_newly_split_pg(PG *pg,
-			  PG::RecoveryCtx *rctx);
 
   int handle_pg_peering_evt(
     spg_t pgid,
@@ -1933,6 +1949,7 @@ protected:
     OSDMapRef curmap,
     OSDMapRef nextmap,
     PG::RecoveryCtx *rctx);
+  void _finish_splits(set<PGRef>& pgs);
 
   // == monitor interaction ==
   Mutex mon_report_lock;
@@ -2030,6 +2047,7 @@ protected:
   void handle_pg_log(OpRequestRef op);
   void handle_pg_info(OpRequestRef op);
 
+  PGRef handle_pg_create_info(OSDMapRef osdmap, const PGCreateInfo *info);
   void handle_force_recovery(Message *m);
 
   void handle_pg_remove(OpRequestRef op);
