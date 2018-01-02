@@ -2172,10 +2172,7 @@ bool OSD::asok_command(string admin_command, cmdmap_t& cmdmap, string format,
     f->dump_string("state", get_state_name(get_state()));
     f->dump_unsigned("oldest_map", superblock.oldest_map);
     f->dump_unsigned("newest_map", superblock.newest_map);
-    {
-      RWLock::RLocker l(pg_map_lock);
-      f->dump_unsigned("num_pgs", pg_map.size());
-    }
+    f->dump_unsigned("num_pgs", pg_map_size);
     f->close_section();
   } else if (admin_command == "flush_journal") {
     store->flush_journal();
@@ -3821,6 +3818,7 @@ PGRef OSD::_open_pg(
   {
     RWLock::WLocker l(pg_map_lock);
     pg_map[pgid] = pg;
+    pg_map_size = pg_map.size();
     pg->get("PGMap");  // because it's in pg_map
     service.pg_add_epoch(pg->pg_id, createmap->get_epoch());
     service.init_splits_between(pgid, createmap, servicemap);
@@ -3926,6 +3924,7 @@ PGRef OSD::_lookup_pg(spg_t pgid)
 	return pg;
       }
       pg_map.erase(p);
+      pg_map_size = pg_map.size();
       pg->put("PGMap");
     }
     return nullptr;
@@ -4204,10 +4203,10 @@ bool OSD::maybe_wait_for_max_pg(spg_t pgid, bool is_mon_create)
     (cct->_conf->get_val<uint64_t>("mon_max_pg_per_osd") *
      cct->_conf->get_val<double>("osd_max_pg_per_osd_hard_ratio"));
 
-  RWLock::RLocker pg_map_locker{pg_map_lock};
-  if (pg_map.size() < max_pgs_per_osd) {
+  if (pg_map_size < max_pgs_per_osd) {
     return false;
   }
+
   [[gnu::unused]] auto&& pending_creates_locker = guardedly_lock(pending_creates_lock);
   if (is_mon_create) {
     pending_creates_from_mon++;
@@ -4216,7 +4215,7 @@ bool OSD::maybe_wait_for_max_pg(spg_t pgid, bool is_mon_create)
     pending_creates_from_osd.emplace(pgid.pgid, is_primary);
   }
   dout(5) << __func__ << " withhold creation of pg " << pgid
-	  << ": " << pg_map.size() << " >= "<< max_pgs_per_osd << dendl;
+	  << ": " << pg_map_size << " >= "<< max_pgs_per_osd << dendl;
   return true;
 }
 
@@ -7821,6 +7820,7 @@ void OSD::_finish_splits(set<PGRef>& pgs)
     pg_map_lock.get_write();
     pg->get("PGMap");  // For pg_map
     pg_map[pg->get_pgid()] = pg;
+    pg_map_size = pg_map.size();
     service.complete_split(pg->get_pgid());
     service.pg_add_epoch(pg->pg_id, e);
     pg_map_lock.put_write();
@@ -8959,6 +8959,7 @@ void OSD::dequeue_peering_evt(
 	  p->second == pg) {
 	dout(20) << __func__ << " removed pg " << pg << " from pg_map" << dendl;
 	pg_map.erase(p);
+	pg_map_size = pg_map.size();
 	pg->put("PGMap");
       } else {
 	dout(20) << __func__ << " failed to remove pg " << pg << " from pg_map" << dendl;
