@@ -114,7 +114,8 @@ enum {
   l_osd_sop_push_lat,
 
   l_osd_pull,
-  l_osd_push,
+  l_osd_push_tx,
+  l_osd_push_rx,
   l_osd_push_outb,
 
   l_osd_rop,
@@ -1750,8 +1751,7 @@ private:
       }
 
       uint64_t cop = osd->logger->get(l_osd_op);
-      uint64_t rop = osd->logger->get(l_osd_pull) +
-                     osd->logger->get(l_osd_push);
+      uint64_t rop = osd->logger->get(l_osd_push_rx);
 
       lgeneric_subdout(osd->cct, osd, 5) << "load balancer -"
         << " mode = " << mode
