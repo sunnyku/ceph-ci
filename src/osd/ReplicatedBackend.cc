@@ -689,7 +689,6 @@ int ReplicatedBackend::be_deep_scrub(
       dout(20) << __func__ << "  " << poid << " got "
 	       << r << " on read, read_error" << dendl;
       o.read_error = true;
-      pos.next_object();
       return 0;
     }
     if (r > 0 && !skip_data_digest) {
@@ -721,7 +720,6 @@ int ReplicatedBackend::be_deep_scrub(
       dout(20) << __func__ << "  " << poid << " got "
 	       << r << " on omap header read, read_error" << dendl;
       o.read_error = true;
-      pos.next_object();
       return 0;
     }
     if (r == 0 && hdrbl.length()) {
@@ -763,7 +761,6 @@ int ReplicatedBackend::be_deep_scrub(
       dout(25) << __func__ << "  " << poid
 	       << " on omap scan, db status error" << dendl;
       o.read_error = true;
-      pos.next_object();
       return 0;
     }
   }
@@ -787,7 +784,6 @@ int ReplicatedBackend::be_deep_scrub(
 	   << std::hex << o.omap_digest << std::dec << dendl;
 
   // done!
-  pos.next_object();
   return 0;
 }
 

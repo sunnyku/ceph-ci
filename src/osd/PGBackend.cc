@@ -616,7 +616,7 @@ int PGBackend::be_scan_list(
     ceph_abort();
   }
   if (r != -EINPROGRESS) {
-    ++pos.pos;
+    pos.next_object();
     if (pos.done()) {
       dout(20) << __func__ << " done" << dendl;
       return 0;
