@@ -240,108 +240,6 @@ class CephContext;
 typedef ceph::shared_ptr<ObjectStore::Sequencer> SequencerRef;
 class MOSDOp;
 
-class DeletingState {
-  Mutex lock;
-  Cond cond;
-  enum {
-    QUEUED,
-    CLEARING_DIR,
-    CLEARING_WAITING,
-    DELETING_DIR,
-    DELETED_DIR,
-    CANCELED,
-  } status;
-  bool stop_deleting;
-public:
-  const spg_t pgid;
-  const PGRef old_pg_state;
-  explicit DeletingState(const pair<spg_t, PGRef> &in) :
-    lock("DeletingState::lock"), status(QUEUED), stop_deleting(false),
-    pgid(in.first), old_pg_state(in.second) {
-    }
-
-  /// transition status to CLEARING_WAITING
-  bool pause_clearing() {
-    Mutex::Locker l(lock);
-    assert(status == CLEARING_DIR);
-    if (stop_deleting) {
-      status = CANCELED;
-      cond.Signal();
-      return false;
-    }
-    status = CLEARING_WAITING;
-    return true;
-  } ///< @return false if we should cancel deletion
-
-  /// start or resume the clearing - transition the status to CLEARING_DIR
-  bool start_or_resume_clearing() {
-    Mutex::Locker l(lock);
-    assert(
-      status == QUEUED ||
-      status == DELETED_DIR ||
-      status == CLEARING_WAITING);
-    if (stop_deleting) {
-      status = CANCELED;
-      cond.Signal();
-      return false;
-    }
-    status = CLEARING_DIR;
-    return true;
-  } ///< @return false if we should cancel the deletion
-
-  /// transition status to CLEARING_DIR
-  bool resume_clearing() {
-    Mutex::Locker l(lock);
-    assert(status == CLEARING_WAITING);
-    if (stop_deleting) {
-      status = CANCELED;
-      cond.Signal();
-      return false;
-    }
-    status = CLEARING_DIR;
-    return true;
-  } ///< @return false if we should cancel deletion
-
-  /// transition status to deleting
-  bool start_deleting() {
-    Mutex::Locker l(lock);
-    assert(status == CLEARING_DIR);
-    if (stop_deleting) {
-      status = CANCELED;
-      cond.Signal();
-      return false;
-    }
-    status = DELETING_DIR;
-    return true;
-  } ///< @return false if we should cancel deletion
-
-  /// signal collection removal queued
-  void finish_deleting() {
-    Mutex::Locker l(lock);
-    assert(status == DELETING_DIR);
-    status = DELETED_DIR;
-    cond.Signal();
-  }
-
-  /// try to halt the deletion
-  bool try_stop_deletion() {
-    Mutex::Locker l(lock);
-    stop_deleting = true;
-    /**
-     * If we are in DELETING_DIR or CLEARING_DIR, there are in progress
-     * operations we have to wait for before continuing on.  States
-     * CLEARING_WAITING and QUEUED indicate that the remover will check
-     * stop_deleting before queueing any further operations.  CANCELED
-     * indicates that the remover has already halted.  DELETED_DIR
-     * indicates that the deletion has been fully queued.
-     */
-    while (status == DELETING_DIR || status == CLEARING_DIR)
-      cond.Wait(lock);
-    return status != DELETED_DIR;
-  } ///< @return true if we don't need to recreate the collection
-};
-typedef ceph::shared_ptr<DeletingState> DeletingStateRef;
-
 class OSD;
 
 class OSDService {
@@ -350,7 +248,6 @@ public:
   CephContext *cct;
   SharedPtrRegistry<spg_t, ObjectStore::Sequencer> osr_registry;
   ceph::shared_ptr<ObjectStore::Sequencer> meta_osr;
-  SharedPtrRegistry<spg_t, DeletingState> deleting_pgs;
   const int whoami;
   ObjectStore *&store;
   LogClient &log_client;
@@ -878,6 +775,8 @@ public:
   AsyncReserver<spg_t> snap_reserver;
   void queue_for_snap_trim(PG *pg);
   void queue_for_scrub(PG *pg, bool with_high_priority);
+  void queue_for_pg_delete(spg_t pgid, epoch_t e);
+  void finish_pg_delete(PG *pg);
 
 private:
   // -- pg recovery and associated throttling --
@@ -1009,8 +908,13 @@ public:
 private:
   // split
   Mutex in_progress_split_lock;
+  // splits are "pending" after OSD has consumed the map indicating the PG should
+  // split but the PG has not yet processed the map.
   map<spg_t, spg_t> pending_splits; // child -> parent
   map<spg_t, set<spg_t> > rev_pending_splits; // parent -> [children]
+
+  // splits are "in progress" after the PG has gotten the map, and we hold the
+  // parent lock, but the children have not yet been created.
   set<spg_t> in_progress_splits;       // child
 
 public:
@@ -1020,7 +924,7 @@ public:
     return _start_split(parent, children);
   }
   void mark_split_in_progress(spg_t parent, const set<spg_t> &pgs);
-  void complete_split(const set<spg_t> &pgs);
+  void complete_split(spg_t pgid);
   void cancel_pending_splits_for_parent(spg_t parent);
   void _cancel_pending_splits_for_parent(spg_t parent);
   bool splitting(spg_t pgid);
@@ -1621,6 +1525,7 @@ private:
   friend class PGOpItem;
   friend class PGPeeringItem;
   friend class PGRecovery;
+  friend class PGDelete;
 
   class ShardedOpWQ
     : public ShardedThreadPool::ShardedWQ<OpQueueItem>
@@ -1732,7 +1637,7 @@ private:
     void prune_pg_waiters(OSDMapRef osdmap, int whoami);
 
     /// clear cached PGRef on pg deletion
-    void clear_pg_pointer(spg_t pgid);
+    void clear_pg_pointer(PG *pg);
 
     /// clear pg_slots on shutdown
     void clear_pg_slots();
@@ -1827,14 +1732,19 @@ private:
     ThreadPool::TPHandle &handle);
 
   void enqueue_peering_evt(
-    PG *pg,
+    spg_t pgid,
     PGPeeringEventRef ref);
   void enqueue_peering_evt_front(
-    PG *pg,
+    spg_t pgid,
     PGPeeringEventRef ref);
   void dequeue_peering_evt(
     PG *pg,
     PGPeeringEventRef ref,
+    ThreadPool::TPHandle& handle);
+
+  void dequeue_delete(
+    PG *pg,
+    epoch_t epoch,
     ThreadPool::TPHandle& handle);
 
   friend class PG;
@@ -1870,8 +1780,7 @@ private:
   void advance_pg(
     epoch_t advance_to, PG *pg,
     ThreadPool::TPHandle &handle,
-    PG::RecoveryCtx *rctx,
-    set<PGRef> *split_pgs);
+    PG::RecoveryCtx *rctx);
   void consume_map();
   void activate_map();
 
@@ -1929,13 +1838,6 @@ public:
 protected:
   PG   *_open_lock_pg(OSDMapRef createmap,
 		      spg_t pg, bool no_lockdep_check=false);
-  enum res_result {
-    RES_PARENT,    // resurrected a parent
-    RES_SELF,      // resurrected self
-    RES_NONE       // nothing relevant deleting
-  };
-  res_result _try_resurrect_pg(
-    OSDMapRef curmap, spg_t pgid, spg_t *resurrected, PGRef *old_pg_state);
 
   PG   *_create_lock_pg(
     OSDMapRef createmap,
@@ -2100,7 +2002,6 @@ protected:
   void handle_force_recovery(Message *m);
 
   void handle_pg_remove(OpRequestRef op);
-  void _remove_pg(PG *pg);
 
   // -- commands --
   struct Command {
@@ -2169,48 +2070,6 @@ protected:
   bool scrub_random_backoff();
   bool scrub_load_below_threshold();
   bool scrub_time_permit(utime_t now);
-
-  // -- removing --
-  struct RemoveWQ :
-    public ThreadPool::WorkQueueVal<pair<PGRef, DeletingStateRef> > {
-    CephContext* cct;
-    ObjectStore *&store;
-    list<pair<PGRef, DeletingStateRef> > remove_queue;
-    RemoveWQ(CephContext* cct, ObjectStore *&o, time_t ti, time_t si,
-	     ThreadPool *tp)
-      : ThreadPool::WorkQueueVal<pair<PGRef, DeletingStateRef> >(
-	"OSD::RemoveWQ", ti, si, tp), cct(cct), store(o) {}
-
-    bool _empty() override {
-      return remove_queue.empty();
-    }
-    void _enqueue(pair<PGRef, DeletingStateRef> item) override {
-      remove_queue.push_back(item);
-    }
-    void _enqueue_front(pair<PGRef, DeletingStateRef> item) override {
-      remove_queue.push_front(item);
-    }
-    bool _dequeue(pair<PGRef, DeletingStateRef> item) {
-      ceph_abort();
-    }
-    pair<PGRef, DeletingStateRef> _dequeue() override {
-      assert(!remove_queue.empty());
-      pair<PGRef, DeletingStateRef> item = remove_queue.front();
-      remove_queue.pop_front();
-      return item;
-    }
-    void _process(pair<PGRef, DeletingStateRef>,
-		  ThreadPool::TPHandle &) override;
-    void _clear() override {
-      remove_queue.clear();
-    }
-    int get_remove_queue_len() {
-      lock();
-      int r = remove_queue.size();
-      unlock();
-      return r;
-    }
-  } remove_wq;
 
   // -- status reporting --
   MPGStats *collect_pg_stats();
