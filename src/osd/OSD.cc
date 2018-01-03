@@ -3124,7 +3124,8 @@ void OSD::create_logger()
     l_osd_sop_push_lat, "subop_push_latency", "Suboperations push latency");
 
   osd_plb.add_u64_counter(l_osd_pull, "pull", "Pull requests sent");
-  osd_plb.add_u64_counter(l_osd_push, "push", "Push messages sent");
+  osd_plb.add_u64_counter(l_osd_push_tx, "push_tx", "Push messages sent");
+  osd_plb.add_u64_counter(l_osd_push_rx, "push_rx", "Push messages received (including pull responses)");
   osd_plb.add_u64_counter(l_osd_push_outb, "push_out_bytes", "Pushed size");
 
   osd_plb.add_u64_counter(
