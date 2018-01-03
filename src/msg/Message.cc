@@ -76,6 +76,7 @@
 #include "messages/MOSDPGRemove.h"
 #include "messages/MOSDPGInfo.h"
 #include "messages/MOSDPGCreate.h"
+#include "messages/MOSDPGCreate2.h"
 #include "messages/MOSDPGTrim.h"
 #include "messages/MOSDScrub.h"
 #include "messages/MOSDScrubReserve.h"
@@ -503,6 +504,9 @@ Message *decode_message(CephContext *cct, int crcflags,
     break;
   case MSG_OSD_PG_CREATE:
     m = new MOSDPGCreate;
+    break;
+  case MSG_OSD_PG_CREATE2:
+    m = new MOSDPGCreate2;
     break;
   case MSG_OSD_PG_TRIM:
     m = new MOSDPGTrim;
