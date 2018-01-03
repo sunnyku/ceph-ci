@@ -4924,8 +4924,6 @@ void OSD::tick()
     start_boot();
   }
 
-  do_waiters();
-
   tick_timer.add_event_after(OSD_TICK_INTERVAL, new C_Tick(this));
 }
 
@@ -6319,7 +6317,6 @@ bool OSD::ms_dispatch(Message *m)
     return true;
   }
 
-  do_waiters();
   _dispatch(m);
 
   osd_lock.Unlock();
@@ -6606,29 +6603,6 @@ bool OSD::ms_verify_authorizer(Connection *con, int peer_type,
   return true;
 }
 
-void OSD::do_waiters()
-{
-  assert(osd_lock.is_locked());
-
-  dout(10) << "do_waiters -- start" << dendl;
-  while (!finished.empty()) {
-    OpRequestRef next = finished.front();
-    finished.pop_front();
-    dispatch_op(next);
-  }
-  dout(10) << "do_waiters -- finish" << dendl;
-}
-
-void OSD::dispatch_op(OpRequestRef op)
-{
-  switch (op->get_req()->get_type()) {
-
-  case MSG_OSD_PG_CREATE:
-    handle_pg_create(op);
-    break;
-  }
-}
-
 void OSD::_dispatch(Message *m)
 {
   assert(osd_lock.is_locked());
@@ -6650,34 +6624,6 @@ void OSD::_dispatch(Message *m)
   case MSG_OSD_FORCE_RECOVERY:
     handle_force_recovery(m);
     break;
-
-    // -- need OSDMap --
-
-  case MSG_OSD_PG_CREATE:
-  case MSG_OSD_PG_NOTIFY:
-  case MSG_OSD_PG_QUERY:
-  case MSG_OSD_PG_LOG:
-  case MSG_OSD_PG_REMOVE:
-  case MSG_OSD_PG_INFO:
-  case MSG_OSD_PG_TRIM:
-  case MSG_OSD_BACKFILL_RESERVE:
-  case MSG_OSD_RECOVERY_RESERVE:
-    {
-      OpRequestRef op = op_tracker.create_request<OpRequest, Message*>(m);
-      if (m->trace)
-        op->osd_trace.init("osd op", &trace_endpoint, &m->trace);
-      // no map?  starting up?
-      if (!osdmap) {
-        dout(7) << "no OSDMap, not booted" << dendl;
-	logger->inc(l_osd_waiting_for_map);
-        waiting_for_osdmap.push_back(op);
-	op->mark_delayed("no osdmap");
-        break;
-      }
-
-      // need OSDMap
-      dispatch_op(op);
-    }
   }
 }
 
