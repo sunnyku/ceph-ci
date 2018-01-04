@@ -104,6 +104,7 @@
 #include "messages/MOSDAlive.h"
 
 #include "messages/MOSDScrub.h"
+#include "messages/MOSDScrub2.h"
 #include "messages/MOSDScrubReserve.h"
 #include "messages/MOSDRepScrub.h"
 
@@ -6417,6 +6418,9 @@ void OSD::ms_fast_dispatch(Message *m)
   case MSG_OSD_FORCE_RECOVERY:
     handle_fast_force_recovery(static_cast<MOSDForceRecovery*>(m));
     return;
+  case MSG_OSD_SCRUB2:
+    handle_fast_scrub(static_cast<MOSDScrub2*>(m));
+    return;
 
   case MSG_OSD_PG_CREATE2:
     return handle_fast_pg_create(static_cast<MOSDPGCreate2*>(m));
@@ -6672,6 +6676,7 @@ void OSD::_dispatch(Message *m)
   }
 }
 
+// remove me post-nautilus
 void OSD::handle_scrub(MOSDScrub *m)
 {
   dout(10) << "handle_scrub " << *m << dendl;
@@ -6723,6 +6728,31 @@ void OSD::handle_scrub(MOSDScrub *m)
 	  PG::RequestScrub(m->deep, m->repair))));
   }
 
+  m->put();
+}
+
+void OSD::handle_fast_scrub(MOSDScrub2 *m)
+{
+  dout(10) << __func__ <<  " " << *m << dendl;
+  if (!require_mon_or_mgr_peer(m)) {
+    m->put();
+    return;
+  }
+  if (m->fsid != monc->get_fsid()) {
+    dout(0) << __func__ << " fsid " << m->fsid << " != " << monc->get_fsid()
+	    << dendl;
+    m->put();
+    return;
+  }
+  for (auto pgid : m->scrub_pgs) {
+    enqueue_peering_evt(
+      pgid,
+      PGPeeringEventRef(
+	std::make_shared<PGPeeringEvent>(
+	  m->epoch,
+	  m->epoch,
+	  PG::RequestScrub(m->deep, m->repair))));
+  }
   m->put();
 }
 
