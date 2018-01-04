@@ -557,7 +557,7 @@ protected:
     return get_pgbackend()->get_is_recoverable_predicate();
   }
 protected:
-  OSDMapRef last_persisted_osdmap_ref;
+  epoch_t last_persisted_osdmap;
 
   void requeue_map_waiters();
 
