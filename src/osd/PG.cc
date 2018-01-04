@@ -6192,22 +6192,6 @@ void PG::update_store_with_options()
   }
 }
 
-void PG::update_store_on_load()
-{
-  if (osd->store->get_type() == "filestore") {
-    // legacy filestore didn't store collection bit width; fix.
-    int bits = osd->store->collection_bits(coll);
-    if (bits < 0) {
-      assert(!coll.is_meta()); // otherwise OSD::load_pgs() did a bad thing
-      bits = info.pgid.get_split_bits(pool.info.get_pg_num());
-      lderr(cct) << __func__ << " setting bit width to " << bits << dendl;
-      ObjectStore::Transaction t;
-      t.collection_set_bits(coll, bits);
-      osd->store->apply_transaction(osr.get(), std::move(t));
-    }
-  }
-}
-
 struct C_DeleteMore : public Context {
   PGRef pg;
   epoch_t epoch;
@@ -6336,7 +6320,6 @@ boost::statechart::result PG::RecoveryState::Initial::react(const Load& l)
   pg->send_notify = (!pg->is_primary());
 
   pg->update_store_with_options();
-  pg->update_store_on_load();
 
   return transit< Reset >();
 }
