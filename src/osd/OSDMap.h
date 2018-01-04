@@ -969,8 +969,8 @@ public:
     // do fast out if we don't have enough hosts
     bool direct_out = limit > (int)(hosts.size() - 1);
     int failure_domain = crush->get_top_failure_domain();
-    map<string, set<int>> condidates_by_failure_domain;
-    int condidates_num = 0;
+    map<string, set<int>> candidates_by_failure_domain;
+    int candidates_num = 0;
     // first, try to randomized pick as many osds as possible,
     // make sure they cover all hosts and arrange them by failure domain
     for (auto h : hosts) {
@@ -998,12 +998,12 @@ public:
             auto it = loc.find(crush->get_type_name(failure_domain));
             pair<set<int>::const_iterator, bool> r;
             if (it != loc.end()) {
-              r = condidates_by_failure_domain[it->second].insert(o);
+              r = candidates_by_failure_domain[it->second].insert(o);
             } else {
-              r = condidates_by_failure_domain[crush->get_item_name(h)].insert(o);
+              r = candidates_by_failure_domain[crush->get_item_name(h)].insert(o);
             }
             if (r.second) // increase counter only if insertion truly happens
-              condidates_num++;
+              candidates_num++;
           }
           break;
         }
@@ -1012,9 +1012,9 @@ public:
     }
     if (direct_out)
       return;
-    if (condidates_num <= limit) {
+    if (candidates_num <= limit) {
       // all
-      for (auto c : condidates_by_failure_domain) {
+      for (auto c : candidates_by_failure_domain) {
         auto &o = c.second;
         out->insert(o.begin(), o.end());
       }
@@ -1024,7 +1024,7 @@ public:
       // pick up osds from different failure domains in turn
       // in a breadth-first fashion, break out loop if we have
       // collected enough
-      for (auto &c : condidates_by_failure_domain) {
+      for (auto &c : candidates_by_failure_domain) {
         auto &o = c.second;
         if (o.empty())
           continue;
