@@ -1614,173 +1614,151 @@ private:
   dmc_op_tracker get_dmc_op_tracker(ServerId& srv);
 
   struct LoadBalancer {
-    enum {
-      LB_MODE_NONE,
-      LB_MODE_CLIENT_OP_PRIORITIZED,
-      LB_MODE_RECOVERY_OP_PRIORITIZED,
-      LB_MODE_MAX
-    };
-
     struct IdleState {
+      uint64_t white_noise_filter = 0;
+      double sample_interval = 1;
       uint64_t last_sampled_op = 0;
+      uint64_t last_sampled_rate = 0;
       utime_t idle_from;
-      bool idle = true;
+      int idle_interval = 0; // minimal interval we transit to idle
 
-      void maybe_update(uint64_t op,
-                        utime_t now,
-                        int transit_to_idle_interval) {
+      void maybe_update_config(md_config_t * conf) {
+        sample_interval = conf->get_val<double>("osd_tick_interval");
+        if (sample_interval <= 0)
+          sample_interval = 1;
+        idle_interval = conf->get_val<int64_t>(
+          "osd_load_balancer_idle_interval");
+      }
+
+      void set_white_noise_filter(uint64_t new_filter) {
+        white_noise_filter = new_filter;
+      }
+
+      void sample(uint64_t op, utime_t now) {
         if (op == last_sampled_op) {
-          // see if we have stayed idle enough to set idle bit
-          if (!idle && now - idle_from >= transit_to_idle_interval) {
-            idle = true;
+          // see if we have stayed idle long enough to set idle status
+          if (now - idle_from >= idle_interval) {
+            last_sampled_rate = 0;
           }
           return;
         }
+        if (op < last_sampled_op) {
+          // probably because admin manually cleared perf-counters out,
+          // reset sample-counter too (but leave last_sampled_rate untouched)
+          // so we can bring balancer back to normal on reentry..
+          last_sampled_op = op;
+          return;
+        }
+        last_sampled_rate = (op - last_sampled_op) / sample_interval;
+        if (last_sampled_rate == 0) {
+          last_sampled_rate = 1;
+        }
         last_sampled_op = op;
-        idle_from = now; // reset timer
-        idle = false;
+        // reset idle timer,
+        // so we can reevaluate idle state on reentry
+        idle_from = now;
       }
-      bool is_idle() const { return idle; }
+
+      bool is_idle() const {
+        return last_sampled_rate <= white_noise_filter;
+      }
+
+      void dump(Formatter *f) {
+        f->dump_unsigned("white_noise_filter", white_noise_filter);
+        f->dump_float("sample_interval", sample_interval);
+        f->dump_int("idle_interval", idle_interval);
+        f->dump_unsigned("last_sampled_op", last_sampled_op);
+        f->dump_unsigned("last_sampled_rate", last_sampled_rate);
+        f->dump_stream("idle_from") << idle_from;
+      }
     };
 
     OSD* osd;
     IdleState cis;
     IdleState ris;
     string spec_applied;
-    std::mutex lock; // protect members below from changing
-    int enabled;
-    int mode;
-    int min_interval_transit_to_idle;
-    string spec_client_op_prioritized;
-    string spec_recovery_op_unlimited;
-    string spec_recovery_op_prioritized;
+    string spec_toapply;
+    std::mutex lock; // protect members below on changing
+    bool enabled;
+    string mode;
+    string spec_default;
+    string spec_unlimited; // be careful!
 
-    LoadBalancer(OSD *o) : osd(o) { _init_config(); };
+    LoadBalancer(OSD *o) : osd(o) {
+      maybe_update_config();
+    }
 
-    void _init_config() {
+    void maybe_update_config() {
       std::unique_lock<std::mutex> l(lock);
-      enabled = osd->cct->_conf->get_val<bool>("osd_enable_load_balancer");
-      auto ms = osd->cct->_conf->get_val<string>("osd_lb_op_priority_mode");
-      if (ms == "client_op_prioritized") {
-        mode = LB_MODE_CLIENT_OP_PRIORITIZED;
-      } else {
-        mode = LB_MODE_RECOVERY_OP_PRIORITIZED;
+      auto conf = osd->cct->_conf;
+      enabled = conf->get_val<bool>("osd_load_balancer_enabled");
+      mode = conf->get_val<string>("osd_load_balancer_op_priority_mode");
+      spec_default = conf->get_val<string>("osd_load_balancer_spec_default");
+      spec_unlimited = conf->get_val<string>(
+        "osd_load_balancer_spec_unlimited");
+      cis.maybe_update_config(conf);
+      ris.maybe_update_config(conf);
+      cis.set_white_noise_filter(conf->get_val<int64_t>(
+        "osd_load_balancer_client_op_white_noise_filter"));
+      ris.set_white_noise_filter(conf->get_val<int64_t>(
+        "osd_load_balancer_recovery_op_white_noise_filter"));
+    }
+
+    void maybe_update_spec() {
+      if (mode != "default") {
+        return;
       }
-      min_interval_transit_to_idle = osd->cct->_conf->get_val<int64_t>(
-        "osd_lb_min_interval_transit_to_idle");
-      spec_client_op_prioritized = osd->cct->_conf->get_val<string>(
-        "osd_lb_spec_client_op_prioritized");
-      spec_recovery_op_unlimited = osd->cct->_conf->get_val<string>(
-        "osd_lb_spec_recovery_op_unlimited");
-      spec_recovery_op_prioritized = osd->cct->_conf->get_val<string>(
-        "osd_lb_spec_recovery_op_prioritized");
-    }
-    void update_config() {
-      _init_config();
-    }
-    void _reset_spec(const string &new_spec) {
-      osd->op_shardedwq.update_queue_config(
-        "osd_dmc_queue_spec_pullpush", new_spec);
-    }
-    void _maybe_update_spec() {
-      std::unique_lock<std::mutex> l(lock);
-      switch (mode) {
-      case LB_MODE_CLIENT_OP_PRIORITIZED:
-        if (!cis.is_idle()) {
-          if (spec_applied != spec_client_op_prioritized) {
-            lgeneric_subdout(osd->cct, osd, 10) << "load balancer -"
-              << " mode is LB_MODE_CLIENT_OP_PRIORITIZED, "
-              << " cis is busy, "
-              << " switch to spec_client_op_prioritized "
-              << spec_client_op_prioritized
-              << dendl;
-            _reset_spec(spec_client_op_prioritized);
-            spec_applied = spec_client_op_prioritized;
-          }
-        } else if (!ris.is_idle()) {
-          // no client op and there is recovery in-progress
-          if (spec_applied != spec_recovery_op_prioritized) {
-            lgeneric_subdout(osd->cct, osd, 10) << "load balancer -"
-              << " mode is LB_MODE_CLIENT_OP_PRIORITIZED, "
-              << " cis is idle and ris is busy, "
-              << " switch to spec_recovery_op_prioritized "
-              << spec_recovery_op_prioritized
-              << dendl;
-            _reset_spec(spec_recovery_op_prioritized);
-            spec_applied = spec_recovery_op_prioritized;
-          }
-        }
-        break;
-      case LB_MODE_RECOVERY_OP_PRIORITIZED:
-        if (!ris.is_idle()) {
-          if (!cis.is_idle()) {
-            if (spec_applied != spec_recovery_op_prioritized) {
-              lgeneric_subdout(osd->cct, osd, 10) << "load balancer -"
-                << " mode is LB_MODE_RECOVERY_OP_PRIORITIZED, "
-                << " but both ris and cis are busy, "
-                << " switch to spec_recovery_op_prioritized "
-                << spec_recovery_op_prioritized
-                << dendl;
-              _reset_spec(spec_recovery_op_prioritized);
-              spec_applied = spec_recovery_op_prioritized;
-            }
-          } else {
-            // no client op, switch to unlimited
-            // (so we can recover at full speed)
-            if (spec_applied != spec_recovery_op_unlimited) {
-              lgeneric_subdout(osd->cct, osd, 10) << "load balancer -"
-                << " mode is LB_MODE_RECOVERY_OP_PRIORITIZED, "
-                << " ris is busy and cis is idle, "
-                << " switch to spec_recovery_op_unlimited "
-                << spec_recovery_op_unlimited
-                << dendl;
-              _reset_spec(spec_recovery_op_unlimited);
-              spec_applied = spec_recovery_op_unlimited;
-            }
-          }
-        } else {
-          // no recovery op, stay unchanged
-        }
+      spec_toapply = spec_default;
+      // need further adjustment?
+      if (cis.is_idle() && !ris.is_idle()) {
+        // no client ops and recovery is in-progress,
+        // reset to unlimited (so we can recover at full speed)
+        spec_toapply = spec_unlimited;
+      }
+      // try apply new spec
+      if (spec_applied != spec_toapply) {
+        lgeneric_subdout(osd->cct, osd, 0) << "load balancer - "
+                                           << "reset to " << spec_toapply
+                                           << dendl;
+        osd->op_shardedwq.update_queue_config("osd_dmc_queue_spec_pullpush",
+          spec_toapply);
+        spec_applied = spec_toapply;
       }
     }
+
     void sample() {
       if (!enabled) {
-        lgeneric_subdout(osd->cct, osd, 10) << "load balancer - disabled"
-                                            << dendl;
+        lgeneric_subdout(osd->cct, osd, 5) << "load balancer - disabled"
+                                           << dendl;
         return;
       }
 
       uint64_t cop = osd->logger->get(l_osd_op);
       uint64_t rop = osd->logger->get(l_osd_push_rx);
 
-      lgeneric_subdout(osd->cct, osd, 5) << "load balancer -"
-        << " mode = " << mode
-        << " cop = " << cop
-        << " rop = " << rop
-        << " min_interval_transit_to_idle = " << min_interval_transit_to_idle
-        << " spec_client_op_prioritized = " << spec_client_op_prioritized
-        << " spec_recovery_op_unlimited = " << spec_recovery_op_unlimited
-        << " spec_recovery_op_prioritized = " << spec_recovery_op_prioritized
-        << " spec_applied " << spec_applied
-        << dendl;
-
+      // update idle status
+      std::unique_lock<std::mutex> l(lock);
       utime_t now = ceph_clock_now();
+      cis.sample(cop, now);
+      ris.sample(rop, now);
 
-      cis.maybe_update(cop, now, min_interval_transit_to_idle);
-      ris.maybe_update(rop, now, min_interval_transit_to_idle);
+      // and adjust recovery QoS specification if necessary
+      maybe_update_spec();
+    }
 
-      lgeneric_subdout(osd->cct, osd, 10) << "load balancer -"
-        << " cis:"
-        << " last_sampled_op = " << cis.last_sampled_op
-        << " idle_from = " << cis.idle_from
-        << " idle = " << cis.idle
-        << " ris:"
-        << " last_sampled_op = " << ris.last_sampled_op
-        << " idle_from = " << ris.idle_from
-        << " idle = " << ris.idle
-        << dendl;
-
-      _maybe_update_spec();
+    void dump(Formatter *f) {
+      std::unique_lock<std::mutex> l(lock);
+      f->dump_bool("enabled", enabled);
+      f->dump_string("mode", mode);
+      f->open_object_section("client_idle_state");
+      cis.dump(f);
+      f->close_section();
+      f->open_object_section("recovery_idle_state");
+      ris.dump(f);
+      f->close_section();
+      f->dump_string("spec_applied", spec_applied);
+      f->dump_string("spec_default", spec_default);
+      f->dump_string("spec_unlimited", spec_unlimited);
     }
   } load_balancer;
 

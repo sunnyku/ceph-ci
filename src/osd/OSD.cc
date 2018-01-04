@@ -2132,6 +2132,9 @@ will start to track new ops received afterwards.";
     f->open_object_section("recovery rate");
     opwq_tracker.dump(f);
     f->close_section();
+    f->open_object_section("load_balancer");
+    load_balancer.dump(f);
+    f->close_section();
   } else if (admin_command == "dump_blacklist") {
     list<pair<entity_addr_t,utime_t> > bl;
     OSDMapRef curmap = service.get_osdmap();
@@ -9966,12 +9969,13 @@ const char** OSD::get_tracked_conf_keys() const
     "osd_dmc_queue_spec_recovery",
     "osd_dmc_queue_spec_scrub",
     // load balancer
-    "osd_enable_load_balancer",
-    "osd_lb_op_priority_mode",
-    "osd_lb_min_interval_transit_to_idle",
-    "osd_lb_spec_client_op_prioritized",
-    "osd_lb_spec_recovery_op_prioritized",
-    "osd_lb_spec_recovery_op_unlimited",
+    "osd_load_balancer_enabled",
+    "osd_load_balancer_op_priority_mode",
+    "osd_load_balancer_client_op_white_noise_filter",
+    "osd_load_balancer_recovery_op_white_noise_filter",
+    "osd_load_balancer_idle_interval",
+    "osd_load_balancer_spec_default",
+    "osd_load_balancer_spec_unlimited",
     NULL
   };
   return KEYS;
@@ -10058,13 +10062,14 @@ void OSD::handle_conf_change(const struct md_config_t *conf,
     }
   }
 
-  if (changed.count("osd_enable_load_balancer") ||
-      changed.count("osd_lb_op_priority_mode") ||
-      changed.count("osd_lb_min_interval_transit_to_idle") ||
-      changed.count("osd_lb_spec_client_op_prioritized") ||
-      changed.count("osd_lb_spec_recovery_op_prioritized") ||
-      changed.count("osd_lb_spec_recovery_op_unlimited")) {
-    load_balancer.update_config();
+  if (changed.count("osd_load_balancer_enabled") ||
+      changed.count("osd_load_balancer_op_priority_mode") ||
+      changed.count("osd_load_balancer_client_op_white_noise_filter") ||
+      changed.count("osd_load_balancer_recovery_op_white_noise_filter") ||
+      changed.count("osd_load_balancer_idle_interval") ||
+      changed.count("osd_load_balancer_spec_default") ||
+      changed.count("osd_load_balancer_spec_unlimited")) {
+    load_balancer.maybe_update_config();
   }
 
   maybe_update_queue_config(conf, changed);

@@ -2484,28 +2484,32 @@ std::vector<Option> get_global_options() {
     .set_default(true)
     .set_description(""),
 
-    Option("osd_enable_load_balancer", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    Option("osd_load_balancer_enabled", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(true)
     .set_description(""),
 
-    Option("osd_lb_op_priority_mode", Option::TYPE_STR, Option::LEVEL_ADVANCED)
-    .set_default("client_op_prioritized")
-    .set_enum_allowed({"client_op_prioritized", "recovery_op_prioritized"})
+    Option("osd_load_balancer_op_priority_mode", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("default")
+    .set_enum_allowed({"default", "client_op_prioritized", "recovery_op_prioritized"})
     .set_description(""),
 
-    Option("osd_lb_min_interval_transit_to_idle", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    Option("osd_load_balancer_client_op_white_noise_filter", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(2)
+    .set_description(""),
+
+    Option("osd_load_balancer_recovery_op_white_noise_filter", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(0)
+    .set_description(""),
+
+    Option("osd_load_balancer_idle_interval", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(30)
     .set_description(""),
 
-    Option("osd_lb_spec_client_op_prioritized", Option::TYPE_STR, Option::LEVEL_ADVANCED)
-    .set_default("0,100,0,10M")
+    Option("osd_load_balancer_spec_default", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("0,100,0,20M")
     .set_description(""),
 
-    Option("osd_lb_spec_recovery_op_prioritized", Option::TYPE_STR, Option::LEVEL_ADVANCED)
-    .set_default("0,100,0,80M")
-    .set_description(""),
-
-    Option("osd_lb_spec_recovery_op_unlimited", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    Option("osd_load_balancer_spec_unlimited", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("0,100,0,0")
     .set_description(""),
 
