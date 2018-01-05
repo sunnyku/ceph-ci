@@ -1107,3 +1107,7 @@ COMMAND("config get " \
 COMMAND("config dump",
 	"Show all configuration option(s)",
 	"mon", "r", "cli,rest")
+COMMAND("config help " \
+	"name=key,type=CephString",
+	"Describe a configuration option",
+	"config", "r", "cli,rest")
