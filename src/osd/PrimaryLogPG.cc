@@ -2398,8 +2398,9 @@ PrimaryLogPG::cache_result_t PrimaryLogPG::maybe_handle_manifest_detail(
 	  all_dirty = false;
 	}
       }
-      if (all_dirty) {
-	start_flush(OpRequestRef(), obc, true, NULL, boost::none);
+      if (all_dirty && op->may_write() && can_chunked_flush(op)) {
+	start_flush(op, obc, true, NULL, boost::none);
+	return cache_result_t::BLOCKED_RECOVERY;
       }
       return cache_result_t::NOOP;
     }
@@ -3375,6 +3376,28 @@ void PrimaryLogPG::do_proxy_chunked_read(OpRequestRef op, ObjectContextRef obc, 
   prdop->objecter_tid = tid;
   proxyread_ops[tid] = prdop;
   in_progress_proxy_ops[ori_soid].push_back(op);
+}
+
+bool PrimaryLogPG::can_chunked_flush(OpRequestRef op)
+{
+  MOSDOp *m = static_cast<MOSDOp*>(op->get_nonconst_req());
+  OSDOp *osd_op = NULL;
+  bool ret = true;
+  for (unsigned int i = 0; i < m->ops.size(); i++) {
+    osd_op = &m->ops[i];
+    ceph_osd_op op = osd_op->op;
+    switch (op.op) {
+      /* flush() will update object's version
+       * so, if op is ASSERT_VER. do not invoke flush() 
+       */ 
+      case CEPH_OSD_OP_ASSERT_VER:
+	ret = false;
+	return ret;
+      default:
+	break;
+    }
+  }
+  return ret;
 }
 
 bool PrimaryLogPG::can_proxy_chunked_read(OpRequestRef op, ObjectContextRef obc)

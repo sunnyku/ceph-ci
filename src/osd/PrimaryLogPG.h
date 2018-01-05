@@ -1413,6 +1413,7 @@ protected:
 			     uint64_t chunk_index, uint64_t req_offset, uint64_t req_length,
 			     uint64_t req_total_len, bool write_ordered);
   bool can_proxy_chunked_read(OpRequestRef op, ObjectContextRef obc);
+  bool can_chunked_flush(OpRequestRef op);
   void _copy_some_manifest(ObjectContextRef obc, CopyOpRef cop, uint64_t start_offset);
   void process_copy_chunk_manifest(hobject_t oid, ceph_tid_t tid, int r, uint64_t offset);
   void finish_promote_manifest(int r, CopyResults *results, ObjectContextRef obc);
