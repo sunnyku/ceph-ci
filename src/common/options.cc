@@ -2502,7 +2502,7 @@ std::vector<Option> get_global_options() {
     .set_description(""),
 
     Option("osd_load_balancer_idle_interval", Option::TYPE_INT, Option::LEVEL_ADVANCED)
-    .set_default(30)
+    .set_default(5)
     .set_description(""),
 
     Option("osd_load_balancer_spec_default", Option::TYPE_STR, Option::LEVEL_ADVANCED)

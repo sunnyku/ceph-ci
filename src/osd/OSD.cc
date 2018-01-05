@@ -263,7 +263,6 @@ OSDService::OSDService(OSD *osd) :
   recovery_lock("OSDService::recovery_lock"),
   recovery_ops_active(0),
   recovery_ops_reserved(0),
-  recovery_paused(false),
   map_cache_lock("OSDService::map_cache_lock"),
   map_cache(cct, cct->_conf->osd_map_cache_size),
   map_bl_cache(cct->_conf->osd_map_cache_size),
@@ -8515,15 +8514,11 @@ void OSD::activate_map()
 
   // norecover?
   if (osdmap->test_flag(CEPH_OSDMAP_NORECOVER)) {
-    if (!service.recovery_is_paused()) {
-      dout(1) << "pausing recovery (NORECOVER flag set)" << dendl;
-      service.pause_recovery();
-    }
+    dout(1) << "pausing recovery (NORECOVER flag set)" << dendl;
+    service.pause_recovery();
   } else {
-    if (service.recovery_is_paused()) {
-      dout(1) << "unpausing recovery (NORECOVER flag unset)" << dendl;
-      service.unpause_recovery();
-    }
+    dout(1) << "unpausing recovery (NORECOVER flag unset)" << dendl;
+    service.unpause_recovery();
   }
 
   service.activate_map();
@@ -9513,7 +9508,7 @@ bool OSDService::_recover_now(uint64_t *available_pushes)
     return false;
   }
 
-  if (recovery_paused) {
+  if (recovery_is_paused(false)) { // drop recovery_lock
     dout(15) << __func__ << " paused" << dendl;
     return false;
   }
