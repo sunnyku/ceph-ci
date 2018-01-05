@@ -861,6 +861,9 @@ public:
   /// true if pg consumption affected our unpinning
   std::atomic<bool> map_cache_pinned_low = {false};
 
+  /// final osdmaps for recently deleted pools
+  map<int64_t,OSDMapRef> deleted_pool_maps;
+
   OSDMapRef try_get_map(epoch_t e);
   OSDMapRef get_map(epoch_t e) {
     OSDMapRef ret(try_get_map(e));
@@ -895,6 +898,20 @@ public:
 
   void clear_map_bl_cache_pins(epoch_t e);
   void check_map_bl_cache_pins();
+
+  /// get last map before a pool was deleted (if any)
+  OSDMapRef get_deleted_pool_map(int64_t pool);
+
+  void store_deleted_pool_map(int64_t pool, OSDMapRef osdmap) {
+    Mutex::Locker l(map_cache_lock);
+    deleted_pool_maps[pool] = osdmap;
+  }
+
+  /// discard deleted pool maps that predate oldest pg's epoch
+  void prune_deleted_pool_maps();
+
+  /// get pgnum from newmap or, if pool was deleted, last map pool existed in
+  int get_possibly_deleted_pool_pg_num(OSDMapRef newmap, int64_t pool);
 
   void need_heartbeat_peer_update();
 
