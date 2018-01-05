@@ -399,12 +399,14 @@ void OSDService::_maybe_split_pgid(OSDMapRef old_map,
 				  OSDMapRef new_map,
 				  spg_t pgid)
 {
-  assert(old_map->have_pg_pool(pgid.pool()));
+  if (!old_map->have_pg_pool(pgid.pool())) {
+    return;
+  }
   int old_pgnum = old_map->get_pg_num(pgid.pool());
+  int new_pgnum = get_possibly_deleted_pool_pg_num(new_map, pgid.pool());
   if (pgid.ps() < static_cast<unsigned>(old_pgnum)) {
     set<spg_t> children;
-    if (pgid.is_split(old_pgnum,
-		  new_map->get_pg_num(pgid.pool()), &children)) { 
+    if (pgid.is_split(old_pgnum, new_pgnum, &children)) {
       _start_split(pgid, children);
     }
   } else {
@@ -417,13 +419,14 @@ void OSDService::init_splits_between(spg_t pgid,
 				     OSDMapRef tomap)
 {
   // First, check whether we can avoid this potentially expensive check
-  if (frommap->have_pg_pool(pgid.pool()) &&
-      (!tomap->have_pg_pool(pgid.pool()) ||  // pool is deleted, must check for splits
-       pgid.is_split(
-	 frommap->get_pg_num(pgid.pool()),
-	 tomap->get_pg_num(pgid.pool()),
-	 NULL))) {
-    dout(20) << __func__ << " " << pgid << " from " << frommap->get_epoch() << " -> "
+  if (!frommap->have_pg_pool(pgid.pool())) {
+    return;
+  }
+  int old_pgnum = frommap->get_pg_num(pgid.pool());
+  int new_pgnum = get_possibly_deleted_pool_pg_num(tomap, pgid.pool());
+  if (pgid.is_split(old_pgnum, new_pgnum, NULL)) {
+    dout(20) << __func__ << " " << pgid << " from " << frommap->get_epoch()
+	     << " -> "
 	     << tomap->get_epoch() << " enumerating split children" << dendl;
     // Ok, a split happened, so we need to walk the osdmaps
     set<spg_t> new_pgs; // pgs to scan on each map
@@ -438,7 +441,8 @@ void OSDService::init_splits_between(spg_t pgid,
 	continue;
       }
       if (!nextmap->have_pg_pool(pgid.pool())) {
-	dout(20) << __func__ << " " << pgid << " pool deleted in " << nextmap->get_epoch()
+	dout(20) << __func__ << " " << pgid << " pool deleted in "
+		 << nextmap->get_epoch()
 		 << dendl;
 	break;
       }
@@ -1564,6 +1568,40 @@ void OSDService::check_map_bl_cache_pins()
     return;
   }
   clear_map_bl_cache_pins(0);
+}
+
+OSDMapRef OSDService::get_deleted_pool_map(int64_t pool)
+{
+  Mutex::Locker l(map_cache_lock);
+  auto p = deleted_pool_maps.find(pool);
+  if (p != deleted_pool_maps.end()) {
+    return p->second;
+  }
+  return nullptr;
+}
+
+void OSDService::prune_deleted_pool_maps()
+{
+  epoch_t lb = get_min_pg_epoch();
+
+  Mutex::Locker l(map_cache_lock);
+  auto p = deleted_pool_maps.begin();
+  while (p != deleted_pool_maps.end()) {
+    if (p->second->get_epoch() < lb) {
+      p = deleted_pool_maps.erase(p);
+    } else {
+      ++p;
+    }
+  }
+}
+
+int OSDService::get_possibly_deleted_pool_pg_num(OSDMapRef osdmap, int64_t pool)
+{
+  if (osdmap->have_pg_pool(pool)) {
+    return osdmap->get_pg_num(pool);
+  } else {
+    return get_deleted_pool_map(pool)->get_pg_num(pool);
+  }
 }
 
 OSDMapRef OSDService::_add_map(OSDMap *o)
@@ -4885,6 +4923,7 @@ void OSD::tick()
   // artificially low if the last maps were injested when pg map processing
   // was behind).
   service.check_map_bl_cache_pins();
+  service.prune_deleted_pool_maps();
 
   if (is_active() || is_waiting_for_healthy()) {
     maybe_update_heartbeat_peers();
@@ -7344,6 +7383,15 @@ void OSD::_committed_osd_maps(epoch_t first, epoch_t last, MOSDMap *m)
     // start blacklisting messages sent to peers that go down.
     service.pre_publish_map(newmap);
 
+    // check for deleted pools
+    for (auto& i : osdmap->get_pools()) {
+      if (!newmap->have_pg_pool(i.first)) {
+	dout(10) << __func__ << " noting final map for deleted pool " << i.first
+		 << dendl;
+	service.store_deleted_pool_map(i.first, osdmap);
+      }
+    }
+
     // kill connections to newly down osds
     bool waited_for_reservations = false;
     set<int> old;
@@ -7554,6 +7602,7 @@ void OSD::_committed_osd_maps(epoch_t first, epoch_t last, MOSDMap *m)
   } else {
     activate_map();
   }
+  service.prune_deleted_pool_maps();
 
   if (do_shutdown) {
     if (network_error) {
