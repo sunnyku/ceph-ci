@@ -447,7 +447,6 @@ $extra_conf
 
 [mds]
 $DAEMONOPTS
-$CMDSDEBUG
         mds data = $CEPH_DEV_DIR/mds.\$id
         mds root ino uid = `id -u`
         mds root ino gid = `id -g`
@@ -456,7 +455,6 @@ $extra_conf
         mgr data = $CEPH_DEV_DIR/mgr.\$id
         mgr module path = $MGR_PYTHON_PATH
 $DAEMONOPTS
-$CMGRDEBUG
 $extra_conf
 [osd]
 $DAEMONOPTS
@@ -483,7 +481,6 @@ $DAEMONOPTS
 	bluestore block wal path = $CEPH_DEV_DIR/osd\$id/block.wal.file
         bluestore block wal size = 1048576000
         bluestore block wal create = true
-$COSDDEBUG
         osd objectstore = $objectstore
 $COSDSHORT
 $extra_conf
@@ -726,12 +723,6 @@ if [ "$debug" -eq 0 ]; then
     CMONDEBUG='
         debug mon = 10
         debug ms = 1'
-    COSDDEBUG='
-        debug ms = 1'
-    CMDSDEBUG='
-        debug ms = 1'
-    CMGRDEBUG='
-        debug ms = 1'
 else
     echo "** going verbose **"
     CMONDEBUG='
@@ -740,34 +731,6 @@ else
         debug auth = 20
 	debug mgrc = 20
         debug ms = 1'
-    COSDDEBUG='
-        debug ms = 1
-        debug osd = 25
-        debug objecter = 20
-        debug monc = 20
-        debug mgrc = 20
-        debug journal = 20
-        debug filestore = 20
-        debug bluestore = 30
-        debug bluefs = 20
-        debug rocksdb = 10
-        debug bdev = 20
-        debug reserver = 10
-        debug objclass = 20'
-    CMDSDEBUG='
-        debug ms = 1
-        debug mds = 20
-        debug auth = 20
-        debug monc = 20
-        debug mgrc = 20
-        mds debug scatterstat = true
-        mds verify scatter = true
-        mds log max segments = 2'
-    CMGRDEBUG='
-        debug ms = 1
-        debug monc = 20
-	debug mon = 20
-        debug mgr = 20'
 fi
 
 if [ -n "$MON_ADDR" ]; then
@@ -838,6 +801,7 @@ fi
 if [ $CEPH_NUM_MON -gt 0 ]; then
     start_mon
 
+    echo Populating config ...
     $CEPH_BIN/ceph config set global osd_pool_default_size $OSD_POOL_DEFAULT_SIZE
     $CEPH_BIN/ceph config set global osd_crush_chooseleaf_type 0
     $CEPH_BIN/ceph config set global osd_pool_default_min_size 1
@@ -857,6 +821,34 @@ if [ $CEPH_NUM_MON -gt 0 ]; then
     $CEPH_BIN/ceph config set mds mds_debug_frag true
     $CEPH_BIN/ceph config set mds mds_debug_auth_pins true
     $CEPH_BIN/ceph config set mds mds_debug_subtrees true
+
+    if [ "$debug" -ne 0 ]; then
+	$CEPH_BIN/ceph config set mgr debug_ms 1
+	$CEPH_BIN/ceph config set mgr debug_mgr 20
+	$CEPH_BIN/ceph config set mgr debug_monc 20
+	$CEPH_BIN/ceph config set mgr debug_mon 20
+
+	$CEPH_BIN/ceph config set osd debug_ms 1
+	$CEPH_BIN/ceph config set osd debug_osd 25
+	$CEPH_BIN/ceph config set osd debug_objecter 20
+	$CEPH_BIN/ceph config set osd debug_monc 20
+	$CEPH_BIN/ceph config set osd debug_mgrc 20
+	$CEPH_BIN/ceph config set osd debug_journal 20
+	$CEPH_BIN/ceph config set osd debug_filestore 20
+	$CEPH_BIN/ceph config set osd debug_bluestore 30
+	$CEPH_BIN/ceph config set osd debug_bluefs 20
+	$CEPH_BIN/ceph config set osd debug_rocksdb 20
+	$CEPH_BIN/ceph config set osd debug_bdev 20
+	$CEPH_BIN/ceph config set osd debug_reserver 10
+	$CEPH_BIN/ceph config set osd debug_objclass 20
+
+	$CEPH_BIN/ceph config set mds debug_ms 1
+	$CEPH_BIN/ceph config set mds debug_mds 20
+	$CEPH_BIN/ceph config set mds debug_monc 20
+	$CEPH_BIN/ceph config set mds debug_mgrc 20
+	$CEPH_BIN/ceph config set mds mds_debug_scatterstat true
+	$CEPH_BIN/ceph config set mds mds_verify_scatter true
+    fi
 fi
 
 if [ $CEPH_NUM_MGR -gt 0 ]; then
