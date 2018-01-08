@@ -888,7 +888,8 @@ private:
   utime_t defer_recovery_until;
   uint64_t recovery_ops_active;
   uint64_t recovery_ops_reserved;
-  bool recovery_paused;
+  bool recovery_paused_by_admin = false;
+  bool recovery_paused_by_load_balancer = false;
 #ifdef DEBUG_RECOVERY_OIDS
   map<spg_t, set<hobject_t> > recovery_oids;
 #endif
@@ -921,18 +922,33 @@ public:
     defer_recovery_until = ceph_clock_now();
     defer_recovery_until += defer_for;
   }
-  void pause_recovery() {
+  void pause_recovery(bool from_admin = true) {
     Mutex::Locker l(recovery_lock);
-    recovery_paused = true;
+    if (from_admin)
+      recovery_paused_by_admin = true;
+    else
+      recovery_paused_by_load_balancer = true;
   }
-  bool recovery_is_paused() {
-    Mutex::Locker l(recovery_lock);
-    return recovery_paused;
+  bool recovery_is_paused(bool lock = true) {
+    if (lock) {
+      Mutex::Locker l(recovery_lock);
+      return recovery_paused_by_admin || recovery_paused_by_load_balancer;
+    }
+    return recovery_paused_by_admin || recovery_paused_by_load_balancer;
   }
-  void unpause_recovery() {
+  void unpause_recovery(bool from_admin = true) {
     Mutex::Locker l(recovery_lock);
-    recovery_paused = false;
-    _maybe_queue_recovery();
+    if (!recovery_paused_by_admin && !recovery_paused_by_load_balancer) {
+      // so this method is idempotent and we don't have to worry about
+      // calling _maybe_queue_recovery below multiple times...
+      return;
+    }
+    if (from_admin)
+      recovery_paused_by_admin = false;
+    else
+      recovery_paused_by_load_balancer = false;
+    if (!recovery_paused_by_admin && !recovery_paused_by_load_balancer)
+      _maybe_queue_recovery();
   }
   void kick_recovery_queue() {
     Mutex::Locker l(recovery_lock);
@@ -1619,6 +1635,7 @@ private:
       double sample_interval = 1;
       uint64_t last_sampled_op = 0;
       uint64_t last_sampled_rate = 0;
+      bool idle = true;
       utime_t idle_from;
       int idle_interval = 0; // minimal interval we transit to idle
 
@@ -1635,13 +1652,6 @@ private:
       }
 
       void sample(uint64_t op, utime_t now) {
-        if (op == last_sampled_op) {
-          // see if we have stayed idle long enough to set idle status
-          if (now - idle_from >= idle_interval) {
-            last_sampled_rate = 0;
-          }
-          return;
-        }
         if (op < last_sampled_op) {
           // probably because admin manually cleared perf-counters out,
           // reset sample-counter too (but leave last_sampled_rate untouched)
@@ -1649,18 +1659,29 @@ private:
           last_sampled_op = op;
           return;
         }
-        last_sampled_rate = (op - last_sampled_op) / sample_interval;
-        if (last_sampled_rate == 0) {
-          last_sampled_rate = 1;
+
+        if (op == last_sampled_op) {
+          last_sampled_rate = 0;
+        } else {
+          last_sampled_rate = (op - last_sampled_op) / sample_interval;
+          last_sampled_rate = std::max(1UL, last_sampled_rate);
         }
         last_sampled_op = op;
-        // reset idle timer,
-        // so we can reevaluate idle state on reentry
-        idle_from = now;
+        if (last_sampled_rate > white_noise_filter) {
+          idle = false; // if any
+          // reset idle timer too,
+          // so we can reevaluate idle status on reentry
+          idle_from = now;
+        } else {
+          // check if we have stayed idle long enough to set idle status
+          if (now - idle_from >= idle_interval) {
+            idle = true;
+          }
+        }
       }
 
       bool is_idle() const {
-        return last_sampled_rate <= white_noise_filter;
+        return idle;
       }
 
       void dump(Formatter *f) {
@@ -1670,6 +1691,7 @@ private:
         f->dump_unsigned("last_sampled_op", last_sampled_op);
         f->dump_unsigned("last_sampled_rate", last_sampled_rate);
         f->dump_stream("idle_from") << idle_from;
+        f->dump_stream("idle") << idle;
       }
     };
 
@@ -1705,16 +1727,34 @@ private:
     }
 
     void maybe_update_spec() {
-      if (mode != "default") {
-        return;
-      }
-      spec_toapply = spec_default;
-      // need further adjustment?
-      if (cis.is_idle() && !ris.is_idle()) {
-        // no client ops and recovery is in-progress,
-        // reset to unlimited (so we can recover at full speed)
+      if (mode == "default") {
+        // basic-floor
+        spec_toapply = spec_default;
+        // need further adjustment?
+        if (cis.is_idle() && !ris.is_idle()) {
+          // no client ops and recovery is in-progress,
+          // promote to unlimited (so we can recover at full speed)
+          spec_toapply = spec_unlimited;
+        }
+      } else if (mode == "recovery_op_prioritized") {
+        spec_toapply = spec_unlimited;
+      } else {
+        assert(mode == "client_op_prioritized");
+        if (!cis.is_idle()) {
+          osd->service.pause_recovery(false);
+          return;
+        }
+
+        // idle clients
+        // note that below here there is no way we can reliably tell
+        // whether a recovery is in-progess or not, so simply promote
+        // to unlimited and we'll re-pause if any client activities is
+        // detected on next sample period
         spec_toapply = spec_unlimited;
       }
+
+      osd->service.unpause_recovery(false); // if ever
+
       // try apply new spec
       if (spec_applied != spec_toapply) {
         lgeneric_subdout(osd->cct, osd, 0) << "load balancer - "

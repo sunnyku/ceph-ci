@@ -263,7 +263,6 @@ OSDService::OSDService(OSD *osd) :
   recovery_lock("OSDService::recovery_lock"),
   recovery_ops_active(0),
   recovery_ops_reserved(0),
-  recovery_paused(false),
   map_cache_lock("OSDService::map_cache_lock"),
   map_cache(cct, cct->_conf->osd_map_cache_size),
   map_bl_cache(cct->_conf->osd_map_cache_size),
@@ -2961,7 +2960,13 @@ void OSD::final_init()
     "set_recovery_delay " \
     "name=utime,type=CephInt,req=false",
     test_ops_hook,
-     "Delay osd recovery by specified seconds");
+    "Delay osd recovery by specified seconds");
+  assert(r == 0);
+  r = admin_socket->register_command(
+    "unpause_recovery",
+    "unpause_recovery",
+    test_ops_hook,
+    "Aggressively unpause recovery");
   assert(r == 0);
   r = admin_socket->register_command(
    "trigger_scrub",
@@ -3387,6 +3392,7 @@ int OSD::shutdown()
   cct->get_admin_socket()->unregister_command("injectdataerr");
   cct->get_admin_socket()->unregister_command("injectmdataerr");
   cct->get_admin_socket()->unregister_command("set_recovery_delay");
+  cct->get_admin_socket()->unregister_command("unpause_recovery");
   cct->get_admin_socket()->unregister_command("trigger_scrub");
   cct->get_admin_socket()->unregister_command("injectfull");
   delete test_ops_hook;
@@ -5594,6 +5600,16 @@ void TestOpsSocketHook::test_ops(OSDService *service, ObjectStore *store,
     service->cct->_conf->apply_changes(NULL);
     ss << "set_recovery_delay: set osd_recovery_delay_start "
        << "to " << service->cct->_conf->osd_recovery_delay_start;
+    return;
+  }
+  if (command == "unpause_recovery") {
+    if (!service->recovery_is_paused()) {
+      ss << "recovery already unpaused";
+      return;
+    }
+    service->unpause_recovery();      // admin
+    service->unpause_recovery(false); // load balancer (if any)
+    ss << "done unpausing recovery";
     return;
   }
   if (command ==  "trigger_scrub") {
@@ -8515,15 +8531,11 @@ void OSD::activate_map()
 
   // norecover?
   if (osdmap->test_flag(CEPH_OSDMAP_NORECOVER)) {
-    if (!service.recovery_is_paused()) {
-      dout(1) << "pausing recovery (NORECOVER flag set)" << dendl;
-      service.pause_recovery();
-    }
+    dout(1) << "pausing recovery (NORECOVER flag set)" << dendl;
+    service.pause_recovery();
   } else {
-    if (service.recovery_is_paused()) {
-      dout(1) << "unpausing recovery (NORECOVER flag unset)" << dendl;
-      service.unpause_recovery();
-    }
+    dout(1) << "unpausing recovery (NORECOVER flag unset)" << dendl;
+    service.unpause_recovery();
   }
 
   service.activate_map();
@@ -9513,7 +9525,7 @@ bool OSDService::_recover_now(uint64_t *available_pushes)
     return false;
   }
 
-  if (recovery_paused) {
+  if (recovery_is_paused(false)) { // drop recovery_lock
     dout(15) << __func__ << " paused" << dendl;
     return false;
   }
