@@ -517,7 +517,7 @@ void md_config_t::_show_config(std::ostream *out, Formatter *f)
   }
 }
 
-int md_config_t::parse_argv(std::vector<const char*>& args)
+int md_config_t::parse_argv(std::vector<const char*>& args, int level)
 {
   Mutex::Locker l(lock);
   if (safe_to_start_threads) {
@@ -577,7 +577,7 @@ int md_config_t::parse_argv(std::vector<const char*>& args)
       set_val_or_die("client_mountpoint", val.c_str());
     }
     else {
-      int r = parse_option(args, i, NULL, CONF_CMDLINE);
+      int r = parse_option(args, i, NULL, level);
       if (r < 0) {
         return r;
       }
