@@ -1767,6 +1767,7 @@ private:
     }
 
     void sample() {
+      std::unique_lock<std::mutex> l(lock);
       if (!enabled) {
         lgeneric_subdout(osd->cct, osd, 5) << "load balancer - disabled"
                                            << dendl;
@@ -1777,7 +1778,6 @@ private:
       uint64_t rop = osd->logger->get(l_osd_push_rx);
 
       // update idle status
-      std::unique_lock<std::mutex> l(lock);
       utime_t now = ceph_clock_now();
       cis.sample(cop, now);
       ris.sample(rop, now);
