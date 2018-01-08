@@ -726,8 +726,13 @@ public:
    * @return number of items, or error
    */
   int get_children(int id, list<int> *children);
-  void get_children_of_type(int id, int type, set<int> *children);
-  void get_all_children_of_type(int type, set<int> *children);
+  void get_children_of_type(int id,
+                            int type,
+                            set<int> *children,
+                            bool exclude_shadow = true);
+  void get_all_children_of_type(int type,
+                                set<int> *children,
+                                bool exclude_shadow = true);
 
   /**
     * return the highest failure domain level of cluster
