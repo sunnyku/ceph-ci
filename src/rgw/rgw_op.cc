@@ -600,9 +600,23 @@ rgw::IAM::Environment rgw_build_iam_environment(RGWRados* store,
     e.emplace("aws:SecureTransport", "true");
   }
 
-  i = m.find("REMOTE_ADDR");
+  const auto remote_addr_param = s->cct->_conf->rgw_remote_addr_param;
+  if (remote_addr_param.length()) {
+    i = m.find(remote_addr_param);
+  } else {
+    i = m.find("REMOTE_ADDR");
+  }
   if (i != m.end()) {
-    e.emplace("aws:SourceIp", i->second);
+    const string* ip = &(i->second);
+    string temp;
+    if (remote_addr_param == "HTTP_X_FORWARDED_FOR") {
+      const auto comma = ip->find(',');
+      if (comma != string::npos) {
+	temp.assign(*ip, 0, comma);
+	ip = &temp;
+      }
+    }
+    e.emplace("aws:SourceIp", *ip);
   }
 
   i = m.find("HTTP_USER_AGENT"); {
@@ -1858,7 +1872,7 @@ void RGWListBuckets::execute()
     RGWUserBuckets buckets;
     uint64_t read_count;
     if (limit >= 0) {
-      read_count = min(limit - total_count, (uint64_t)max_buckets);
+      read_count = min(limit - total_count, max_buckets);
     } else {
       read_count = max_buckets;
     }
@@ -3296,7 +3310,6 @@ void RGWPutObj::execute()
   MD5 hash;
   bufferlist bl, aclbl, bs;
   int len;
-  map<string, string>::iterator iter;
   bool multipart;
   
   off_t fst;
@@ -3642,23 +3655,7 @@ int RGWPostObj::verify_permission()
 {
   return 0;
 }
-/*
-RGWPutObjProcessor *RGWPostObj::select_processor(RGWObjectCtx& obj_ctx)
-{
-  RGWPutObjProcessor *processor;
 
-  uint64_t part_size = s->cct->_conf->rgw_obj_stripe_size;
-
-  processor = new RGWPutObjProcessor_Atomic(obj_ctx, s->bucket_info, s->bucket, s->object.name, part_size, s->req_id, s->bucket_info.versioning_enabled());
-
-  return processor;
-}
-
-void RGWPostObj::dispose_processor(RGWPutObjDataProcessor *processor)
-{
-  delete processor;
-}
-*/
 void RGWPostObj::pre_exec()
 {
   rgw_bucket_object_pre_exec(s);
@@ -4936,16 +4933,7 @@ void RGWPutLC::execute()
 
 void RGWDeleteLC::execute()
 {
-  bufferlist bl;
-  map<string, bufferlist> attrs;
-  map<string, bufferlist>::iterator iter;
-  rgw_raw_obj obj;
-  store->get_bucket_instance_obj(s->bucket, obj);
-  store->set_prefetch_data(s->obj_ctx, obj);
-  op_ret = get_system_obj_attrs(store, s, obj, attrs, NULL, &s->bucket_info.objv_tracker);
-  if (op_ret < 0)
-    return;
-
+  map<string, bufferlist> attrs = s->bucket_attrs;
   attrs.erase(RGW_ATTR_LC);
   op_ret = rgw_bucket_set_attrs(store, s->bucket_info, attrs,
 				&s->bucket_info.objv_tracker);
@@ -5023,9 +5011,11 @@ void RGWPutCORS::execute()
     }
   }
 
-  map<string, bufferlist> attrs = s->bucket_attrs;
-  attrs[RGW_ATTR_CORS] = cors_bl;
-  op_ret = rgw_bucket_set_attrs(store, s->bucket_info, attrs, &s->bucket_info.objv_tracker);
+  op_ret = retry_raced_bucket_write(store, s, [this] {
+      map<string, bufferlist> attrs = s->bucket_attrs;
+      attrs[RGW_ATTR_CORS] = cors_bl;
+      return rgw_bucket_set_attrs(store, s->bucket_info, attrs, &s->bucket_info.objv_tracker);
+    });
 }
 
 int RGWDeleteCORS::verify_permission()
@@ -5036,33 +5026,27 @@ int RGWDeleteCORS::verify_permission()
 
 void RGWDeleteCORS::execute()
 {
-  op_ret = read_bucket_cors();
-  if (op_ret < 0)
-    return;
+  op_ret = retry_raced_bucket_write(store, s, [this] {
+      op_ret = read_bucket_cors();
+      if (op_ret < 0)
+	return op_ret;
 
-  rgw_raw_obj obj;
-  if (!cors_exist) {
-    dout(2) << "No CORS configuration set yet for this bucket" << dendl;
-    op_ret = -ENOENT;
-    return;
-  }
-  store->get_bucket_instance_obj(s->bucket, obj);
-  store->set_prefetch_data(s->obj_ctx, obj);
-  map<string, bufferlist> attrs;
-  map<string, bufferlist>::iterator iter;
+      if (!cors_exist) {
+	dout(2) << "No CORS configuration set yet for this bucket" << dendl;
+	op_ret = -ENOENT;
+	return op_ret;
+      }
 
-  op_ret = get_system_obj_attrs(store, s, obj, attrs, NULL, &s->bucket_info.objv_tracker);
-  if (op_ret < 0)
-    return;
-
-  attrs.erase(RGW_ATTR_CORS);
-  op_ret = rgw_bucket_set_attrs(store, s->bucket_info, attrs,
+      map<string, bufferlist> attrs = s->bucket_attrs;
+      attrs.erase(RGW_ATTR_CORS);
+      op_ret = rgw_bucket_set_attrs(store, s->bucket_info, attrs,
 				&s->bucket_info.objv_tracker);
-  if (op_ret < 0) {
-    ldout(s->cct, 0) << "RGWLC::RGWDeleteCORS() failed to set attrs on bucket=" << s->bucket.name
-            << " returned err=" << op_ret << dendl;
-    return;
-  }
+      if (op_ret < 0) {
+	ldout(s->cct, 0) << "RGWLC::RGWDeleteCORS() failed to set attrs on bucket=" << s->bucket.name
+			 << " returned err=" << op_ret << dendl;
+      }
+      return op_ret;
+    });
 }
 
 void RGWOptionsCORS::get_response_params(string& hdrs, string& exp_hdrs, unsigned *max_age) {
@@ -6789,14 +6773,13 @@ int RGWHandler::init(RGWRados *_store,
 int RGWHandler::do_init_permissions()
 {
   int ret = rgw_build_bucket_policies(store, s);
-  s->env = rgw_build_iam_environment(store, s);
-
   if (ret < 0) {
-    ldout(s->cct, 10) << "read_permissions on " << s->bucket << " ret=" << ret << dendl;
-    if (ret == -ENODATA)
-      ret = -EACCES;
+    ldout(s->cct, 10) << "init_permissions on " << s->bucket
+        << " failed, ret=" << ret << dendl;
+    return ret==-ENODATA ? -EACCES : ret;
   }
 
+  s->env = rgw_build_iam_environment(store, s);
   return ret;
 }
 

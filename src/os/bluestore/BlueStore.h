@@ -737,6 +737,7 @@ public:
     Onode *onode;
     extent_map_t extent_map;        ///< map of Extents to Blobs
     blob_map_t spanning_blob_map;   ///< blobs that span shards
+    typedef boost::intrusive_ptr<Onode> OnodeRef;
 
     struct Shard {
       bluestore_onode_t::shard_info *shard_info = nullptr;
@@ -750,6 +751,9 @@ public:
 
     uint32_t needs_reshard_begin = 0;
     uint32_t needs_reshard_end = 0;
+
+    void dup(BlueStore* b, TransContext*, CollectionRef&, OnodeRef&, OnodeRef&,
+      uint64_t&, uint64_t&, uint64_t&);
 
     bool needs_reshard() const {
       return needs_reshard_end > needs_reshard_begin;
@@ -2068,6 +2072,7 @@ private:
     const PExtentVector& extents,
     bool compressed,
     mempool_dynamic_bitset &used_blocks,
+    uint64_t granularity,
     store_statfs_t& expected_statfs);
 
   void _buffer_cache_write(

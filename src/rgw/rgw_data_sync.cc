@@ -1037,10 +1037,13 @@ public:
       }
 
       if (sync_status < 0) {
-        yield call(sync_env->error_logger->log_error_cr(sync_env->conn->get_remote_id(), "data", raw_key,
-                                                        -sync_status, string("failed to sync bucket instance: ") + cpp_strerror(-sync_status)));
-        if (retcode < 0) {
-          tn->log(0, SSTR("ERROR: failed to log sync failure: retcode=" << retcode));
+        // write actual sync failures for 'radosgw-admin sync error list'
+        if (sync_status != -EBUSY && sync_status != -EAGAIN) {
+          yield call(sync_env->error_logger->log_error_cr(sync_env->conn->get_remote_id(), "data", raw_key,
+                                                          -sync_status, string("failed to sync bucket instance: ") + cpp_strerror(-sync_status)));
+          if (retcode < 0) {
+            tn->log(0, SSTR("ERROR: failed to log sync failure: retcode=" << retcode));
+          }
         }
         if (error_repo && !error_repo->append(raw_key)) {
           tn->log(0, SSTR("ERROR: failed to log sync failure in error repo: retcode=" << retcode));
@@ -1298,7 +1301,6 @@ public:
       }
       if (retcode < 0) {
         tn->log(0, SSTR("ERROR: failed to set sync marker: retcode=" << retcode));
-        lease_cr->go_down();
         return set_cr_error(retcode);
       }
     }

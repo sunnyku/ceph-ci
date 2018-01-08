@@ -2031,7 +2031,8 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_lim")
     .add_see_also("osd_op_queue_mclock_scrub_res")
     .add_see_also("osd_op_queue_mclock_scrub_wgt")
-    .add_see_also("osd_op_queue_mclock_scrub_lim"),
+    .add_see_also("osd_op_queue_mclock_scrub_lim")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
 
     Option("osd_op_queue_mclock_client_op_wgt", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(500.0)
@@ -2051,7 +2052,8 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_lim")
     .add_see_also("osd_op_queue_mclock_scrub_res")
     .add_see_also("osd_op_queue_mclock_scrub_wgt")
-    .add_see_also("osd_op_queue_mclock_scrub_lim"),
+    .add_see_also("osd_op_queue_mclock_scrub_lim")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
 
     Option("osd_op_queue_mclock_client_op_lim", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(0.0)
@@ -2071,7 +2073,8 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_lim")
     .add_see_also("osd_op_queue_mclock_scrub_res")
     .add_see_also("osd_op_queue_mclock_scrub_wgt")
-    .add_see_also("osd_op_queue_mclock_scrub_lim"),
+    .add_see_also("osd_op_queue_mclock_scrub_lim")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
 
     Option("osd_op_queue_mclock_osd_rep_op_res", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(1000.0)
@@ -2091,7 +2094,8 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_lim")
     .add_see_also("osd_op_queue_mclock_scrub_res")
     .add_see_also("osd_op_queue_mclock_scrub_wgt")
-    .add_see_also("osd_op_queue_mclock_scrub_lim"),
+    .add_see_also("osd_op_queue_mclock_scrub_lim")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
 
     Option("osd_op_queue_mclock_osd_rep_op_wgt", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(500.0)
@@ -2111,7 +2115,8 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_lim")
     .add_see_also("osd_op_queue_mclock_scrub_res")
     .add_see_also("osd_op_queue_mclock_scrub_wgt")
-    .add_see_also("osd_op_queue_mclock_scrub_lim"),
+    .add_see_also("osd_op_queue_mclock_scrub_lim")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
 
     Option("osd_op_queue_mclock_osd_rep_op_lim", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(0.0)
@@ -2131,7 +2136,8 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_lim")
     .add_see_also("osd_op_queue_mclock_scrub_res")
     .add_see_also("osd_op_queue_mclock_scrub_wgt")
-    .add_see_also("osd_op_queue_mclock_scrub_lim"),
+    .add_see_also("osd_op_queue_mclock_scrub_lim")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
 
     Option("osd_op_queue_mclock_snap_res", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(0.0)
@@ -2151,7 +2157,8 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_lim")
     .add_see_also("osd_op_queue_mclock_scrub_res")
     .add_see_also("osd_op_queue_mclock_scrub_wgt")
-    .add_see_also("osd_op_queue_mclock_scrub_lim"),
+    .add_see_also("osd_op_queue_mclock_scrub_lim")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
 
     Option("osd_op_queue_mclock_snap_wgt", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(1.0)
@@ -2171,7 +2178,8 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_lim")
     .add_see_also("osd_op_queue_mclock_scrub_res")
     .add_see_also("osd_op_queue_mclock_scrub_wgt")
-    .add_see_also("osd_op_queue_mclock_scrub_lim"),
+    .add_see_also("osd_op_queue_mclock_scrub_lim")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
 
     Option("osd_op_queue_mclock_snap_lim", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(0.001)
@@ -2191,7 +2199,8 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_lim")
     .add_see_also("osd_op_queue_mclock_scrub_res")
     .add_see_also("osd_op_queue_mclock_scrub_wgt")
-    .add_see_also("osd_op_queue_mclock_scrub_lim"),
+    .add_see_also("osd_op_queue_mclock_scrub_lim")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
 
     Option("osd_op_queue_mclock_recov_res", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(0.0)
@@ -2211,7 +2220,8 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_lim")
     .add_see_also("osd_op_queue_mclock_scrub_res")
     .add_see_also("osd_op_queue_mclock_scrub_wgt")
-    .add_see_also("osd_op_queue_mclock_scrub_lim"),
+    .add_see_also("osd_op_queue_mclock_scrub_lim")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
 
     Option("osd_op_queue_mclock_recov_wgt", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(1.0)
@@ -2231,7 +2241,8 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_lim")
     .add_see_also("osd_op_queue_mclock_scrub_res")
     .add_see_also("osd_op_queue_mclock_scrub_wgt")
-    .add_see_also("osd_op_queue_mclock_scrub_lim"),
+    .add_see_also("osd_op_queue_mclock_scrub_lim")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
 
     Option("osd_op_queue_mclock_recov_lim", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(0.001)
@@ -2251,7 +2262,8 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_wgt")
     .add_see_also("osd_op_queue_mclock_scrub_res")
     .add_see_also("osd_op_queue_mclock_scrub_wgt")
-    .add_see_also("osd_op_queue_mclock_scrub_lim"),
+    .add_see_also("osd_op_queue_mclock_scrub_lim")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
 
     Option("osd_op_queue_mclock_scrub_res", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(0.0)
@@ -2271,7 +2283,8 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_wgt")
     .add_see_also("osd_op_queue_mclock_recov_lim")
     .add_see_also("osd_op_queue_mclock_scrub_wgt")
-    .add_see_also("osd_op_queue_mclock_scrub_lim"),
+    .add_see_also("osd_op_queue_mclock_scrub_lim")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
 
     Option("osd_op_queue_mclock_scrub_wgt", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(1.0)
@@ -2291,7 +2304,8 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_wgt")
     .add_see_also("osd_op_queue_mclock_recov_lim")
     .add_see_also("osd_op_queue_mclock_scrub_res")
-    .add_see_also("osd_op_queue_mclock_scrub_lim"),
+    .add_see_also("osd_op_queue_mclock_scrub_lim")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
 
     Option("osd_op_queue_mclock_scrub_lim", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(0.001)
@@ -2311,7 +2325,29 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_op_queue_mclock_recov_wgt")
     .add_see_also("osd_op_queue_mclock_recov_lim")
     .add_see_also("osd_op_queue_mclock_scrub_res")
-    .add_see_also("osd_op_queue_mclock_scrub_wgt"),
+    .add_see_also("osd_op_queue_mclock_scrub_wgt")
+    .add_see_also("osd_op_queue_mclock_anticipation_timeout"),
+
+    Option("osd_op_queue_mclock_anticipation_timeout", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(0.0)
+    .set_description("mclock anticipation timeout in seconds")
+    .set_long_description("the amount of time that mclock waits until the unused resource is forfeited")
+    .add_see_also("osd_op_queue")
+    .add_see_also("osd_op_queue_mclock_client_op_res")
+    .add_see_also("osd_op_queue_mclock_client_op_wgt")
+    .add_see_also("osd_op_queue_mclock_client_op_lim")
+    .add_see_also("osd_op_queue_mclock_osd_rep_op_res")
+    .add_see_also("osd_op_queue_mclock_osd_rep_op_wgt")
+    .add_see_also("osd_op_queue_mclock_osd_rep_op_lim")
+    .add_see_also("osd_op_queue_mclock_snap_res")
+    .add_see_also("osd_op_queue_mclock_snap_wgt")
+    .add_see_also("osd_op_queue_mclock_snap_lim")
+    .add_see_also("osd_op_queue_mclock_recov_res")
+    .add_see_also("osd_op_queue_mclock_recov_wgt")
+    .add_see_also("osd_op_queue_mclock_recov_lim")
+    .add_see_also("osd_op_queue_mclock_scrub_res")
+    .add_see_also("osd_op_queue_mclock_scrub_wgt")
+    .add_see_also("osd_op_queue_mclock_scrub_lim"),
 
     Option("osd_op_queue_mclock_peering_event_res", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(0.0)
@@ -5617,14 +5653,14 @@ std::vector<Option> get_rgw_options() {
     .set_default(10_min)
     .set_description(""),
 
-    Option("rgw_bucket_info_cache_expiry_interval", Option::TYPE_UINT,
+    Option("rgw_cache_expiry_interval", Option::TYPE_UINT,
 	   Option::LEVEL_ADVANCED)
     .set_default(15_min)
-    .set_description("Number of seconds before entries in the bucket info "
-		     "cache are assumed stale and re-fetched. Zero is never.")
+    .set_description("Number of seconds before entries in the cache are "
+		     "assumed stale and re-fetched. Zero is never.")
     .add_tag("performance")
     .add_service("rgw")
-    .set_long_description("The Rados Gateway stores metadata about buckets in "
+    .set_long_description("The Rados Gateway stores metadata and objects in "
 			  "an internal cache. This should be kept consistent "
 			  "by the OSD's relaying notify events between "
 			  "multiple watching RGW processes. In the event "
@@ -5872,6 +5908,10 @@ static std::vector<Option> get_rbd_options() {
     Option("rbd_mirroring_resync_after_disconnect", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)
     .set_description("automatically start image resync after mirroring is disconnected due to being laggy"),
+
+    Option("rbd_mirroring_delete_delay", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(0)
+    .set_description("time-delay in seconds for rbd-mirror delete propagation"),
 
     Option("rbd_mirroring_replay_delay", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(0)
