@@ -8543,7 +8543,7 @@ void OSD::activate_map()
     dout(1) << "pausing recovery (NORECOVER flag set)" << dendl;
     service.pause_recovery();
   } else {
-    dout(1) << "unpausing recovery (NORECOVER flag unset)" << dendl;
+    dout(10) << "maybe unpause recovery (NORECOVER flag unset)" << dendl;
     service.unpause_recovery();
   }
 
