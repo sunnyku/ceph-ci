@@ -335,6 +335,32 @@ PyModule::~PyModule()
     Py_XDECREF(pClass);
     Py_XDECREF(pStandbyClass);
   }
+
+  auto cleanup_class = [](PyTypeObject *type)
+  {
+    // This is *only* for use in static type structures
+    assert((type->tp_flags & Py_TPFLAGS_HEAPTYPE) == 0);
+
+    Py_XDECREF(type->tp_base);
+    Py_XDECREF(type->tp_dict);
+    Py_XDECREF(type->tp_bases);
+    Py_XDECREF(type->tp_mro);
+    Py_XDECREF(type->tp_cache);
+    Py_XDECREF(type->tp_subclasses);
+  };
+
+  // The eventual Py_Finalize (see PyModuleRegistry::shutdown) will destroy
+  // most python objects, but as these are static C structures we must
+  // do it by hand to avoid leaking the members that were initialized
+  // in PyType_Ready calls to these structures.
+  //
+  // There is a type_dealloc in CPython (internal), but it only works on
+  // heap-allocated types.
+  cleanup_class(&BaseMgrModuleType);
+  cleanup_class(&BaseMgrStandbyModuleType);
+  cleanup_class(&BasePyOSDMapType);
+  cleanup_class(&BasePyOSDMapIncrementalType);
+  cleanup_class(&BasePyCRUSHType);
 }
 
 void PyModuleRegistry::standby_start(MonClient *monc)
