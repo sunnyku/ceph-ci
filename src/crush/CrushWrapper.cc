@@ -770,7 +770,10 @@ int CrushWrapper::get_children(int id, list<int> *children)
   return b->size;
 }
 
-void CrushWrapper::get_children_of_type(int id, int type, set<int> *children)
+void CrushWrapper::get_children_of_type(int id,
+                                        int type,
+                                        set<int> *children,
+                                        bool exclude_shadow)
 {
   if (id >= 0) {
     if (type == 0) { // want leaf?
@@ -786,7 +789,9 @@ void CrushWrapper::get_children_of_type(int id, int type, set<int> *children)
     // give up
     return;
   } else if (b->type == type) {
-    children->insert(b->id);
+    if (!is_shadow_item(b->id) || !exclude_shadow) {
+      children->insert(b->id);
+    }
     return;
   }
   for (unsigned n = 0; n < b->size; n++) {
@@ -795,13 +800,15 @@ void CrushWrapper::get_children_of_type(int id, int type, set<int> *children)
   return;
 }
 
-void CrushWrapper::get_all_children_of_type(int type, set<int> *children)
+void CrushWrapper::get_all_children_of_type(int type,
+                                            set<int> *children,
+                                            bool exclude_shadow)
 {
   for (int i = 0; i < crush->max_buckets; ++i) {
     crush_bucket *b = crush->buckets[i];
     if (!b)
       continue;
-    get_children_of_type(b->id, type, children);
+    get_children_of_type(b->id, type, children, exclude_shadow);
   }
 }
 

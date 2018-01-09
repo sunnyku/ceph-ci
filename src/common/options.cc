@@ -2348,6 +2348,10 @@ std::vector<Option> get_global_options() {
     .set_default(20)
     .set_description(""),
 
+    Option("osd_heartbeat_force_resample_interval", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(20)
+    .set_description(""),
+
     Option("osd_heartbeat_min_peers", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(5)
     .set_description(""),

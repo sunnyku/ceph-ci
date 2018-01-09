@@ -967,7 +967,7 @@ public:
     if (hosts.size() <= 1)
       return;
     // do fast out if we don't have enough hosts
-    bool direct_out = limit > (int)(hosts.size() - 1);
+    bool direct_out = limit >= (int)(hosts.size() - 1);
     int failure_domain = crush->get_top_failure_domain();
     map<string, set<int>> candidates_by_failure_domain;
     int candidates_num = 0;
@@ -1020,6 +1020,20 @@ public:
       }
       return;
     }
+    if ((int)candidates_by_failure_domain.size() > limit) {
+      // too many, erase some
+      auto temp = candidates_by_failure_domain;
+      candidates_by_failure_domain.clear();
+      int b = n % temp.size();
+      int e = (n + temp.size() - limit) % temp.size();
+      auto it = temp.begin();
+      for (int i = 0; i < (int)temp.size(); i++, it++) {
+        if ((e > b && (i < b || i >= e)) ||
+            (e < b && (i >= e && i < b)))
+          candidates_by_failure_domain[it->first] = it->second;
+      }
+      assert((int)candidates_by_failure_domain.size() == limit);
+    }
     while (limit > 0) {
       // pick up osds from different failure domains in turn
       // in a breadth-first fashion, break out loop if we have
@@ -1032,6 +1046,8 @@ public:
         out->insert(*it);
         o.erase(it);
         limit--;
+        if (limit <= 0)
+          return;
       }
     }
   }
