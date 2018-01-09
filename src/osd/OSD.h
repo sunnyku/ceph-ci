@@ -1537,6 +1537,7 @@ private:
   Messenger *hb_front_server_messenger;
   Messenger *hb_back_server_messenger;
   utime_t last_heartbeat_resample;   ///< last time we chose random peers in waiting-for-healthy state
+  utime_t last_heartbeat_force_resample;
   double daily_loadavg;
   
   void _add_heartbeat_peer(int p);

@@ -4794,8 +4794,8 @@ void OSD::maybe_update_heartbeat_peers()
 {
   assert(osd_lock.is_locked());
 
+  utime_t now = ceph_clock_now();
   if (is_waiting_for_healthy()) {
-    utime_t now = ceph_clock_now();
     if (last_heartbeat_resample == utime_t()) {
       last_heartbeat_resample = now;
       heartbeat_set_peers_need_update();
@@ -4807,6 +4807,15 @@ void OSD::maybe_update_heartbeat_peers()
 	last_heartbeat_resample = now;
 	reset_heartbeat_peers();   // we want *new* peers!
       }
+    }
+  } else if (is_active() && !heartbeat_peers_need_update()) {
+    utime_t dur = now - last_heartbeat_force_resample;
+    if (dur > cct->_conf->get_val<double>(
+        "osd_heartbeat_force_resample_interval")) {
+      dout(10) << "maybe_update_heartbeat_peers forcing update after "
+               << dur << " seconds" << dendl;
+      heartbeat_set_peers_need_update();
+      last_heartbeat_force_resample = now;
     }
   }
 
