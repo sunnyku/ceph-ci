@@ -4588,6 +4588,17 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
         scrubber.primary_scrubmap = ScrubMap();
         scrubber.received_maps.clear();
 
+	// begin (possible) preemption window
+	if (scrub_preempted) {
+	  scrubber.preempt_left--;
+	  scrubber.preempt_divisor *= 2;
+	  dout(10) << __func__ << " preempted, " << scrubber.preempt_left
+		   << " left" << dendl;
+	  scrubber.state = PG::Scrubber::NEW_CHUNK;
+	}
+	scrub_preempted = false;
+	scrub_can_preempt = scrubber.preempt_left > 0;
+
         {
           /* get the start and end of our scrub chunk
 	   *
@@ -4695,10 +4706,6 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
 		 << dendl;
 
         scrubber.state = PG::Scrubber::WAIT_PUSHES;
-
-	// begin (possible) preemption window
-	scrub_can_preempt = scrubber.preempt_left > 0;
-	scrub_preempted = false;
         break;
 
       case PG::Scrubber::WAIT_PUSHES:
@@ -4771,10 +4778,7 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
 	// end (possible) preemption window
 	scrub_can_preempt = false;
 	if (scrub_preempted) {
-	  scrubber.preempt_left--;
-	  scrubber.preempt_divisor *= 2;
-	  dout(10) << __func__ << " preempted, " << scrubber.preempt_left
-		   << " left, restarting chunk" << dendl;
+	  dout(10) << __func__ << " preempted, restarting chunk" << dendl;
 	  scrubber.state = PG::Scrubber::NEW_CHUNK;
 	} else {
           scrubber.state = PG::Scrubber::COMPARE_MAPS;
@@ -4805,8 +4809,12 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
 	  break;
 	}
 
+	scrubber.preempt_left = cct->_conf->get_val<uint64_t>(
+	  "osd_scrub_max_preemptions");
+	scrubber.preempt_divisor = 1;
+
 	if (!(scrubber.end.is_max())) {
-          scrubber.state = PG::Scrubber::NEW_CHUNK;
+	  scrubber.state = PG::Scrubber::NEW_CHUNK;
 	  requeue_scrub();
           done = true;
         } else {
