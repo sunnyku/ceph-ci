@@ -4933,6 +4933,9 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
       rdata.append(ss.str());
       ss.str("");
     }
+  } else if (prefix == "osd get-require-min-compat-client") {
+    ss << ceph_release_name(osdmap.require_min_compat_client);
+    goto reply;
   } else {
     // try prepare update
     return false;
