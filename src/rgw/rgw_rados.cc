@@ -606,7 +606,7 @@ int RGWSystemMetaObj::set_as_default(bool exclusive)
 
   ::encode(default_info, bl);
 
-  int ret = rgw_put_system_obj(store, pool, oid, bl.c_str(), bl.length(),
+  int ret = rgw_put_system_obj(store, pool, oid, bl,
                                exclusive, NULL, real_time(), NULL);
   if (ret < 0)
     return ret;
@@ -693,7 +693,7 @@ int RGWSystemMetaObj::store_name(bool exclusive)
 
   bufferlist bl;
   ::encode(nameToId, bl);
-  return  rgw_put_system_obj(store, pool, oid, bl.c_str(), bl.length(), exclusive, NULL, real_time(), NULL);
+  return rgw_put_system_obj(store, pool, oid, bl, exclusive, NULL, real_time(), NULL);
 }
 
 int RGWSystemMetaObj::rename(const string& new_name)
@@ -808,7 +808,7 @@ int RGWSystemMetaObj::store_info(bool exclusive)
 
   bufferlist bl;
   ::encode(*this, bl);
-  return  rgw_put_system_obj(store, pool, oid, bl.c_str(), bl.length(), exclusive, NULL, real_time(), NULL);
+  return rgw_put_system_obj(store, pool, oid, bl, exclusive, NULL, real_time(), NULL);
 }
 
 int RGWSystemMetaObj::write(bool exclusive)
@@ -892,7 +892,8 @@ int RGWRealm::create_control(bool exclusive)
 {
   auto pool = rgw_pool{get_pool(cct)};
   auto oid = get_control_oid();
-  return rgw_put_system_obj(store, pool, oid, nullptr, 0, exclusive,
+  bufferlist bl;
+  return rgw_put_system_obj(store, pool, oid, bl, exclusive,
                             nullptr, real_time(), nullptr);
 }
 
@@ -1041,7 +1042,7 @@ int RGWPeriodConfig::write(RGWRados *store, const std::string& realm_id)
   const auto& oid = get_oid(realm_id);
   bufferlist bl;
   ::encode(*this, bl);
-  return rgw_put_system_obj(store, pool, oid, bl.c_str(), bl.length(),
+  return rgw_put_system_obj(store, pool, oid, bl,
                             false, nullptr, real_time(), nullptr);
 }
 
@@ -1223,7 +1224,7 @@ int RGWPeriod::set_latest_epoch(epoch_t epoch, bool exclusive,
 
   ::encode(info, bl);
 
-  return rgw_put_system_obj(store, pool, oid, bl.c_str(), bl.length(),
+  return rgw_put_system_obj(store, pool, oid, bl,
                             exclusive, objv, real_time(), nullptr);
 }
 
@@ -1358,7 +1359,7 @@ int RGWPeriod::store_info(bool exclusive)
   bufferlist bl;
   ::encode(*this, bl);
 
-  return rgw_put_system_obj(store, pool, oid, bl.c_str(), bl.length(),
+  return rgw_put_system_obj(store, pool, oid, bl,
                             exclusive, NULL, real_time(), NULL);
 }
 
@@ -4142,7 +4143,7 @@ int RGWRados::replace_region_with_zonegroup()
   }
 
   /* mark as converted */
-  ret = rgw_put_system_obj(this, pool, oid, bl.c_str(), bl.length(),
+  ret = rgw_put_system_obj(this, pool, oid, bl,
 			   true, NULL, real_time(), NULL);
   if (ret < 0 ) {
     ldout(cct, 0) << __func__ << " failed to mark cluster as converted: ret "<< ret << " " << cpp_strerror(-ret)
