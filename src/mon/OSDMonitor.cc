@@ -10160,6 +10160,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
 
     bool implicit_rule_creation = false;
+    int64_t expected_num_objects = 0;
     string rule_name;
     cmd_getval(cct, cmdmap, "rule", rule_name);
     string erasure_code_profile;
@@ -10197,8 +10198,20 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 	  rule_name = poolstr;
 	}
       }
+      cmd_getval(g_ceph_context, cmdmap, "expected_num_objects",
+                 expected_num_objects, int64_t(0));
     } else {
       //NOTE:for replicated pool,cmd_map will put rule_name to erasure_code_profile field
+      //     and put expected_num_objects to ruleset field
+      if (rule_name != "") {
+        string interr;
+        expected_num_objects = strict_strtoll(rule_name.c_str(), 10, &interr);
+        if (interr.length()) {
+          ss << "error parsing integer value '" << rule_name << "': " << interr;
+          err = -EINVAL;
+          goto reply;
+        }
+      }
       rule_name = erasure_code_profile;
     }
 
@@ -10213,8 +10226,6 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 	goto reply;
     }
 
-    int64_t expected_num_objects;
-    cmd_getval(cct, cmdmap, "expected_num_objects", expected_num_objects, int64_t(0));
     if (expected_num_objects < 0) {
       ss << "'expected_num_objects' must be non-negative";
       err = -EINVAL;
