@@ -7354,8 +7354,11 @@ void OSD::handle_osd_map(MOSDMap *m)
   }
 
   // check for deleted pools
-  OSDMapRef lastmap = get_osdmap();
+  OSDMapRef lastmap;
   for (auto& i : pinned_maps) {
+    if (!lastmap) {
+      lastmap = get_map(i.first - 1);
+    }
     derr << __func__ << " lastmap " << lastmap->get_epoch() << dendl;
     derr << __func__ << " i.second " << i.second->get_epoch() << dendl;
     assert(lastmap->get_epoch() + 1 == i.second->get_epoch());
