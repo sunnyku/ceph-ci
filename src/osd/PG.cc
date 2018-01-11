@@ -4355,6 +4355,7 @@ void PG::replica_scrub(
   scrubber.replica_scrub_start = msg->min_epoch;
   scrubber.start = msg->start;
   scrubber.end = msg->end;
+  scrubber.deep = msg->deep;
   scrubber.epoch_start = info.history.same_interval_since;
 
   scrub_can_preempt = msg->allow_preemption;
