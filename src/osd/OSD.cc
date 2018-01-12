@@ -410,7 +410,7 @@ void OSDService::_maybe_split_pgid(OSDMapRef old_map,
       _start_split(pgid, children);
     }
   } else {
-    assert(pgid.ps() < static_cast<unsigned>(new_map->get_pg_num(pgid.pool())));
+    assert(pgid.ps() < static_cast<unsigned>(new_pgnum));
   }
 }
 
