@@ -9,7 +9,7 @@
 #include "include/stringify.h"
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
-#include <boost/regex.hpp>
+#include <regex>
 
 // Definitions for enums
 #include "common/perf_counters.h"
@@ -346,7 +346,9 @@ std::vector<Option> get_global_options() {
     .set_description("send critical error log lines to stderr"),
 
     Option("log_stderr_prefix", Option::TYPE_STR, Option::LEVEL_ADVANCED)
-    .set_description("String to prefix log messages with when sent to stderr"),
+    .set_description("String to prefix log messages with when sent to stderr")
+    .set_long_description("This is useful in container environments when combined with mon_cluster_log_to_stderr.  The mon log prefixes each line with the channel name (e.g., 'default', 'audit'), while log_stderr_prefix can be set to 'debug '.")
+    .add_see_also("mon_cluster_log_to_stderr"),
 
     Option("log_to_syslog", Option::TYPE_BOOL, Option::LEVEL_BASIC)
     .set_default(false)
@@ -432,7 +434,8 @@ std::vector<Option> get_global_options() {
 
     Option("mon_cluster_log_to_stderr", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)
-    .set_description("Send cluster log messages to stderr (prefixed by channel)"),
+    .set_description("Send cluster log messages to stderr (prefixed by channel)")
+    .add_see_also("log_stderr_prefix"),
 
     Option("mon_cluster_log_to_syslog", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("default=false")
@@ -1330,6 +1333,11 @@ std::vector<Option> get_global_options() {
     .add_service("mon")
     .set_safe()
     .set_description("in which level of parent bucket the reporters are counted"),
+
+    Option("mon_osd_snap_trim_queue_warn_on", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(32768)
+    .set_description("Warn when snap trim queue is that large (or larger).")
+    .set_long_description("Warn when snap trim queue length for at least one PG crosses this value, as this is indicator of snap trimmer not keeping up, wasting disk space"),
 
     Option("mon_osd_force_trim_to", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(0)
@@ -5681,8 +5689,8 @@ static std::vector<Option> get_rbd_options() {
     .set_default("rbd")
     .set_description("default pool for storing new images")
     .set_validator([](std::string *value, std::string *error_message){
-      boost::regex pattern("^[^@/]+$");
-      if (!boost::regex_match (*value, pattern)) {
+      std::regex pattern("^[^@/]+$");
+      if (!std::regex_match (*value, pattern)) {
         *value = "rbd";
         *error_message = "invalid RBD default pool, resetting to 'rbd'";
       }
@@ -5693,8 +5701,8 @@ static std::vector<Option> get_rbd_options() {
     .set_default("")
     .set_description("default pool for storing data blocks for new images")
     .set_validator([](std::string *value, std::string *error_message){
-      boost::regex pattern("^[^@/]*$");
-      if (!boost::regex_match (*value, pattern)) {
+      std::regex pattern("^[^@/]*$");
+      if (!std::regex_match (*value, pattern)) {
         *value = "";
         *error_message = "ignoring invalid RBD data pool";
       }

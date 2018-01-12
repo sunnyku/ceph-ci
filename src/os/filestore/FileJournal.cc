@@ -713,7 +713,7 @@ int FileJournal::read_header(header_t *hdr) const
 
   try {
     bufferlist::iterator p = bl.begin();
-    ::decode(*hdr, p);
+    decode(*hdr, p);
   }
   catch (buffer::error& e) {
     derr << "read_header error decoding journal header" << dendl;
@@ -745,7 +745,7 @@ bufferptr FileJournal::prepare_header()
     Mutex::Locker l(finisher_lock);
     header.committed_up_to = journaled_seq;
   }
-  ::encode(header, bl);
+  encode(header, bl);
   bufferptr bp = buffer::create_page_aligned(get_top());
   // don't use bp.zero() here, because it also invalidates
   // crc cache (which is not yet populated anyway)
@@ -1228,7 +1228,7 @@ void FileJournal::write_thread_entry()
       // flight if we hit this limit to ensure we keep the device
       // saturated.
       while (aio_num > 0) {
-	int exp = MIN(aio_num * 2, 24);
+	int exp = std::min<int>(aio_num * 2, 24);
 	long unsigned min_new = 1ull << exp;
 	uint64_t cur = aio_write_queue_bytes;
 	dout(20) << "write_thread_entry aio throttle: aio num " << aio_num << " bytes " << aio_bytes
@@ -1380,7 +1380,7 @@ int FileJournal::write_aio_bl(off64_t& pos, bufferlist& bl, uint64_t seq)
   dout(20) << "write_aio_bl " << pos << "~" << bl.length() << " seq " << seq << dendl;
 
   while (bl.length() > 0) {
-    int max = MIN(bl.get_num_buffers(), IOV_MAX-1);
+    int max = std::min<int>(bl.get_num_buffers(), IOV_MAX-1);
     iovec *iov = new iovec[max];
     int n = 0;
     unsigned len = 0;
@@ -1558,7 +1558,7 @@ int FileJournal::prepare_entry(vector<ObjectStore::Transaction>& tls, bufferlist
      data_len = (*p).get_data_length();
      data_align = ((*p).get_data_alignment() - bl.length()) & ~CEPH_PAGE_MASK;
     }
-    ::encode(*p, bl);
+    encode(*p, bl);
   }
   if (tbl->length()) {
     bl.claim_append(*tbl);
