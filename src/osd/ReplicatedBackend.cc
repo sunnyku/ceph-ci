@@ -697,6 +697,8 @@ int ReplicatedBackend::be_deep_scrub(
     }
     pos.data_pos += r;
     if (r == cct->_conf->osd_deep_scrub_stride) {
+      dout(20) << __func__ << "  " << poid << " more data, digest so far 0x"
+	       << std::hex << pos.data_hash.digest() << std::dec << dendl;
       return -EINPROGRESS;
     }
     // done with bytes
@@ -705,6 +707,8 @@ int ReplicatedBackend::be_deep_scrub(
       o.digest = pos.data_hash.digest();
       o.digest_present = true;
     }
+    dout(20) << __func__ << "  " << poid << " done with data, digest 0x"
+	     << std::hex << o.digest << std::dec << dendl;
   }
 
   // omap header
