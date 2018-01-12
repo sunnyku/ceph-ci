@@ -4358,7 +4358,7 @@ void PG::replica_scrub(
 
   scrub_can_preempt = msg->allow_preemption;
   scrub_preempted = false;
-  scrubber.replica_scrubmap_pos = ScrubMapBuilder();
+  scrubber.replica_scrubmap_pos.reset();
 
   requeue_scrub(false);
 }
