@@ -90,6 +90,7 @@
 #include "messages/MBackfillReserve.h"
 #include "messages/MRecoveryReserve.h"
 #include "messages/MOSDForceRecovery.h"
+#include "messages/MOSDResetRecoveryLimits.h"
 #include "messages/MOSDECSubOpWrite.h"
 #include "messages/MOSDECSubOpWriteReply.h"
 #include "messages/MOSDECSubOpRead.h"
@@ -7422,6 +7423,10 @@ void OSD::_dispatch(Message *m)
     handle_force_recovery(m);
     break;
 
+  case MSG_OSD_RESET_RECOVERY_LIMITS:
+    handle_reset_recovery_limits(m);
+    break;
+
     // -- need OSDMap --
 
   case MSG_OSD_PG_CREATE:
@@ -9298,6 +9303,79 @@ void OSD::handle_force_recovery(Message *m)
     service.adjust_pg_priorities(local_pgs, msg->options);
   }
 
+  msg->put();
+}
+
+void OSD::handle_reset_recovery_limits(Message *m)
+{
+  MOSDResetRecoveryLimits *msg = static_cast<MOSDResetRecoveryLimits*>(m);
+  assert(msg->get_type() == MSG_OSD_RESET_RECOVERY_LIMITS);
+  dout(10) << __func__ << " " << *msg << dendl;
+
+  int r;
+  stringstream ss;
+  string args;
+  auto conf = cct->_conf;
+  if (msg->options & OSD_RESET_RECOVERY_BANDWIDTH) {
+    auto spec = conf->get_val<string>("osd_dmc_queue_spec_pullpush");
+    auto found = spec.find_last_of(',');
+    assert(found != std::string::npos);
+    auto bandwidth = spec.substr(found + 1);
+    auto others = spec.substr(0, found);
+    double default_value;
+    char unit = 0;
+    r = sscanf(bandwidth.c_str(), "%lf%c", &default_value, &unit);
+    if (r != 1 && r != 2) {
+      derr << __func__ << " unable to parse bandwidth:" << bandwidth << dendl;
+      goto out;
+    }
+    auto baseline = default_value * msg->bandwidth_factor;
+    auto aggressive = default_value * msg->aggressive_factor;
+    stringstream ss;
+    if (load_balancer.can_promote_recovery() &&
+        baseline > default_value &&
+        aggressive > baseline) {
+      dout(0) << __func__ << " aggressively promote bandwidth to "
+              << aggressive << unit << dendl;
+      ss << aggressive;
+    } else {
+      ss << baseline;
+    }
+    if (unit != 0) {
+      assert(isalpha(unit));
+      ss << unit;
+    }
+    string new_spec = others + "," + ss.str();
+    args = "--osd_load_balancer_spec_default=" + new_spec;
+  }
+  if (msg->options & OSD_RESET_RECOVERY_MAXACTIVE) {
+    auto default_value = conf->get_val<uint64_t>(
+      "osd_recovery_max_active_baseline");
+    uint64_t baseline = ceil(default_value * msg->maxactive_factor);
+    uint64_t aggressive = ceil(default_value * msg->aggressive_factor);
+    stringstream ss;
+    if (load_balancer.can_promote_recovery() &&
+        baseline > default_value &&
+        aggressive > baseline) {
+      dout(0) << __func__ << " aggressively promote osd_recovery_max_active"
+              << " to " << aggressive << dendl;
+      ss << aggressive;
+    } else {
+      ss << baseline;
+    }
+    if (args.length()) {
+      args += " ";
+    }
+    args += "--osd_recovery_max_active=" + ss.str();
+  }
+  osd_lock.Unlock();
+  dout(0) << __func__ << " do injectargs '" << args << "'" << dendl;
+  r = conf->injectargs(args, &ss);
+  osd_lock.Lock();
+  if (r < 0) {
+    derr << __func__ << " injectargs failed:" << ss.str() << dendl;
+  }
+ out:
   msg->put();
 }
 

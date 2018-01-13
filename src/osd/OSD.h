@@ -1792,6 +1792,12 @@ private:
       maybe_update_spec();
     }
 
+    bool can_promote_recovery() {
+      std::unique_lock<std::mutex> l(lock);
+      return mode == "recovery_op_prioritized" ||
+            (mode == "default" && cis.is_idle());
+    }
+
     void dump(Formatter *f) {
       std::unique_lock<std::mutex> l(lock);
       f->dump_bool("enabled", enabled);
@@ -2416,6 +2422,7 @@ protected:
   void handle_pg_recovery_reserve(OpRequestRef op);
 
   void handle_force_recovery(Message *m);
+  void handle_reset_recovery_limits(Message *m);
 
   void handle_pg_remove(OpRequestRef op);
   void _remove_pg(PG *pg);
