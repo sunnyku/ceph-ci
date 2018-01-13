@@ -575,10 +575,7 @@ int PGBackend::be_scan_list(
   ScrubMapBuilder &pos)
 {
   dout(10) << __func__ << " " << pos << dendl;
-  if (pos.done()) {
-    return 0;
-  }
-
+  assert(!pos.done());
   assert(pos.pos < pos.ls.size());
   hobject_t& poid = pos.ls[pos.pos];
 
@@ -615,14 +612,11 @@ int PGBackend::be_scan_list(
     derr << __func__ << " got: " << cpp_strerror(r) << dendl;
     ceph_abort();
   }
-  if (r != -EINPROGRESS) {
-    pos.next_object();
-    if (pos.done()) {
-      dout(20) << __func__ << " done" << dendl;
-      return 0;
-    }
+  if (r == -EINPROGRESS) {
+    return -EINPROGRESS;
   }
-  return r;
+  pos.next_object();
+  return 0;
 }
 
 bool PGBackend::be_compare_scrub_objects(

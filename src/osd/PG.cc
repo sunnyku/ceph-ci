@@ -4238,13 +4238,10 @@ int PG::build_scrub_map_chunk(
     if (r == -EINPROGRESS) {
       return r;
     }
-    if (r < 0) {
-      pos.ret = r;
-      return r;
-    }
   }
 
   // finish
+  dout(20) << __func__ << " finishing" << dendl;
   assert(pos.done());
   _scan_snaps(map);
   _repair_oinfo_oid(map);
