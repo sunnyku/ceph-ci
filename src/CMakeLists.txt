@@ -158,6 +158,18 @@ else()
   set(C_STANDARD_REQUIRED ON)
 endif()
 
+
+if(CMAKE_COMPILER_IS_GNUCXX AND
+    CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.1)
+  # this is not always correct, as one can use clang with libstdc++ or
+  # use old gcc with new libstdc++, but it covers the most cases.
+  #
+  # libstdc++ 4.9 has O(n) list::size(), and its regex is buggy
+  message(SEND_ERROR "performance regression is expected due to an O(n) "
+    "implementation of 'std::list::size()' in libstdc++ older than 5.1.0, "
+    "Please use GCC 5.1 and up.")
+endif()
+
 ## Handle diagnostics color if compiler supports them.
 CHECK_C_COMPILER_FLAG("-fdiagnostics-color=always"
   COMPILER_SUPPORTS_DIAGNOSTICS_COLOR)
@@ -662,6 +674,12 @@ target_link_libraries(ceph-common dmclock ${ceph_common_deps})
 set_target_properties(ceph-common PROPERTIES
   SOVERSION 0
   INSTALL_RPATH "")
+if(WITH_STATIC_LIBSTDCXX)
+  set_target_properties(ceph-common PROPERTIES
+    LINK_FLAGS "-static-libstdc++ -static-libgcc")
+  set_target_properties(common PROPERTIES
+    LINK_FLAGS "-static-libstdc++ -static-libgcc")
+endif()
 install(TARGETS ceph-common DESTINATION ${CMAKE_INSTALL_PKGLIBDIR})
 
 add_library(common_utf8 STATIC common/utf8.c)
@@ -797,7 +815,7 @@ set(ceph_mon_srcs
 add_executable(ceph-mon ${ceph_mon_srcs}
   $<TARGET_OBJECTS:common_texttable_obj>)
 add_dependencies(ceph-mon erasure_code_plugins)
-target_link_libraries(ceph-mon mon common os global-static common
+target_link_libraries(ceph-mon mon os global-static common
   ${EXTRALIBS}
   ${CMAKE_DL_LIBS})
 install(TARGETS ceph-mon DESTINATION bin)
@@ -823,10 +841,7 @@ if (NOT WITH_SYSTEM_ROCKSDB)
   # rocksdb/util/crc32c.cc.
   list(APPEND ROCKSDB_CMAKE_ARGS -DCMAKE_AR=${CMAKE_AR})
   list(APPEND ROCKSDB_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE})
-
-  if (CMAKE_CXX_COMPILER_ID STREQUAL Clang)
-    list(APPEND ROCKSDB_CMAKE_ARGS -DFAIL_ON_WARNINGS=OFF)
-  endif()
+  list(APPEND ROCKSDB_CMAKE_ARGS -DFAIL_ON_WARNINGS=OFF)
 
   # we use an external project and copy the sources to bin directory to ensure
   # that object files are built outside of the source tree.
