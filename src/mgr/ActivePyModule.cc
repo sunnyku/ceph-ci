@@ -66,6 +66,8 @@ int ActivePyModule::load(ActivePyModules *py_modules)
   pClassInstance = PyObject_CallObject(pClass, pArgs);
   Py_DECREF(pClass);
   Py_DECREF(pModuleName);
+  Py_DECREF(pThisPtr);
+  Py_DECREF(pPyModules);
   Py_DECREF(pArgs);
   if (pClassInstance == nullptr) {
     derr << "Failed to construct class in '" << module_name << "'" << dendl;
