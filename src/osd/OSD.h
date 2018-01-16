@@ -275,7 +275,6 @@ public:
   PerfCounters *&logger;
   PerfCounters *&recoverystate_perf;
   MonClient   *&monc;
-  GenContextWQ recovery_gen_wq;
   ClassHandler  *&class_handler;
 
   void enqueue_back(OpQueueItem&& qi);
@@ -1325,10 +1324,8 @@ public:
 private:
 
   ShardedThreadPool osd_op_tp;
-  ThreadPool disk_tp;
   ThreadPool command_tp;
 
-  void set_disk_tp_priority();
   void get_latest_osdmap();
 
   // -- sessions --
