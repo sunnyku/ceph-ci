@@ -2693,7 +2693,7 @@ int OSD::init()
   clear_temp_objects();
 
   // initialize osdmap references in sharded wq
-  op_shardedwq.prune_pg_waiters(osdmap, whoami);
+  op_shardedwq.prune_or_wake_pg_waiters(osdmap, whoami);
 
   // load up pgs (as they previously existed)
   load_pgs();
@@ -7882,7 +7882,7 @@ void OSD::consume_map()
 
   // remove any PGs which we no longer host from the session waiting_for_pg lists
   dout(20) << __func__ << " checking waiting_for_pg" << dendl;
-  op_shardedwq.prune_pg_waiters(osdmap, whoami);
+  op_shardedwq.prune_or_wake_pg_waiters(osdmap, whoami);
 
   service.maybe_inject_dispatch_delay();
 
@@ -9370,7 +9370,7 @@ void OSD::ShardedOpWQ::prime_splits(const set<spg_t>& pgs)
   }
 }
 
-void OSD::ShardedOpWQ::prune_pg_waiters(OSDMapRef osdmap, int whoami)
+void OSD::ShardedOpWQ::prune_or_wake_pg_waiters(OSDMapRef osdmap, int whoami)
 {
   unsigned pushes_to_free = 0;
   bool queued = false;
@@ -9380,28 +9380,33 @@ void OSD::ShardedOpWQ::prune_pg_waiters(OSDMapRef osdmap, int whoami)
     auto p = sdata->pg_slots.begin();
     while (p != sdata->pg_slots.end()) {
       ShardData::pg_slot& slot = p->second;
+      if (slot.pending_nopg_epoch &&
+	  slot.pending_nopg_epoch <= osdmap->get_epoch()) {
+	dout(20) << __func__ << "  " << p->first
+		 << " pending_nopg_epoch " << slot.pending_nopg_epoch
+		 << " < " << osdmap->get_epoch() << ", requeueing" << dendl;
+	assert(slot.waiting_for_pg);
+	assert(!slot.to_process.empty());
+	for (auto& q : slot.to_process) {
+	  pushes_to_free += q.get_reserved_pushes();
+	}
+	for (auto i = slot.to_process.rbegin();
+	     i != slot.to_process.rend();
+	     ++i) {
+	  sdata->_enqueue_front(std::move(*i), osd->op_prio_cutoff);
+	}
+	slot.to_process.clear();
+	slot.waiting_for_pg = false;
+	slot.pending_nopg_epoch = 0;
+	++slot.requeue_seq;
+	queued = true;
+	++p;
+	continue;
+      }
       if (!slot.to_process.empty() && slot.num_running == 0) {
 	if (osdmap->is_up_acting_osd_shard(p->first, whoami)) {
-	  if (slot.pending_nopg) {
-	    dout(20) << __func__ << "  " << p->first << " maps to us, pending create,"
-		     << " requeuing" << dendl;
-	    for (auto& q : slot.to_process) {
-	      pushes_to_free += q.get_reserved_pushes();
-	    }
-	    for (auto i = slot.to_process.rbegin();
-		 i != slot.to_process.rend();
-		 ++i) {
-	      sdata->_enqueue_front(std::move(*i), osd->op_prio_cutoff);
-	    }
-	    slot.to_process.clear();
-	    slot.waiting_for_pg = false;
-	    slot.pending_nopg = false;
-	    ++slot.requeue_seq;
-	    queued = true;
-	  } else {
-	    dout(20) << __func__ << "  " << p->first << " maps to us, keeping"
-		     << dendl;
-	  }
+	  dout(20) << __func__ << "  " << p->first << " maps to us, keeping"
+		   << dendl;
 	  ++p;
 	  continue;
 	}
@@ -9554,7 +9559,7 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
   --slot.num_running;
 
   if (slot.to_process.empty()) {
-    // raced with wake_pg_waiters or prune_pg_waiters
+    // raced with wake_pg_waiters or prune_or_wake_pg_waiters
     dout(20) << __func__ << " " << token
 	     << " nothing queued" << dendl;
     if (pg) {
@@ -9607,12 +9612,22 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
     OSDMapRef osdmap = sdata->waiting_for_pg_osdmap;
     const PGCreateInfo *create_info = qi.creates_pg();
     if (qi.get_map_epoch() > osdmap->get_epoch()) {
-      dout(20) << __func__ << " " << token
-	       << " no pg, item epoch is "
-	       << qi.get_map_epoch() << " > " << osdmap->get_epoch()
-	       << ", will wait on " << qi << dendl;
       if (!!create_info || !qi.requires_pg()) {
-	slot.pending_nopg = true;
+	if (!slot.pending_nopg_epoch ||
+	    slot.pending_nopg_epoch > qi.get_map_epoch()) {
+	  slot.pending_nopg_epoch = qi.get_map_epoch();
+	}
+	dout(20) << __func__ << " " << token
+		 << " no pg, item epoch is "
+		 << qi.get_map_epoch() << " > " << osdmap->get_epoch()
+		 << ", will wait on " << qi
+		 << ", pending_nopg_epoch now "
+		 << slot.pending_nopg_epoch << dendl;
+      } else {
+	dout(20) << __func__ << " " << token
+		 << " no pg, item epoch is "
+		 << qi.get_map_epoch() << " > " << osdmap->get_epoch()
+		 << ", will wait on " << qi << dendl;
       }
       slot.to_process.push_front(std::move(qi));
       slot.waiting_for_pg = true;
