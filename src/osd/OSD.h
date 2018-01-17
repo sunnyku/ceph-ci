@@ -1590,8 +1590,8 @@ private:
 	/// to_process.  cleared by prune_pg_waiters.
 	bool waiting_for_pg = false;
 
-	/// one or more queued items doesn't need a pg
-	bool pending_nopg = false;
+	/// one or more queued items doesn't need a pg, only a map >= this
+	epoch_t pending_nopg_epoch = 0;
 
 	/// incremented by wake_pg_waiters; indicates racing _process threads
 	/// should bail out (their op has been requeued)
@@ -1600,7 +1600,7 @@ private:
 
       /// map of slots for each spg_t.  maintains ordering of items dequeued
       /// from pqueue while _process thread drops shard lock to acquire the
-      /// pg lock.  slots are removed only by prune_pg_waiters.
+      /// pg lock.  slots are removed only by prune_or_wake_pg_waiters.
       unordered_map<spg_t,pg_slot> pg_slots;
 
       /// priority queue
@@ -1687,7 +1687,7 @@ private:
     void prime_splits(const set<spg_t>& pgs);
 
     /// prune ops (and possibly pg_slots) for pgs that shouldn't be here
-    void prune_pg_waiters(OSDMapRef osdmap, int whoami);
+    void prune_or_wake_pg_waiters(OSDMapRef osdmap, int whoami);
 
     /// clear cached PGRef on pg deletion
     void clear_pg_pointer(PG *pg);
