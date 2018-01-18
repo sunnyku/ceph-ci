@@ -1777,6 +1777,11 @@ protected:
   TrivialEvent(DeleteReserved)
   TrivialEvent(DeleteInterrupted)
 
+  TrivialEvent(SetForceRecovery)
+  TrivialEvent(UnsetForceRecovery)
+  TrivialEvent(SetForceBackfill)
+  TrivialEvent(UnsetForceBackfill)
+
   /* Encapsulates PG recovery process */
   class RecoveryState {
     void start_handle(RecoveryCtx *new_ctx);
@@ -1949,7 +1954,11 @@ protected:
 	boost::statechart::custom_reaction< AdvMap >,
 	boost::statechart::custom_reaction< NullEvt >,
 	boost::statechart::custom_reaction< IntervalFlush >,
-	boost::statechart::transition< boost::statechart::event_base, Crashed >
+	boost::statechart::transition< boost::statechart::event_base, Crashed >,
+	boost::statechart::custom_reaction<SetForceRecovery>,
+	boost::statechart::custom_reaction<UnsetForceRecovery>,
+	boost::statechart::custom_reaction<SetForceBackfill>,
+	boost::statechart::custom_reaction<UnsetForceBackfill>
 	> reactions;
       boost::statechart::result react(const QueryState& q);
       boost::statechart::result react(const AdvMap&);
@@ -1984,10 +1993,18 @@ protected:
       typedef boost::mpl::list <
 	boost::statechart::custom_reaction< ActMap >,
 	boost::statechart::custom_reaction< MNotifyRec >,
-	boost::statechart::transition< NeedActingChange, WaitActingChange >
+	boost::statechart::transition< NeedActingChange, WaitActingChange >,
+	boost::statechart::custom_reaction<SetForceRecovery>,
+	boost::statechart::custom_reaction<UnsetForceRecovery>,
+	boost::statechart::custom_reaction<SetForceBackfill>,
+	boost::statechart::custom_reaction<UnsetForceBackfill>
 	> reactions;
       boost::statechart::result react(const ActMap&);
       boost::statechart::result react(const MNotifyRec&);
+      boost::statechart::result react(const SetForceRecovery&);
+      boost::statechart::result react(const UnsetForceRecovery&);
+      boost::statechart::result react(const SetForceBackfill&);
+      boost::statechart::result react(const UnsetForceBackfill&);
     };
 
     struct WaitActingChange : boost::statechart::state< WaitActingChange, Primary>,
@@ -2091,10 +2108,15 @@ protected:
 
     struct Clean : boost::statechart::state< Clean, Active >, NamedState {
       typedef boost::mpl::list<
-	boost::statechart::transition< DoRecovery, WaitLocalRecoveryReserved >
+	boost::statechart::transition< DoRecovery, WaitLocalRecoveryReserved >,
+	boost::statechart::custom_reaction<SetForceRecovery>,
+	boost::statechart::custom_reaction<SetForceBackfill>
       > reactions;
       explicit Clean(my_context ctx);
       void exit();
+      boost::statechart::result react(const boost::statechart::event_base&) {
+	return discard_event();
+      }
     };
 
     struct Recovered : boost::statechart::state< Recovered, Active >, NamedState {
