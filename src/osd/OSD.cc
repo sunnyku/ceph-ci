@@ -3829,6 +3829,9 @@ PGRef OSD::_open_pg(
     pg_map_size = pg_map.size();
     pg->get("PGMap");  // because it's in pg_map
     service.pg_add_epoch(pg->pg_id, createmap->get_epoch());
+
+    // make sure we register any splits that happened between when the pg
+    // was created and our latest map.
     service.init_splits_between(pgid, createmap, servicemap);
   }
   return pg;
