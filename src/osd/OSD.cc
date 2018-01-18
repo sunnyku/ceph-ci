@@ -9452,13 +9452,13 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
     dout(30) << __func__ << " " << token
 	     << " to_process " << slot.to_process
 	     << " waiting_for_pg=" << (int)slot.waiting_for_pg << dendl;
+    bool can_wait = item.requires_pg() && !item.creates_pg();
     slot.to_process.push_back(std::move(item));
     // note the requeue seq now...
     requeue_seq = slot.requeue_seq;
-    if (slot.waiting_for_pg) {
-      // save ourselves a bit of effort
+    if (slot.waiting_for_pg && can_wait) {
       dout(20) << __func__ << slot.to_process.back()
-	       << " queued, waiting_for_pg" << dendl;
+	       << " queued, already waiting_for_pg" << dendl;
       sdata->sdata_op_ordering_lock.Unlock();
       return;
     }
