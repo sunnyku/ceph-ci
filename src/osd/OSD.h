@@ -1890,7 +1890,8 @@ public:
 
 protected:
   PGRef _open_pg(
-    OSDMapRef createmap, OSDMapRef servicemap,
+    OSDMapRef createmap,   ///< map pg is created in
+    OSDMapRef servicemap,  ///< latest service map
     spg_t pg);
   PG *_open_lock_pg(
     OSDMapRef createmap,
