@@ -70,6 +70,8 @@ public:
   void encode_payload(uint64_t features) {
     using ceph::encode;
     if (!HAVE_FEATURE(features, SERVER_MIMIC)) {
+      header.version = 1;
+      header.compat_version = 1;
       vector<pg_t> pgs;
       for (auto pgid : forced_pgs) {
 	pgs.push_back(pgid.pgid);
