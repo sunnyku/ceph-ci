@@ -5881,6 +5881,8 @@ void PG::do_peering_event(PGPeeringEventRef evt, RecoveryCtx *rctx)
   } else {
     recovery_state.handle_event(evt, rctx);
   }
+  // write_if_dirty regardless of path above to ensure we capture any work
+  // done by OSD::advance_pg().
   write_if_dirty(*rctx->transaction);
 }
 
