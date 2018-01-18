@@ -3367,17 +3367,16 @@ epoch_t OSDMonitor::send_pg_creates(int osd, Connection *con, epoch_t next) cons
 	       << " at " << create->second.first << dendl;
     }
   }
-  if (!oldm && !m) {
+  if (m) {
+    con->send_message(m);
+  } else if (oldm) {
+    con->send_message(oldm);
+  } else {
     dout(20) << __func__ << " osd." << osd << " from " << next
              << " has nothing to send" << dendl;
     return next;
   }
-  if (m) {
-    con->send_message(m);
-  }
-  if (oldm) {
-    con->send_message(oldm);
-  }
+
   // sub is current through last + 1
   return last + 1;
 }
