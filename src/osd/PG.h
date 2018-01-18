@@ -423,8 +423,6 @@ public:
   void handle_initialize(RecoveryCtx *rctx);
   void handle_query_state(Formatter *f);
 
-  void handle_pg_trim(epoch_t epoch, int from, shard_id_t shard, eversion_t trim_to);
-
   /**
    * @param ops_begun returns how many recovery ops the function started
    * @returns true if any useful work was accomplished; false otherwise
