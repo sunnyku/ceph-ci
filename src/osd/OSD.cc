@@ -6444,9 +6444,13 @@ void OSD::ms_fast_dispatch(Message *m)
   case MSG_OSD_RECOVERY_RESERVE:
     {
       MOSDPeeringOp *pm = static_cast<MOSDPeeringOp*>(m);
-      return enqueue_peering_evt(
-	pm->get_spg(),
-	PGPeeringEventRef(pm->get_event()));
+      if (require_osd_peer(pm)) {
+	enqueue_peering_evt(
+	  pm->get_spg(),
+	  PGPeeringEventRef(pm->get_event()));
+      }
+      pm->put();
+      return;
     }
   }
 
@@ -8390,6 +8394,7 @@ void OSD::handle_fast_pg_create(MOSDPGCreate2 *m)
 {
   dout(7) << __func__ << " " << *m << " from " << m->get_source() << dendl;
   if (!require_mon_peer(m)) {
+    m->put();
     return;
   }
   for (auto& p : m->pgs) {
@@ -8425,11 +8430,16 @@ void OSD::handle_fast_pg_create(MOSDPGCreate2 *m)
 	    true)
 	  )));
   }
+  m->put();
 }
 
 void OSD::handle_fast_pg_query(MOSDPGQuery *m)
 {
   dout(7) << __func__ << " " << *m << " from " << m->get_source() << dendl;
+  if (!require_osd_peer(m)) {
+    m->put();
+    return;
+  }
   int from = m->get_source().num();
   for (auto& p : m->pg_list) {
     enqueue_peering_evt(
@@ -8445,11 +8455,16 @@ void OSD::handle_fast_pg_query(MOSDPGQuery *m)
 	  false))
       );
   }
+  m->put();
 }
 
 void OSD::handle_fast_pg_notify(MOSDPGNotify* m)
 {
   dout(7) << __func__ << " " << *m << " from " << m->get_source() << dendl;
+  if (!require_osd_peer(m)) {
+    m->put();
+    return;
+  }
   int from = m->get_source().num();
   for (auto& p : m->get_pg_list()) {
     spg_t pgid(p.first.info.pgid.pgid, p.first.to);
@@ -8473,11 +8488,16 @@ void OSD::handle_fast_pg_notify(MOSDPGNotify* m)
 	    false)
 	  )));
   }
+  m->put();
 }
 
 void OSD::handle_fast_pg_info(MOSDPGInfo* m)
 {
   dout(7) << __func__ << " " << *m << " from " << m->get_source() << dendl;
+  if (!require_osd_peer(m)) {
+    m->put();
+    return;
+  }
   int from = m->get_source().num();
   for (auto& p : m->pg_list) {
     enqueue_peering_evt(
@@ -8491,11 +8511,16 @@ void OSD::handle_fast_pg_info(MOSDPGInfo* m)
 	    p.first.epoch_sent)))
       );
   }
+  m->put();
 }
 
 void OSD::handle_fast_pg_remove(MOSDPGRemove *m)
 {
   dout(7) << __func__ << " " << *m << " from " << m->get_source() << dendl;
+  if (!require_osd_peer(m)) {
+    m->put();
+    return;
+  }
   for (auto& pgid : m->pg_list) {
     enqueue_peering_evt(
       pgid,
@@ -8504,11 +8529,16 @@ void OSD::handle_fast_pg_remove(MOSDPGRemove *m)
 	  m->get_epoch(), m->get_epoch(),
 	  PG::DeleteStart())));
   }
+  m->put();
 }
 
 void OSD::handle_fast_force_recovery(MOSDForceRecovery *m)
 {
   dout(10) << __func__ << " " << *m << dendl;
+  if (!require_mon_or_mgr_peer(m)) {
+    m->put();
+    return;
+  }
   epoch_t epoch = get_osdmap()->get_epoch();
   for (auto pgid : m->forced_pgs) {
     if (m->options & OFR_BACKFILL) {
