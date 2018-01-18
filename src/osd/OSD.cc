@@ -9571,6 +9571,12 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
       }
       slot.to_process.push_front(std::move(qi));
       slot.waiting_for_pg = true;
+    } else if (!qi.requires_pg()) {
+      // for pg-less events, we run them under the ordering lock, since
+      // we don't have the pg lock to keep them ordered.
+      qi.run(osd, pg, tp_handle);
+      sdata->sdata_op_ordering_lock.Unlock();
+      return;
     } else if (osdmap->is_up_acting_osd_shard(token, osd->whoami)) {
       if (osd->service.splitting(token)) {
 	dout(20) << __func__ << " " << token
@@ -9594,12 +9600,6 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
 	  }
 	  dout(20) << __func__ << " ignored create on " << qi << dendl;
 	}
-      } else if (!qi.requires_pg()) {
-	// for pg-less events, we run them under the ordering lock, since
-	// we don't have the pg lock to keep them ordered.
-	qi.run(osd, pg, tp_handle);
-	sdata->sdata_op_ordering_lock.Unlock();
-	return;
       } else {
 	dout(20) << __func__ << " " << token
 		 << " no pg, should exist, will wait on " << qi << dendl;
