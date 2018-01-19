@@ -158,6 +158,33 @@ GenContext<ThreadPool::TPHandle&> *PrimaryLogPG::bless_gencontext(
     this, c, get_osdmap()->get_epoch());
 }
 
+template <typename T>
+class PrimaryLogPG::UnlockedBlessedGenContext : public GenContext<T> {
+  PrimaryLogPGRef pg;
+  unique_ptr<GenContext<T>> c;
+  epoch_t e;
+public:
+  UnlockedBlessedGenContext(PrimaryLogPG *pg, GenContext<T> *c, epoch_t e)
+    : pg(pg), c(c), e(e) {}
+  void finish(T t) override {
+    if (pg->pg_has_reset_since(e))
+      c.reset();
+    else
+      c.release()->complete(t);
+  }
+  bool sync_finish(T t) {
+    // we assume here all blessed/wrapped Contexts can complete synchronously.
+    c.release()->complete(t);
+    return true;
+  }
+};
+
+GenContext<ThreadPool::TPHandle&> *PrimaryLogPG::bless_unlocked_gencontext(
+  GenContext<ThreadPool::TPHandle&> *c) {
+  return new UnlockedBlessedGenContext<ThreadPool::TPHandle&>(
+    this, c, get_osdmap()->get_epoch());
+}
+
 class PrimaryLogPG::BlessedContext : public Context {
   PrimaryLogPGRef pg;
   unique_ptr<Context> c;
@@ -179,7 +206,6 @@ public:
     return true;
   }
 };
-
 
 Context *PrimaryLogPG::bless_context(Context *c) {
   return new BlessedContext(this, c, get_osdmap()->get_epoch());
@@ -523,7 +549,7 @@ void PrimaryLogPG::begin_peer_recover(
 void PrimaryLogPG::schedule_recovery_work(
   GenContext<ThreadPool::TPHandle&> *c)
 {
-  osd->recovery_gen_wq.queue(c);
+  osd->queue_recovery_context(this, c);
 }
 
 void PrimaryLogPG::send_message_osd_cluster(

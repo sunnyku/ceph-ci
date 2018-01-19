@@ -61,6 +61,15 @@
 
 #define CEPH_OSD_PROTOCOL    10 /* cluster internal */
 
+/*
+
+  lock ordering for pg map
+
+    PG::lock
+      ShardData::lock
+        OSD::pg_map_lock
+
+  */
 
 enum {
   l_osd_first = 10000,
@@ -232,12 +241,19 @@ class PrimaryLogPG;
 class AuthAuthorizeHandlerRegistry;
 
 class TestOpsSocketHook;
-struct C_CompleteSplits;
+struct C_FinishSplits;
 struct C_OpenPGs;
 class LogChannel;
 class CephContext;
 typedef ceph::shared_ptr<ObjectStore::Sequencer> SequencerRef;
 class MOSDOp;
+
+class MOSDPGCreate2;
+class MOSDPGQuery;
+class MOSDPGNotify;
+class MOSDPGInfo;
+class MOSDPGRemove;
+class MOSDForceRecovery;
 
 class OSD;
 
@@ -259,7 +275,6 @@ public:
   PerfCounters *&logger;
   PerfCounters *&recoverystate_perf;
   MonClient   *&monc;
-  GenContextWQ recovery_gen_wq;
   ClassHandler  *&class_handler;
 
   void enqueue_back(OpQueueItem&& qi);
@@ -778,6 +793,7 @@ public:
   SafeTimer scrub_sleep_timer;
 
   AsyncReserver<spg_t> snap_reserver;
+  void queue_recovery_context(PG *pg, GenContext<ThreadPool::TPHandle&> *c);
   void queue_for_snap_trim(PG *pg);
   void queue_for_scrub(PG *pg, bool with_high_priority);
   void queue_for_pg_delete(spg_t pgid, epoch_t e);
@@ -852,8 +868,6 @@ public:
     Mutex::Locker l(recovery_lock);
     _queue_for_recovery(make_pair(queued, pg), reserved_pushes);
   }
-
-  void adjust_pg_priorities(const vector<PGRef>& pgs, int newflags);
 
   // osd map cache (past osd maps)
   Mutex map_cache_lock;
@@ -1310,10 +1324,8 @@ public:
 private:
 
   ShardedThreadPool osd_op_tp;
-  ThreadPool disk_tp;
   ThreadPool command_tp;
 
-  void set_disk_tp_priority();
   void get_latest_osdmap();
 
   // -- sessions --
@@ -1521,7 +1533,7 @@ private:
   void test_ops(std::string command, std::string args, ostream& ss);
   friend class TestOpsSocketHook;
   TestOpsSocketHook *test_ops_hook;
-  friend struct C_CompleteSplits;
+  friend struct C_FinishSplits;
   friend struct C_OpenPGs;
 
   // -- op queue --
@@ -1576,18 +1588,23 @@ private:
 	deque<OpQueueItem> to_process; ///< order items for this slot
 	int num_running = 0;          ///< _process threads doing pg lookup/lock
 
-	/// true if pg does/did not exist. if so all new items go directly to
-	/// to_process.  cleared by prune_pg_waiters.
-	bool waiting_for_pg = false;
+	/// one or more queued items doesn't need a pg, only a map >= this
+	epoch_t pending_nopg_epoch = 0;
+
+	deque<OpQueueItem> waiting;      ///< waiting for map or pg to exist
+	deque<OpQueueItem> waiting_nopg; ///< waiting for map, don't need pg
 
 	/// incremented by wake_pg_waiters; indicates racing _process threads
 	/// should bail out (their op has been requeued)
 	uint64_t requeue_seq = 0;
+
+	/// waiting for split child to materialize
+	bool waiting_for_split = false;
       };
 
       /// map of slots for each spg_t.  maintains ordering of items dequeued
       /// from pqueue while _process thread drops shard lock to acquire the
-      /// pg lock.  slots are removed only by prune_pg_waiters.
+      /// pg lock.  slots are removed only by prune_or_wake_pg_waiters.
       unordered_map<spg_t,pg_slot> pg_slots;
 
       /// priority queue
@@ -1664,11 +1681,22 @@ private:
       }
     }
 
-    /// wake any pg waiters after a PG is created/instantiated
-    void wake_pg_waiters(spg_t pgid);
+    void _add_slot_waiter(
+      spg_t token,
+      ShardData::pg_slot& slot,
+      OpQueueItem&& qi);
+
+    /// wake any pg waiters after a PG is split
+    void wake_pg_split_waiters(spg_t pgid);
+
+    void _wake_pg_slot(spg_t pgid, ShardData *sdata, ShardData::pg_slot& slot,
+		       unsigned *pushes_to_free);
+
+    /// prime slots for splitting pgs
+    void prime_splits(const set<spg_t>& pgs);
 
     /// prune ops (and possibly pg_slots) for pgs that shouldn't be here
-    void prune_pg_waiters(OSDMapRef osdmap, int whoami);
+    void prune_or_wake_pg_waiters(OSDMapRef osdmap, int whoami);
 
     /// clear cached PGRef on pg deletion
     void clear_pg_pointer(PG *pg);
@@ -1845,16 +1873,16 @@ protected:
   // -- placement groups --
   RWLock pg_map_lock; // this lock orders *above* individual PG _locks
   ceph::unordered_map<spg_t, PG*> pg_map; // protected by pg_map lock
+  std::atomic<size_t> pg_map_size = {0};
 
   std::mutex pending_creates_lock;
   using create_from_osd_t = std::pair<pg_t, bool /* is primary*/>;
   std::set<create_from_osd_t> pending_creates_from_osd;
   unsigned pending_creates_from_mon = 0;
 
-  map<spg_t, list<PGPeeringEventRef> > peering_wait_for_split;
   PGRecoveryStats pg_recovery_stats;
 
-  PG   *_lookup_lock_pg_with_map_lock_held(spg_t pgid);
+  PGRef _lookup_pg(spg_t pgid);
   PG   *_lookup_lock_pg(spg_t pgid);
 
 public:
@@ -1868,10 +1896,16 @@ public:
   std::set<int> get_mapped_pools();
 
 protected:
-  PG   *_open_lock_pg(OSDMapRef createmap,
-		      spg_t pg, bool no_lockdep_check=false);
-
-  PG   *_create_lock_pg(
+  PGRef _open_pg(
+    OSDMapRef createmap,   ///< map pg is created in
+    OSDMapRef servicemap,  ///< latest service map
+    spg_t pg);
+  PG *_open_lock_pg(
+    OSDMapRef createmap,
+    OSDMapRef servicemap,
+    spg_t pg,
+    bool no_lockdep_check=false);
+  PG *_create_lock_pg(
     OSDMapRef createmap,
     spg_t pgid,
     bool hold_map_lock,
@@ -1884,16 +1918,8 @@ protected:
     ObjectStore::Transaction& t);
 
   PG* _make_pg(OSDMapRef createmap, spg_t pgid);
-  void add_newly_split_pg(PG *pg,
-			  PG::RecoveryCtx *rctx);
 
-  int handle_pg_peering_evt(
-    spg_t pgid,
-    const pg_history_t& orig_history,
-    const PastIntervals& pi,
-    epoch_t epoch,
-    PGPeeringEventRef evt);
-  bool maybe_wait_for_max_pg(spg_t pgid, bool is_mon_create);
+  bool maybe_wait_for_max_pg(OSDMapRef osdmap, spg_t pgid, bool is_mon_create);
   void resume_creating_pg();
 
   void load_pgs();
@@ -1915,11 +1941,6 @@ protected:
     int lastactingprimary
     ); ///< @return false if there was a map gap between from and now
 
-  // this must be called with pg->lock held on any pg addition to pg_map
-  void wake_pg_waiters(PGRef pg) {
-    assert(pg->is_locked());
-    op_shardedwq.wake_pg_waiters(pg->get_pgid());
-  }
   epoch_t last_pg_create_epoch;
 
   void handle_pg_create(OpRequestRef op);
@@ -1930,6 +1951,7 @@ protected:
     OSDMapRef curmap,
     OSDMapRef nextmap,
     PG::RecoveryCtx *rctx);
+  void _finish_splits(set<PGRef>& pgs);
 
   // == monitor interaction ==
   Mutex mon_report_lock;
@@ -2022,18 +2044,17 @@ protected:
   bool require_same_or_newer_map(OpRequestRef& op, epoch_t e,
 				 bool is_fast_dispatch);
 
-  void handle_pg_query(OpRequestRef op);
-  void handle_pg_notify(OpRequestRef op);
-  void handle_pg_log(OpRequestRef op);
-  void handle_pg_info(OpRequestRef op);
-  void handle_pg_trim(OpRequestRef op);
+  void handle_fast_pg_create(MOSDPGCreate2 *m);
+  void handle_fast_pg_query(MOSDPGQuery *m);
+  void handle_pg_query_nopg(const MQuery& q);
+  void handle_fast_pg_notify(MOSDPGNotify *m);
+  void handle_pg_notify_nopg(const MNotifyRec& q);
+  void handle_fast_pg_info(MOSDPGInfo *m);
+  void handle_fast_pg_remove(MOSDPGRemove *m);
 
-  void handle_pg_backfill_reserve(OpRequestRef op);
-  void handle_pg_recovery_reserve(OpRequestRef op);
+  PGRef handle_pg_create_info(OSDMapRef osdmap, const PGCreateInfo *info);
 
-  void handle_force_recovery(Message *m);
-
-  void handle_pg_remove(OpRequestRef op);
+  void handle_fast_force_recovery(MOSDForceRecovery *m);
 
   // -- commands --
   struct Command {
@@ -2111,8 +2132,21 @@ private:
   bool ms_can_fast_dispatch_any() const override { return true; }
   bool ms_can_fast_dispatch(const Message *m) const override {
     switch (m->get_type()) {
+    case CEPH_MSG_PING:
     case CEPH_MSG_OSD_OP:
     case CEPH_MSG_OSD_BACKOFF:
+    case MSG_OSD_SCRUB2:
+    case MSG_OSD_FORCE_RECOVERY:
+    case MSG_MON_COMMAND:
+    case MSG_OSD_PG_CREATE2:
+    case MSG_OSD_PG_QUERY:
+    case MSG_OSD_PG_INFO:
+    case MSG_OSD_PG_NOTIFY:
+    case MSG_OSD_PG_LOG:
+    case MSG_OSD_PG_TRIM:
+    case MSG_OSD_PG_REMOVE:
+    case MSG_OSD_BACKFILL_RESERVE:
+    case MSG_OSD_RECOVERY_RESERVE:
     case MSG_OSD_REPOP:
     case MSG_OSD_REPOPREPLY:
     case MSG_OSD_PG_PUSH:
@@ -2224,8 +2258,8 @@ private:
 			ObjectStore *store,
 			uuid_d& cluster_fsid, uuid_d& osd_fsid, int whoami);
 
-  void handle_pg_scrub(struct MOSDScrub *m, PG* pg);
   void handle_scrub(struct MOSDScrub *m);
+  void handle_fast_scrub(struct MOSDScrub2 *m);
   void handle_osd_ping(class MOSDPing *m);
 
   int init_op_flags(OpRequestRef& op);
