@@ -6419,9 +6419,6 @@ void OSD::ms_fast_dispatch(Message *m)
   case MSG_MON_COMMAND:
     handle_command(static_cast<MMonCommand*>(m));
     return;
-  case MSG_COMMAND:
-    handle_command(static_cast<MCommand*>(m));
-    return;
   case MSG_OSD_FORCE_RECOVERY:
     handle_fast_force_recovery(static_cast<MOSDForceRecovery*>(m));
     return;
@@ -6664,6 +6661,10 @@ void OSD::_dispatch(Message *m)
   case MSG_OSD_SCRUB:
     handle_scrub(static_cast<MOSDScrub*>(m));
     break;
+
+  case MSG_COMMAND:
+    handle_command(static_cast<MCommand*>(m));
+    return;
 
     // -- need OSDMap --
 
