@@ -7771,7 +7771,7 @@ void OSD::_finish_splits(set<PGRef>& pgs)
     pg->handle_initialize(&rctx);
     pg->queue_null(e, e);
     dispatch_context_transaction(rctx, pg);
-    wake_pg_waiters(pg);
+    op_shardedwq.wake_pg_split_waiters(pg->get_pgid());
     pg->unlock();
   }
 
@@ -7894,8 +7894,8 @@ void OSD::consume_map()
 
   service.maybe_inject_dispatch_delay();
 
-  // remove any PGs which we no longer host from the session waiting_for_pg lists
-  dout(20) << __func__ << " checking waiting_for_pg" << dendl;
+  // remove any PGs which we no longer host from the pg_slot wait lists
+  dout(20) << __func__ << " checking pg_slot waiters" << dendl;
   op_shardedwq.prune_or_wake_pg_waiters(osdmap, whoami);
 
   service.maybe_inject_dispatch_delay();
@@ -9346,8 +9346,15 @@ void OSD::ShardedOpWQ::_wake_pg_slot(
 {
   dout(20) << __func__ << " " << pgid
 	   << " to_process " << slot.to_process
-	   << " waiting_for_pg=" << (int)slot.waiting_for_pg << dendl;
+	   << " waiting " << slot.waiting
+	   << " waiting_nopg " << slot.waiting_nopg << dendl;
   for (auto& q : slot.to_process) {
+    *pushes_to_free += q.get_reserved_pushes();
+  }
+  for (auto& q : slot.waiting) {
+    *pushes_to_free += q.get_reserved_pushes();
+  }
+  for (auto& q : slot.waiting_nopg) {
     *pushes_to_free += q.get_reserved_pushes();
   }
   for (auto i = slot.to_process.rbegin();
@@ -9356,11 +9363,24 @@ void OSD::ShardedOpWQ::_wake_pg_slot(
     sdata->_enqueue_front(std::move(*i), osd->op_prio_cutoff);
   }
   slot.to_process.clear();
-  slot.waiting_for_pg = false;
+  for (auto i = slot.waiting.rbegin();
+       i != slot.waiting.rend();
+       ++i) {
+    sdata->_enqueue_front(std::move(*i), osd->op_prio_cutoff);
+  }
+  slot.waiting.clear();
+  for (auto i = slot.waiting_nopg.rbegin();
+       i != slot.waiting_nopg.rend();
+       ++i) {
+    sdata->_enqueue_front(std::move(*i), osd->op_prio_cutoff);
+  }
+  slot.waiting_nopg.clear();
+  slot.pending_nopg_epoch = 0;
+  slot.waiting_for_split = false;
   ++slot.requeue_seq;
 }
 
-void OSD::ShardedOpWQ::wake_pg_waiters(spg_t pgid)
+void OSD::ShardedOpWQ::wake_pg_split_waiters(spg_t pgid)
 {
   uint32_t shard_index = pgid.hash_to_shard(shard_list.size());
   auto sdata = shard_list[shard_index];
@@ -9392,7 +9412,7 @@ void OSD::ShardedOpWQ::prime_splits(const set<spg_t>& pgs)
     ShardData* sdata = shard_list[shard_index];
     Mutex::Locker l(sdata->sdata_op_ordering_lock);
     ShardData::pg_slot& slot = sdata->pg_slots[pgid];
-    slot.waiting_for_pg = true;
+    slot.waiting_for_split = true;
   }
 }
 
@@ -9406,25 +9426,19 @@ void OSD::ShardedOpWQ::prune_or_wake_pg_waiters(OSDMapRef osdmap, int whoami)
     auto p = sdata->pg_slots.begin();
     while (p != sdata->pg_slots.end()) {
       ShardData::pg_slot& slot = p->second;
+      if (slot.waiting_for_split) {
+	dout(20) << __func__ << "  " << p->first
+		 << " waiting for split" << dendl;
+	++p;
+	continue;
+      }
       if (slot.pending_nopg_epoch &&
 	  slot.pending_nopg_epoch <= osdmap->get_epoch()) {
 	dout(20) << __func__ << "  " << p->first
 		 << " pending_nopg_epoch " << slot.pending_nopg_epoch
 		 << " < " << osdmap->get_epoch() << ", requeueing" << dendl;
-	assert(slot.waiting_for_pg);
-	assert(!slot.to_process.empty());
-	for (auto& q : slot.to_process) {
-	  pushes_to_free += q.get_reserved_pushes();
-	}
-	for (auto i = slot.to_process.rbegin();
-	     i != slot.to_process.rend();
-	     ++i) {
-	  sdata->_enqueue_front(std::move(*i), osd->op_prio_cutoff);
-	}
-	slot.to_process.clear();
-	slot.waiting_for_pg = false;
-	slot.pending_nopg_epoch = 0;
-	++slot.requeue_seq;
+	assert(!slot.waiting_nopg.empty());
+	_wake_pg_slot(p->first, sdata, slot, &pushes_to_free);
 	queued = true;
 	++p;
 	continue;
@@ -9493,6 +9507,32 @@ void OSD::ShardedOpWQ::clear_pg_slots()
   }
 }
 
+void OSD::ShardedOpWQ::_add_slot_waiter(
+  spg_t pgid,
+  OSD::ShardedOpWQ::ShardData::pg_slot& slot,
+  OpQueueItem&& qi)
+{
+  if (!qi.requires_pg() || qi.creates_pg()) {
+    if (!slot.pending_nopg_epoch ||
+	slot.pending_nopg_epoch > qi.get_map_epoch()) {
+      slot.pending_nopg_epoch = qi.get_map_epoch();
+    }
+    dout(20) << __func__ << " " << pgid
+	     << " no pg, item epoch is "
+	     << qi.get_map_epoch()
+	     << ", pending_nopg_epoch now "
+	     << slot.pending_nopg_epoch
+	     << ", will wait on " << qi << dendl;
+    slot.waiting_nopg.push_back(std::move(qi));
+  } else {
+    dout(20) << __func__ << " " << pgid
+	     << " no pg, item epoch is "
+	     << qi.get_map_epoch()
+	     << ", will wait on " << qi << dendl;
+    slot.waiting.push_back(std::move(qi));
+  }
+}
+
 #undef dout_prefix
 #define dout_prefix *_dout << "osd." << osd->whoami << " op_wq(" << shard_index << ") "
 
@@ -9537,18 +9577,21 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
     auto& slot = sdata->pg_slots[token];
     dout(30) << __func__ << " " << token
 	     << " to_process " << slot.to_process
-	     << " waiting_for_pg=" << (int)slot.waiting_for_pg << dendl;
-    bool can_wait = item.requires_pg() && !item.creates_pg();
-    slot.to_process.push_back(std::move(item));
-    // note the requeue seq now...
-    requeue_seq = slot.requeue_seq;
-    if (slot.waiting_for_pg && can_wait) {
-      dout(20) << __func__ << slot.to_process.back()
-	       << " queued, already waiting_for_pg" << dendl;
+	     << " waiting " << slot.waiting
+	     << " waiting_nopg " << slot.waiting_nopg
+	     << dendl;
+    if (slot.waiting_for_split
+	|| (!slot.waiting.empty() && item.requires_pg() && !item.creates_pg())) {
+      dout(20) << __func__ << " " << token << " already waiting, adding " << item
+	       << dendl;
+      _add_slot_waiter(token, slot, std::move(item));
       sdata->sdata_op_ordering_lock.Unlock();
       return;
     }
+    // note the requeue seq now...
+    requeue_seq = slot.requeue_seq;
     pg = slot.pg;
+    slot.to_process.push_back(std::move(item));
     dout(20) << __func__ << " " << slot.to_process.back()
 	     << " queued" << dendl;
     ++slot.num_running;
@@ -9611,18 +9654,19 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
   }
   dout(30) << __func__ << " " << token
 	   << " to_process " << slot.to_process
-	   << " waiting_for_pg=" << (int)slot.waiting_for_pg << dendl;
+	   << " waiting " << slot.waiting
+	   << " waiting_nopg " << slot.waiting_nopg << dendl;
 
   // make sure we're not already waiting for this pg
-  if (slot.waiting_for_pg) {
+  /*if (!slot.waiting.empty()) {
     dout(20) << __func__ << " " << token
-	     << " slot is waiting_for_pg" << dendl;
+	     << " slot is waiting" << dendl;
     if (pg) {
       pg->unlock();
     }
     sdata->sdata_op_ordering_lock.Unlock();
     return;
-  }
+    }*/
 
   ThreadPool::TPHandle tp_handle(osd->cct, hb, timeout_interval,
 				 suicide_interval);
@@ -9637,39 +9681,21 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
     // should this pg shard exist on this osd in this (or a later) epoch?
     OSDMapRef osdmap = sdata->waiting_for_pg_osdmap;
     const PGCreateInfo *create_info = qi.creates_pg();
-    if (qi.get_map_epoch() > osdmap->get_epoch()) {
-      if (!!create_info || !qi.requires_pg()) {
-	if (!slot.pending_nopg_epoch ||
-	    slot.pending_nopg_epoch > qi.get_map_epoch()) {
-	  slot.pending_nopg_epoch = qi.get_map_epoch();
-	}
-	dout(20) << __func__ << " " << token
-		 << " no pg, item epoch is "
-		 << qi.get_map_epoch() << " > " << osdmap->get_epoch()
-		 << ", will wait on " << qi
-		 << ", pending_nopg_epoch now "
-		 << slot.pending_nopg_epoch << dendl;
-      } else {
-	dout(20) << __func__ << " " << token
-		 << " no pg, item epoch is "
-		 << qi.get_map_epoch() << " > " << osdmap->get_epoch()
-		 << ", will wait on " << qi << dendl;
-      }
-      slot.to_process.push_front(std::move(qi));
-      slot.waiting_for_pg = true;
+    if (slot.waiting_for_split) {
+      dout(20) << __func__ << " " << token
+	       << " splitting" << dendl;
+      _add_slot_waiter(token, slot, std::move(qi));
+    } else if (qi.get_map_epoch() > osdmap->get_epoch()) {
+      dout(20) << __func__ << " " << token
+	       << " map " << qi.get_map_epoch() << " > "
+	       << osdmap->get_epoch() << dendl;
+      _add_slot_waiter(token, slot, std::move(qi));
     } else if (!qi.requires_pg()) {
       // for pg-less events, we run them under the ordering lock, since
       // we don't have the pg lock to keep them ordered.
       qi.run(osd, pg, tp_handle);
-      sdata->sdata_op_ordering_lock.Unlock();
-      return;
     } else if (osdmap->is_up_acting_osd_shard(token, osd->whoami)) {
-      if (osd->service.splitting(token)) {
-	dout(20) << __func__ << " " << token
-		 << " splitting, waiting on " << qi << dendl;
-	slot.to_process.push_front(std::move(qi));
-	slot.waiting_for_pg = true;
-      } else if (create_info) {
+      if (create_info) {
 	if (create_info->by_mon &&
 	    osdmap->get_pg_acting_primary(token.pgid) != osd->whoami) {
 	  dout(20) << __func__ << " " << token
@@ -9689,8 +9715,7 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
       } else {
 	dout(20) << __func__ << " " << token
 		 << " no pg, should exist, will wait on " << qi << dendl;
-	slot.to_process.push_front(std::move(qi));
-	slot.waiting_for_pg = true;
+	_add_slot_waiter(token, slot, std::move(qi));
       }
     } else {
       dout(20) << __func__ << " " << token
