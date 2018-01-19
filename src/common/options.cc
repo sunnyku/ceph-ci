@@ -2512,6 +2512,10 @@ std::vector<Option> get_global_options() {
     .set_default(524288)
     .set_description(""),
 
+    Option("osd_deep_scrub_keys", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(1024)
+    .set_description(""),
+
     Option("osd_deep_scrub_update_digest_min_age", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(2*60*60)
     .set_description(""),
