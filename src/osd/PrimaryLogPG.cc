@@ -3440,7 +3440,12 @@ void PrimaryLogPG::log_op_stats(OpContext *ctx)
   uint64_t inb = ctx->bytes_written;
   uint64_t outb = ctx->bytes_read;
 
-  osd->logger->inc(l_osd_op);
+  if (m->ops.size() == 1 && m->ops.begin()->op.op == CEPH_OSD_OP_WATCH) {
+    // filter out singleton watch/unwatch request from diamond
+    // to make load_balancer happy
+  } else {
+    osd->logger->inc(l_osd_op);
+  }
 
   osd->logger->inc(l_osd_op_outb, outb);
   osd->logger->inc(l_osd_op_inb, inb);
