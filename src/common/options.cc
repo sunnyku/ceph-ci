@@ -2500,6 +2500,10 @@ std::vector<Option> get_global_options() {
     .set_default(5)
     .set_description(""),
 
+    Option("osd_scrub_max_preemptions", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(5)
+    .set_description("Set the maximum number of times we will preempt a deep scrub due to a client operation before blocking client IO to complete the scrub"),
+
     Option("osd_deep_scrub_interval", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(60*60*24*7)
     .set_description(""),
@@ -2527,7 +2531,7 @@ std::vector<Option> get_global_options() {
     .add_see_also("osd_deep_scrub_large_omap_object_value_sum_threshold"),
 
     Option("osd_deep_scrub_large_omap_object_value_sum_threshold", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
-    .set_default(1_G)
+    .set_default(1024*1024*1024)
     .set_description("threshold for summed size (bytes) of all key values to determine a large omap object")
     .add_service("osd")
     .add_see_also("osd_deep_scrub_large_omap_object_key_threshold"),
