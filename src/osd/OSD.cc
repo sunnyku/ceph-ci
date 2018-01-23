@@ -9432,44 +9432,46 @@ void OSD::ShardedOpWQ::prune_or_wake_pg_waiters(OSDMapRef osdmap, int whoami)
 	++p;
 	continue;
       }
-      if (slot.pending_nopg_epoch &&
-	  slot.pending_nopg_epoch <= osdmap->get_epoch()) {
-	dout(20) << __func__ << "  " << p->first
-		 << " pending_nopg_epoch " << slot.pending_nopg_epoch
-		 << " < " << osdmap->get_epoch() << ", requeueing" << dendl;
-	assert(!slot.waiting_nopg.empty());
-	_wake_pg_slot(p->first, sdata, slot, &pushes_to_free);
-	queued = true;
+      if (!slot.waiting_peering.empty()) {
+	assert(slot.pending_peering_epoch);
+	if (slot.pending_peering_epoch <= osdmap->get_epoch()) {
+	  dout(20) << __func__ << "  " << p->first
+		   << " pending_peering_epoch " << slot.pending_peering_epoch
+		   << " < " << osdmap->get_epoch() << ", requeueing" << dendl;
+	  assert(!slot.waiting_peering.empty());
+	  _wake_pg_slot(p->first, sdata, slot, &pushes_to_free);
+	  queued = true;
+	}
 	++p;
 	continue;
       }
-      if (!slot.to_process.empty() && slot.num_running == 0) {
+      if (!slot.waiting.empty()) {
 	if (osdmap->is_up_acting_osd_shard(p->first, whoami)) {
 	  dout(20) << __func__ << "  " << p->first << " maps to us, keeping"
 		   << dendl;
 	  ++p;
 	  continue;
 	}
-	while (!slot.to_process.empty() &&
-	       slot.to_process.front().get_map_epoch() <= osdmap->get_epoch()) {
-	  auto& qi = slot.to_process.front();
+	while (!slot.waiting.empty() &&
+	       slot.waiting.front().get_map_epoch() <= osdmap->get_epoch()) {
+	  auto& qi = slot.waiting.front();
 	  dout(20) << __func__ << "  " << p->first
-		   << " item " << qi
+		   << " waiting item " << qi
 		   << " epoch " << qi.get_map_epoch()
 		   << " <= " << osdmap->get_epoch()
 		   << ", stale, dropping" << dendl;
 	  pushes_to_free += qi.get_reserved_pushes();
-	  slot.to_process.pop_front();
+	  slot.waiting.pop_front();
+	}
+	if (slot.waiting.empty() &&
+	    slot.num_running == 0 &&
+	    !slot.pg) {
+	  dout(20) << __func__ << "  " << p->first << " empty, pruning" << dendl;
+	  p = sdata->pg_slots.erase(p);
+	  continue;
 	}
       }
-      if (slot.to_process.empty() &&
-	  slot.num_running == 0 &&
-	  !slot.pg) {
-	dout(20) << __func__ << "  " << p->first << " empty, pruning" << dendl;
-	p = sdata->pg_slots.erase(p);
-      } else {
-	++p;
-      }
+      ++p;
     }
     if (queued) {
       sdata->sdata_lock.Lock();
@@ -9512,18 +9514,18 @@ void OSD::ShardedOpWQ::_add_slot_waiter(
   OSD::ShardedOpWQ::ShardData::pg_slot& slot,
   OpQueueItem&& qi)
 {
-  if (!qi.requires_pg() || qi.creates_pg()) {
-    if (!slot.pending_nopg_epoch ||
-	slot.pending_nopg_epoch > qi.get_map_epoch()) {
-      slot.pending_nopg_epoch = qi.get_map_epoch();
+  if (qi.is_peering()) {
+    if (!slot.pending_peering_epoch ||
+	slot.pending_peering_epoch > qi.get_map_epoch()) {
+      slot.pending_peering_epoch = qi.get_map_epoch();
     }
     dout(20) << __func__ << " " << pgid
-	     << " no pg, item epoch is "
+	     << " no pg, peering, item epoch is "
 	     << qi.get_map_epoch()
-	     << ", pending_nopg_epoch now "
-	     << slot.pending_nopg_epoch
+	     << ", pending_peering_epoch now "
+	     << slot.pending_peering_epoch
 	     << ", will wait on " << qi << dendl;
-    slot.waiting_nopg.push_back(std::move(qi));
+    slot.waiting_peering.push_back(std::move(qi));
   } else {
     dout(20) << __func__ << " " << pgid
 	     << " no pg, item epoch is "
@@ -9581,7 +9583,8 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
 	     << " waiting_nopg " << slot.waiting_nopg
 	     << dendl;
     if (slot.waiting_for_split
-	|| (!slot.waiting.empty() && item.requires_pg() && !item.creates_pg())) {
+	|| (item.is_peering() && !slot.waiting_peering.empty())
+	|| (!item.is_peering() && !slot.waiting.empty())) {
       dout(20) << __func__ << " " << token << " already waiting, adding " << item
 	       << dendl;
       _add_slot_waiter(token, slot, std::move(item));
@@ -9690,33 +9693,42 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
 	       << " map " << qi.get_map_epoch() << " > "
 	       << osdmap->get_epoch() << dendl;
       _add_slot_waiter(token, slot, std::move(qi));
-    } else if (!qi.requires_pg()) {
-      // for pg-less events, we run them under the ordering lock, since
-      // we don't have the pg lock to keep them ordered.
-      qi.run(osd, pg, tp_handle);
-    } else if (osdmap->is_up_acting_osd_shard(token, osd->whoami)) {
-      if (create_info) {
-	if (create_info->by_mon &&
-	    osdmap->get_pg_acting_primary(token.pgid) != osd->whoami) {
-	  dout(20) << __func__ << " " << token
-		   << " no pg, no longer primary, ignoring mon create on "
-		   << qi << dendl;
+    } else if (qi.is_peering()) {
+      if (!qi.peering_requires_pg()) {
+	// for pg-less events, we run them under the ordering lock, since
+	// we don't have the pg lock to keep them ordered.
+	qi.run(osd, pg, tp_handle);
+      } else if (osdmap->is_up_acting_osd_shard(token, osd->whoami)) {
+	if (create_info) {
+	  if (create_info->by_mon &&
+	      osdmap->get_pg_acting_primary(token.pgid) != osd->whoami) {
+	    dout(20) << __func__ << " " << token
+		     << " no pg, no longer primary, ignoring mon create on "
+		     << qi << dendl;
+	  } else {
+	    dout(20) << __func__ << " " << token
+		     << " no pg, should create on " << qi << dendl;
+	    pg = osd->handle_pg_create_info(osdmap, create_info);
+	    if (pg) {
+	      // we created the pg! drop out and continue "normally"!
+	      _wake_pg_slot(token, sdata, slot, &pushes_to_free);
+	      break;
+	    }
+	    dout(20) << __func__ << " ignored create on " << qi << dendl;
+	  }
 	} else {
 	  dout(20) << __func__ << " " << token
-		   << " no pg, should create on " << qi << dendl;
-	  pg = osd->handle_pg_create_info(osdmap, create_info);
-	  if (pg) {
-	    // we created the pg! drop out and continue "normally"!
-	    _wake_pg_slot(token, sdata, slot, &pushes_to_free);
-	    break;
-	  }
-	  dout(20) << __func__ << " ignored create on " << qi << dendl;
+		   << " no pg, peering, !create, discarding " << qi << dendl;
 	}
       } else {
 	dout(20) << __func__ << " " << token
-		 << " no pg, should exist, will wait on " << qi << dendl;
-	_add_slot_waiter(token, slot, std::move(qi));
+		 << " no pg, peering, does't map here, discarding " << qi
+		 << dendl;
       }
+    } else if (osdmap->is_up_acting_osd_shard(token, osd->whoami)) {
+      dout(20) << __func__ << " " << token
+	       << " no pg, should exist, will wait on " << qi << dendl;
+      _add_slot_waiter(token, slot, std::move(qi));
     } else {
       dout(20) << __func__ << " " << token
 	       << " no pg, shouldn't exist,"

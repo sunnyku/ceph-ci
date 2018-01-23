@@ -1588,11 +1588,11 @@ private:
 	deque<OpQueueItem> to_process; ///< order items for this slot
 	int num_running = 0;          ///< _process threads doing pg lookup/lock
 
-	/// one or more queued items doesn't need a pg, only a map >= this
-	epoch_t pending_nopg_epoch = 0;
+	deque<OpQueueItem> waiting;         ///< waiting for pg (or map + pg)
+	deque<OpQueueItem> waiting_peering; ///< waiting for map (peering evt)
 
-	deque<OpQueueItem> waiting;      ///< waiting for map or pg to exist
-	deque<OpQueueItem> waiting_nopg; ///< waiting for map, don't need pg
+	/// min required map across waiting_peering items
+	epoch_t pending_peering_epoch = 0;
 
 	/// incremented by wake_pg_waiters; indicates racing _process threads
 	/// should bail out (their op has been requeued)
