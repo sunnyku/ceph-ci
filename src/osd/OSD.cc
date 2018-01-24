@@ -9313,7 +9313,7 @@ void OSD::handle_reset_recovery_limits(Message *m)
   dout(10) << __func__ << " " << *msg << dendl;
 
   int r;
-  stringstream ss;
+  stringstream rs;
   string args;
   auto conf = cct->_conf;
   if (msg->options & OSD_RESET_RECOVERY_BANDWIDTH) {
@@ -9370,10 +9370,10 @@ void OSD::handle_reset_recovery_limits(Message *m)
   }
   osd_lock.Unlock();
   dout(0) << __func__ << " do injectargs '" << args << "'" << dendl;
-  r = conf->injectargs(args, &ss);
+  r = conf->injectargs(args, &rs);
   osd_lock.Lock();
   if (r < 0) {
-    derr << __func__ << " injectargs failed:" << ss.str() << dendl;
+    derr << __func__ << " injectargs failed:" << rs.str() << dendl;
   }
  out:
   msg->put();
