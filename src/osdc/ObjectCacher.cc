@@ -1152,7 +1152,7 @@ void ObjectCacher::bh_write_commit(int64_t poolid, sobject_t oid,
 	 ++p) {
       BufferHead *bh = p->second;
 
-      if (bh->start() > start+(loff_t)length)
+      if (bh->start() >= start+(loff_t)length)
 	break;
 
       // make sure bh is tx
