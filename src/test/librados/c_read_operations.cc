@@ -470,7 +470,7 @@ TEST_F(CReadOpsTest, Exec) {
   uint64_t features;
   EXPECT_EQ(sizeof(features), bytes_read);
   // make sure buffer is at least as long as it claims
-  ASSERT_TRUE(out[bytes_read-1] == out[bytes_read-1]);
+  ASSERT_TRUE(out[0] = out[bytes_read-1]);
   rados_buffer_free(out);
 
   remove_object();
