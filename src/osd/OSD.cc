@@ -9347,14 +9347,14 @@ void OSD::ShardedOpWQ::_wake_pg_slot(
   dout(20) << __func__ << " " << pgid
 	   << " to_process " << slot.to_process
 	   << " waiting " << slot.waiting
-	   << " waiting_nopg " << slot.waiting_nopg << dendl;
+	   << " waiting_nopg " << slot.waiting_peering << dendl;
   for (auto& q : slot.to_process) {
     *pushes_to_free += q.get_reserved_pushes();
   }
   for (auto& q : slot.waiting) {
     *pushes_to_free += q.get_reserved_pushes();
   }
-  for (auto& q : slot.waiting_nopg) {
+  for (auto& q : slot.waiting_peering) {
     *pushes_to_free += q.get_reserved_pushes();
   }
   for (auto i = slot.to_process.rbegin();
@@ -9369,13 +9369,13 @@ void OSD::ShardedOpWQ::_wake_pg_slot(
     sdata->_enqueue_front(std::move(*i), osd->op_prio_cutoff);
   }
   slot.waiting.clear();
-  for (auto i = slot.waiting_nopg.rbegin();
-       i != slot.waiting_nopg.rend();
+  for (auto i = slot.waiting_peering.rbegin();
+       i != slot.waiting_peering.rend();
        ++i) {
     sdata->_enqueue_front(std::move(*i), osd->op_prio_cutoff);
   }
-  slot.waiting_nopg.clear();
-  slot.pending_nopg_epoch = 0;
+  slot.waiting_peering.clear();
+  slot.pending_peering_epoch = 0;
   slot.waiting_for_split = false;
   ++slot.requeue_seq;
 }
@@ -9580,7 +9580,7 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
     dout(30) << __func__ << " " << token
 	     << " to_process " << slot.to_process
 	     << " waiting " << slot.waiting
-	     << " waiting_nopg " << slot.waiting_nopg
+	     << " waiting_peering " << slot.waiting_peering
 	     << dendl;
     if (slot.waiting_for_split
 	|| (item.is_peering() && !slot.waiting_peering.empty())
@@ -9658,7 +9658,7 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
   dout(30) << __func__ << " " << token
 	   << " to_process " << slot.to_process
 	   << " waiting " << slot.waiting
-	   << " waiting_nopg " << slot.waiting_nopg << dendl;
+	   << " waiting_peering " << slot.waiting_peering << dendl;
 
   // make sure we're not already waiting for this pg
   /*if (!slot.waiting.empty()) {

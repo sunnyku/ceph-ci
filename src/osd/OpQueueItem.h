@@ -183,6 +183,18 @@ public:
   dmc::ReqParams get_qos_params() const { return qos_params; }
   void set_qos_params(dmc::ReqParams qparams) { qos_params =  qparams; }
 
+  bool is_peering() const {
+    return qitem->is_peering();
+  }
+
+  const PGCreateInfo *creates_pg() const {
+    return qitem->creates_pg();
+  }
+
+  bool peering_requires_pg() const {
+    return qitem->peering_requires_pg();
+  }
+
   friend ostream& operator<<(ostream& out, const OpQueueItem& item) {
     return out << "OpQueueItem("
 	       << item.get_ordering_token() << " " << *item.qitem
