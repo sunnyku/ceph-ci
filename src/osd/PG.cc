@@ -313,7 +313,7 @@ PG::PG(OSDService *o, OSDMapRef curmap,
   cct(o->cct),
   osdmap_ref(curmap),
   pool(_pool),
-  osdriver(osd->store, coll_t(), OSD::make_snapmapper_oid()),
+  osdriver(osd->store, OSD::make_snapmapper_oid()),
   snap_mapper(
     cct,
     &osdriver,
@@ -3198,7 +3198,9 @@ bool PG::_has_removal_flag(ObjectStore *store,
   set<string> keys;
   keys.insert("_remove");
   map<string,bufferlist> values;
-  if (store->omap_get_values(coll, pgmeta_oid, keys, &values) == 0 &&
+  auto ch = store->open_collection(coll);
+  assert(ch);
+  if (store->omap_get_values(ch, pgmeta_oid, keys, &values) == 0 &&
       values.size() == 1)
     return true;
 
@@ -3222,7 +3224,9 @@ int PG::peek_map_epoch(ObjectStore *store,
   keys.insert(infover_key);
   keys.insert(epoch_key);
   map<string,bufferlist> values;
-  int r = store->omap_get_values(coll, pgmeta_oid, keys, &values);
+  auto ch = store->open_collection(coll);
+  assert(ch);
+  int r = store->omap_get_values(ch, pgmeta_oid, keys, &values);
   if (r == 0) {
     assert(values.size() == 2);
 
@@ -3435,7 +3439,9 @@ int PG::read_info(
   keys.insert(fastinfo_key);
   ghobject_t pgmeta_oid(pgid.make_pgmeta_oid());
   map<string,bufferlist> values;
-  int r = store->omap_get_values(coll, pgmeta_oid, keys, &values);
+  auto ch = store->open_collection(coll);
+  assert(ch);
+  int r = store->omap_get_values(ch, pgmeta_oid, keys, &values);
   assert(r == 0);
   assert(values.size() == 3 ||
 	 values.size() == 4);
@@ -3477,7 +3483,7 @@ void PG::read_state(ObjectStore *store)
   ostringstream oss;
   pg_log.read_log_and_missing(
     store,
-    coll,
+    ch,
     pgmeta_oid,
     info,
     oss,
@@ -6183,7 +6189,7 @@ void PG::handle_query_state(Formatter *f)
 
 void PG::update_store_with_options()
 {
-  auto r = osd->store->set_collection_opts(coll, pool.info.opts);
+  auto r = osd->store->set_collection_opts(ch, pool.info.opts);
   if(r < 0 && r != -EOPNOTSUPP) {
     derr << __func__ << " set_collection_opts returns error:" << r << dendl;
   }
@@ -6193,7 +6199,7 @@ void PG::update_store_on_load()
 {
   if (osd->store->get_type() == "filestore") {
     // legacy filestore didn't store collection bit width; fix.
-    int bits = osd->store->collection_bits(coll);
+    int bits = osd->store->collection_bits(ch);
     if (bits < 0) {
       assert(!coll.is_meta()); // otherwise OSD::load_pgs() did a bad thing
       bits = info.pgid.get_split_bits(pool.info.get_pg_num());
@@ -6243,7 +6249,7 @@ void PG::_delete_some()
 		     (int)cct->_conf->osd_target_transaction_size);
   ghobject_t next;
   osd->store->collection_list(
-    coll,
+    ch,
     next,
     ghobject_t::get_max(),
     max,
