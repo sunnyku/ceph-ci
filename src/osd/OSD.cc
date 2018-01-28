@@ -398,8 +398,9 @@ void OSDService::_cancel_pending_splits_for_parent(spg_t parent)
 }
 
 void OSDService::_maybe_split_pgid(OSDMapRef old_map,
-				  OSDMapRef new_map,
-				  spg_t pgid)
+				   OSDMapRef new_map,
+				   spg_t pgid,
+				   set<spg_t> *new_children)
 {
   if (!old_map->have_pg_pool(pgid.pool())) {
     return;
@@ -410,6 +411,9 @@ void OSDService::_maybe_split_pgid(OSDMapRef old_map,
     set<spg_t> children;
     if (pgid.is_split(old_pgnum, new_pgnum, &children)) {
       _start_split(pgid, children);
+      for (auto pgid : children) {
+	new_children->insert(pgid);
+      }
     }
   } else {
     assert(pgid.ps() < static_cast<unsigned>(new_pgnum));
@@ -467,14 +471,15 @@ void OSDService::init_splits_between(spg_t pgid,
 }
 
 void OSDService::expand_pg_num(OSDMapRef old_map,
-			       OSDMapRef new_map)
+			       OSDMapRef new_map,
+			       set<spg_t> *new_children)
 {
   Mutex::Locker l(in_progress_split_lock);
   for (auto pgid : in_progress_splits) {
-    _maybe_split_pgid(old_map, new_map, pgid);
+    _maybe_split_pgid(old_map, new_map, pgid, &new_children);
   }
   for (auto i : pending_splits) {
-    _maybe_split_pgid(old_map, new_map, i.first);
+    _maybe_split_pgid(old_map, new_map, i.first, &new_children);
   }
 }
 
@@ -3834,7 +3839,9 @@ PGRef OSD::_open_pg(
 
     // make sure we register any splits that happened between when the pg
     // was created and our latest map.
-    service.init_splits_between(pgid, createmap, servicemap);
+    set<spg_t> new_children;
+    service.init_splits_between(pgid, createmap, servicemap, &new_children);
+    op_shardedwq.prime_splits(new_children);
   }
   return pg;
 }
@@ -4039,7 +4046,9 @@ void OSD::load_pgs()
     // read pg state, log
     pg->read_state(store);
 
-    service.init_splits_between(pg->pg_id, pg->get_osdmap(), osdmap);
+    set<spg_t> new_children;
+    service.init_splits_between(pg->pg_id, pg->get_osdmap(), osdmap, &new_children);
+    op_shardedwq.prime_splits(new_children);
 
     pg->reg_next_scrub();
 
@@ -7848,6 +7857,7 @@ void OSD::consume_map()
   int num_pg_primary = 0, num_pg_replica = 0, num_pg_stray = 0;
 
   // scan pg's
+  set<spg_t> new_children;
   vector<spg_t> pgids;
   {
     RWLock::RLocker l(pg_map_lock);
@@ -7859,7 +7869,7 @@ void OSD::consume_map()
       if (pg->is_deleted()) {
 	continue;
       }
-      service.init_splits_between(it->first, service.get_osdmap(), osdmap);
+      service.init_splits_between(it->first, service.get_osdmap(), osdmap, &new_children);
 
       // FIXME: this is lockless and racy, but we don't want to take pg lock
       // here.
@@ -7882,7 +7892,8 @@ void OSD::consume_map()
     }
   }
 
-  service.expand_pg_num(service.get_osdmap(), osdmap);
+  service.expand_pg_num(service.get_osdmap(), osdmap, &new_children);
+  op_shardedwq.prime_splits(new_chilren);
 
   service.pre_publish_map(osdmap);
   service.await_reserved_maps();
@@ -8073,9 +8084,6 @@ void OSD::split_pgs(
   OSDMapRef nextmap,
   PG::RecoveryCtx *rctx)
 {
-  // make sure to-be-split children are blocked in wq
-  op_shardedwq.prime_splits(childpgids);
-
   unsigned pg_num = nextmap->get_pg_num(
     parent->pg_id.pool());
   parent->update_snap_mapper_bits(

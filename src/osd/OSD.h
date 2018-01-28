@@ -968,11 +968,14 @@ public:
   void _cancel_pending_splits_for_parent(spg_t parent);
   bool splitting(spg_t pgid);
   void expand_pg_num(OSDMapRef old_map,
-		     OSDMapRef new_map);
+		     OSDMapRef new_map,
+		     set<spg_t> *new_children);
   void _maybe_split_pgid(OSDMapRef old_map,
 			 OSDMapRef new_map,
-			 spg_t pgid);
-  void init_splits_between(spg_t pgid, OSDMapRef frommap, OSDMapRef tomap);
+			 spg_t pgid,
+			 set<spg_t> *new_children);
+  void init_splits_between(spg_t pgid, OSDMapRef frommap, OSDMapRef tomap,
+			   set<spg_t> *new_chilren);
 
   // -- stats --
   Mutex stat_lock;
