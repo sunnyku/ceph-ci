@@ -422,7 +422,8 @@ void OSDService::_maybe_split_pgid(OSDMapRef old_map,
 
 void OSDService::init_splits_between(spg_t pgid,
 				     OSDMapRef frommap,
-				     OSDMapRef tomap)
+				     OSDMapRef tomap,
+				     set<spg_t> *new_children)
 {
   // First, check whether we can avoid this potentially expensive check
   if (!frommap->have_pg_pool(pgid.pool())) {
@@ -460,6 +461,7 @@ void OSDService::init_splits_between(spg_t pgid,
 			&split_pgs)) {
 	  start_split(*i, split_pgs);
 	  even_newer_pgs.insert(split_pgs.begin(), split_pgs.end());
+	  new_children->insert(split_pgs.begin(), split_pgs.end());
 	}
       }
       new_pgs.insert(even_newer_pgs.begin(), even_newer_pgs.end());
@@ -476,10 +478,10 @@ void OSDService::expand_pg_num(OSDMapRef old_map,
 {
   Mutex::Locker l(in_progress_split_lock);
   for (auto pgid : in_progress_splits) {
-    _maybe_split_pgid(old_map, new_map, pgid, &new_children);
+    _maybe_split_pgid(old_map, new_map, pgid, new_children);
   }
   for (auto i : pending_splits) {
-    _maybe_split_pgid(old_map, new_map, i.first, &new_children);
+    _maybe_split_pgid(old_map, new_map, i.first, new_children);
   }
 }
 
@@ -7893,7 +7895,7 @@ void OSD::consume_map()
   }
 
   service.expand_pg_num(service.get_osdmap(), osdmap, &new_children);
-  op_shardedwq.prime_splits(new_chilren);
+  op_shardedwq.prime_splits(new_children);
 
   service.pre_publish_map(osdmap);
   service.await_reserved_maps();
