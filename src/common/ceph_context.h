@@ -61,6 +61,8 @@ public:
               enum code_environment_t code_env=CODE_ENVIRONMENT_UTILITY,
               int init_flags_ = 0);
 
+  bool _finished = false;
+
   // ref count!
 private:
   ~CephContext();
