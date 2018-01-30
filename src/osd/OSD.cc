@@ -3862,7 +3862,7 @@ PG* OSD::_make_pg(
   OSDMapRef createmap,
   spg_t pgid)
 {
-  dout(10) << "_open_lock_pg " << pgid << dendl;
+  dout(10) << __func__ << " " << pgid << dendl;
   pg_pool_t pi;
   string name;
   if (createmap->have_pg_pool(pgid.pool())) {
@@ -4066,11 +4066,6 @@ PGRef OSD::handle_pg_create_info(OSDMapRef osdmap, const PGCreateInfo *info)
 {
   spg_t pgid = info->pgid;
 
-  int up_primary, acting_primary;
-  vector<int> up, acting;
-  osdmap->pg_to_up_acting_osds(
-    pgid.pgid, &up, &up_primary, &acting, &acting_primary);
-
   if (maybe_wait_for_max_pg(osdmap, pgid, info->by_mon)) {
     dout(10) << __func__ << " hit max pg, dropping" << dendl;
     return nullptr;
@@ -4078,7 +4073,13 @@ PGRef OSD::handle_pg_create_info(OSDMapRef osdmap, const PGCreateInfo *info)
 
   PG::RecoveryCtx rctx = create_context();
 
-  const pg_pool_t* pp = osdmap->get_pg_pool(pgid.pool());
+  OSDMapRef createmap = get_map(info->epoch);
+  int up_primary, acting_primary;
+  vector<int> up, acting;
+  createmap->pg_to_up_acting_osds(
+    pgid.pgid, &up, &up_primary, &acting, &acting_primary);
+
+  const pg_pool_t* pp = createmap->get_pg_pool(pgid.pool());
   if (pp->has_flag(pg_pool_t::FLAG_EC_OVERWRITES) &&
       store->get_type() != "bluestore") {
     clog->warn() << "pg " << pgid
@@ -4089,12 +4090,12 @@ PGRef OSD::handle_pg_create_info(OSDMapRef osdmap, const PGCreateInfo *info)
   PG::_create(*rctx.transaction, pgid, pgid.get_split_bits(pp->get_pg_num()));
   PG::_init(*rctx.transaction, pgid, pp);
 
-  int role = osdmap->calc_pg_role(whoami, acting, acting.size());
+  int role = createmap->calc_pg_role(whoami, acting, acting.size());
   if (!pp->is_replicated() && role != pgid.shard) {
     role = -1;
   }
 
-  PGRef pg = _open_pg(get_map(info->epoch), osdmap, pgid);
+  PGRef pg = _open_pg(createmap, osdmap, pgid);
 
   pg->lock(true);
 
