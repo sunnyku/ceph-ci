@@ -1208,7 +1208,6 @@ void PrimaryLogPG::do_pg_op(OpRequestRef op)
 	}
 
 	hobject_t current = lower_bound;
-	osr->flush();
 	int r = pgbackend->objects_list_partial(
 	  current,
 	  list_size,
@@ -1365,7 +1364,6 @@ void PrimaryLogPG::do_pg_op(OpRequestRef op)
 
 	hobject_t next;
 	hobject_t current = response.handle;
-	osr->flush();
 	int r = pgbackend->objects_list_partial(
 	  current,
 	  list_size,
@@ -4097,7 +4095,7 @@ void PrimaryLogPG::do_backfill(OpRequestRef op)
       ObjectStore::Transaction t;
       dirty_info = true;
       write_if_dirty(t);
-      int tr = osd->store->queue_transaction(osr.get(), std::move(t), NULL);
+      int tr = osd->store->queue_transaction(ch, std::move(t), NULL);
       assert(tr == 0);
     }
     break;
@@ -4125,7 +4123,7 @@ void PrimaryLogPG::do_backfill_remove(OpRequestRef op)
   for (auto& p : m->ls) {
     remove_snap_mapped_object(t, p.first);
   }
-  int r = osd->store->queue_transaction(osr.get(), std::move(t), NULL);
+  int r = osd->store->queue_transaction(ch, std::move(t), NULL);
   assert(r == 0);
 }
 
@@ -6975,7 +6973,7 @@ int PrimaryLogPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	bool truncated = false;
 	if (oi.is_omap()) {
 	  ObjectMap::ObjectMapIterator iter = osd->store->get_omap_iterator(
-	    coll, ghobject_t(soid)
+	    ch, ghobject_t(soid)
 	    );
 	  assert(iter);
 	  iter->upper_bound(start_after);
@@ -7022,7 +7020,7 @@ int PrimaryLogPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	bufferlist bl;
 	if (oi.is_omap()) {
 	  ObjectMap::ObjectMapIterator iter = osd->store->get_omap_iterator(
-	    coll, ghobject_t(soid)
+	    ch, ghobject_t(soid)
 	    );
           if (!iter) {
             result = -ENOENT;
@@ -8422,7 +8420,7 @@ int PrimaryLogPG::do_copy_get(OpContext *ctx, bufferlist::iterator& bp,
       }
       bufferlist omap_data;
       ObjectMap::ObjectMapIterator iter =
-	osd->store->get_omap_iterator(coll, ghobject_t(oi.soid));
+	osd->store->get_omap_iterator(ch, ghobject_t(oi.soid));
       assert(iter);
       iter->upper_bound(cursor.omap_offset);
       for (; iter->valid(); iter->next(false)) {
@@ -10377,7 +10375,7 @@ void PrimaryLogPG::submit_log_entries(
 	new OnComplete{this, rep_tid, get_osdmap()->get_epoch()});
       t.register_on_applied(
 	new C_OSD_OnApplied{this, get_osdmap()->get_epoch(), info.last_update});
-      int r = osd->store->queue_transaction(osr.get(), std::move(t), NULL);
+      int r = osd->store->queue_transaction(ch, std::move(t), NULL);
       assert(r == 0);
     });
 }
@@ -11136,7 +11134,7 @@ void PrimaryLogPG::remove_missing_object(const hobject_t &soid,
 	 ObjectStore::Transaction t2;
 	 on_local_recover(soid, recovery_info, ObjectContextRef(), true, &t2);
 	 t2.register_on_complete(on_complete);
-	 int r = osd->store->queue_transaction(osr.get(), std::move(t2), nullptr);
+	 int r = osd->store->queue_transaction(ch, std::move(t2), nullptr);
 	 assert(r == 0);
 	 unlock();
        } else {
@@ -11144,7 +11142,7 @@ void PrimaryLogPG::remove_missing_object(const hobject_t &soid,
 	 on_complete->complete(-EAGAIN);
        }
      }));
-  int r = osd->store->queue_transaction(osr.get(), std::move(t), nullptr);
+  int r = osd->store->queue_transaction(ch, std::move(t), nullptr);
   assert(r == 0);
 }
 
@@ -11356,7 +11354,7 @@ void PrimaryLogPG::do_update_log_missing(OpRequestRef &op)
   t.register_on_applied(
     new C_OSD_OnApplied{this, get_osdmap()->get_epoch(), info.last_update});
   int tr = osd->store->queue_transaction(
-    osr.get(),
+    ch,
     std::move(t),
     nullptr);
   assert(tr == 0);
@@ -11654,7 +11652,6 @@ void PrimaryLogPG::shutdown()
   lock();
   on_shutdown();
   unlock();
-  osr->flush();
 }
 
 void PrimaryLogPG::on_shutdown()
@@ -11753,7 +11750,7 @@ void PrimaryLogPG::_on_new_interval()
   dout(20) << __func__ << " checking missing set deletes flag. missing = " << pg_log.get_missing() << dendl;
   if (!pg_log.get_missing().may_include_deletes &&
       get_osdmap()->test_flag(CEPH_OSDMAP_RECOVERY_DELETES)) {
-    pg_log.rebuild_missing_set_with_deletes(osd->store, coll, info);
+    pg_log.rebuild_missing_set_with_deletes(osd->store, ch, info);
   }
   assert(pg_log.get_missing().may_include_deletes == get_osdmap()->test_flag(CEPH_OSDMAP_RECOVERY_DELETES));
 }
@@ -12268,7 +12265,7 @@ uint64_t PrimaryLogPG::recover_primary(uint64_t max, ThreadPool::TPHandle &handl
 
 	      ++active_pushes;
 
-	      osd->store->queue_transaction(osr.get(), std::move(t),
+	      osd->store->queue_transaction(ch, std::move(t),
 					    new C_OSD_AppliedRecoveredObject(this, obc),
 					    new C_OSD_CommittedPushedObject(
 					      this,
@@ -13001,7 +12998,6 @@ void PrimaryLogPG::update_range(
   if (bi->version < info.log_tail) {
     dout(10) << __func__<< ": bi is old, rescanning local backfill_info"
 	     << dendl;
-    osr->flush();
     if (last_update_applied >= info.log_tail) {
       bi->version = last_update_applied;
     } else {
@@ -14967,7 +14963,7 @@ boost::statechart::result PrimaryLogPG::AwaitAsyncWork::react(const DoSnapWork&)
     ObjectStore::Transaction t;
     pg->dirty_big_info = true;
     pg->write_if_dirty(t);
-    int tr = pg->osd->store->queue_transaction(pg->osr.get(), std::move(t), NULL);
+    int tr = pg->osd->store->queue_transaction(pg->ch, std::move(t), NULL);
     assert(tr == 0);
 
     pg->share_pg_info();
