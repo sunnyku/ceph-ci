@@ -26,6 +26,7 @@
 #include "global/signal_handler.h"
 #include "include/compat.h"
 #include "include/str_list.h"
+#include "mon/MonClient.h"
 
 #include <pwd.h>
 #include <grp.h>
@@ -80,22 +81,34 @@ static int chown_path(const std::string &pathname, const uid_t owner, const gid_
   return r;
 }
 
-void global_pre_init(std::vector < const char * > *alt_def_args,
-		     std::vector < const char* >& args,
-		     uint32_t module_type, code_environment_t code_env,
-		     int flags)
+void global_pre_init(
+  const std::map<std::string,std::string> *defaults,
+  std::vector < const char* >& args,
+  uint32_t module_type, code_environment_t code_env,
+  int flags)
 {
   std::string conf_file_list;
   std::string cluster = "";
-  CephInitParameters iparams = ceph_argparse_early_args(args, module_type,
-							&cluster, &conf_file_list);
+
+  CephInitParameters iparams = ceph_argparse_early_args(
+    args, module_type,
+    &cluster, &conf_file_list);
+  if (flags & (CINIT_FLAG_NO_DEFAULT_CONFIG_FILE|
+	       CINIT_FLAG_NO_MON_CONFIG)) {
+    iparams.no_mon_config = true;
+  }
+
   CephContext *cct = common_preinit(iparams, code_env, flags);
   cct->_conf->cluster = cluster;
   global_init_set_globals(cct);
   md_config_t *conf = cct->_conf;
 
-  if (alt_def_args)
-    conf->parse_argv(*alt_def_args);  // alternative default args
+  // alternate defaults
+  if (defaults) {
+    for (auto& i : *defaults) {
+      conf->set_val_default(i.first, i.second);
+    }
+  }
 
   int ret = conf->parse_config_files(c_str_or_null(conf_file_list),
 				     &cerr, flags);
@@ -121,16 +134,30 @@ void global_pre_init(std::vector < const char * > *alt_def_args,
     _exit(1);
   }
 
-  conf->parse_env(); // environment variables override
+  // environment variables override (CEPH_ARGS, CEPH_KEYRING)
+  conf->parse_env();
 
-  conf->parse_argv(args); // argv override
+  // command line (as passed by caller)
+  conf->parse_argv(args);
+
+  if (!iparams.no_mon_config) {
+    MonClient mc_bootstrap(g_ceph_context);
+    if (mc_bootstrap.get_monmap_and_config() < 0) {
+      derr << "failed to fetch mon config (--no-mon-config to skip)" << dendl;
+      cct->_log->flush();
+      _exit(1);
+    }
+  }
+
+  // do the --show-config[-val], if present in argv
+  conf->do_argv_commands();
 
   // Now we're ready to complain about config file parse errors
   g_conf->complain_about_parse_errors(g_ceph_context);
 }
 
 boost::intrusive_ptr<CephContext>
-global_init(std::vector < const char * > *alt_def_args,
+global_init(const std::map<std::string,std::string> *defaults,
 	    std::vector < const char* >& args,
 	    uint32_t module_type, code_environment_t code_env,
 	    int flags,
@@ -141,7 +168,7 @@ global_init(std::vector < const char * > *alt_def_args,
   if (run_pre_init) {
     // We will run pre_init from here (default).
     assert(!g_ceph_context && first_run);
-    global_pre_init(alt_def_args, args, module_type, code_env, flags);
+    global_pre_init(defaults, args, module_type, code_env, flags);
   } else {
     // Caller should have invoked pre_init manually.
     assert(g_ceph_context && first_run);
