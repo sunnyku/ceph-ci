@@ -9733,17 +9733,19 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
 	}
       } else {
 	dout(20) << __func__ << " " << token
-		 << " no pg, peering, does't map here, discarding " << qi
+		 << " no pg, peering, doesn't map here e" << osdmap->get_epoch()
+		 << ", discarding " << qi
 		 << dendl;
       }
     } else if (osdmap->is_up_acting_osd_shard(token, osd->whoami)) {
       dout(20) << __func__ << " " << token
-	       << " no pg, should exist, will wait on " << qi << dendl;
+	       << " no pg, should exist e" << osdmap->get_epoch()
+	       << ", will wait on " << qi << dendl;
       _add_slot_waiter(token, slot, std::move(qi));
     } else {
       dout(20) << __func__ << " " << token
-	       << " no pg, shouldn't exist,"
-	       << " dropping " << qi << dendl;
+	       << " no pg, shouldn't exist e" << osdmap->get_epoch()
+	       << ", dropping " << qi << dendl;
       // share map with client?
       if (boost::optional<OpRequestRef> _op = qi.maybe_get_op()) {
 	Session *session = static_cast<Session *>(
