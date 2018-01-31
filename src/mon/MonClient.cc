@@ -151,10 +151,9 @@ out_msgr:
   delete messenger;
   messenger = nullptr;
 
-  assert(!monmap.fsid.is_zero());
-  cct->_conf->set_val("fsid", stringify(monmap.fsid));
-  ldout(cct,10) << __func__ << " success" << dendl;
-  r = 0;
+  if (!monmap.fsid.is_zero()) {
+    cct->_conf->set_val("fsid", stringify(monmap.fsid));
+  }
 
 out:
   cct->shutdown_crypto();
