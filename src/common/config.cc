@@ -624,7 +624,7 @@ void md_config_t::do_argv_commands()
 
   if (do_show_config_value.size()) {
     string val;
-    int r = conf_stringify(_get_val(do_show_config_value), &val);
+    int r = conf_stringify(_get_val(do_show_config_value, 0, &cerr), &val);
     if (r < 0) {
       if (r == -ENOENT)
 	std::cerr << "failed to get config option '"
@@ -994,7 +994,8 @@ Option::value_t md_config_t::get_val_generic(const std::string &key) const
 
 Option::value_t md_config_t::_get_val(
   const std::string &key,
-  expand_stack_t *stack) const
+  expand_stack_t *stack,
+  std::ostream *err) const
 {
   assert(lock.is_locked());
   if (key.empty()) {
@@ -1010,7 +1011,7 @@ Option::value_t md_config_t::_get_val(
     return Option::value_t(boost::blank());
   }
 
-  return _get_val(*o, stack);
+  return _get_val(*o, stack, err);
 }
 
 Option::value_t md_config_t::_get_val(
