@@ -13,6 +13,37 @@
  */
 
 
+/*
+
+  Ordering notes:
+
+  - everybody waits for split.
+
+  - client ops must remained ordered by client, regardless of map epoch
+  - client ops wait for pg to exist (or are discarded if we confirm the pg
+  no longer should).
+  - client ops must wait for the min epoch.
+    -> this happens under the PG itself, not as part of the queue.
+       currently in PrimaryLogPG::do_request()
+    -> the pg waiting queue is ordered by client, so other clients do not have to wait
+
+  - peering messages must wait for the required_map
+    - currently in do_peering_event(), PG::peering_waiters
+  - peering messages must remain ordered (globally or by peer?)
+  - some peering messages create the pg
+  - query does not need a pg.
+    - q: do any peering messages need to wait for the pg to exist?
+        pretty sure no!
+
+    ---
+
+    bool waiting_for_split -- everyone waits.
+
+    waiting -- client/mon ops
+    waiting_peering -- peering ops
+
+  */
+
 #pragma once
 
 #include <ostream>
@@ -63,6 +94,16 @@ public:
 
     virtual uint64_t get_reserved_pushes() const {
       return 0;
+    }
+
+    virtual bool is_peering() const {
+      return false;
+    }
+    virtual bool peering_requires_pg() const {
+      ceph_abort();
+    }
+    virtual const PGCreateInfo *creates_pg() const {
+      return nullptr;
     }
 
     virtual ostream &print(ostream &rhs) const = 0;
@@ -142,6 +183,18 @@ public:
   dmc::ReqParams get_qos_params() const { return qos_params; }
   void set_qos_params(dmc::ReqParams qparams) { qos_params =  qparams; }
 
+  bool is_peering() const {
+    return qitem->is_peering();
+  }
+
+  const PGCreateInfo *creates_pg() const {
+    return qitem->creates_pg();
+  }
+
+  bool peering_requires_pg() const {
+    return qitem->peering_requires_pg();
+  }
+
   friend ostream& operator<<(ostream& out, const OpQueueItem& item) {
     return out << "OpQueueItem("
 	       << item.get_ordering_token() << " " << *item.qitem
@@ -212,6 +265,15 @@ public:
     return rhs << "PGPeeringEvent(" << evt->get_desc() << ")";
   }
   void run(OSD *osd, PGRef& pg, ThreadPool::TPHandle &handle) override final;
+  bool is_peering() const override {
+    return true;
+  }
+  bool peering_requires_pg() const override {
+    return evt->requires_pg;
+  }
+  const PGCreateInfo *creates_pg() const override {
+    return evt->create_info.get();
+  }
 };
 
 class PGSnapTrim : public PGOpQueueable {
@@ -276,6 +338,26 @@ public:
     return reserved_pushes;
   }
   virtual void run(
+    OSD *osd, PGRef& pg, ThreadPool::TPHandle &handle) override final;
+};
+
+class PGRecoveryContext : public PGOpQueueable {
+  unique_ptr<GenContext<ThreadPool::TPHandle&>> c;
+  epoch_t epoch;
+public:
+  PGRecoveryContext(spg_t pgid,
+		    GenContext<ThreadPool::TPHandle&> *c, epoch_t epoch)
+    : PGOpQueueable(pgid),
+      c(c), epoch(epoch) {}
+  op_type_t get_op_type() const override final {
+    return op_type_t::bg_recovery;
+  }
+  ostream &print(ostream &rhs) const override final {
+    return rhs << "PGRecoveryContext(pgid=" << get_pgid()
+	       << " c=" << c.get() << " epoch=" << epoch
+	       << ")";
+  }
+  void run(
     OSD *osd, PGRef& pg, ThreadPool::TPHandle &handle) override final;
 };
 
