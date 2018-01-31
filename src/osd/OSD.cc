@@ -8433,8 +8433,8 @@ void OSD::handle_fast_pg_create(MOSDPGCreate2 *m)
       pgid,
       PGPeeringEventRef(
 	std::make_shared<PGPeeringEvent>(
-	  created,
-	  created,
+	  m->epoch,
+	  m->epoch,
 	  NullEvt(),
 	  true,
 	  new PGCreateInfo(
