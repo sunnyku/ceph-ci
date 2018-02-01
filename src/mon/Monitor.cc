@@ -3633,6 +3633,7 @@ void Monitor::handle_forward(MonOpRequestRef op)
     c->set_peer_type(m->client.name.type());
     c->set_features(m->con_features);
 
+    s->authenticated = true;
     s->caps = m->client_caps;
     dout(10) << " caps are " << s->caps << dendl;
     s->entity_name = m->entity_name;
