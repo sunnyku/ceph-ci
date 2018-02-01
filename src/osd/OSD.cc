@@ -7784,7 +7784,7 @@ void OSD::_finish_splits(set<PGRef>& pgs)
     pg->unlock();
 
     pg_map_lock.get_write();
-    assert(pg_map.count(pgid) == 0);
+    assert(pg_map.count(pg->get_pgid()) == 0);
     pg->get("PGMap");  // For pg_map
     pg_map[pg->get_pgid()] = pg;
     pg_map_size = pg_map.size();
