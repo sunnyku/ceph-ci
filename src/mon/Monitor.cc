@@ -4062,6 +4062,11 @@ void Monitor::dispatch_op(MonOpRequestRef op)
 
     case CEPH_MSG_MON_METADATA:
       return handle_mon_metadata(op);
+
+    case CEPH_MSG_MON_SUBSCRIBE:
+      /* FIXME: check what's being subscribed, filter accordingly */
+      handle_subscribe(op);
+      return;
   }
 
   /* well, maybe the op belongs to a service... */
@@ -4131,11 +4136,6 @@ void Monitor::dispatch_op(MonOpRequestRef op)
     // misc
     case CEPH_MSG_MON_GET_VERSION:
       handle_get_version(op);
-      return;
-
-    case CEPH_MSG_MON_SUBSCRIBE:
-      /* FIXME: check what's being subscribed, filter accordingly */
-      handle_subscribe(op);
       return;
   }
 
@@ -4713,6 +4713,15 @@ void Monitor::handle_subscribe(MonOpRequestRef op)
   for (map<string,ceph_mon_subscribe_item>::iterator p = m->what.begin();
        p != m->what.end();
        ++p) {
+    if (p->first == "monmap" || p->first == "config") {
+      // these require no caps
+    } else if (!s->is_capable("mon", MON_CAP_R)) {
+      dout(5) << __func__ << " " << op->get_req()->get_source_inst()
+	      << " not enough caps for " << *(op->get_req()) << " -- dropping"
+	      << dendl;
+      continue;
+    }
+
     // if there are any non-onetime subscriptions, we need to reply to start the resubscribe timer
     if ((p->second.flags & CEPH_SUBSCRIBE_ONETIME) == 0)
       reply = true;
