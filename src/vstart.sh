@@ -414,6 +414,7 @@ prepare_conf() {
         filestore fd cache size = 32
         run dir = $CEPH_OUT_DIR
         enable experimental unrecoverable data corrupting features = *
+	osd_crush_chooseleaf_type = 0
 $extra_conf
 EOF
 	if [ "$lockdep" -eq 1 ] ; then
@@ -804,7 +805,6 @@ if [ $CEPH_NUM_MON -gt 0 ]; then
 
     echo Populating config ...
     $CEPH_BIN/ceph config set global osd_pool_default_size $OSD_POOL_DEFAULT_SIZE
-    $CEPH_BIN/ceph config set global osd_crush_chooseleaf_type 0
     $CEPH_BIN/ceph config set global osd_pool_default_min_size 1
     $CEPH_BIN/ceph config set global mon_pg_warn_min_per_osd 3
 
