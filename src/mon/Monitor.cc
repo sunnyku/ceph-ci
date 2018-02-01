@@ -3980,6 +3980,7 @@ void Monitor::_ms_dispatch(Message *m)
       dout(5) << __func__ << " setting monitor caps on this connection" << dendl;
       if (!s->caps.is_allow_all()) // but no need to repeatedly copy
         s->caps = *mon_caps;
+      s->authenticated = true;
     }
     s->put();
   } else {
