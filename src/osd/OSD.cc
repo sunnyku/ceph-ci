@@ -9371,7 +9371,7 @@ void OSD::ShardedOpWQ::_wake_pg_slot(
   dout(20) << __func__ << " " << pgid
 	   << " to_process " << slot.to_process
 	   << " waiting " << slot.waiting
-	   << " waiting_nopg " << slot.waiting_peering << dendl;
+	   << " waiting_peering " << slot.waiting_peering << dendl;
   for (auto& q : slot.to_process) {
     *pushes_to_free += q.get_reserved_pushes();
   }
@@ -9379,7 +9379,9 @@ void OSD::ShardedOpWQ::_wake_pg_slot(
     *pushes_to_free += q.get_reserved_pushes();
   }
   for (auto& q : slot.waiting_peering) {
-    *pushes_to_free += q.get_reserved_pushes();
+    for (auto& r : q.second) {
+      *pushes_to_free += r.get_reserved_pushes();
+    }
   }
   for (auto i = slot.to_process.rbegin();
        i != slot.to_process.rend();
@@ -9396,10 +9398,13 @@ void OSD::ShardedOpWQ::_wake_pg_slot(
   for (auto i = slot.waiting_peering.rbegin();
        i != slot.waiting_peering.rend();
        ++i) {
-    sdata->_enqueue_front(std::move(*i), osd->op_prio_cutoff);
+    // this is overkill; we requeue everything, even if some of these items are
+    // waiting for maps we don't have yet.  FIXME.
+    for (auto j = i->second.rbegin(); j != i->second.rend(); ++j) {
+      sdata->_enqueue_front(std::move(*j), osd->op_prio_cutoff);
+    }
   }
   slot.waiting_peering.clear();
-  slot.pending_peering_epoch = 0;
   slot.waiting_for_split = false;
   ++slot.requeue_seq;
 }
@@ -9457,12 +9462,11 @@ void OSD::ShardedOpWQ::prune_or_wake_pg_waiters(OSDMapRef osdmap, int whoami)
 	continue;
       }
       if (!slot.waiting_peering.empty()) {
-	assert(slot.pending_peering_epoch);
-	if (slot.pending_peering_epoch <= osdmap->get_epoch()) {
+	epoch_t first = slot.waiting_peering.begin()->first;
+	if (first <= osdmap->get_epoch()) {
 	  dout(20) << __func__ << "  " << p->first
-		   << " pending_peering_epoch " << slot.pending_peering_epoch
-		   << " < " << osdmap->get_epoch() << ", requeueing" << dendl;
-	  assert(!slot.waiting_peering.empty());
+		   << " pending_peering first epoch " << first
+		   << " <= " << osdmap->get_epoch() << ", requeueing" << dendl;
 	  _wake_pg_slot(p->first, sdata, slot, &pushes_to_free);
 	  queued = true;
 	}
@@ -9539,17 +9543,11 @@ void OSD::ShardedOpWQ::_add_slot_waiter(
   OpQueueItem&& qi)
 {
   if (qi.is_peering()) {
-    if (!slot.pending_peering_epoch ||
-	slot.pending_peering_epoch > qi.get_map_epoch()) {
-      slot.pending_peering_epoch = qi.get_map_epoch();
-    }
     dout(20) << __func__ << " " << pgid
 	     << " no pg, peering, item epoch is "
 	     << qi.get_map_epoch()
-	     << ", pending_peering_epoch now "
-	     << slot.pending_peering_epoch
 	     << ", will wait on " << qi << dendl;
-    slot.waiting_peering.push_back(std::move(qi));
+    slot.waiting_peering[qi.get_map_epoch()].push_back(std::move(qi));
   } else {
     dout(20) << __func__ << " " << pgid
 	     << " no pg, item epoch is "
