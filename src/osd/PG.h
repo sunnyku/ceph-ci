@@ -1690,8 +1690,6 @@ protected:
   };
 
 
-  list<PGPeeringEventRef> peering_waiters;
-
   struct QueryState : boost::statechart::event< QueryState > {
     Formatter *f;
     explicit QueryState(Formatter *f) : f(f) {}
