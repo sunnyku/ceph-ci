@@ -3520,6 +3520,7 @@ int OSD::shutdown()
       RWLock::WLocker l(pg_map_lock);
       for (auto& i : pg_map) {
 	pgs.insert(i.second);
+	i.second->put("PGMap");
       }
       pg_map.clear();
     }
@@ -3543,7 +3544,6 @@ int OSD::shutdown()
 	}
       }
       pg->unlock();
-      pg->put("PGMap");
     }
   }
 #ifdef PG_DEBUG_REFS
