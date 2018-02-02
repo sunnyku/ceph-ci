@@ -1092,7 +1092,7 @@ COMMAND("config set" \
 	" name=who,type=CephString" \
 	" name=name,type=CephString" \
 	" name=value,type=CephString", \
-	"Cet a configuration option for one or more entities",
+	"Set a configuration option for one or more entities",
 	"config", "rw", "cli,rest")
 COMMAND("config rm"						\
 	" name=who,type=CephString" \
