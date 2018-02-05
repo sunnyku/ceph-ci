@@ -1881,11 +1881,6 @@ protected:
     OSDMapRef createmap,   ///< map pg is created in
     OSDMapRef servicemap,  ///< latest service map
     spg_t pg);
-  PG *_open_lock_pg(
-    OSDMapRef createmap,
-    OSDMapRef servicemap,
-    spg_t pg,
-    bool no_lockdep_check=false);
 
   PG* _make_pg(OSDMapRef createmap, spg_t pgid);
 
