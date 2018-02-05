@@ -786,6 +786,7 @@ def cluster(ctx, config):
                     'ceph-coverage',
                     coverage_dir,
                     'ceph-osd',
+                    '--no-mon-config',
                     '--cluster',
                     cluster_name,
                     '--mkfs',
