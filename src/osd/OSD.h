@@ -1873,8 +1873,6 @@ public:
     return pg_map.size();
   }
 
-  std::set<int> get_mapped_pools();
-
 protected:
   PGRef _open_pg(
     OSDMapRef createmap,   ///< map pg is created in
