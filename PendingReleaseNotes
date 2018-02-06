@@ -56,3 +56,10 @@
     and refuses to start as consistency and untrimmable cache issues may
     develop. The new option client_die_on_failed_dentry_invalidate (default:
     true) may be turned off to allow the client to proceed (dangerous!).
+
+13.0.2
+------
+
+* The format of the 'config diff' output via the admin socket has changed.  It
+  now reflects the source of each config option (e.g., default, config file,
+  command line) as well as the final (active) value.
