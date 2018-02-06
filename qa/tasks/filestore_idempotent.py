@@ -39,6 +39,8 @@ def task(ctx, config):
     dir = '%s/ceph.data/test.%s' % (testdir, client)
 
     seed = str(int(random.uniform(1,100)))
+    start = str(800 + random.randint(800,1200))
+    end = str(start + 150)
 
     try:
         log.info('creating a working dir')
@@ -61,7 +63,7 @@ def task(ctx, config):
             args=[
                 'cd', dir,
                 run.Raw('&&'),
-                './run_seed_to_range.sh', seed, '50', '300',
+                './run_seed_to_range.sh', seed, start, end,
                 ],
             wait=False,
             check_status=False)
