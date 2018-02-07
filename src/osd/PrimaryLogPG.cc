@@ -3440,10 +3440,18 @@ void PrimaryLogPG::log_op_stats(OpContext *ctx)
   uint64_t inb = ctx->bytes_written;
   uint64_t outb = ctx->bytes_read;
 
-  if (m->ops.size() == 1 && m->ops.begin()->op.op == CEPH_OSD_OP_WATCH) {
-    // filter out singleton watch/unwatch request from diamond
-    // to make load_balancer happy
-  } else {
+  bool is_ioctl = false;
+  for (const auto &i: m->ops) {
+    if (i.op.op == CEPH_OSD_OP_STAT ||
+        i.op.op == CEPH_OSD_OP_CALL ||
+        i.op.op == CEPH_OSD_OP_WATCH) {
+      // these are really ioctl system calls from rbd
+      // skip over them or else load_balancer won't work correctly
+      is_ioctl = true;
+      break;
+    }
+  }
+  if (!is_ioctl) {
     osd->logger->inc(l_osd_op);
   }
 
