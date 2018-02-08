@@ -8917,6 +8917,7 @@ void OSD::dequeue_op(
 
 
 void OSD::dequeue_peering_evt(
+  OSDShard *sdata,
   PG *pg,
   PGPeeringEventRef evt,
   ThreadPool::TPHandle& handle)
@@ -8956,11 +8957,13 @@ void OSD::dequeue_peering_evt(
 }
 
 void OSD::dequeue_delete(
+  OSDShard *sdata,
   PG *pg,
   epoch_t e,
   ThreadPool::TPHandle& handle)
 {
   dequeue_peering_evt(
+    sdata,
     pg,
     PGPeeringEventRef(
       std::make_shared<PGPeeringEvent>(
