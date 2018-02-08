@@ -237,6 +237,13 @@ void DispatchQueue::wait()
 {
   local_delivery_thread.join();
   dispatch_thread.join();
+
+  // ok, clear it out
+  lock.Lock();
+  while (!mqueue.empty()) {
+    QueueItem i = mqueue.dequeue();
+  }
+  lock.Unlock();
 }
 
 void DispatchQueue::discard_local()
