@@ -6231,7 +6231,7 @@ void PG::_delete_some()
       new ContainerContext<PGRef>(pgref));
     assert(r == 0);
 
-    osd->finish_pg_delete(this);
+    osd->finish_pg_delete(this, pool.info.get_pg_num());
     deleted = true;
 
     // cancel reserver here, since the PG is about to get deleted and the
