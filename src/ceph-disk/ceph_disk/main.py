@@ -1239,6 +1239,7 @@ def get_conf_with_default(cluster, variable):
         out = _check_output(
             args=[
                 'ceph-osd',
+                '--no-mon-config',
                 '--cluster={cluster}'.format(
                     cluster=cluster,
                 ),
