@@ -7720,7 +7720,7 @@ void OSD::advance_pg(
   service.pg_update_epoch(pg->pg_id, lastmap->get_epoch());
 
   if (!new_pgs.empty()) {
-    rctx->on_applied->add(new C_FinishSplits(this, new_pgs));
+    rctx->transaction->register_on_applied(new C_FinishSplits(this, new_pgs));
   }
 }
 
