@@ -613,6 +613,10 @@ bool PrimaryLogPG::is_degraded_or_backfilling_object(const hobject_t& soid)
     auto peer_missing_entry = peer_missing.find(peer);
     if (peer_missing_entry != peer_missing.end() &&
 	peer_missing_entry->second.get_items().count(soid)) {
+      dout(20) << __func__ << ": peer " << peer
+               << " is_async_rt=" << (int)is_async_recovery_targets(peer)
+               << ", is_head=" << (int)soid.is_head()
+               << ", recovering=" << recovering.count(soid) << dendl;
       if (!is_async_recovery_targets(peer) ||
           !soid.is_head() || // consider head objects only
           recovering.count(soid)) { // and block if we are already recovering it

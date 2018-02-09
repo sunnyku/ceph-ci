@@ -1780,7 +1780,8 @@ private:
         return;
       }
 
-      uint64_t cop = osd->logger->get(l_osd_op);
+      uint64_t cop = osd->logger->get(l_osd_op) +
+                     osd->logger->get(l_osd_sop_w);
       uint64_t rop = osd->logger->get(l_osd_push_rx);
 
       // update idle status

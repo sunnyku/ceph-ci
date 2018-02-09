@@ -1495,7 +1495,7 @@ void PG::choose_async_recovery_replicated(
   if (max_async_recovery_targets > max_condidates) {
     max_async_recovery_targets = max_condidates;
     dout(10) << __func__ << " not enough condidates, reset"
-             << "max_async_recovery_targets to " << max_async_recovery_targets
+             << " max_async_recovery_targets to " << max_async_recovery_targets
              << dendl;
   }
   for (auto &ordered_candidate : candidates_by_cost) {
