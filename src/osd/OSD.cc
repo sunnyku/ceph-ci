@@ -3930,7 +3930,6 @@ PGRef OSD::handle_pg_create_info(OSDMapRef osdmap, const PGCreateInfo *info)
 
   pg->handle_initialize(&rctx);
   pg->handle_activate_map(&rctx);
-  rctx.created_pgs.insert(pg);
 
   dispatch_context(rctx, pg.get(), osdmap, nullptr);
 
@@ -7958,7 +7957,6 @@ void OSD::split_pgs(
     child->lock(true);
     out_pgs->insert(child);
     child->ch = store->create_new_collection(child->coll);
-    rctx->created_pgs.insert(child);
 
     unsigned split_bits = i->get_split_bits(pg_num);
     dout(10) << " pg_num is " << pg_num
@@ -8108,11 +8106,9 @@ void OSD::dispatch_context_transaction(PG::RecoveryCtx &ctx, PG *pg,
       std::move(*ctx.transaction), TrackedOpRef(), handle);
     assert(tr == 0);
     delete (ctx.transaction);
-    ctx.created_pgs.clear();
     ctx.transaction = new ObjectStore::Transaction;
     ctx.on_applied = new C_Contexts(cct);
     ctx.on_safe = new C_Contexts(cct);
-    ctx.created_pgs.clear();
   }
 }
 
@@ -8130,12 +8126,10 @@ void OSD::dispatch_context(PG::RecoveryCtx &ctx, PG *pg, OSDMapRef curmap,
   delete ctx.info_map;
   if ((ctx.on_applied->empty() &&
        ctx.on_safe->empty() &&
-       ctx.transaction->empty() &&
-       ctx.created_pgs.empty()) || !pg) {
+       ctx.transaction->empty()) || !pg) {
     delete ctx.transaction;
     delete ctx.on_applied;
     delete ctx.on_safe;
-    assert(ctx.created_pgs.empty());
   } else {
     if (ctx.on_applied)
       ctx.transaction->register_on_applied(ctx.on_applied);
@@ -8145,10 +8139,8 @@ void OSD::dispatch_context(PG::RecoveryCtx &ctx, PG *pg, OSDMapRef curmap,
       pg->ch,
       std::move(*ctx.transaction), TrackedOpRef(),
       handle);
-    ctx.created_pgs.clear();
     delete (ctx.transaction);
     assert(tr == 0);
-    ctx.created_pgs.clear();
   }
 }
 
