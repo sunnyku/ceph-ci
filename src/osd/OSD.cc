@@ -3903,6 +3903,7 @@ PGRef OSD::handle_pg_create_info(OSDMapRef osdmap, const PGCreateInfo *info)
   }
 
   PGRef pg = _open_pg(createmap, pgid);
+  pg->ch = store->create_new_collection(pg->coll);
 
   pg->lock(true);
 
@@ -7978,13 +7979,13 @@ void OSD::split_pgs(
     PG* child = _make_pg(nextmap, *i);
     child->lock(true);
     out_pgs->insert(child);
+    child->ch = store->create_new_collection(child->coll);
     rctx->created_pgs.insert(child);
 
     unsigned split_bits = i->get_split_bits(pg_num);
-    dout(10) << "pg_num is " << pg_num << dendl;
-    dout(10) << "m_seed " << i->ps() << dendl;
-    dout(10) << "split_bits is " << split_bits << dendl;
-
+    dout(10) << " pg_num is " << pg_num
+	     << ", m_seed " << i->ps()
+	     << ", split_bits is " << split_bits << dendl;
     parent->split_colls(
       *i,
       split_bits,
@@ -7996,7 +7997,6 @@ void OSD::split_pgs(
       child,
       split_bits);
 
-    child->ch = store->create_new_collection(child->coll);
     child->finish_split_stats(*stat_iter, rctx->transaction);
     child->unlock();
   }
@@ -8130,10 +8130,6 @@ void OSD::dispatch_context_transaction(PG::RecoveryCtx &ctx, PG *pg,
       std::move(*ctx.transaction), TrackedOpRef(), handle);
     assert(tr == 0);
     delete (ctx.transaction);
-    for (auto pg : ctx.created_pgs) {
-      pg->ch = store->open_collection(pg->coll);
-      assert(pg->ch);
-    }
     ctx.created_pgs.clear();
     ctx.transaction = new ObjectStore::Transaction;
     ctx.on_applied = new C_Contexts(cct);
@@ -8171,10 +8167,6 @@ void OSD::dispatch_context(PG::RecoveryCtx &ctx, PG *pg, OSDMapRef curmap,
       pg->ch,
       std::move(*ctx.transaction), TrackedOpRef(),
       handle);
-    for (auto pg : ctx.created_pgs) {
-      pg->ch = store->open_collection(pg->coll);
-      assert(pg->ch);
-    }
     ctx.created_pgs.clear();
     delete (ctx.transaction);
     assert(tr == 0);
