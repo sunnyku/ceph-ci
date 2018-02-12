@@ -111,7 +111,7 @@ function TEST_mon_add_to_single_mon() {
     setup $dir || return 1
     run_mon $dir a --public-addr $MONA || return 1
     # wait for the quorum
-    timeout 120 ceph -s > /dev/null || return 1
+    timeout 120 ceph --debug-ms 1 -s || return 1
     run_mon $dir b --public-addr $MONB || return 1
     teardown $dir || return 1
 
