@@ -5174,6 +5174,7 @@ void colsplittest(
     r = queue_transaction(store, tch, std::move(t));
     ASSERT_EQ(r, 0);
   }
+  tch->flush();
 
   ObjectStore::Transaction t;
   vector<ghobject_t> objects;
