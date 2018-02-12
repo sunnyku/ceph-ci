@@ -5174,6 +5174,7 @@ void colsplittest(
     r = queue_transaction(store, tch, std::move(t));
     ASSERT_EQ(r, 0);
   }
+  tch->flush();
 
   ObjectStore::Transaction t;
   vector<ghobject_t> objects;
@@ -5195,6 +5196,10 @@ void colsplittest(
     }
   }
 
+  t.remove_collection(cid);
+  r = queue_transaction(store, ch, std::move(t));
+  t = ObjectStore::Transaction();
+  
   objects.clear();
   r = store->collection_list(tch, ghobject_t(), ghobject_t::get_max(),
 			     INT_MAX, &objects, 0);
@@ -5213,7 +5218,6 @@ void colsplittest(
     }
   }
 
-  t.remove_collection(cid);
   t.remove_collection(tid);
   r = queue_transaction(store, tch, std::move(t));
   ASSERT_EQ(r, 0);
