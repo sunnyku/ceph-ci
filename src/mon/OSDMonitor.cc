@@ -3587,7 +3587,8 @@ void OSDMonitor::dump_info(Formatter *f)
 namespace {
   enum osd_pool_get_choices {
     SIZE, MIN_SIZE,
-    PG_NUM, PGP_NUM, CRUSH_RULE, HASHPSPOOL,
+    PG_NUM, PGP_NUM, PG_NUM_PENDING,
+    CRUSH_RULE, HASHPSPOOL,
     NODELETE, NOPGCHANGE, NOSIZECHANGE,
     WRITE_FADVISE_DONTNEED, NOSCRUB, NODEEP_SCRUB,
     HIT_SET_TYPE, HIT_SET_PERIOD, HIT_SET_COUNT, HIT_SET_FPP,
@@ -4183,7 +4184,9 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
     const choices_map_t ALL_CHOICES = {
       {"size", SIZE},
       {"min_size", MIN_SIZE},
-      {"pg_num", PG_NUM}, {"pgp_num", PGP_NUM},
+      {"pg_num", PG_NUM},
+      {"pgp_num", PGP_NUM},
+      {"pg_num_pending", PG_NUM_PENDING},
       {"crush_rule", CRUSH_RULE},
       {"hashpspool", HASHPSPOOL}, {"nodelete", NODELETE},
       {"nopgchange", NOPGCHANGE}, {"nosizechange", NOSIZECHANGE},
@@ -4302,6 +4305,9 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
 	    break;
 	  case PGP_NUM:
 	    f->dump_int("pgp_num", p->get_pgp_num());
+	    break;
+	  case PG_NUM_PENDING:
+	    f->dump_int("pg_num_pending", p->get_pg_num_pending());
 	    break;
 	  case AUID:
 	    f->dump_int("auid", p->get_auid());
@@ -4449,6 +4455,9 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
 	    break;
 	  case PGP_NUM:
 	    ss << "pgp_num: " << p->get_pgp_num() << "\n";
+	    break;
+	  case PG_NUM_PENDING:
+	    ss << "pg_num_pending: " << p->get_pg_num_pending() << "\n";
 	    break;
 	  case AUID:
 	    ss << "auid: " << p->get_auid() << "\n";
@@ -6040,10 +6049,7 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
       ss << "error parsing integer value '" << val << "': " << interr;
       return -EINVAL;
     }
-    if (n <= (int)p.get_pg_num()) {
-      ss << "specified pg_num " << n << " <= current " << p.get_pg_num();
-      if (n < (int)p.get_pg_num())
-	return -EEXIST;
+    if (n == (int)p.get_pg_num()) {
       return 0;
     }
     if (static_cast<uint64_t>(n) > g_conf->get_val<uint64_t>("mon_max_pool_pg_num")) {
@@ -6056,27 +6062,44 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
       ss << "still creating initial PGs; cannot update pg_num yet";
       return -EAGAIN;
     }
-    int r = check_pg_num(pool, n, p.get_size(), &ss);
-    if (r) {
-      return r;
+    if (n > (int)p.get_pg_num()) {
+      int r = check_pg_num(pool, n, p.get_size(), &ss);
+      if (r) {
+	return r;
+      }
+      string force;
+      cmd_getval(cct,cmdmap, "force", force);
+      if (p.cache_mode != pg_pool_t::CACHEMODE_NONE &&
+	  force != "--yes-i-really-mean-it") {
+	ss << "splits in cache pools must be followed by scrubs and leave sufficient free space to avoid overfilling.  use --yes-i-really-mean-it to force.";
+	return -EPERM;
+      }
+      int expected_osds = std::min(p.get_pg_num(), osdmap.get_num_osds());
+      int64_t new_pgs = n - p.get_pg_num();
+      if (new_pgs > g_conf->mon_osd_max_split_count * expected_osds) {
+	ss << "specified pg_num " << n << " is too large (creating "
+	   << new_pgs << " new PGs on ~" << expected_osds
+	   << " OSDs exceeds per-OSD max with mon_osd_max_split_count of "
+	   << g_conf->mon_osd_max_split_count << ')';
+	return -E2BIG;
+      }
+      p.set_pg_num(n);
+    } else {
+      if (osdmap.require_osd_release < CEPH_RELEASE_MIMIC) {
+	ss << "mimic OSDs are required to adjust pg_num_pending";
+	return -EPERM;
+      }
+      if (n < (int)p.get_pgp_num()) {
+	ss << "specified pg_num " << n << " < pgp_num " << p.get_pgp_num();
+	return -EINVAL;
+      }
+      if (n < (int)p.get_pg_num() - 1) {
+	ss << "specified pg_num " << n << " < pg_num (" << p.get_pg_num()
+	   << ") - 1; only single pg decrease is currently supported";
+	return -EINVAL;
+      }
+      p.set_pg_num_pending(n);
     }
-    string force;
-    cmd_getval(cct,cmdmap, "force", force);
-    if (p.cache_mode != pg_pool_t::CACHEMODE_NONE &&
-	force != "--yes-i-really-mean-it") {
-      ss << "splits in cache pools must be followed by scrubs and leave sufficient free space to avoid overfilling.  use --yes-i-really-mean-it to force.";
-      return -EPERM;
-    }
-    int expected_osds = std::min(p.get_pg_num(), osdmap.get_num_osds());
-    int64_t new_pgs = n - p.get_pg_num();
-    if (new_pgs > g_conf->mon_osd_max_split_count * expected_osds) {
-      ss << "specified pg_num " << n << " is too large (creating "
-	 << new_pgs << " new PGs on ~" << expected_osds
-	 << " OSDs exceeds per-OSD max with mon_osd_max_split_count of "
-         << g_conf->mon_osd_max_split_count << ')';
-      return -E2BIG;
-    }
-    p.set_pg_num(n);
     // force pre-luminous clients to resend their ops, since they
     // don't understand that split PGs now form a new interval.
     p.last_force_op_resend_preluminous = pending_inc.epoch;
