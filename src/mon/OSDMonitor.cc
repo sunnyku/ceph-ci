@@ -6417,9 +6417,11 @@ int OSDMonitor::prepare_new_pool(string& name, uint64_t auid,
   pi->crush_rule = crush_rule;
   pi->expected_num_objects = expected_num_objects;
   pi->object_hash = CEPH_STR_HASH_RJENKINS;
-  pi->set_pg_num(pg_num);
-  pi->set_pg_num_pending(pg_num, pending_inc.epoch);
-  pi->set_pgp_num(pgp_num);
+  pi->set_pg_num(1);
+  pi->set_pg_num_pending(pi->get_pg_num(), pending_inc.epoch);
+  pi->set_pg_num_target(pg_num);
+  pi->set_pgp_num(pi->get_pg_num());
+  pi->set_pgp_num_target(pgp_num);
   pi->last_change = pending_inc.epoch;
   pi->auid = auid;
   if (pool_type == pg_pool_t::TYPE_ERASURE) {
@@ -6580,6 +6582,49 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
       return -EINVAL;
     }
     p.auid = n;
+  } else if (var == "pg_num_actual") {
+    if (interr.length()) {
+      ss << "error parsing integer value '" << val << "': " << interr;
+      return -EINVAL;
+    }
+    if (n == (int)p.get_pg_num()) {
+      return 0;
+    }
+    if (static_cast<uint64_t>(n) > g_conf->get_val<uint64_t>("mon_max_pool_pg_num")) {
+      ss << "'pg_num' must be greater than 0 and less than or equal to "
+         << g_conf->get_val<uint64_t>("mon_max_pool_pg_num")
+         << " (you may adjust 'mon max pool pg num' for higher values)";
+      return -ERANGE;
+    }
+    if (n > (int)p.get_pg_num()) {
+      p.set_pg_num(n);
+    } else {
+      if (osdmap.require_osd_release < CEPH_RELEASE_MIMIC) {
+	ss << "mimic OSDs are required to adjust pg_num_pending";
+	return -EPERM;
+      }
+      if (osdmap.require_min_compat_client > 0 &&
+	  osdmap.require_min_compat_client < CEPH_RELEASE_MIMIC) {
+	ss << "require_min_compat_client "
+	   << ceph_release_name(osdmap.require_min_compat_client)
+	   << " < mimic, which is required for pg merging. "
+           << "Try 'ceph osd set-require-min-compat-client mimic'.";
+	return -EPERM;
+      }
+      if (n < (int)p.get_pgp_num()) {
+	ss << "specified pg_num " << n << " < pgp_num " << p.get_pgp_num();
+	return -EINVAL;
+      }
+      if (n < (int)p.get_pg_num() - 1) {
+	ss << "specified pg_num " << n << " < pg_num (" << p.get_pg_num()
+	   << ") - 1; only single pg decrease is currently supported";
+	return -EINVAL;
+      }
+      p.set_pg_num_pending(n, pending_inc.epoch);
+    }
+    // force pre-luminous clients to resend their ops, since they
+    // don't understand that split PGs now form a new interval.
+    p.last_force_op_resend_preluminous = pending_inc.epoch;
   } else if (var == "pg_num") {
     if (p.has_flag(pg_pool_t::FLAG_NOPGCHANGE)) {
       ss << "pool pg_num change is disabled; you must unset nopgchange flag for the pool first";
@@ -6589,10 +6634,7 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
       ss << "error parsing integer value '" << val << "': " << interr;
       return -EINVAL;
     }
-    if (n <= (int)p.get_pg_num()) {
-      ss << "specified pg_num " << n << " <= current " << p.get_pg_num();
-      if (n < (int)p.get_pg_num())
-	return -EEXIST;
+    if (n == (int)p.get_pg_num_target()) {
       return 0;
     }
     if (static_cast<uint64_t>(n) > g_conf->get_val<uint64_t>("mon_max_pool_pg_num")) {
@@ -6601,31 +6643,49 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
          << " (you may adjust 'mon max pool pg num' for higher values)";
       return -ERANGE;
     }
-    int r = check_pg_num(pool, n, p.get_size(), &ss);
-    if (r) {
-      return r;
+    if (n > (int)p.get_pg_num_target()) {
+      int r = check_pg_num(pool, n, p.get_size(), &ss);
+      if (r) {
+	return r;
+      }
+      string force;
+      cmd_getval(cct,cmdmap, "force", force);
+      if (p.cache_mode != pg_pool_t::CACHEMODE_NONE &&
+	  force != "--yes-i-really-mean-it") {
+	ss << "splits in cache pools must be followed by scrubs and leave sufficient free space to avoid overfilling.  use --yes-i-really-mean-it to force.";
+	return -EPERM;
+      }
+      int expected_osds = std::min(p.get_pg_num(), osdmap.get_num_osds());
+      int64_t new_pgs = n - p.get_pg_num_target();
+      if (new_pgs > g_conf->mon_osd_max_split_count * expected_osds) {
+	ss << "specified pg_num " << n << " is too large (creating "
+	   << new_pgs << " new PGs on ~" << expected_osds
+	   << " OSDs exceeds per-OSD max with mon_osd_max_split_count of "
+	   << g_conf->mon_osd_max_split_count << ')';
+	return -E2BIG;
+      }
+    } else {
+      if (osdmap.require_osd_release < CEPH_RELEASE_MIMIC) {
+	ss << "mimic OSDs are required to adjust pg_num_pending";
+	return -EPERM;
+      }
+      if (osdmap.require_min_compat_client > 0 &&
+	  osdmap.require_min_compat_client < CEPH_RELEASE_MIMIC) {
+	ss << "require_min_compat_client "
+	   << ceph_release_name(osdmap.require_min_compat_client)
+	   << " < mimic, which is required for pg merging. "
+           << "Try 'ceph osd set-require-min-compat-client mimic'.";
+	return -EPERM;
+      }
+      if (n < (int)p.get_pgp_num_target()) {
+	ss << "specified pg_num " << n
+	   << " < pgp_num " << p.get_pgp_num_target();
+	return -EINVAL;
+      }
     }
-    string force;
-    cmd_getval(cct,cmdmap, "force", force);
-    if (p.cache_mode != pg_pool_t::CACHEMODE_NONE &&
-	force != "--yes-i-really-mean-it") {
-      ss << "splits in cache pools must be followed by scrubs and leave sufficient free space to avoid overfilling.  use --yes-i-really-mean-it to force.";
-      return -EPERM;
-    }
-    int expected_osds = std::min(p.get_pg_num(), osdmap.get_num_osds());
-    int64_t new_pgs = n - p.get_pg_num();
-    if (new_pgs > g_conf->mon_osd_max_split_count * expected_osds) {
-      ss << "specified pg_num " << n << " is too large (creating "
-	 << new_pgs << " new PGs on ~" << expected_osds
-	 << " OSDs exceeds per-OSD max with mon_osd_max_split_count of "
-         << g_conf->mon_osd_max_split_count << ')';
-      return -E2BIG;
-    }
-    p.set_pg_num(n);
-    // force pre-luminous clients to resend their ops, since they
-    // don't understand that split PGs now form a new interval.
-    p.last_force_op_resend_preluminous = pending_inc.epoch;
-  } else if (var == "pgp_num") {
+    // set target; mgr will adjust pg_num_actual later
+    p.set_pg_num_target(n);
+  } else if (var == "pgp_num_actual") {
     if (p.has_flag(pg_pool_t::FLAG_NOPGCHANGE)) {
       ss << "pool pgp_num change is disabled; you must unset nopgchange flag for the pool first";
       return -EPERM;
@@ -6642,7 +6702,30 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
       ss << "specified pgp_num " << n << " > pg_num " << p.get_pg_num();
       return -EINVAL;
     }
+    if (n > (int)p.get_pg_num_pending()) {
+      ss << "specified pgp_num " << n
+	 << " > pg_num_pending " << p.get_pg_num_pending();
+      return -EINVAL;
+    }
     p.set_pgp_num(n);
+  } else if (var == "pgp_num") {
+    if (p.has_flag(pg_pool_t::FLAG_NOPGCHANGE)) {
+      ss << "pool pgp_num change is disabled; you must unset nopgchange flag for the pool first";
+      return -EPERM;
+    }
+    if (interr.length()) {
+      ss << "error parsing integer value '" << val << "': " << interr;
+      return -EINVAL;
+    }
+    if (n <= 0) {
+      ss << "specified pgp_num must > 0, but you set to " << n;
+      return -EINVAL;
+    }
+    if (n > (int)p.get_pg_num_target()) {
+      ss << "specified pgp_num " << n << " > pg_num " << p.get_pg_num_target();
+      return -EINVAL;
+    }
+    p.set_pgp_num_target(n);
   } else if (var == "crush_rule") {
     int id = osdmap.crush->get_rule_id(val);
     if (id == -ENOENT) {
