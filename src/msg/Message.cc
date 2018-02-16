@@ -92,6 +92,7 @@
 #include "messages/MOSDPGBackfillRemove.h"
 #include "messages/MOSDPGRecoveryDelete.h"
 #include "messages/MOSDPGRecoveryDeleteReply.h"
+#include "messages/MOSDPGReadyToMerge.h"
 
 #include "messages/MRemoveSnaps.h"
 
@@ -563,6 +564,9 @@ Message *decode_message(CephContext *cct, int crcflags,
     break;
   case MSG_OSD_PG_RECOVERY_DELETE_REPLY:
     m = new MOSDPGRecoveryDeleteReply;
+    break;
+  case MSG_OSD_PG_READY_TO_MERGE:
+    m = new MOSDPGReadyToMerge;
     break;
   case MSG_OSD_EC_WRITE:
     m = new MOSDECSubOpWrite;
