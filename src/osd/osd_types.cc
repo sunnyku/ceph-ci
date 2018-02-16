@@ -1172,6 +1172,7 @@ void pg_pool_t::dump(Formatter *f) const
   f->dump_int("object_hash", get_object_hash());
   f->dump_unsigned("pg_num", get_pg_num());
   f->dump_unsigned("pg_placement_num", get_pgp_num());
+  f->dump_unsigned("pg_num_pending", get_pg_num_pending());
   f->dump_stream("last_change") << get_last_change();
   f->dump_stream("last_force_op_resend") << get_last_force_op_resend();
   f->dump_stream("last_force_op_resend_preluminous")
@@ -1552,7 +1553,7 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
     return;
   }
 
-  uint8_t v = 26;
+  uint8_t v = 27;
   if (!(features & CEPH_FEATURE_NEW_OSDOP_ENCODING)) {
     // this was the first post-hammer thing we added; if it's missing, encode
     // like hammer.
@@ -1560,6 +1561,9 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   }
   if (!HAVE_FEATURE(features, SERVER_LUMINOUS)) {
     v = 24;
+  }
+  if (!HAVE_FEATURE(features, SERVER_MIMIC)) {
+    v = 26;
   }
 
   ENCODE_START(v, 5, bl);
@@ -1635,12 +1639,15 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   if (v >= 26) {
     encode(application_metadata, bl);
   }
+  if (v >= 27) {
+    encode(pg_num_pending, bl);
+  }
   ENCODE_FINISH(bl);
 }
 
 void pg_pool_t::decode(bufferlist::iterator& bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(26, 5, 5, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(27, 5, 5, bl);
   decode(type, bl);
   decode(size, bl);
   decode(crush_rule, bl);
@@ -1790,6 +1797,9 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
   if (struct_v >= 26) {
     decode(application_metadata, bl);
   }
+  if (struct_v >= 27) {
+    decode(pg_num_pending, bl);
+  }
   DECODE_FINISH(bl);
   calc_pg_masks();
   calc_grade_table();
@@ -1805,7 +1815,8 @@ void pg_pool_t::generate_test_instances(list<pg_pool_t*>& o)
   a.crush_rule = 3;
   a.object_hash = 4;
   a.pg_num = 6;
-  a.pgp_num = 5;
+  a.pgp_num = 4;
+  a.pg_num_pending = 5;
   a.last_change = 9;
   a.last_force_op_resend = 123823;
   a.last_force_op_resend_preluminous = 123824;
@@ -1867,8 +1878,11 @@ ostream& operator<<(ostream& out, const pg_pool_t& p)
       << " crush_rule " << p.get_crush_rule()
       << " object_hash " << p.get_object_hash_name()
       << " pg_num " << p.get_pg_num()
-      << " pgp_num " << p.get_pgp_num()
-      << " last_change " << p.get_last_change();
+      << " pgp_num " << p.get_pgp_num();
+  if (p.get_pg_num_pending() != p.get_pg_num()) {
+    out << " pg_num_pending " << p.get_pg_num_pending();
+  }
+  out << " last_change " << p.get_last_change();
   if (p.get_last_force_op_resend() ||
       p.get_last_force_op_resend_preluminous())
     out << " lfor " << p.get_last_force_op_resend() << "/"

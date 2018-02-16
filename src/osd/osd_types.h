@@ -1299,7 +1299,8 @@ struct pg_pool_t {
   __u8 crush_rule;          ///< crush placement rule
   __u8 object_hash;         ///< hash mapping object name to ps
 private:
-  __u32 pg_num, pgp_num;    ///< number of pgs
+  __u32 pg_num = 0, pgp_num = 0;  ///< number of pgs
+  __u32 pg_num_pending = 0;       ///< pg_num we are about to merge down to
 
 
 public:
@@ -1422,7 +1423,6 @@ public:
   pg_pool_t()
     : flags(0), type(0), size(0), min_size(0),
       crush_rule(0), object_hash(0),
-      pg_num(0), pgp_num(0),
       last_change(0),
       last_force_op_resend(0),
       last_force_op_resend_preluminous(0),
@@ -1520,6 +1520,7 @@ public:
 
   unsigned get_pg_num() const { return pg_num; }
   unsigned get_pgp_num() const { return pgp_num; }
+  unsigned get_pg_num_pending() const { return pg_num_pending; }
 
   unsigned get_pg_num_mask() const { return pg_num_mask; }
   unsigned get_pgp_num_mask() const { return pgp_num_mask; }
@@ -1531,10 +1532,19 @@ public:
 
   void set_pg_num(int p) {
     pg_num = p;
+    pg_num_pending = p;
     calc_pg_masks();
   }
   void set_pgp_num(int p) {
     pgp_num = p;
+    calc_pg_masks();
+  }
+  void set_pg_num_pending(int p) {
+    pg_num_pending = p;
+    calc_pg_masks();
+  }
+  void dec_pg_num() {
+    --pg_num;
     calc_pg_masks();
   }
 
