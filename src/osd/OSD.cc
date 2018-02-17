@@ -9123,9 +9123,11 @@ void OSDShard::consume_map(
   set<spg_t> *new_children)
 {
   Mutex::Locker l(sdata_op_ordering_lock);
-  dout(10) << new_osdmap->get_epoch() << dendl;
   OSDMapRef old_osdmap = std::move(osdmap);
   osdmap = new_osdmap;
+  dout(10) << new_osdmap->get_epoch()
+           << " (was " << (old_osdmap ? old_osdmap->get_epoch() : 0) << ")"
+	   << dendl;
   bool queued = false;
 
   // check slots
@@ -9133,6 +9135,7 @@ void OSDShard::consume_map(
   while (p != pg_slots.end()) {
     OSDShardPGSlot *slot = p->second.get();
     const spg_t& pgid = p->first;
+    dout(20) << __func__ << " " << pgid << dendl;
     if (old_osdmap) {
       osd->service.identify_split_children(old_osdmap, new_osdmap, pgid,
 					   new_children);
