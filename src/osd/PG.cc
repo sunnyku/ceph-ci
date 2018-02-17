@@ -5831,6 +5831,8 @@ void PG::start_peering_interval(
 
   unreg_next_scrub();
 
+  osd->clear_ready_to_merge(this);
+
   pg_shard_t old_acting_primary = get_primary();
   pg_shard_t old_up_primary = up_primary;
   bool was_old_primary = is_primary();
@@ -5945,6 +5947,7 @@ void PG::start_peering_interval(
   // deactivate.
   state_clear(PG_STATE_ACTIVE);
   state_clear(PG_STATE_PEERED);
+  state_clear(PG_STATE_PREMERGE);
   state_clear(PG_STATE_DOWN);
   state_clear(PG_STATE_RECOVERY_WAIT);
   state_clear(PG_STATE_RECOVERY_TOOFULL);
@@ -7781,6 +7784,7 @@ PG::RecoveryState::Clean::Clean(my_context ctx)
     pg->mark_clean();
   }
   pg->state_clear(PG_STATE_FORCED_RECOVERY | PG_STATE_FORCED_BACKFILL);
+
   pg->share_pg_info();
   pg->publish_stats_to_osd();
   pg->requeue_ops(pg->waiting_for_clean_to_primary_repair);
@@ -8178,10 +8182,25 @@ boost::statechart::result PG::RecoveryState::Active::react(const AllReplicasActi
 
   pg->state_clear(PG_STATE_ACTIVATING);
   pg->state_clear(PG_STATE_CREATING);
-  if (pg->acting.size() >= pg->pool.info.min_size) {
-    pg->state_set(PG_STATE_ACTIVE);
-  } else {
+  pg->state_clear(PG_STATE_PREMERGE);
+
+  if (pg->acting.size() < pg->pool.info.min_size) {
     pg->state_set(PG_STATE_PEERED);
+  } else if (pg->pool.info.is_pending_merge(pg->info.pgid.pgid, nullptr)) {
+    pg->state_set(PG_STATE_PEERED);
+    pg->state_set(PG_STATE_PREMERGE);
+  } else {
+    pg->state_set(PG_STATE_ACTIVE);
+  }
+
+  bool target;
+  if (pg->pool.info.is_pending_merge(pg->info.pgid.pgid, &target)) {
+    ldout(pg->cct, 10) << "ready to merge" << dendl;
+    if (target) {
+      pg->osd->set_ready_to_merge_target(pg);
+    } else {
+      pg->osd->set_ready_to_merge_source(pg);
+    }
   }
 
   // info.last_epoch_started is set during activate()
