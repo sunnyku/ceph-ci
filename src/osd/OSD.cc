@@ -9139,7 +9139,6 @@ void OSDShard::consume_map(
     if (old_osdmap) {
       osd->service.identify_split_children(old_osdmap, new_osdmap, pgid,
 					   new_children);
-      _prime_splits(new_children);
     }
     if (slot->waiting_for_split) {
       dout(20) << __func__ << "  " << pgid
@@ -9187,6 +9186,7 @@ void OSDShard::consume_map(
     }
     ++p;
   }
+  _prime_splits(new_children);
   if (queued) {
     sdata_lock.Lock();
     sdata_cond.SignalOne();
