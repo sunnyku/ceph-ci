@@ -9306,7 +9306,8 @@ void OSDShard::unprime_split_children(spg_t parent, unsigned old_pg_num)
   Mutex::Locker l(sdata_op_ordering_lock);
   vector<spg_t> to_delete;
   for (auto& i : pg_slots) {
-    if (i.first.pgid.get_ancestor(old_pg_num) == parent.pgid) {
+    if (i.first != parent &&
+	i.first.get_ancestor(old_pg_num) == parent) {
       dout(10) << __func__ << " parent " << parent << " clearing " << i.first
 	       << dendl;
       to_delete.push_back(i.first);
