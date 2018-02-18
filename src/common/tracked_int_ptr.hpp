@@ -61,6 +61,9 @@ public:
   bool operator==(const TrackedIntPtr &lhs) const {
     return ptr == lhs.ptr;
   }
+  bool operator()() const {
+    return ptr != nullptr;
+  }
 
   void reset() {
     if (ptr) 
