@@ -22,7 +22,7 @@
 #include "Watch.h"
 #include "OSDMap.h"
 
-//#define PG_DEBUG_REFS
+#define PG_DEBUG_REFS
 
 struct Session;
 typedef boost::intrusive_ptr<Session> SessionRef;
