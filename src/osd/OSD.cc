@@ -9293,15 +9293,16 @@ void OSDShard::register_and_wake_split_child(PG *pg)
 void OSDShard::unprime_split_children(spg_t parent, unsigned old_pg_num)
 {
   Mutex::Locker l(sdata_op_ordering_lock);
-  auto i = pg_slots.begin();
-  while (i != pg_slots.end()) {
-    if (i->first.pgid.get_ancestor(old_pg_num) == parent.pgid) {
-      dout(10) << __func__ << " parent " << parent << " clearing " << i->first
+  vector<spg_t> to_delete;
+  for (auto& i : pg_slots) {
+    if (i.first.pgid.get_ancestor(old_pg_num) == parent.pgid) {
+      dout(10) << __func__ << " parent " << parent << " clearing " << i.first
 	       << dendl;
-      i = pg_slots.erase(i);
-    } else {
-      ++i;
+      to_delete.push_back(i.first);
     }
+  }
+  for (auto pgid : to_delete) {
+    pg_slots.erase(pgid);
   }
 }
 
