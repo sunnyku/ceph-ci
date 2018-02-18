@@ -40,9 +40,10 @@ public:
   TrackedIntPtr(const TrackedIntPtr &rhs) :
     ptr(rhs.ptr), id(ptr ? get_with_id(ptr) : 0) {}
 
-  void operator=(const TrackedIntPtr &rhs) {
+  TrackedIntPtr& operator=(const TrackedIntPtr &rhs) {
     TrackedIntPtr o(rhs.ptr);
     swap(o);
+    return *this;
   }
   T &operator*() const {
     return *ptr;
@@ -60,6 +61,9 @@ public:
   }
   bool operator==(const TrackedIntPtr &lhs) const {
     return ptr == lhs.ptr;
+  }
+  bool operator()() const {
+    return ptr != nullptr;
   }
 
   void reset() {
