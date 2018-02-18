@@ -9136,7 +9136,11 @@ void OSDShard::consume_map(
     OSDShardPGSlot *slot = p->second.get();
     const spg_t& pgid = p->first;
     dout(20) << __func__ << " " << pgid << dendl;
-    if (old_osdmap) {
+    if (old_osdmap &&
+	(slot->pg || slot->waiting_for_split)) {
+      // only prime children for parent slots that are attached to a
+      // pg or are waiting_for_split (because their ancestor is
+      // attached to a pg).
       osd->service.identify_split_children(old_osdmap, new_osdmap, pgid,
 					   new_children);
     }
