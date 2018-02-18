@@ -353,8 +353,8 @@ void OSDService::identify_split_children(
       dout(20) << __func__ << " " << pgid << " children " << children << dendl;
       new_children->insert(children.begin(), children.end());
     }
-  } else {
-    assert(pgid.ps() < static_cast<unsigned>(new_pgnum));
+  } else if (pgid.ps() >= static_cast<unsigned>(new_pgnum)) {
+    dout(20) << __func__ << " " << pgid << " is post-split, skipping" << dendl;
   }
 }
 
