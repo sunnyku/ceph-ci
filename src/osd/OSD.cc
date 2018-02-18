@@ -9262,7 +9262,14 @@ void OSDShard::_prime_splits(set<spg_t> *pgids)
 	dout(10) << "priming slot " << *p << dendl;
 	r.first->second->waiting_for_split = true;
       } else {
-	dout(10) << "slot " << *p << " already primed" << dendl;
+	auto q = pg_slots.find(*p);
+	assert(q != pg_slots.end());
+	if (q->second.waiting_for_split) {
+	  dout(10) << "slot " << *p << " already primed" << dendl;
+	} else {
+	  dout(10) << "priming (existing) slot " << *p << dendl;
+	  q->second.waiting_for_split = true;
+	}
       }
       p = pgids->erase(p);
     } else {
