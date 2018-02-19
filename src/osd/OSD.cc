@@ -8640,7 +8640,7 @@ void OSD::dequeue_peering_evt(
   ThreadPool::TPHandle& handle)
 {
   PG::RecoveryCtx rctx = create_context();
-  auto curmap = sdata->osdmap;
+  auto curmap = sdata->get_osdmap();
   epoch_t need_up_thru = 0, same_interval_since = 0;
   if (!pg) {
     if (const MQuery *q = dynamic_cast<const MQuery*>(evt->evt.get())) {
