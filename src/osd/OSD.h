@@ -1061,6 +1061,11 @@ struct OSDShard {
 
   OSDMapRef osdmap;
 
+  OSDMapRef get_osdmap() {
+    Mutex::Locker l(sdata_op_ordering_lock);
+    return osdmap;
+  }
+
   /// map of slots for each spg_t.  maintains ordering of items dequeued
   /// from pqueue while _process thread drops shard lock to acquire the
   /// pg lock.  stale slots are removed by consume_map.
