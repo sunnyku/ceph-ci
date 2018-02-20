@@ -3368,6 +3368,9 @@ int OSD::shutdown()
   osd_lock.Unlock();
 
   osdmap = OSDMapRef();
+  for (auto s : shards) {
+    s->osdmap = OSDMapRef();
+  }
   service.shutdown();
   op_tracker.on_shutdown();
 
