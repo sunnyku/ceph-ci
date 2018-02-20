@@ -1054,15 +1054,22 @@ struct OSDShard {
   const unsigned shard_id;
   CephContext *cct;
   OSD *osd;
+
+  string shard_name;
+
+  string sdata_lock_name;
   Mutex sdata_lock;
   Cond sdata_cond;
 
+  string sdata_op_ordering_lock_name;
   Mutex sdata_op_ordering_lock;   ///< protects all members below
 
+  string osdmap_lock_name;
+  Mutex osdmap_lock;
   OSDMapRef osdmap;
 
   OSDMapRef get_osdmap() {
-    Mutex::Locker l(sdata_op_ordering_lock);
+    Mutex::Locker l(osdmap_lock);
     return osdmap;
   }
 
@@ -1130,15 +1137,19 @@ struct OSDShard {
     int id,
     CephContext *cct,
     OSD *osd,
-    string lock_name, string ordering_lock,
     uint64_t max_tok_per_prio, uint64_t min_cost,
     io_queue opqueue)
     : shard_id(id),
       cct(cct),
       osd(osd),
-      sdata_lock(lock_name.c_str(), false, true, false, cct),
-      sdata_op_ordering_lock(ordering_lock.c_str(), false, true,
-			     false, cct) {
+      shard_name(string("OSDShard.") + stringify(id)),
+      sdata_lock_name(shard_name + "::sdata_lock"),
+      sdata_lock(sdata_lock_name.c_str(), false, true, false, cct),
+      sdata_op_ordering_lock_name(shard_name + "::sdata_op_ordering_lock"),
+      sdata_op_ordering_lock(sdata_op_ordering_lock_name.c_str(), false, true,
+			     false, cct),
+      osdmap_lock_name(shard_name + "::osdmap_lock"),
+      osdmap_lock(osdmap_lock_name.c_str(), false, false) {
     if (opqueue == io_queue::weightedpriority) {
       pqueue = std::make_unique<
 	WeightedPriorityQueue<OpQueueItem,uint64_t>>(
