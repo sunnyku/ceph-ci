@@ -9118,9 +9118,10 @@ void OSDShard::consume_map(
   set<spg_t> *new_children)
 {
   Mutex::Locker l(sdata_op_ordering_lock);
-  OSDMapRef old_osdmap = std::move(osdmap);
+  OSDMapRef old_osdmap;
   {
     Mutex::Locker l(osdmap_lock);
+    old_osdmap = std::move(osdmap);
     osdmap = new_osdmap;
   }
   dout(10) << new_osdmap->get_epoch()
