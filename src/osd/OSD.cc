@@ -3983,7 +3983,6 @@ void OSD::resume_creating_pg()
 	       << pending_creates_from_mon << dendl;
       do_sub_pg_creates = true;
       if (pending_creates_from_mon >= spare_pgs) {
-		 << dendl;
 	spare_pgs = pending_creates_from_mon = 0;
       } else {
 	spare_pgs -= pending_creates_from_mon;
