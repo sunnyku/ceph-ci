@@ -9519,15 +9519,17 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
 	     << " waiting " << slot->waiting
 	     << " waiting_peering " << slot->waiting_peering
 	     << dendl;
-    if (slot->waiting_for_split
-	|| (item.is_peering() && !slot->waiting_peering.empty())
-	|| (!item.is_peering() && !slot->waiting.empty())) {
+    // this is an optimization
+    /*if (slot->num_running == 0 &&
+	(slot->waiting_for_split
+	 || (item.is_peering() && !slot->waiting_peering.empty())
+	 || (!item.is_peering() && !slot->waiting.empty()))) {
       dout(20) << __func__ << " " << token << " already waiting, adding " << item
 	       << dendl;
       _add_slot_waiter(token, slot, std::move(item));
       sdata->sdata_op_ordering_lock.Unlock();
       return;
-    }
+      }*/
     // note the requeue seq now...
     requeue_seq = slot->requeue_seq;
     pg = slot->pg;
