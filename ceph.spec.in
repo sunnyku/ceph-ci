@@ -323,11 +323,13 @@ Group:          System/Filesystems
 Requires:       ceph-base = %{_epoch_prefix}%{version}-%{release}
 %if 0%{?fedora} || 0%{?rhel}
 Requires:       python-cherrypy
+Requires:       python-jinja2
 Requires:       python-werkzeug
 Requires:       pyOpenSSL
 %endif
 %if 0%{?suse_version}
 Requires: 	python-CherryPy
+Requires:       python-Jinja2
 Requires:       python-Werkzeug
 Requires:       python-pyOpenSSL
 %endif
@@ -679,7 +681,7 @@ Summary:	Ceph benchmarks and test tools
 %if 0%{?suse_version}
 Group:		System/Benchmark
 %endif
-Requires:	ceph-common
+Requires:	ceph-common = %{_epoch_prefix}%{version}-%{release}
 Requires:	xmlstarlet
 Requires:	jq
 Requires:	socat
@@ -888,7 +890,7 @@ mkdir -p %{buildroot}%{_sbindir}
 install -m 0644 -D src/logrotate.conf %{buildroot}%{_sysconfdir}/logrotate.d/ceph
 chmod 0644 %{buildroot}%{_docdir}/ceph/sample.ceph.conf
 install -m 0644 -D COPYING %{buildroot}%{_docdir}/ceph/COPYING
-install -m 0644 -D src/90-ceph-osd.conf %{buildroot}%{_sysctldir}/90-ceph-osd.conf
+install -m 0644 -D etc/sysctl/90-ceph-osd.conf %{buildroot}%{_sysctldir}/90-ceph-osd.conf
 
 # firewall templates and /sbin/mount.ceph symlink
 %if 0%{?suse_version}
@@ -936,6 +938,7 @@ rm -rf %{buildroot}
 %{_bindir}/crushtool
 %{_bindir}/monmaptool
 %{_bindir}/osdmaptool
+%{_bindir}/ceph-kvstore-tool
 %{_bindir}/ceph-run
 %{_bindir}/ceph-detect-init
 %{_libexecdir}/systemd/system-preset/50-ceph.preset
@@ -983,6 +986,7 @@ rm -rf %{buildroot}
 %{_mandir}/man8/crushtool.8*
 %{_mandir}/man8/osdmaptool.8*
 %{_mandir}/man8/monmaptool.8*
+%{_mandir}/man8/ceph-kvstore-tool.8*
 #set up placeholder directories
 %attr(750,ceph,ceph) %dir %{_localstatedir}/lib/ceph/tmp
 %attr(750,ceph,ceph) %dir %{_localstatedir}/lib/ceph/bootstrap-osd
@@ -1236,6 +1240,7 @@ fi
 %files mon
 %{_bindir}/ceph-mon
 %{_bindir}/ceph-rest-api
+%{_bindir}/ceph-monstore-tool
 %{_mandir}/man8/ceph-mon.8*
 %{_mandir}/man8/ceph-rest-api.8*
 %{python_sitelib}/ceph_rest_api.py*
@@ -1404,6 +1409,7 @@ fi
 %{_bindir}/ceph-clsinfo
 %{_bindir}/ceph-bluestore-tool
 %{_bindir}/ceph-objectstore-tool
+%{_bindir}/ceph-osdomap-tool
 %{_bindir}/ceph-osd
 %{_libexecdir}/ceph/ceph-osd-prestart.sh
 %{_sbindir}/ceph-volume
@@ -1641,9 +1647,6 @@ fi
 %{_bindir}/ceph_tpbench
 %{_bindir}/ceph_xattr_bench
 %{_bindir}/ceph-coverage
-%{_bindir}/ceph-monstore-tool
-%{_bindir}/ceph-osdomap-tool
-%{_bindir}/ceph-kvstore-tool
 %{_bindir}/ceph-debugpack
 %{_mandir}/man8/ceph-debugpack.8*
 %dir %{_libdir}/ceph
