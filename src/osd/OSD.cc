@@ -3385,7 +3385,7 @@ int OSD::shutdown()
 
   osdmap = OSDMapRef();
   for (auto s : shards) {
-    s->osdmap.reset();
+    s->osdmap = OSDMapRef();
   }
   service.shutdown();
   op_tracker.on_shutdown();
