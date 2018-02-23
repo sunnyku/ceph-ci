@@ -3799,12 +3799,6 @@ void OSD::load_pgs()
       continue;
     }
 
-    if (pgid.preferred() >= 0) {
-      dout(10) << __func__ << ": skipping localized PG " << pgid << dendl;
-      // FIXME: delete it too, eventually
-      continue;
-    }
-
     dout(10) << "pgid " << pgid << " coll " << coll_t(pgid) << dendl;
     epoch_t map_epoch = 0;
     int r = PG::peek_map_epoch(store, pgid, &map_epoch);
@@ -8000,11 +7994,6 @@ void OSD::handle_pg_create(OpRequestRef op)
     if (p->second.split_bits) // Skip split pgs
       continue;
     pg_t on = p->first;
-
-    if (on.preferred() >= 0) {
-      dout(20) << "ignoring localized pg " << on << dendl;
-      continue;
-    }
 
     if (!osdmap->have_pg_pool(on.pool())) {
       dout(20) << "ignoring pg on deleted pool " << on << dendl;
