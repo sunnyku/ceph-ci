@@ -1023,15 +1023,15 @@ void PGMap::Incremental::generate_test_instances(list<PGMap::Incremental*>& o)
   o.back()->stamp = utime_t(123,345);
   o.push_back(new Incremental);
   o.back()->version = 2;
-  o.back()->pg_stat_updates[pg_t(1,2,3)] = pg_stat_t();
+  o.back()->pg_stat_updates[pg_t(1,2)] = pg_stat_t();
   o.back()->osd_stat_updates[5] = osd_stat_t();
   o.push_back(new Incremental);
   o.back()->version = 3;
   o.back()->osdmap_epoch = 1;
   o.back()->pg_scan = 2;
-  o.back()->pg_stat_updates[pg_t(4,5,6)] = pg_stat_t();
+  o.back()->pg_stat_updates[pg_t(4,5)] = pg_stat_t();
   o.back()->osd_stat_updates[6] = osd_stat_t();
-  o.back()->pg_remove.insert(pg_t(1,2,3));
+  o.back()->pg_remove.insert(pg_t(1,2));
   o.back()->osd_stat_rm.insert(5);
 }
 
@@ -2036,7 +2036,7 @@ void PGMap::get_filtered_pg_stats(uint64_t state, int64_t poolid, int64_t osdid,
   for (auto i = pg_stat.begin();
        i != pg_stat.end();
        ++i) {
-    if ((poolid >= 0) && (uint64_t(poolid) != i->first.pool()))
+    if ((poolid >= 0) && (poolid != i->first.pool()))
       continue;
     if ((osdid >= 0) && !(i->second.is_acting_osd(osdid,primary)))
       continue;
@@ -3327,13 +3327,13 @@ void PGMapUpdater::check_osd_map(
       ldout(cct, 10) << __func__ << " pool " << p.first << " gone, removing pgs"
 		     << dendl;
       for (auto& q : pgmap.pg_stat) {
-	if (q.first.pool() == (uint64_t)p.first) {
+	if (q.first.pool() == p.first) {
 	  pending_inc->pg_remove.insert(q.first);
 	}
       }
       auto q = pending_inc->pg_stat_updates.begin();
       while (q != pending_inc->pg_stat_updates.end()) {
-	if (q->first.pool() == (uint64_t)p.first) {
+	if (q->first.pool() == p.first) {
 	  q = pending_inc->pg_stat_updates.erase(q);
 	} else {
 	  ++q;
