@@ -3016,6 +3016,7 @@ void PG::init(
 
 void PG::shutdown()
 {
+  ch->flush();
   lock();
   on_shutdown();
   unlock();
