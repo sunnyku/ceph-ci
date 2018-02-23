@@ -805,7 +805,6 @@ void PGMapDigest::dump_pool_stats_full(
     } else {
       avail = avail_by_rule[ruleno];
     }
-
     if (f) {
       f->open_object_section("pool");
       f->dump_string("name", pool_name);
@@ -902,12 +901,14 @@ void PGMapDigest::dump_object_stat_sum(
     raw_used_rate *= (float)(sum.num_object_copies - sum.num_objects_degraded) / sum.num_object_copies;
   }
     
+  uint64_t used_bytes = pool_stat.get_used_bytes();
+
   float used = 0.0;
   // note avail passed in is raw_avail, calc raw_used here.
   if (avail) {
-    used = statfs.allocated;
+    used = used_bytes;
     used /= used + avail;
-  } else if (statfs.allocated) {
+  } else if (used_bytes) {
     used = 1.0;
   }
   auto avail_res = raw_used_rate ? avail / raw_used_rate : 0;
@@ -915,8 +916,8 @@ void PGMapDigest::dump_object_stat_sum(
   auto stored_normalized =
     raw_used_rate ? statfs.stored / raw_used_rate : 0;
   if (f) {
-    f->dump_int("kb_used", shift_round_up(statfs.allocated, 10));
-    f->dump_int("bytes_used", statfs.allocated);
+    f->dump_int("kb_used", shift_round_up(used_bytes, 10));
+    f->dump_int("bytes_used", used_bytes);
     f->dump_float("percent_used", used);
     f->dump_unsigned("max_avail", avail_res);
     f->dump_int("objects", sum.num_objects);
