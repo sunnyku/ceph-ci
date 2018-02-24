@@ -4428,7 +4428,11 @@ std::vector<Option> get_global_options() {
     Option("mgr_recovery_balancer_min_diff", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(.01)
     .set_description("minimal differece to trigger a adjustment"),
- });
+      
+    Option("debug_asserts_on_shutdown", Option::TYPE_BOOL,Option::LEVEL_DEV)
+    .set_default(false)
+    .set_description("Enable certain asserts to check for refcounting bugs on shutdown; see http://tracker.ceph.com/issues/21738"),
+  });
 }
 
 std::vector<Option> get_rgw_options() {
