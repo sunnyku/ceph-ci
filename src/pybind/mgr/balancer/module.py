@@ -1005,6 +1005,13 @@ class Module(MgrModule):
 
     def execute(self, plan):
         self.log.info('Executing plan %s' % plan.name)
+        bound_osdmap_epoch = plan.initial.osdmap.get_epoch()
+        current_osdmap_epoch = self.get_osdmap().get_epoch()
+        if current_osdmap_epoch != bound_osdmap_epoch:
+            detail = 'osdmap changed from %d -> %d, aborting' \
+                     % (bound_osdmap_epoch, current_osdmap_epoch)
+            self.log.error(detail)
+            return -errno.EAGAIN, detail
 
         commands = []
 
