@@ -918,8 +918,8 @@ function TEST_corrupt_scrub_replicated() {
             },
             {
               "Base64": false,
-              "value": "val3-ROBJ8",
-              "name": "_key3-ROBJ8"
+              "value": "val2-ROBJ8",
+              "name": "_key2-ROBJ8"
             },
             {
               "Base64": true,
@@ -946,8 +946,8 @@ function TEST_corrupt_scrub_replicated() {
             },
             {
               "Base64": false,
-              "value": "val2-ROBJ8",
-              "name": "_key2-ROBJ8"
+              "value": "val3-ROBJ8",
+              "name": "_key3-ROBJ8"
             },
             {
               "Base64": true,
@@ -1621,8 +1621,8 @@ EOF
             },
             {
               "Base64": false,
-              "value": "val3-ROBJ8",
-              "name": "_key3-ROBJ8"
+              "value": "val2-ROBJ8",
+              "name": "_key2-ROBJ8"
             },
             {
               "Base64": true,
@@ -1651,8 +1651,8 @@ EOF
             },
             {
               "Base64": false,
-              "value": "val2-ROBJ8",
-              "name": "_key2-ROBJ8"
+              "value": "val3-ROBJ8",
+              "name": "_key3-ROBJ8"
             },
             {
               "Base64": true,
@@ -1928,8 +1928,8 @@ function corrupt_scrub_erasure() {
             },
             {
               "Base64": false,
-              "value": "val3-EOBJ4",
-              "name": "_key3-EOBJ4"
+              "value": "val2-EOBJ4",
+              "name": "_key2-EOBJ4"
             },
             {
               "Base64": true,
@@ -2001,8 +2001,8 @@ function corrupt_scrub_erasure() {
             },
             {
               "Base64": false,
-              "value": "val2-EOBJ4",
-              "name": "_key2-EOBJ4"
+              "value": "val3-EOBJ4",
+              "name": "_key3-EOBJ4"
             },
             {
               "Base64": true,
@@ -2215,8 +2215,8 @@ EOF
             },
             {
               "Base64": false,
-              "value": "val3-EOBJ4",
-              "name": "_key3-EOBJ4"
+              "value": "val2-EOBJ4",
+              "name": "_key2-EOBJ4"
             },
             {
               "Base64": true,
@@ -2287,8 +2287,8 @@ EOF
             },
             {
               "Base64": false,
-              "value": "val2-EOBJ4",
-              "name": "_key2-EOBJ4"
+              "value": "val3-EOBJ4",
+              "name": "_key3-EOBJ4"
             },
             {
               "Base64": true,
@@ -2533,8 +2533,8 @@ EOF
             },
             {
               "Base64": false,
-              "value": "val3-EOBJ4",
-              "name": "_key3-EOBJ4"
+              "value": "val2-EOBJ4",
+              "name": "_key2-EOBJ4"
             },
             {
               "Base64": true,
@@ -2612,8 +2612,8 @@ EOF
             },
             {
               "Base64": false,
-              "value": "val2-EOBJ4",
-              "name": "_key2-EOBJ4"
+              "value": "val3-EOBJ4",
+              "name": "_key3-EOBJ4"
             },
             {
               "Base64": true,
