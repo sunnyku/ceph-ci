@@ -217,7 +217,6 @@ void ECBackend::_failed_push(const hobject_t &hoid,
   dout(10) << __func__ << ": canceling recovery op for obj " << hoid
 	   << dendl;
   assert(recovery_ops.count(hoid));
-  eversion_t v = recovery_ops[hoid].v;
   recovery_ops.erase(hoid);
 
   list<pg_shard_t> fl;
@@ -225,8 +224,6 @@ void ECBackend::_failed_push(const hobject_t &hoid,
     fl.push_back(i.first);
   }
   get_parent()->failed_push(fl, hoid);
-  get_parent()->backfill_add_missing(hoid, v);
-  get_parent()->finish_degraded_object(hoid);
 }
 
 struct OnRecoveryReadComplete :
@@ -1190,7 +1187,8 @@ void ECBackend::handle_sub_read_reply(
   unsigned is_complete = 0;
   // For redundant reads check for completion as each shard comes in,
   // or in a non-recovery read check for completion once all the shards read.
-  if (rop.do_redundant_reads || rop.in_progress.empty()) {
+  // TODO: It would be nice if recovery could send more reads too
+  if (rop.do_redundant_reads || (!rop.for_recovery && rop.in_progress.empty())) {
     for (map<hobject_t, read_result_t>::const_iterator iter =
         rop.complete.begin();
       iter != rop.complete.end();
@@ -1487,12 +1485,19 @@ void ECBackend::call_write_ordered(std::function<void(void)> &&cb) {
   }
 }
 
-void ECBackend::get_all_avail_shards(
+int ECBackend::get_min_avail_to_read_shards(
   const hobject_t &hoid,
-  set<int> &have,
-  map<shard_id_t, pg_shard_t> &shards,
-  bool for_recovery)
+  const set<int> &want,
+  bool for_recovery,
+  bool do_redundant_reads,
+  set<pg_shard_t> *to_read)
 {
+  // Make sure we don't do redundant reads for recovery
+  assert(!for_recovery || !do_redundant_reads);
+
+  set<int> have;
+  map<shard_id_t, pg_shard_t> shards;
+
   for (set<pg_shard_t>::const_iterator i =
 	 get_parent()->get_acting_shards().begin();
        i != get_parent()->get_acting_shards().end();
@@ -1543,22 +1548,6 @@ void ECBackend::get_all_avail_shards(
       }
     }
   }
-}
-
-int ECBackend::get_min_avail_to_read_shards(
-  const hobject_t &hoid,
-  const set<int> &want,
-  bool for_recovery,
-  bool do_redundant_reads,
-  set<pg_shard_t> *to_read)
-{
-  // Make sure we don't do redundant reads for recovery
-  assert(!for_recovery || !do_redundant_reads);
-
-  set<int> have;
-  map<shard_id_t, pg_shard_t> shards;
-
-  get_all_avail_shards(hoid, have, shards, for_recovery);
 
   set<int> need;
   int r = ec_impl->minimum_to_decode(want, have, &need);
@@ -1584,18 +1573,30 @@ int ECBackend::get_min_avail_to_read_shards(
 int ECBackend::get_remaining_shards(
   const hobject_t &hoid,
   const set<int> &avail,
-  set<pg_shard_t> *to_read,
-  bool for_recovery)
+  set<pg_shard_t> *to_read)
 {
-  assert(to_read);
-
-  set<int> have;
+  set<int> need;
   map<shard_id_t, pg_shard_t> shards;
 
-  get_all_avail_shards(hoid, have, shards, for_recovery);
+  for (set<pg_shard_t>::const_iterator i =
+	 get_parent()->get_acting_shards().begin();
+       i != get_parent()->get_acting_shards().end();
+       ++i) {
+    dout(10) << __func__ << ": checking acting " << *i << dendl;
+    const pg_missing_t &missing = get_parent()->get_shard_missing(*i);
+    if (!missing.is_missing(hoid)) {
+      assert(!need.count(i->shard));
+      need.insert(i->shard);
+      assert(!shards.count(i->shard));
+      shards.insert(make_pair(i->shard, *i));
+    }
+  }
 
-  for (set<int>::iterator i = have.begin();
-       i != have.end();
+  if (!to_read)
+    return 0;
+
+  for (set<int>::iterator i = need.begin();
+       i != need.end();
        ++i) {
     assert(shards.count(shard_id_t(*i)));
     if (avail.find(*i) == avail.end())
@@ -2317,7 +2318,7 @@ int ECBackend::send_all_remaining_reads(
     already_read.insert(i->shard);
   dout(10) << __func__ << " have/error shards=" << already_read << dendl;
   set<pg_shard_t> shards;
-  int r = get_remaining_shards(hoid, already_read, &shards, rop.for_recovery);
+  int r = get_remaining_shards(hoid, already_read, &shards);
   if (r)
     return r;
   if (shards.empty())
