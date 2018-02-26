@@ -7418,6 +7418,7 @@ PG::RecoveryState::Clean::Clean(my_context ctx)
   }
   Context *c = pg->finish_recovery();
   context< RecoveryMachine >().get_cur_transaction()->register_on_commit(c);
+  context< RecoveryMachine >().get_cur_transaction()->nop();
 
   if (pg->is_active()) {
     pg->mark_clean();
