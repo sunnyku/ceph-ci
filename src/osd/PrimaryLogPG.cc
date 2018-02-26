@@ -535,14 +535,6 @@ void PrimaryLogPG::on_primary_error(
   dout(0) << __func__ << ": oid " << oid << " version " << v << dendl;
   primary_failed(oid);
   primary_error(oid, v);
-  backfill_add_missing(oid, v);
-}
-
-void PrimaryLogPG::backfill_add_missing(
-  const hobject_t &oid,
-  eversion_t v)
-{
-  dout(0) << __func__ << ": oid " << oid << " version " << v << dendl;
   backfills_in_flight.erase(oid);
   missing_loc.add_missing(oid, v, eversion_t());
 }
@@ -732,7 +724,7 @@ void PrimaryLogPG::wait_for_blocked_object(const hobject_t& soid, OpRequestRef o
 
 void PrimaryLogPG::maybe_force_recovery()
 {
-  // no force if not in degraded/recovery/backfill states
+  // no force if not in degraded/recovery/backfill stats
   if (!is_degraded() &&
       !state_test(PG_STATE_RECOVERING |
                   PG_STATE_RECOVERY_WAIT |
@@ -2370,7 +2362,6 @@ void PrimaryLogPG::do_op(OpRequestRef& op)
   // force recovery of the oldest missing object if too many logs
   maybe_force_recovery();
 }
-
 PrimaryLogPG::cache_result_t PrimaryLogPG::maybe_handle_manifest_detail(
   OpRequestRef op,
   bool write_ordered,
@@ -5501,7 +5492,8 @@ int PrimaryLogPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	map<string, bufferlist> out;
 	result = getattrs_maybe_cache(
 	  ctx->obc,
-	  &out);
+	  &out,
+	  true);
         
         bufferlist bl;
         ::encode(out, bl);
@@ -6272,7 +6264,8 @@ int PrimaryLogPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	/* rm_attrs */
 	map<string,bufferlist> rmattrs;
 	result = getattrs_maybe_cache(ctx->obc,
-		    &rmattrs);
+		    &rmattrs,
+		    true);
 	if (result < 0) {
 	  return result;
 	}
@@ -7932,7 +7925,8 @@ int PrimaryLogPG::do_copy_get(OpContext *ctx, bufferlist::iterator& bp,
   if (!cursor.attr_complete) {
     result = getattrs_maybe_cache(
       ctx->obc,
-      &out_attrs);
+      &out_attrs,
+      true);
     if (result < 0) {
       if (cb) {
         delete cb;
@@ -10905,23 +10899,7 @@ void PrimaryLogPG::mark_all_unfound_lost(
 	  release_backoffs(p.first);
 	}
 	requeue_object_waiters(waiting_for_unreadable_object);
-	if (is_recovery_unfound()) {
-	  queue_peering_event(
-	    CephPeeringEvtRef(
-	      std::make_shared<CephPeeringEvt>(
-	      get_osdmap()->get_epoch(),
-	      get_osdmap()->get_epoch(),
-	      DoRecovery())));
-	} else if (is_backfill_unfound()) {
-	  queue_peering_event(
-	    CephPeeringEvtRef(
-	      std::make_shared<CephPeeringEvt>(
-	      get_osdmap()->get_epoch(),
-	      get_osdmap()->get_epoch(),
-	      RequestBackfill())));
-	} else {
-	  queue_recovery();
-	}
+	queue_recovery();
 
 	stringstream ss;
 	ss << "pg has " << num_unfound
@@ -14687,23 +14665,26 @@ int PrimaryLogPG::getattr_maybe_cache(
 
 int PrimaryLogPG::getattrs_maybe_cache(
   ObjectContextRef obc,
-  map<string, bufferlist> *out)
+  map<string, bufferlist> *out,
+  bool user_only)
 {
   int r = 0;
-  assert(out);
   if (pool.info.require_rollback()) {
-    *out = obc->attr_cache;
+    if (out)
+      *out = obc->attr_cache;
   } else {
     r = pgbackend->objects_get_attrs(obc->obs.oi.soid, out);
   }
-  map<string, bufferlist> tmp;
-  for (map<string, bufferlist>::iterator i = out->begin();
-       i != out->end();
-       ++i) {
-    if (i->first.size() > 1 && i->first[0] == '_')
-      tmp[i->first.substr(1, i->first.size())].claim(i->second);
+  if (out && user_only) {
+    map<string, bufferlist> tmp;
+    for (map<string, bufferlist>::iterator i = out->begin();
+	 i != out->end();
+	 ++i) {
+      if (i->first.size() > 1 && i->first[0] == '_')
+	tmp[i->first.substr(1, i->first.size())].claim(i->second);
+    }
+    tmp.swap(*out);
   }
-  tmp.swap(*out);
   return r;
 }
 

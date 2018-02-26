@@ -320,11 +320,6 @@ private:
     const PushReplyOp &op,
     pg_shard_t from,
     RecoveryMessages *m);
-  void get_all_avail_shards(
-    const hobject_t &hoid,
-    set<int> &have,
-    map<shard_id_t, pg_shard_t> &shards,
-    bool for_recovery);
 
 public:
   /**
@@ -655,8 +650,7 @@ public:
   int get_remaining_shards(
     const hobject_t &hoid,
     const set<int> &avail,
-    set<pg_shard_t> *to_read,
-    bool for_recovery);
+    set<pg_shard_t> *to_read);
 
   int objects_get_attrs(
     const hobject_t &hoid,

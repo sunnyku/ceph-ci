@@ -1615,19 +1615,7 @@ public:
       *out << "DeferRecovery: delay " << delay;
     }
   };
-  struct UnfoundBackfill : boost::statechart::event<UnfoundBackfill> {
-    explicit UnfoundBackfill() {}
-    void print(std::ostream *out) const {
-      *out << "UnfoundBackfill";
-    }
-  };
-  struct UnfoundRecovery : boost::statechart::event<UnfoundRecovery> {
-    explicit UnfoundRecovery() {}
-    void print(std::ostream *out) const {
-      *out << "UnfoundRecovery";
-    }
-  };
-protected:
+
   TrivialEvent(Initialize)
   TrivialEvent(Load)
   TrivialEvent(GotInfo)
@@ -1936,8 +1924,6 @@ protected:
 	boost::statechart::custom_reaction< AllReplicasActivated >,
 	boost::statechart::custom_reaction< DeferRecovery >,
 	boost::statechart::custom_reaction< DeferBackfill >,
-	boost::statechart::custom_reaction< UnfoundRecovery >,
-	boost::statechart::custom_reaction< UnfoundBackfill >
 	boost::statechart::custom_reaction< DoRecovery>
 	> reactions;
       boost::statechart::result react(const QueryState& q);
@@ -1954,12 +1940,6 @@ protected:
 	return discard_event();
       }
       boost::statechart::result react(const DeferBackfill& evt) {
-	return discard_event();
-      }
-      boost::statechart::result react(const UnfoundRecovery& evt) {
-	return discard_event();
-      }
-      boost::statechart::result react(const UnfoundBackfill& evt) {
 	return discard_event();
       }
       boost::statechart::result react(const DoRecovery&) {
@@ -1993,13 +1973,11 @@ protected:
       typedef boost::mpl::list<
 	boost::statechart::transition< Backfilled, Recovered >,
 	boost::statechart::custom_reaction< DeferBackfill >,
-	boost::statechart::custom_reaction< UnfoundBackfill >,
 	boost::statechart::custom_reaction< RemoteReservationRejected >
 	> reactions;
       explicit Backfilling(my_context ctx);
       boost::statechart::result react(const RemoteReservationRejected& evt);
       boost::statechart::result react(const DeferBackfill& evt);
-      boost::statechart::result react(const UnfoundBackfill& evt);
       void exit();
     };
 
@@ -2039,15 +2017,10 @@ protected:
     struct NotRecovering : boost::statechart::state< NotRecovering, Active>, NamedState {
       typedef boost::mpl::list<
 	boost::statechart::transition< DoRecovery, WaitLocalRecoveryReserved >,
-	boost::statechart::custom_reaction< DeferRecovery >,
-	boost::statechart::custom_reaction< UnfoundRecovery >
+	boost::statechart::custom_reaction< DeferRecovery >
 	> reactions;
       explicit NotRecovering(my_context ctx);
       boost::statechart::result react(const DeferRecovery& evt) {
-	/* no-op */
-	return discard_event();
-      }
-      boost::statechart::result react(const UnfoundRecovery& evt) {
 	/* no-op */
 	return discard_event();
       }
@@ -2067,9 +2040,7 @@ protected:
 	boost::statechart::custom_reaction< MLogRec >,
 	boost::statechart::custom_reaction< Activate >,
 	boost::statechart::custom_reaction< DeferRecovery >,
-	boost::statechart::custom_reaction< DeferBackfill >,
-	boost::statechart::custom_reaction< UnfoundRecovery >,
-	boost::statechart::custom_reaction< UnfoundBackfill >
+	boost::statechart::custom_reaction< DeferBackfill >
 	> reactions;
       boost::statechart::result react(const QueryState& q);
       boost::statechart::result react(const MInfoRec& infoevt);
@@ -2081,12 +2052,6 @@ protected:
 	return discard_event();
       }
       boost::statechart::result react(const DeferBackfill& evt) {
-	return discard_event();
-      }
-      boost::statechart::result react(const UnfoundRecovery& evt) {
-	return discard_event();
-      }
-      boost::statechart::result react(const UnfoundBackfill& evt) {
 	return discard_event();
       }
     };
@@ -2156,7 +2121,6 @@ protected:
       typedef boost::mpl::list <
 	boost::statechart::custom_reaction< AllReplicasRecovered >,
 	boost::statechart::custom_reaction< DeferRecovery >,
-	boost::statechart::custom_reaction< UnfoundRecovery >,
 	boost::statechart::custom_reaction< RequestBackfill >
 	> reactions;
       explicit Recovering(my_context ctx);
@@ -2164,7 +2128,6 @@ protected:
       void release_reservations(bool cancel = false);
       boost::statechart::result react(const AllReplicasRecovered &evt);
       boost::statechart::result react(const DeferRecovery& evt);
-      boost::statechart::result react(const UnfoundRecovery& evt);
       boost::statechart::result react(const RequestBackfill &evt);
     };
 
@@ -2456,8 +2419,6 @@ protected:
   bool       is_activating() const { return state_test(PG_STATE_ACTIVATING); }
   bool       is_peering() const { return state_test(PG_STATE_PEERING); }
   bool       is_down() const { return state_test(PG_STATE_DOWN); }
-  bool       is_recovery_unfound() const { return state_test(PG_STATE_RECOVERY_UNFOUND); }
-  bool       is_backfill_unfound() const { return state_test(PG_STATE_BACKFILL_UNFOUND); }
   bool       is_incomplete() const { return state_test(PG_STATE_INCOMPLETE); }
   bool       is_clean() const { return state_test(PG_STATE_CLEAN); }
   bool       is_degraded() const { return state_test(PG_STATE_DEGRADED); }
