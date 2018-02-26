@@ -577,12 +577,17 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
     CephContext *cct = ictx->cct;
     ldout(cct, 20) << "children flatten " << ictx->name << dendl;
 
+    int r = ictx->state->refresh_if_required();
+    if (r < 0) {
+      return r;
+    }
+
     RWLock::RLocker l(ictx->snap_lock);
     snap_t snap_id = ictx->get_snap_id(cls::rbd::UserSnapshotNamespace(), snap_name);
     ParentSpec parent_spec(ictx->md_ctx.get_id(), ictx->id, snap_id);
     map< pair<int64_t, string>, set<string> > image_info;
 
-    int r = api::Image<>::list_children(ictx, parent_spec, &image_info);
+    r = api::Image<>::list_children(ictx, parent_spec, &image_info);
     if (r < 0) {
       return r;
     }
@@ -648,11 +653,16 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
     CephContext *cct = ictx->cct;
     ldout(cct, 20) << "children list " << ictx->name << dendl;
 
+    int r = ictx->state->refresh_if_required();
+    if (r < 0) {
+      return r;
+    }
+
     RWLock::RLocker l(ictx->snap_lock);
     ParentSpec parent_spec(ictx->md_ctx.get_id(), ictx->id, ictx->snap_id);
     map< pair<int64_t, string>, set<string> > image_info;
 
-    int r = api::Image<>::list_children(ictx, parent_spec, &image_info);
+    r = api::Image<>::list_children(ictx, parent_spec, &image_info);
     if (r < 0) {
       return r;
     }
