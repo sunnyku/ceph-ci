@@ -5810,6 +5810,14 @@ COMMAND("config set " \
 	"name=key,type=CephString name=value,type=CephString",
 	"Set a configuration option at runtime (not persistent)",
 	"osd", "rw", "cli,rest")
+COMMAND("config get " \
+	"name=key,type=CephString",
+	"Get a configuration option at runtime",
+	"osd", "r", "cli,rest")
+COMMAND("config unset " \
+	"name=key,type=CephString",
+	"Unset a configuration option at runtime (not persistent)",
+	"osd", "rw", "cli,rest")
 COMMAND("cluster_log " \
 	"name=level,type=CephChoices,strings=error,warning,info,debug " \
 	"name=message,type=CephString,n=N",
@@ -5933,7 +5941,28 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
     cmd_getval(cct, cmdmap, "key", key);
     cmd_getval(cct, cmdmap, "value", val);
     osd_lock.Unlock();
-    r = cct->_conf->set_val(key, val, true, &ss);
+    r = cct->_conf->set_val(key, val, &ss);
+    if (r == 0) {
+      cct->_conf->apply_changes(nullptr);
+    }
+    osd_lock.Lock();
+  }
+  else if (prefix == "config get") {
+    std::string key;
+    cmd_getval(cct, cmdmap, "key", key);
+    osd_lock.Unlock();
+    std::string val;
+    r = cct->_conf->get_val(key, &val);
+    if (r == 0) {
+      ds << val;
+    }
+    osd_lock.Lock();
+  }
+  else if (prefix == "config unset") {
+    std::string key;
+    cmd_getval(cct, cmdmap, "key", key);
+    osd_lock.Unlock();
+    r = cct->_conf->rm_val(key);
     if (r == 0) {
       cct->_conf->apply_changes(nullptr);
     }
