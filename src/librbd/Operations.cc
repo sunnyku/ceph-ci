@@ -538,9 +538,11 @@ int Operations<I>::rename(const char *dstname) {
       return r;
     }
   } else {
-    RWLock::RLocker owner_lock(m_image_ctx.owner_lock);
     C_SaferCond cond_ctx;
-    execute_rename(dstname, &cond_ctx);
+    {
+      RWLock::RLocker owner_lock(m_image_ctx.owner_lock);
+      execute_rename(dstname, &cond_ctx);
+    }
 
     r = cond_ctx.wait();
     if (r < 0) {
@@ -583,6 +585,7 @@ void Operations<I>::execute_rename(const std::string &dest_name,
 	m_image_ctx.image_watcher->register_watch(on_finish);
       });
     on_finish = new FunctionContext([this, dest_name, on_finish](int r) {
+        RWLock::RLocker owner_locker(m_image_ctx.owner_lock);
 	operation::RenameRequest<I> *req = new operation::RenameRequest<I>(
 	  m_image_ctx, on_finish, dest_name);
 	req->send();
@@ -864,36 +867,35 @@ int Operations<I>::snap_rollback(const cls::rbd::SnapshotNamespace& snap_namespa
   if (r < 0)
     return r;
 
-  RWLock::RLocker owner_locker(m_image_ctx.owner_lock);
+  C_SaferCond cond_ctx;
   {
-    // need to drop snap_lock before invalidating cache
-    RWLock::RLocker snap_locker(m_image_ctx.snap_lock);
-    if (!m_image_ctx.snap_exists) {
-      return -ENOENT;
+    RWLock::RLocker owner_locker(m_image_ctx.owner_lock);
+    {
+      // need to drop snap_lock before invalidating cache
+      RWLock::RLocker snap_locker(m_image_ctx.snap_lock);
+      if (!m_image_ctx.snap_exists) {
+        return -ENOENT;
+      }
+
+      if (m_image_ctx.snap_id != CEPH_NOSNAP || m_image_ctx.read_only) {
+        return -EROFS;
+      }
+
+      uint64_t snap_id = m_image_ctx.get_snap_id(snap_namespace, snap_name);
+      if (snap_id == CEPH_NOSNAP) {
+        lderr(cct) << "No such snapshot found." << dendl;
+        return -ENOENT;
+      }
     }
 
-    if (m_image_ctx.snap_id != CEPH_NOSNAP || m_image_ctx.read_only) {
+    r = prepare_image_update(false);
+    if (r < 0) {
       return -EROFS;
     }
 
-    uint64_t snap_id = m_image_ctx.get_snap_id(snap_namespace, snap_name);
-    if (snap_id == CEPH_NOSNAP) {
-      lderr(cct) << "No such snapshot found." << dendl;
-      return -ENOENT;
-    }
+    execute_snap_rollback(snap_namespace, snap_name, prog_ctx, &cond_ctx);
   }
 
-  r = prepare_image_update();
-  if (r < 0) {
-    return -EROFS;
-  }
-  if (m_image_ctx.exclusive_lock != nullptr &&
-      !m_image_ctx.exclusive_lock->is_lock_owner()) {
-    return -EROFS;
-  }
-
-  C_SaferCond cond_ctx;
-  execute_snap_rollback(snap_namespace, snap_name, prog_ctx, &cond_ctx);
   r = cond_ctx.wait();
   if (r < 0) {
     return r;
@@ -1080,9 +1082,11 @@ int Operations<I>::snap_rename(const char *srcname, const char *dstname) {
       return r;
     }
   } else {
-    RWLock::RLocker owner_lock(m_image_ctx.owner_lock);
     C_SaferCond cond_ctx;
-    execute_snap_rename(snap_id, dstname, &cond_ctx);
+    {
+      RWLock::RLocker owner_lock(m_image_ctx.owner_lock);
+      execute_snap_rename(snap_id, dstname, &cond_ctx);
+    }
 
     r = cond_ctx.wait();
     if (r < 0) {
@@ -1172,9 +1176,11 @@ int Operations<I>::snap_protect(const cls::rbd::SnapshotNamespace& snap_namespac
       return r;
     }
   } else {
-    RWLock::RLocker owner_lock(m_image_ctx.owner_lock);
     C_SaferCond cond_ctx;
-    execute_snap_protect(snap_namespace, snap_name, &cond_ctx);
+    {
+      RWLock::RLocker owner_lock(m_image_ctx.owner_lock);
+      execute_snap_protect(snap_namespace, snap_name, &cond_ctx);
+    }
 
     r = cond_ctx.wait();
     if (r < 0) {
@@ -1260,9 +1266,11 @@ int Operations<I>::snap_unprotect(const cls::rbd::SnapshotNamespace& snap_namesp
       return r;
     }
   } else {
-    RWLock::RLocker owner_lock(m_image_ctx.owner_lock);
     C_SaferCond cond_ctx;
-    execute_snap_unprotect(snap_namespace, snap_name, &cond_ctx);
+    {
+      RWLock::RLocker owner_lock(m_image_ctx.owner_lock);
+      execute_snap_unprotect(snap_namespace, snap_name, &cond_ctx);
+    }
 
     r = cond_ctx.wait();
     if (r < 0) {
@@ -1321,25 +1329,18 @@ int Operations<I>::snap_set_limit(uint64_t limit) {
     return r;
   }
 
+  C_SaferCond limit_ctx;
   {
     RWLock::RLocker owner_lock(m_image_ctx.owner_lock);
-    C_SaferCond limit_ctx;
-
-    if (m_image_ctx.exclusive_lock != nullptr &&
-	!m_image_ctx.exclusive_lock->is_lock_owner()) {
-      C_SaferCond lock_ctx;
-
-      m_image_ctx.exclusive_lock->acquire_lock(&lock_ctx);
-      r = lock_ctx.wait();
-      if (r < 0) {
-	return r;
-      }
+    r = prepare_image_update(true);
+    if (r < 0) {
+      return r;
     }
 
     execute_snap_set_limit(limit, &limit_ctx);
-    r = limit_ctx.wait();
   }
 
+  r = limit_ctx.wait();
   return r;
 }
 
@@ -1479,25 +1480,18 @@ int Operations<I>::metadata_set(const std::string &key,
     return -EROFS;
   }
 
+  C_SaferCond metadata_ctx;
   {
     RWLock::RLocker owner_lock(m_image_ctx.owner_lock);
-    C_SaferCond metadata_ctx;
-
-    if (m_image_ctx.exclusive_lock != nullptr &&
-	!m_image_ctx.exclusive_lock->is_lock_owner()) {
-      C_SaferCond lock_ctx;
-
-      m_image_ctx.exclusive_lock->acquire_lock(&lock_ctx);
-      r = lock_ctx.wait();
-      if (r < 0) {
-	return r;
-      }
+    r = prepare_image_update(true);
+    if (r < 0) {
+      return r;
     }
 
     execute_metadata_set(key, value, &metadata_ctx);
-    r = metadata_ctx.wait();
   }
 
+  r = metadata_ctx.wait();
   return r;
 }
 
@@ -1539,24 +1533,18 @@ int Operations<I>::metadata_remove(const std::string &key) {
   if(r < 0)
     return r;
 
+  C_SaferCond metadata_ctx;
   {
     RWLock::RLocker owner_lock(m_image_ctx.owner_lock);
-    C_SaferCond metadata_ctx;
-
-    if (m_image_ctx.exclusive_lock != nullptr &&
-        !m_image_ctx.exclusive_lock->is_lock_owner()) {
-      C_SaferCond lock_ctx;
-
-      m_image_ctx.exclusive_lock->acquire_lock(&lock_ctx);
-      r = lock_ctx.wait();
-      if (r < 0) {
-        return r;
-      }
+    r = prepare_image_update(true);
+    if (r < 0) {
+      return r;
     }
 
     execute_metadata_remove(key, &metadata_ctx);
-    r = metadata_ctx.wait();
   }
+
+  r = metadata_ctx.wait();
 
   return r;
 }
@@ -1575,34 +1563,51 @@ void Operations<I>::execute_metadata_remove(const std::string &key,
 }
 
 template <typename I>
-int Operations<I>::prepare_image_update() {
+int Operations<I>::prepare_image_update(bool request_lock) {
   assert(m_image_ctx.owner_lock.is_locked() &&
          !m_image_ctx.owner_lock.is_wlocked());
-  if (m_image_ctx.image_watcher == NULL) {
+  if (m_image_ctx.image_watcher == nullptr) {
     return -EROFS;
   }
 
   // need to upgrade to a write lock
-  bool trying_lock = false;
   C_SaferCond ctx;
   m_image_ctx.owner_lock.put_read();
+  bool attempting_lock = false;
   {
     RWLock::WLocker owner_locker(m_image_ctx.owner_lock);
     if (m_image_ctx.exclusive_lock != nullptr &&
         (!m_image_ctx.exclusive_lock->is_lock_owner() ||
          !m_image_ctx.exclusive_lock->accept_requests())) {
-      m_image_ctx.exclusive_lock->try_acquire_lock(&ctx);
-      trying_lock = true;
+
+      attempting_lock = true;
+      m_image_ctx.exclusive_lock->block_requests(0);
+
+      if (request_lock) {
+        m_image_ctx.exclusive_lock->acquire_lock(&ctx);
+      } else {
+        m_image_ctx.exclusive_lock->try_acquire_lock(&ctx);
+      }
     }
   }
 
   int r = 0;
-  if (trying_lock) {
+  if (attempting_lock) {
     r = ctx.wait();
   }
   m_image_ctx.owner_lock.get_read();
+  if (attempting_lock && m_image_ctx.exclusive_lock != nullptr) {
+    m_image_ctx.exclusive_lock->unblock_requests();
+  }
 
-  return r;
+  if (r < 0) {
+    return r;
+  } else if (m_image_ctx.exclusive_lock != nullptr &&
+             !m_image_ctx.exclusive_lock->is_lock_owner()) {
+    return -EROFS;
+  }
+
+  return 0;
 }
 
 template <typename I>
