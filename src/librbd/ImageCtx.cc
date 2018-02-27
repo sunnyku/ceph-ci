@@ -1058,6 +1058,7 @@ struct C_InvalidateCache : public Context {
         "rbd_localize_snap_reads", false)(
         "rbd_balance_parent_reads", false)(
         "rbd_localize_parent_reads", false)(
+        "rbd_sparse_read_threshold_bytes", false)(
         "rbd_readahead_trigger_requests", false)(
         "rbd_readahead_max_bytes", false)(
         "rbd_readahead_disable_after_bytes", false)(
@@ -1120,6 +1121,7 @@ struct C_InvalidateCache : public Context {
     ASSIGN_OPTION(localize_snap_reads, bool);
     ASSIGN_OPTION(balance_parent_reads, bool);
     ASSIGN_OPTION(localize_parent_reads, bool);
+    ASSIGN_OPTION(sparse_read_threshold_bytes, uint64_t);
     ASSIGN_OPTION(readahead_trigger_requests, int64_t);
     ASSIGN_OPTION(readahead_max_bytes, int64_t);
     ASSIGN_OPTION(readahead_disable_after_bytes, int64_t);
@@ -1146,6 +1148,9 @@ struct C_InvalidateCache : public Context {
     ASSIGN_OPTION(client_qos_limit, int64_t);
     ASSIGN_OPTION(client_qos_bandwidth, int64_t);
 
+    if (sparse_read_threshold_bytes == 0) {
+      sparse_read_threshold_bytes = get_object_size();
+    }
   }
 
   ExclusiveLock<ImageCtx> *ImageCtx::create_exclusive_lock() {
