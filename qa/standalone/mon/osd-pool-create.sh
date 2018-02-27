@@ -221,6 +221,7 @@ function TEST_pool_create_rep_expected_num_objects() {
     ceph osd pool create rep_expected_num_objects 64 64 replicated  replicated_rule 100000 || return 1
     # wait for pg dir creating
     sleep 5
+    find ${dir}/0/current -ls
     ret=$(find ${dir}/0/current/1.0_head/ | grep DIR | wc -l)
     if [ "$ret" -le 2 ];
     then
