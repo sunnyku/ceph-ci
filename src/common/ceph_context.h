@@ -135,12 +135,16 @@ public:
 		  std::string_view format, ceph::bufferlist *out);
 
   template<typename T>
-  void lookup_or_create_singleton_object(T*& p, const std::string &name) {
+  void lookup_or_create_singleton_object(T*& p, const std::string &name,
+					 bool drop_on_fork=false) {
     std::lock_guard<ceph::spinlock> lg(_associated_objs_lock);
 
     if (!_associated_objs.count(name)) {
       p = new T(this);
       _associated_objs[name] = new TypedSingletonWrapper<T>(p);
+      if (drop_on_fork) {
+	_associated_objs_drop_on_fork.insert(name);
+      }
     } else {
       TypedSingletonWrapper<T> *wrapper =
         dynamic_cast<TypedSingletonWrapper<T> *>(_associated_objs[name]);
@@ -148,6 +152,8 @@ public:
       p = wrapper->singleton;
     }
   }
+
+
   /**
    * get a crypto handler
    */
@@ -198,17 +204,8 @@ public:
     _fork_watchers.push_back(w);
   }
 
-  void notify_pre_fork() {
-    std::lock_guard<ceph::spinlock> lg(_fork_watchers_lock);
-    for (auto &&t : _fork_watchers)
-      t->handle_pre_fork();
-  }
-
-  void notify_post_fork() {
-    ceph::spin_unlock(&_fork_watchers_lock);
-    for (auto &&t : _fork_watchers)
-      t->handle_post_fork();
-  }
+  void notify_pre_fork();
+  void notify_post_fork();
 
 private:
   struct SingletonWrapper : boost::noncopyable {
