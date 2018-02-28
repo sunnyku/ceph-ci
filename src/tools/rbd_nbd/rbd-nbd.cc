@@ -683,6 +683,7 @@ static int do_map(int argc, const char *argv[], Config *cfg)
       if (forker.parent_wait(err) != 0) {
         return -ENXIO;
       }
+      cct->get();  // deliberately leak, since we don't shut down properly.
       return 0;
     }
   }
