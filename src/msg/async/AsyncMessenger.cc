@@ -260,7 +260,10 @@ AsyncMessenger::AsyncMessenger(CephContext *cct, entity_name_t name,
     transport_type = "dpdk";
 
   StackSingleton *single;
-  cct->lookup_or_create_singleton_object<StackSingleton>(single, "AsyncMessenger::NetworkStack::"+transport_type);
+  cct->lookup_or_create_singleton_object<StackSingleton>(
+    single,
+    "AsyncMessenger::NetworkStack::"+transport_type,
+    true /* drop on fork */);
   single->ready(transport_type);
   stack = single->stack.get();
   stack->start();
