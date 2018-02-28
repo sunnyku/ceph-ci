@@ -264,6 +264,7 @@ private:
 
   ceph::spinlock _associated_objs_lock;
   std::map<std::string, SingletonWrapper*> _associated_objs;
+  std::set<std::string> _associated_objs_drop_on_fork;
 
   ceph::spinlock _fork_watchers_lock;
   std::vector<ForkWatcher*> _fork_watchers;
