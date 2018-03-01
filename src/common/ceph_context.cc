@@ -644,7 +644,7 @@ CephContext::CephContext(uint32_t module_type_,
   _crypto_aes = CryptoHandler::create(CEPH_CRYPTO_AES);
   _crypto_random.reset(new CryptoRandom());
 
-  lookup_or_create_singleton_object<MempoolObs>("mempool_obs", this);
+  lookup_or_create_singleton_object<MempoolObs>("mempool_obs", false, this);
 }
 
 CephContext::~CephContext()
@@ -850,4 +850,30 @@ CryptoHandler *CephContext::get_crypto_handler(int type)
   default:
     return NULL;
   }
+}
+
+void CephContext::notify_pre_fork()
+{
+  {
+    std::lock_guard<ceph::spinlock> lg(_fork_watchers_lock);
+    for (auto &&t : _fork_watchers) {
+      t->handle_pre_fork();
+    }
+  }
+  {
+    // note: we don't hold a lock here, but we assume we are idle at
+    // fork time.
+    for (auto& i : _associated_objs_drop_on_fork) {
+      delete _associated_objs[i];
+      _associated_objs.erase(i);
+    }
+    _associated_objs_drop_on_fork.clear();
+  }
+}
+
+void CephContext::notify_post_fork()
+{
+  ceph::spin_unlock(&_fork_watchers_lock);
+  for (auto &&t : _fork_watchers)
+    t->handle_post_fork();
 }
