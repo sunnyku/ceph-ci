@@ -863,9 +863,15 @@ void CephContext::notify_pre_fork()
   {
     // note: we don't hold a lock here, but we assume we are idle at
     // fork time, which happens during process init and startup.
-    for (auto& i : associated_objs_drop_on_fork) {
-      std::pair<std::string, std::type_index> k(i, typeid(i));
-      associated_objs.erase(k);
+    auto i = associated_objs.begin();
+    while (i != associated_objs.end()) {
+      if (associated_objs_drop_on_fork.count(i->first.first)) {
+	cout << __func__ << " clearing " << i->first.first << std::endl;
+	i = associated_objs.erase(i);
+      } else {
+	cout << __func__ << " keeping " << std::string(i->first.first) << std::endl;
+	++i;
+      }
     }
     associated_objs_drop_on_fork.clear();
   }
