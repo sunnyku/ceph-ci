@@ -1775,10 +1775,10 @@ bool OSDMonitor::_prune_sanitize_options() const
     r = false;
   }
 
-  if (txsize < prune_interval) {
+  if (txsize <= prune_interval) {
     derr << __func__
          << "'mon_osdmap_full_prune_txsize' (" << txsize
-         << ") < 'mon_osdmap_full_prune_interval' (" << prune_interval
+         << ") <= 'mon_osdmap_full_prune_interval' (" << prune_interval
          << "); abort." << dendl;
     r = false;
   }
@@ -1835,7 +1835,7 @@ bool OSDMonitor::do_prune(MonitorDBStore::TransactionRef tx)
 
   dout(5) << __func__
           << " lc (" << first << " .. " << last << ")"
-          << " last_pinned " << osdmap_manifest.get_last_pinned()
+          << " last_pinned " << last_pinned
           << " interval " << prune_interval
           << " last_to_pin " << last_to_pin
           << dendl;
@@ -1856,10 +1856,32 @@ bool OSDMonitor::do_prune(MonitorDBStore::TransactionRef tx)
     return mon->store->exists(get_service_name(), k);
   };
 
-  uint64_t num_pruned = 0;
+  // 'interval' represents the number of maps from the last pinned
+  // i.e., if we pinned version 1 and have an interval of 10, we're pinning
+  // version 11 next; all intermediate versions will be removed.
+  //
+  // 'txsize' represents the maximum number of versions we'll be removing in
+  // this iteration. If 'txsize' is large enough to perform multiple passes
+  // pinning and removing maps, we will do so; if not, we'll do at least one
+  // pass. We are quite relaxed about honouring 'txsize', but we'll always
+  // ensure that we never go *over* the maximum.
 
-  while ((num_pruned + prune_interval) < txsize) { 
+  // e.g., if we pin 1 and 11, we're removing versions [2..10]; i.e., 9 maps.
+  uint64_t removal_interval = prune_interval - 1;
+
+  if (txsize < removal_interval) {
+    dout(5) << __func__
+	    << " setting txsize to removal interval size ("
+	    << removal_interval << " versions"
+	    << dendl;
+    txsize = removal_interval;
+  }
+  ceph_assert(removal_interval > 0);
+
+  uint64_t num_pruned = 0;
+  while (num_pruned + removal_interval <= txsize) { 
     last_pinned = osdmap_manifest.get_last_pinned();
+
     if (last_pinned + prune_interval > last_to_pin) {
       break;
     }
@@ -1868,6 +1890,14 @@ bool OSDMonitor::do_prune(MonitorDBStore::TransactionRef tx)
     version_t next_pinned = last_pinned + prune_interval;
     ceph_assert(next_pinned <= last_to_pin);
     osdmap_manifest.pin(next_pinned);
+
+    dout(20) << __func__
+	     << " last_pinned " << last_pinned
+	     << " next_pinned " << next_pinned
+	     << " num_pruned " << num_pruned
+	     << " removal interval (" << (last_pinned+1)
+	     << ".." << (next_pinned-1) << ")"
+	     << " txsize " << txsize << dendl;
 
     ceph_assert(map_exists(last_pinned));
     ceph_assert(map_exists(next_pinned));
