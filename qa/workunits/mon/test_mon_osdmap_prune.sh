@@ -2,6 +2,8 @@
 
 . $(dirname $0)/../../standalone/ceph-helpers.sh
 
+set -x
+
 function wait_for_osdmap_manifest() {
 
   local what=${1:-"true"}
@@ -74,7 +76,7 @@ function test_mon_osdmap_prune() {
   wait_for_clean || return 1
   wait_for_health_ok || return 1
 
-  ceph tell mon.* injectargs '--mon-debug-block-osdmap-trim' || return 1
+  ceph config set mon mon_debug_block_osdmap_trim true || return 1
 
   generate_osdmaps 500 || return 1
 
@@ -131,11 +133,10 @@ function test_mon_osdmap_prune() {
   [[ ${#pinned_maps[@]} -gt 10 ]] || return 1
 
   trim_to=${pinned_maps[1]}
-  ceph tell mon.* injectargs --mon-osd-force-trim-to=$trim_to
-  ceph tell mon.* injectargs \
-    '--mon-min-osdmap-epochs=100 '\
-    '--paxos-service-trim-min=1 '\
-    '--mon-debug-block-osdmap-trim=false'
+  ceph config set mon mon_osd_force_trim_to $trim_to
+  ceph config set mon mon_min_osdmap_epochs 100
+  ceph config set mon paxos_service_trim_min 1
+  ceph config set mon mon_debug_block_osdmap_trim false
 
   # generate an epoch so we get to trim maps
   ceph osd set noup
@@ -164,7 +165,7 @@ function test_mon_osdmap_prune() {
   #
   [[ ${#pinned_maps[@]} -gt 2 ]] || return 1
   trim_to=$(( ${pinned_maps[1]} - 1))
-  ceph tell mon.a injectargs --mon-osd-force-trim-to=$trim_to
+  ceph config set mon mon_osd_force_trim_to $trim_to
 
   # generate an epoch so we get to trim maps
   ceph osd set noup
@@ -189,7 +190,7 @@ function test_mon_osdmap_prune() {
 
   # 3. trim everything
   #
-  ceph tell mon.* injectargs --mon-osd-force-trim-to=0
+  ceph config set mon mon_osd_force_trim_to 0
 
   # generate an epoch so we get to trim maps
   ceph osd set noup

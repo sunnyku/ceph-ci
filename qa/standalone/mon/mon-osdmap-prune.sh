@@ -43,15 +43,14 @@ function TEST_osdmap_prune() {
   ceph osd set-full-ratio 0.97
   ceph osd set-backfillfull-ratio 0.97
 
-  ceph tell osd.* injectargs '--osd-beacon-report-interval 10' || return 1
-  ceph tell mon.* injectargs '--mon-debug-extra-checks' || return 1
+  ceph config set osd osd_beacon_report_interval 10 || return 1
+  ceph config set mon mon_debug_extra_checks true || return 1
 
-  ceph tell mon.* injectargs \
-    '--mon-min-osdmap-epochs=100 '\
-    '--mon-osdmap-full-prune-enabled '\
-    '--mon-osdmap-full-prune-min 200 '\
-    '--mon-osdmap-full-prune-interval 10 '\
-    '--mon-osdmap-full-prune-txsize 100' || return 1
+  ceph config set mon mon_min_osdmap_epochs 100 || return 1
+  ceph config set mon mon_osdmap_full_prune_enabled true || return 1
+  ceph config set mon mon_osdmap_full_prune_min 200 || return 1
+  ceph config set mon mon_osdmap_full_prune_interval 10 || return 1
+  ceph config set mon mon_osdmap_full_prune_txsize 100 || return 1
 
 
   bash -x $base_test || return 1
