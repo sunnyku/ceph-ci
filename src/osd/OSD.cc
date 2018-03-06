@@ -8286,7 +8286,7 @@ void OSD::handle_fast_pg_query(MOSDPGQuery *m)
       p.first,
       PGPeeringEventRef(
 	std::make_shared<PGPeeringEvent>(
-	  m->get_epoch(), m->get_epoch(),
+	  p.second.epoch_sent, p.second.epoch_sent,
 	  MQuery(
 	    p.first,
 	    pg_shard_t(from, p.second.from),
