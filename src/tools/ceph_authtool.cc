@@ -62,6 +62,11 @@ int main(int argc, const char **argv)
   map<string,bufferlist> caps;
   std::string fn;
 
+  if (ceph_argparse_need_usage(args)) {
+    usage();
+    exit(0);
+  }
+
   auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
 			 CODE_ENVIRONMENT_UTILITY,
 			 CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);

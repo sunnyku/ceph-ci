@@ -62,6 +62,10 @@ int main(int argc, char **argv)
   std::string val;
   vector<const char*> args;
   argv_to_vec(argc, (const char **)argv, args);
+  if (ceph_argparse_need_usage(args)) {
+    usage();
+    exit(0);
+  }
 
   auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
 			 CODE_ENVIRONMENT_UTILITY, 0);

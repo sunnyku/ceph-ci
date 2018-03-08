@@ -37,6 +37,9 @@ int main(int argc, const char **argv)
 {
   vector<const char*> args;
   argv_to_vec(argc, argv, args);
+  if (ceph_argparse_need_usage(args)) {
+    usage_exit();
+  }
 
   bool opt_version = false;
   bool opt_vernum = false;

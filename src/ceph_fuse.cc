@@ -74,7 +74,7 @@ int main(int argc, const char **argv, const char *envp[]) {
   //cerr << "ceph-fuse starting " << myrank << "/" << world << std::endl;
   std::vector<const char*> args;
   argv_to_vec(argc, argv, args);
-  if (args.empty()) {
+  if (ceph_argparse_need_usage(args)) {
     usage();
   }
 
@@ -95,8 +95,6 @@ int main(int argc, const char **argv, const char *envp[]) {
     } else if (ceph_argparse_flag(args, i, "--localize-reads", (char*)nullptr)) {
       cerr << "setting CEPH_OSD_FLAG_LOCALIZE_READS" << std::endl;
       filer_flags |= CEPH_OSD_FLAG_LOCALIZE_READS;
-    } else if (ceph_argparse_flag(args, i, "-h", "--help", (char*)nullptr)) {
-      usage();
     } else {
       ++i;
     }
