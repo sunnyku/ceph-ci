@@ -8799,6 +8799,12 @@ void OSD::dequeue_peering_evt(
       advance_pg(curmap->get_epoch(), pg, handle, &rctx);
     }
     pg->do_peering_event(evt, &rctx);
+    if (pg->is_deleted()) {
+      // do not dispatch rctx; it may contain work that predates our deletion
+      // of the pg.
+      pg->unlock();
+      return;
+    }
     dispatch_context_transaction(rctx, pg, &handle);
     need_up_thru = pg->get_need_up_thru();
     same_interval_since = pg->get_same_interval_since();
