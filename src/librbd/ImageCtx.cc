@@ -234,11 +234,11 @@ struct C_InvalidateCache : public Context {
     assert(journal == NULL);
     assert(asok_hook == NULL);
 
-    if (perfcounter) {
-      perf_stop();
-    }
     if (m_report_timer) {
       perf_report_stop();
+    }
+    if (perfcounter) {
+      perf_stop();
     }
     if (object_cacher) {
       delete object_cacher;
