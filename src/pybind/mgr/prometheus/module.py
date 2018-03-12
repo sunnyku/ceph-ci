@@ -5,7 +5,7 @@ import math
 import os
 import socket
 from collections import OrderedDict
-from mgr_module import MgrModule, MgrStandbyModule
+from mgr_module import MgrModule, MgrStandbyModule, CommandResult
 
 # Defaults for the Prometheus HTTP server.  Can also set in config-key
 # see https://github.com/prometheus/prometheus/wiki/Default-port-allocations
@@ -299,6 +299,11 @@ class Module(MgrModule):
             "desc": "Run a self test on the prometheus module",
             "perm": "rw"
         },
+        {
+            "cmd": "prometheus file_sd_config",
+            "desc": "Return file_sd compatible prometheus config for mgr cluster",
+            "perm": "r"
+        },
     ]
 
     def __init__(self, *args, **kwargs):
@@ -512,10 +517,47 @@ class Module(MgrModule):
 
         return self.metrics.metrics
 
+    def get_file_sd_config(self):
+        servers = self.list_servers()
+        targets = []
+        for server in servers:
+            hostname = server.get('hostname', '')
+            for service in server.get('services', []):
+                if service['type'] != 'mgr':
+                    continue
+                id_ = service['id']
+                # get port for prometheus module at mgr with id_
+                # TODO use get_config_prefix or get_config here once
+                # https://github.com/ceph/ceph/pull/20458 is merged
+                result = CommandResult("")
+                global_instance().send_command(
+                    result, "mon", '',
+                    json.dumps({
+                        "prefix": "config-key get",
+                        'key': "mgr/prometheus/{}/server_port".format(id_),
+                    }),
+                                               "")
+                r, outb, outs = result.wait()
+                if r != 0:
+                    global_instance().log.error("Failed to retrieve port for mgr {}: {}".format(mgr, outs))
+                else:
+                    port = json.loads(outb)
+                    targets.append('{}:{}'.format(hostname, port))
+
+        ret = [
+            {
+                "targets": targets,
+                "labels": {}
+            }
+        ]
+        return 0, "", json.dumps(ret)
+
     def handle_command(self, cmd):
         if cmd['prefix'] == 'prometheus self-test':
             self.collect()
             return 0, '', 'Self-test OK'
+        elif cmd['prefix'] == 'prometheus file_sd_config':
+            return self.get_file_sd_config()
         else:
             return (-errno.EINVAL, '',
                     "Command not found '{0}'".format(cmd['prefix']))
