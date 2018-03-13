@@ -882,6 +882,12 @@ public:
     OSDMapRef new_map,
     spg_t pgid,
     set<spg_t> *new_children);
+  void identify_merge_sources_targets(
+    OSDMapRef old_map,
+    OSDMapRef new_map,
+    spg_t pgid,
+    set<spg_t> *sources,
+    set<spg_t> *targets);
 
   void need_heartbeat_peer_update();
 
@@ -1128,6 +1134,10 @@ struct OSDShardPGSlot {
 
   epoch_t epoch = 0;
   boost::intrusive::set_member_hook<> pg_epoch_item;
+
+  PGRef merge_source;                    ///< i am target; this is source pg
+  bool waiting_for_merge_target = false; ///< i am target, waiting for target
+  bool waiting_for_merge_source = false; ///< i am source of upcoming merge
 };
 
 struct OSDShard {
@@ -1215,6 +1225,11 @@ struct OSDShard {
   void prime_splits(OSDMapRef as_of_osdmap, set<spg_t> *pgids);
   void register_and_wake_split_child(PG *pg);
   void unprime_split_children(spg_t parent, unsigned old_pg_num);
+
+  void identify_merges(OSDMapRef as_of_osdmap, set<spg_t> *sources,
+		       set<spg_t> *targets);
+  void prime_merges(OSDMapRef as_of_osdmap, set<spg_t> *sources,
+		    set<spg_t> *targets);
 
   OSDShard(
     int id,
@@ -1865,6 +1880,10 @@ protected:
     PG::RecoveryCtx *rctx);
   void consume_map();
   void activate_map();
+
+  bool _try_merge(PGRef target,
+		  PG::RecoveryCtx *rctx,
+		  unsigned new_pg_num);
 
   // osd map cache (past osd maps)
   OSDMapRef get_map(epoch_t e) {

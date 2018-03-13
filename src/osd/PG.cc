@@ -2395,6 +2395,39 @@ void PG::finish_split_stats(const object_stat_sum_t& stats, ObjectStore::Transac
   write_if_dirty(*t);
 }
 
+void PG::merge_from(PGRef source, RecoveryCtx *rctx, unsigned split_bits)
+{
+  dout(10) << __func__ << " from " << *source << " split_bits " << split_bits
+	   << dendl;
+  assert(info.last_complete == info.last_update);
+  assert(!info.is_incomplete());
+  assert(source->info.last_complete == source->info.last_update);
+  assert(!source->info.is_incomplete());
+
+  // wipe out source's pgmeta
+  rctx->transaction->remove(source->coll, source->pgmeta_oid);
+
+  // merge (and destroy source collection)
+  rctx->transaction->merge_collection(source->coll, coll, split_bits);
+
+  // combine stats
+  info.stats.add(source->info.stats);
+
+  // pull up last_update
+  info.last_update = std::max(info.last_update, source->info.last_update);
+  info.last_complete = info.last_update;
+  info.log_tail = info.last_update;
+
+  // wipe our (target) log
+  pg_log.clear();
+  pg_log.set_head(info.last_update);
+  pg_log.set_tail(info.last_update);
+  pg_log.mark_log_for_rewrite();
+
+  dirty_info = true;
+  dirty_big_info = true;
+}
+
 void PG::add_backoff(SessionRef s, const hobject_t& begin, const hobject_t& end)
 {
   ConnectionRef con = s->con;
