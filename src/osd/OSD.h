@@ -1135,9 +1135,11 @@ struct OSDShardPGSlot {
   epoch_t epoch = 0;
   boost::intrusive::set_member_hook<> pg_epoch_item;
 
+  /*
   PGRef merge_source;                    ///< i am target; this is source pg
   bool waiting_for_merge_target = false; ///< i am target, waiting for target
   bool waiting_for_merge_source = false; ///< i am source of upcoming merge
+  */
 };
 
 struct OSDShard {
@@ -1881,10 +1883,6 @@ protected:
   void consume_map();
   void activate_map();
 
-  bool _try_merge(PGRef target,
-		  PG::RecoveryCtx *rctx,
-		  unsigned new_pg_num);
-
   // osd map cache (past osd maps)
   OSDMapRef get_map(epoch_t e) {
     return service.get_map(e);
@@ -1906,6 +1904,14 @@ public:
   // -- shards --
   vector<OSDShard*> shards;
   uint32_t num_shards = 0;
+
+  Mutex merge_lock = {"OSD::merge_lock"};
+  /// merge epoch -> target pgid -> source pgid -> pg
+  map<epoch_t,map<spg_t,map<spg_t,PGRef>>> merge_waiters;
+  /// merge epoch -> target pgid -> num sources
+  map<epoch_t,map<spg_t,unsigned>> merge_sources;
+
+  bool add_merge_waiter(OSDMapRef nextmap, spg_t target, PGRef source);
 
   // -- placement groups --
   std::atomic<size_t> num_pgs = {0};
