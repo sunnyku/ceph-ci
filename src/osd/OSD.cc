@@ -370,7 +370,7 @@ void OSDService::identify_merge_sources_targets(
   OSDMapRef old_map,
   OSDMapRef new_map,
   spg_t pgid,
-  set<spg_t> *sources,
+  map<spg_t,spg_t> *sources,
   set<spg_t> *targets)
 {
   if (!old_map->have_pg_pool(pgid.pool())) {
@@ -384,7 +384,9 @@ void OSDService::identify_merge_sources_targets(
     if (pgid.is_split(new_pgnum, old_pgnum, &children)) {
       dout(20) << __func__ << " target " << pgid << " source " << children
 	       << dendl;
-      sources->insert(children.begin(), children.end());
+      for (auto c : children) {
+	(*sources)[c] = pgid;
+      }
       targets->insert(pgid);
       Mutex::Locker l(osd->merge_lock);
       osd->merge_sources[new_map->get_epoch()][pgid] = children.size();
@@ -394,7 +396,7 @@ void OSDService::identify_merge_sources_targets(
     if (pgid.is_merge(old_pgnum, new_pgnum, &parent)) {
       dout(20) << __func__ << " source " << pgid << " target " << parent
 	       << dendl;
-      sources->insert(pgid);
+      (*sources)[pgid] = parent;
       targets->insert(parent);
 
       set<spg_t> children;
@@ -7978,18 +7980,24 @@ void OSD::consume_map()
   }
 
   // prime merges
-  set<spg_t> sources, targets;
+  map<spg_t,spg_t> sources;
+  set<spg_t> targets;
   for (auto& shard : shards) {
     shard->identify_merges(osdmap, &sources, &targets);
   }
-  /*assert(sources.empty() == targets.empty());
+  assert(sources.empty() == targets.empty());
   if (!sources.empty()) {
     for (auto& shard : shards) {
-      shard->prime_merges(osdmap, &sources, &targets);
+      shard->filter_merges(&sources, &targets);
     }
+    Mutex::Locker l(merge_lock);
+    for (auto& i : sources) {
+      dout(20) << __func__ << " null merge source " << i.first << " for "
+	       << i.second << dendl;
+      merge_waiters[osdmap->get_epoch()][i.second][i.first] = nullptr;
+    }
+    assert(targets.empty()); // fixme
   }
-  assert(sources.empty());
-  assert(targets.empty());*/
 
   unsigned pushes_to_free = 0;
   for (auto& shard : shards) {
@@ -9758,7 +9766,7 @@ void OSDShard::unprime_split_children(spg_t parent, unsigned old_pg_num)
 }
 
 void OSDShard::identify_merges(OSDMapRef as_of_osdmap,
-			       set<spg_t> *sources,
+			       map<spg_t,spg_t> *sources,
 			       set<spg_t> *targets)
 {
   Mutex::Locker l(sdata_op_ordering_lock);
@@ -9774,42 +9782,37 @@ void OSDShard::identify_merges(OSDMapRef as_of_osdmap,
   }
 }
 
-/*
-void OSDShard::prime_merges(OSDMapRef as_of_osdmap,
-			    set<spg_t> *sources,
-			    set<spg_t> *targets)
+void OSDShard::filter_merges(
+  map<spg_t,spg_t> *sources,
+  set<spg_t> *targets)
 {
   Mutex::Locker l(sdata_op_ordering_lock);
   dout(20) << __func__ << " " << *sources << " " << *targets << dendl;
   auto p = sources->begin();
   while (p != sources->end()) {
-    unsigned shard_index = p->hash_to_shard(osd->num_shards);
+    unsigned shard_index = p->first.hash_to_shard(osd->num_shards);
     if (shard_index == shard_id &&
-	pg_slots.count(*p) &&
-	pg_slots[*p]->pg) {
-      dout(20) << __func__ << "  saw source " << *p << dendl;
-      pg_slots[*p]->waiting_for_merge_source = true;
+	pg_slots.count(p->first) &&
+	pg_slots[p->first]->pg) {
+      dout(20) << __func__ << "  saw source " << p->first << dendl;
       p = sources->erase(p);
     } else {
       ++p;
     }
   }
-  p = targets->begin();
-  while (p != targets->end()) {
-    unsigned shard_index = p->hash_to_shard(osd->num_shards);
+  auto q = targets->begin();
+  while (q != targets->end()) {
+    unsigned shard_index = q->hash_to_shard(osd->num_shards);
     if (shard_index == shard_id &&
-	pg_slots.count(*p) &&
-	pg_slots[*p]->pg) {
-      dout(20) << __func__ << "  marked target " << *p << dendl;
-      pg_slots[*p]->waiting_for_merge_target = true;
-      assert(pg_slots[*p]->merge_source == nullptr);
-      p = targets->erase(p);
+	pg_slots.count(*q) &&
+	pg_slots[*q]->pg) {
+      dout(20) << __func__ << "  saw target " << *q << dendl;
+      q = targets->erase(q);
     } else {
-      ++p;
+      ++q;
     }
   }
 }
-*/
 
 // =============================================================
 
