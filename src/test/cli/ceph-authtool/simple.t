@@ -1,5 +1,4 @@
   $ ceph-authtool
-  ceph-authtool: must specify filename
   usage: ceph-authtool keyringfile [OPTIONS]...
   where the options are:
     -l, --list                    will list all keys and capabilities present in
