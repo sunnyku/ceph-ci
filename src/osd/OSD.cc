@@ -7990,13 +7990,27 @@ void OSD::consume_map()
     for (auto& shard : shards) {
       shard->filter_merges(&sources, &targets);
     }
-    Mutex::Locker l(merge_lock);
-    for (auto& i : sources) {
-      dout(20) << __func__ << " null merge source " << i.first << " for "
-	       << i.second << dendl;
-      merge_waiters[osdmap->get_epoch()][i.second][i.first] = nullptr;
+    {
+      Mutex::Locker l(merge_lock);
+      for (auto& i : sources) {
+	dout(20) << __func__ << " null merge source " << i.first << " for "
+		 << i.second << dendl;
+	merge_waiters[osdmap->get_epoch()][i.second][i.first] = nullptr;
+      }
     }
-    assert(targets.empty()); // fixme
+    for (auto pgid : targets) {
+      dout(20) << __func__ << " creating empty target " << pgid << dendl;
+      pg_history_t history;
+      epoch_t e = osdmap->get_pg_pool(pgid.pool())->get_pg_num_pending_dec_epoch();
+      history.same_interval_since = e;
+      history.last_epoch_started = e;
+      history.last_epoch_clean = e;
+      PGCreateInfo cinfo(pgid, osdmap->get_epoch() - 1,
+			 history, PastIntervals(), false);
+      PGRef pg = handle_pg_create_info(osdmap, &cinfo);
+      register_pg(pg);
+      pg->unlock();
+    }
   }
 
   unsigned pushes_to_free = 0;
