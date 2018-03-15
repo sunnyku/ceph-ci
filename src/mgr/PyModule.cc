@@ -69,6 +69,24 @@ std::string handle_pyerror()
     return extract<std::string>(formatted);
 }
 
+/**
+ * Get the single-line exception message, without clearing any
+ * exception state.
+ */
+std::string peek_pyerror()
+{
+  PyObject *ptype, *pvalue, *ptraceback;
+  PyErr_Fetch(&ptype, &pvalue, &ptraceback);
+  assert(ptype);
+  assert(pvalue);
+  PyObject *pvalue_str = PyObject_Str(pvalue);
+  std::string exc_msg = PyString_AsString(pvalue_str);
+  Py_DECREF(pvalue_str);
+  PyErr_Restore(ptype, pvalue, ptraceback);
+
+  return exc_msg;
+}
+
 
 namespace {
   PyObject* log_write(PyObject*, PyObject* args) {
@@ -287,10 +305,8 @@ int PyModule::load(PyThreadState *pMainThreadState)
 
     r = load_commands();
     if (r != 0) {
-      std::ostringstream oss;
-      oss << "Missing COMMAND attribute in module '" << module_name << "'";
-      error_string = oss.str();
-      derr << oss.str() << dendl;
+      derr << "Missing COMMAND attr in module '" << module_name << "'" << dendl;
+      error_string = "Missing COMMAND attribute";
       return r;
     }
 
@@ -319,6 +335,7 @@ int PyModule::load(PyThreadState *pMainThreadState)
         if (!PyBool_Check(pCanRun) || !PyString_Check(can_run_str)) {
           derr << "Module " << get_name()
                << " returned wrong type in can_run" << dendl;
+          error_string = "wrong type returned from can_run";
           can_run = false;
         } else {
           can_run = (pCanRun == Py_True);
@@ -332,6 +349,7 @@ int PyModule::load(PyThreadState *pMainThreadState)
       } else {
         derr << "Module " << get_name()
              << " returned wrong type in can_run" << dendl;
+        error_string = "wrong type returned from can_run";
         can_run = false;
       }
 
@@ -400,6 +418,7 @@ int PyModule::load_subclass_of(const char* base_class, PyObject** py_class)
   // load the base class
   PyObject *mgr_module = PyImport_ImportModule("mgr_module");
   if (!mgr_module) {
+    error_string = peek_pyerror();
     derr << "Module not found: 'mgr_module'" << dendl;
     derr << handle_pyerror() << dendl;
     return -EINVAL;
@@ -407,6 +426,7 @@ int PyModule::load_subclass_of(const char* base_class, PyObject** py_class)
   auto mgr_module_type = PyObject_GetAttrString(mgr_module, base_class);
   Py_DECREF(mgr_module);
   if (!mgr_module_type) {
+    error_string = peek_pyerror();
     derr << "Unable to import MgrModule from mgr_module" << dendl;
     derr << handle_pyerror() << dendl;
     return -EINVAL;
@@ -415,6 +435,7 @@ int PyModule::load_subclass_of(const char* base_class, PyObject** py_class)
   // find the sub class
   PyObject *plugin_module = PyImport_ImportModule(module_name.c_str());
   if (!plugin_module) {
+    error_string = peek_pyerror();
     derr << "Module not found: '" << module_name << "'" << dendl;
     derr << handle_pyerror() << dendl;
     return -ENOENT;
