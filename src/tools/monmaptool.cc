@@ -167,6 +167,10 @@ int main(int argc, const char **argv)
 {
   vector<const char*> args;
   argv_to_vec(argc, argv, args);
+  if (ceph_argparse_need_usage(args)) {
+    usage();
+    exit(0);
+  }
 
   const char *me = argv[0];
 
@@ -190,8 +194,6 @@ int main(int argc, const char **argv)
   for (std::vector<const char*>::iterator i = args.begin(); i != args.end(); ) {
     if (ceph_argparse_double_dash(args, i)) {
       break;
-    } else if (ceph_argparse_flag(args, i, "-h", "--help", (char*)NULL)) {
-      usage();
     } else if (ceph_argparse_flag(args, i, "-p", "--print", (char*)NULL)) {
       print = true;
     } else if (ceph_argparse_flag(args, i, "--create", (char*)NULL)) {

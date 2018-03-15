@@ -3707,6 +3707,10 @@ int main(int argc, const char **argv)
 {
   vector<const char*> args;
   argv_to_vec(argc, argv, args);
+  if (ceph_argparse_need_usage(args)) {
+    usage(cout);
+    exit(0);
+  }
 
   std::map < std::string, std::string > opts;
   std::string val;
@@ -3742,9 +3746,6 @@ int main(int argc, const char **argv)
   for (i = args.begin(); i != args.end(); ) {
     if (ceph_argparse_double_dash(args, i)) {
       break;
-    } else if (ceph_argparse_flag(args, i, "-h", "--help", (char*)NULL)) {
-      usage(cout);
-      exit(0);
     } else if (ceph_argparse_flag(args, i, "--force-full", (char*)NULL)) {
       opts["force-full"] = "true";
     } else if (ceph_argparse_flag(args, i, "-d", "--delete-after", (char*)NULL)) {

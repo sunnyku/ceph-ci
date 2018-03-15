@@ -100,6 +100,10 @@ int main(int argc, const char **argv)
   vector<const char*> args;
   argv_to_vec(argc, argv, args);
 
+  if (ceph_argparse_need_usage(args)) {
+    usage();
+  }
+
   auto cct = global_init(NULL, args,
 			 CEPH_ENTITY_TYPE_MDS, CODE_ENVIRONMENT_DAEMON,
 			 0, "mds_data");
@@ -109,10 +113,6 @@ int main(int argc, const char **argv)
   for (std::vector<const char*>::iterator i = args.begin(); i != args.end(); ) {
     if (ceph_argparse_double_dash(args, i)) {
       break;
-    }
-    else if (ceph_argparse_flag(args, i, "--help", "-h", (char*)NULL)) {
-      // exit(1) will be called in the usage()
-      usage();
     }
     else if (ceph_argparse_witharg(args, i, &val, "--hot-standby", (char*)NULL)) {
       int r = parse_rank("hot-standby", val);

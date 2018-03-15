@@ -179,6 +179,10 @@ int main(int argc, const char **argv)
 
   vector<const char*> args;
   argv_to_vec(argc, argv, args);
+  if (ceph_argparse_need_usage(args)) {
+    usage();
+    exit(0);
+  }
 
   // First, let's determine which frontends are configured.
   int flags = CINIT_FLAG_UNPRIVILEGED_DAEMON_DEFAULTS;
@@ -233,13 +237,6 @@ int main(int argc, const char **argv)
   auto cct = global_init(&defaults, args, CEPH_ENTITY_TYPE_CLIENT,
 			 CODE_ENVIRONMENT_DAEMON,
 			 flags, "rgw_data", false);
-
-  for (std::vector<const char*>::iterator i = args.begin(); i != args.end(); ++i) {
-    if (ceph_argparse_flag(args, i, "-h", "--help", (char*)NULL)) {
-      usage();
-      return 0;
-    }
-  }
 
   // maintain existing region root pool for new multisite objects
   if (!g_conf->rgw_region_root_pool.empty()) {

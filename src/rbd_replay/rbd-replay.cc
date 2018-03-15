@@ -58,6 +58,9 @@ int main(int argc, const char **argv) {
   vector<const char*> args;
 
   argv_to_vec(argc, argv, args);
+  if (ceph_argparse_need_usage(args)) {
+    usage(argv[0]);
+  }
   auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
 			 CODE_ENVIRONMENT_UTILITY, 0);
 
@@ -90,9 +93,6 @@ int main(int argc, const char **argv) {
 	cerr << "Unable to parse mapping string: '" << val << "'" << std::endl;
 	return 1;
       }
-    } else if (ceph_argparse_flag(args, i, "-h", "--help", (char*)NULL)) {
-      usage(argv[0]);
-      return 0;
     } else if (ceph_argparse_flag(args, i, "--dump-perf-counters", (char*)NULL)) {
       dump_perf_counters = true;
     } else if (get_remainder(*i, "-")) {

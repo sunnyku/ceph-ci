@@ -665,6 +665,10 @@ static int do_map(int argc, const char *argv[], Config *cfg)
 
   vector<const char*> args;
   argv_to_vec(argc, argv, args);
+  if (ceph_argparse_need_usage(args)) {
+    usage();
+    exit(0);
+  }
 
   auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
                          CODE_ENVIRONMENT_DAEMON,
