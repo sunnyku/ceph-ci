@@ -2442,6 +2442,8 @@ void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
     info.last_backfill = hobject_t();
   }
 
+  snap_mapper.update_bits(split_bits);
+
   // wipe our (target) log
   pg_log.clear();
   pg_log.set_head(info.last_update);
