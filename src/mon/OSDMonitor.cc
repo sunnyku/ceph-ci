@@ -2723,7 +2723,7 @@ bool OSDMonitor::prepare_pg_ready_to_merge(MonOpRequestRef op)
     p = *osdmap.get_pg_pool(m->pgid.pool());
   assert(p.get_pg_num() == m->pgid.ps() + 1);
   assert(p.get_pg_num_pending() <= m->pgid.ps());
-  p.dec_pg_num();
+  p.dec_pg_num(pending_inc.epoch);
   p.last_change = pending_inc.epoch;
   pending_inc.new_pools[m->pgid.pool()] = p;
   return true;

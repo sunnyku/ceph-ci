@@ -1321,6 +1321,7 @@ public:
   epoch_t last_force_op_resend; ///< last epoch that forced clients to resend
   /// last epoch that forced clients to resend (pre-luminous clients only)
   epoch_t last_force_op_resend_preluminous;
+  epoch_t pg_num_pending_dec_epoch = 0;  ///< epoch pg_num_pending decremented
   snapid_t snap_seq;        ///< seq for per-pool snapshot
   epoch_t snap_epoch;       ///< osdmap epoch of last snap
   uint64_t auid;            ///< who owns the pg
@@ -1532,6 +1533,9 @@ public:
   unsigned get_pg_num() const { return pg_num; }
   unsigned get_pgp_num() const { return pgp_num; }
   unsigned get_pg_num_pending() const { return pg_num_pending; }
+  epoch_t get_pg_num_pending_dec_epoch() const {
+    return pg_num_pending_dec_epoch;
+  }
 
   unsigned get_pg_num_mask() const { return pg_num_mask; }
   unsigned get_pgp_num_mask() const { return pgp_num_mask; }
@@ -1556,8 +1560,9 @@ public:
     pg_num_pending = p;
     calc_pg_masks();
   }
-  void dec_pg_num() {
+  void dec_pg_num(epoch_t e) {
     --pg_num;
+    pg_num_pending_dec_epoch = e;
     calc_pg_masks();
   }
 

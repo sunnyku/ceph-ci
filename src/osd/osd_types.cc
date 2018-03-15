@@ -1194,6 +1194,7 @@ void pg_pool_t::dump(Formatter *f) const
   f->dump_unsigned("pg_num", get_pg_num());
   f->dump_unsigned("pg_placement_num", get_pgp_num());
   f->dump_unsigned("pg_num_pending", get_pg_num_pending());
+  f->dump_unsigned("pg_num_pending_dec_epoch", get_pg_num_pending_dec_epoch());
   f->dump_stream("last_change") << get_last_change();
   f->dump_stream("last_force_op_resend") << get_last_force_op_resend();
   f->dump_stream("last_force_op_resend_preluminous")
@@ -1684,6 +1685,7 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   }
   if (v >= 27) {
     encode(pg_num_pending, bl);
+    encode(pg_num_pending_dec_epoch, bl);
   }
   ENCODE_FINISH(bl);
 }
@@ -1842,6 +1844,7 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
   }
   if (struct_v >= 27) {
     decode(pg_num_pending, bl);
+    decode(pg_num_pending_dec_epoch, bl);
   }
   DECODE_FINISH(bl);
   calc_pg_masks();
@@ -1860,6 +1863,7 @@ void pg_pool_t::generate_test_instances(list<pg_pool_t*>& o)
   a.pg_num = 6;
   a.pgp_num = 4;
   a.pg_num_pending = 5;
+  a.pg_num_pending_dec_epoch = 2;
   a.last_change = 9;
   a.last_force_op_resend = 123823;
   a.last_force_op_resend_preluminous = 123824;
@@ -1923,7 +1927,8 @@ ostream& operator<<(ostream& out, const pg_pool_t& p)
       << " pg_num " << p.get_pg_num()
       << " pgp_num " << p.get_pgp_num();
   if (p.get_pg_num_pending() != p.get_pg_num()) {
-    out << " pg_num_pending " << p.get_pg_num_pending();
+    out << " pg_num_pending " << p.get_pg_num_pending()
+	<< "(e" << p.get_pg_num_pending_dec_epoch() << ")";
   }
   out << " last_change " << p.get_last_change();
   if (p.get_last_force_op_resend() ||
