@@ -219,7 +219,7 @@ void ECSubRead::decode(bufferlist::iterator &bl)
   if (struct_v > 2 && struct_v > struct_compat) {
     decode(subchunks, bl);
   } else {
-    for (auto &&i : attrs_to_read) {
+    for (auto &i : to_read) {
       subchunks[i].push_back(make_pair(0, 1));
     }
   }
