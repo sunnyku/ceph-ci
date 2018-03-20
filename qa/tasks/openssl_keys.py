@@ -12,13 +12,13 @@ from teuthology.task import Task
 
 log = logging.getLogger(__name__)
 
-class SSL(Task):
+class OpenSSLKeys(Task):
     """
     Generates and installs a signed SSL certificate.
 
     To create a self-signed certificate:
 
-        - ssl:
+        - openssl_keys:
             # certificate name
             root: # results in root.key and root.crt
 
@@ -37,7 +37,7 @@ class SSL(Task):
 
     To create a certificate signed by a ca certificate:
 
-        - ssl:
+        - openssl_keys:
             root: (self-signed certificate as above)
               ...
 
