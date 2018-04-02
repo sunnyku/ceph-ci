@@ -8183,6 +8183,9 @@ PG::RecoveryCtx OSD::create_context()
 void OSD::dispatch_context_transaction(PG::RecoveryCtx &ctx, PG *pg,
                                        ThreadPool::TPHandle *handle)
 {
+  if (ctx.cleared) {
+    return;
+  }
   if (!ctx.transaction->empty()) {
     int tr = store->queue_transaction(
       pg->ch,
@@ -8196,6 +8199,9 @@ void OSD::dispatch_context_transaction(PG::RecoveryCtx &ctx, PG *pg,
 void OSD::dispatch_context(PG::RecoveryCtx &ctx, PG *pg, OSDMapRef curmap,
                            ThreadPool::TPHandle *handle)
 {
+  if (ctx.cleared) {
+    return;
+  }
   if (!service.get_osdmap()->is_up(whoami)) {
     dout(20) << __func__ << " not up in osdmap" << dendl;
   } else if (!is_active()) {
@@ -8205,29 +8211,21 @@ void OSD::dispatch_context(PG::RecoveryCtx &ctx, PG *pg, OSDMapRef curmap,
     do_queries(*ctx.query_map, curmap);
     do_infos(*ctx.info_map, curmap);
   }
-  delete ctx.notify_list;
-  delete ctx.query_map;
-  delete ctx.info_map;
-  if (ctx.transaction->empty() || !pg) {
-    delete ctx.transaction;
-  } else {
+  if (!ctx.transaction->empty() &&
+      pg) {
     int tr = store->queue_transaction(
       pg->ch,
       std::move(*ctx.transaction), TrackedOpRef(),
       handle);
-    delete (ctx.transaction);
     assert(tr == 0);
   }
+  ctx.clear();
 }
 
 void OSD::discard_context(PG::RecoveryCtx& ctx)
 {
-  delete ctx.notify_list;
-  delete ctx.query_map;
-  delete ctx.info_map;
-  delete ctx.transaction;
+  ctx.clear();
 }
-
 
 /** do_notifies
  * Send an MOSDPGNotify to a primary, with a list of PGs that I have

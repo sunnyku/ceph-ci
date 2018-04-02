@@ -980,6 +980,8 @@ public:
     map<int, vector<pair<pg_notify_t, PastIntervals> > > *notify_list;
     ObjectStore::Transaction *transaction;
     ThreadPool::TPHandle* handle;
+    bool cleared = false;
+
     RecoveryCtx(map<int, map<spg_t, pg_query_t> > *query_map,
 		map<int,
 		    vector<pair<pg_notify_t, PastIntervals> > > *info_map,
@@ -999,6 +1001,7 @@ public:
         handle(rctx.handle) {}
 
     void accept_buffered_messages(BufferedRecoveryMessages &m) {
+      assert(!cleared);
       assert(query_map);
       assert(info_map);
       assert(notify_list);
@@ -1030,6 +1033,14 @@ public:
 	ovec.reserve(ovec.size() + i->second.size());
 	ovec.insert(ovec.end(), i->second.begin(), i->second.end());
       }
+    }
+
+    void clear() {
+      delete notify_list;
+      delete query_map;
+      delete info_map;
+      delete transaction;
+      cleared = true;
     }
   };
 protected:
