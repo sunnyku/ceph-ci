@@ -6483,9 +6483,10 @@ struct C_DeleteMore : public Context {
   }
 };
 
-void PG::_delete_some(ObjectStore::Transaction *t)
+void PG::_delete_some(RecoveryCtx *rctx)
 {
   dout(10) << __func__ << dendl;
+  ObjectStore::Transaction *t = rctx->transaction;
 
   vector<ghobject_t> olist;
   int max = std::min(osd->store->get_ideal_list_max(),
@@ -6533,6 +6534,7 @@ void PG::_delete_some(ObjectStore::Transaction *t)
       t->register_on_commit(new ContainerContext<PGRef>(pgref));
       t->register_on_applied(new ContainerContext<PGRef>(pgref));
       osd->store->queue_transaction(ch, std::move(*t));
+      rctx->clear();
     }
     ch->flush();
 
@@ -8507,7 +8509,7 @@ boost::statechart::result PG::RecoveryState::Deleting::react(
   const DeleteSome& evt)
 {
   PG *pg = context< RecoveryMachine >().pg;
-  pg->_delete_some(context<RecoveryMachine>().get_cur_transaction());
+  pg->_delete_some(context<RecoveryMachine>().get_recovery_ctx());
   return discard_event();
 }
 

@@ -8222,11 +8222,6 @@ void OSD::dispatch_context(PG::RecoveryCtx &ctx, PG *pg, OSDMapRef curmap,
   ctx.clear();
 }
 
-void OSD::discard_context(PG::RecoveryCtx& ctx)
-{
-  ctx.clear();
-}
-
 /** do_notifies
  * Send an MOSDPGNotify to a primary, with a list of PGs that I have
  * content for, and they are primary for.
@@ -8879,12 +8874,6 @@ void OSD::dequeue_peering_evt(
       advance_pg(curmap->get_epoch(), pg, handle, &rctx);
     }
     pg->do_peering_event(evt, &rctx);
-    if (pg->is_deleted()) {
-      // do not dispatch rctx; the final _delete_some already did it.
-      discard_context(rctx);
-      pg->unlock();
-      return;
-    }
     dispatch_context_transaction(rctx, pg, &handle);
     need_up_thru = pg->get_need_up_thru();
     same_interval_since = pg->get_same_interval_since();
