@@ -8186,7 +8186,7 @@ void OSD::dispatch_context_transaction(PG::RecoveryCtx &ctx, PG *pg,
   if (ctx.cleared) {
     return;
   }
-  if (!ctx.transaction->empty()) {
+  if (!ctx.transaction->empty() || ctx.transaction->has_contexts()) {
     int tr = store->queue_transaction(
       pg->ch,
       std::move(*ctx.transaction), TrackedOpRef(), handle);
@@ -8211,8 +8211,7 @@ void OSD::dispatch_context(PG::RecoveryCtx &ctx, PG *pg, OSDMapRef curmap,
     do_queries(*ctx.query_map, curmap);
     do_infos(*ctx.info_map, curmap);
   }
-  if (!ctx.transaction->empty() &&
-      pg) {
+  if ((!ctx.transaction->empty() || ctx.transaction->has_contexts()) && pg) {
     int tr = store->queue_transaction(
       pg->ch,
       std::move(*ctx.transaction), TrackedOpRef(),
