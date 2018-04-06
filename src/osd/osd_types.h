@@ -1322,6 +1322,8 @@ public:
   string erasure_code_profile; ///< name of the erasure code profile in OSDMap
   epoch_t last_change;      ///< most recent epoch changed, exclusing snapshot changes
   epoch_t last_force_op_resend; ///< last epoch that forced clients to resend
+  /// last epoch that forced clients to resend (luminous clients only)
+  epoch_t last_force_op_resend_luminous;
   /// last epoch that forced clients to resend (pre-luminous clients only)
   epoch_t last_force_op_resend_preluminous;
   epoch_t pg_num_pending_dec_epoch = 0;  ///< epoch pg_num_pending decremented
@@ -1493,6 +1495,9 @@ public:
   }
   epoch_t get_last_change() const { return last_change; }
   epoch_t get_last_force_op_resend() const { return last_force_op_resend; }
+  epoch_t get_last_force_op_resend_luminous() const {
+    return last_force_op_resend_luminous;
+  }
   epoch_t get_last_force_op_resend_preluminous() const {
     return last_force_op_resend_preluminous;
   }
@@ -1593,6 +1598,7 @@ public:
 
   void set_last_force_op_resend(uint64_t t) {
     last_force_op_resend = t;
+    last_force_op_resend_luminous = t;
     last_force_op_resend_preluminous = t;
   }
 
