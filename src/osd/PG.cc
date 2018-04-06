@@ -6247,10 +6247,23 @@ bool PG::can_discard_op(OpRequestRef& op)
   }
 
   if (m->get_connection()->has_feature(CEPH_FEATURE_RESEND_ON_SPLIT)) {
-    if (m->get_map_epoch() < pool.info.get_last_force_op_resend()) {
-      dout(7) << __func__ << " sent before last_force_op_resend "
-	      << pool.info.last_force_op_resend << ", dropping" << *m << dendl;
-      return true;
+    // >= luminous client
+    if (m->get_connection()->has_feature(CEPH_FEATURE_SERVER_MIMIC)) {
+      // >= mimic client
+      if (m->get_map_epoch() < pool.info.get_last_force_op_resend()) {
+	dout(7) << __func__ << " sent before last_force_op_resend "
+		<< pool.info.last_force_op_resend
+		<< ", dropping" << *m << dendl;
+	return true;
+      }
+    } else {
+      // == luminous client
+      if (m->get_map_epoch() < pool.info.get_last_force_op_resend_luminous()) {
+	dout(7) << __func__ << " sent before last_force_op_resend_luminous "
+		<< pool.info.last_force_op_resend_luminous
+		<< ", dropping" << *m << dendl;
+	return true;
+      }
     }
     if (m->get_map_epoch() < info.history.last_epoch_split) {
       dout(7) << __func__ << " pg split in "
@@ -6258,6 +6271,7 @@ bool PG::can_discard_op(OpRequestRef& op)
       return true;
     }
   } else if (m->get_connection()->has_feature(CEPH_FEATURE_OSD_POOLRESEND)) {
+    // < luminous client
     if (m->get_map_epoch() < pool.info.get_last_force_op_resend_preluminous()) {
       dout(7) << __func__ << " sent before last_force_op_resend_preluminous "
 	      << pool.info.last_force_op_resend_preluminous
