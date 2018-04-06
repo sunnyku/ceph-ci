@@ -888,6 +888,11 @@ public:
     OSDMapRef new_map,
     spg_t pgid,
     set<spg_t> *new_children);
+  void identify_merge_pgs(
+    OSDMapRef old_map,
+    OSDMapRef new_map,
+    spg_t pgid,
+    set<spg_t> *pgs);
 
   void need_heartbeat_peer_update();
 
@@ -1118,6 +1123,9 @@ struct OSDShardPGSlot {
 
   epoch_t epoch = 0;
   boost::intrusive::set_member_hook<> pg_epoch_item;
+
+  /// waiting for a merge (source or target) by this epoch
+  epoch_t waiting_for_merge_epoch = 0;
 };
 
 struct OSDShard {
@@ -1205,6 +1213,9 @@ struct OSDShard {
   void prime_splits(const OSDMapRef& as_of_osdmap, set<spg_t> *pgids);
   void register_and_wake_split_child(PG *pg);
   void unprime_split_children(spg_t parent, unsigned old_pg_num);
+
+  void identify_merges(OSDMapRef as_of_osdmap,
+		       set<spg_t> *pgs);
 
   OSDShard(
     int id,
@@ -1858,6 +1869,13 @@ public:
   }
 
 protected:
+  Mutex merge_lock = {"OSD::merge_lock"};
+  /// merge epoch -> target pgid -> source pgid -> pg
+  map<epoch_t,map<spg_t,map<spg_t,PGRef>>> merge_waiters;
+
+  bool add_merge_waiter(OSDMapRef nextmap, spg_t target, PGRef source,
+			unsigned need);
+
   // -- placement groups --
   std::atomic<size_t> num_pgs = {0};
 
