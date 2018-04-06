@@ -2578,6 +2578,65 @@ void PG::finish_split_stats(const object_stat_sum_t& stats, ObjectStore::Transac
   write_if_dirty(*t);
 }
 
+void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
+		    unsigned split_bits)
+{
+  dout(10) << __func__ << " from " << sources << " split_bits " << split_bits
+	   << dendl;
+  bool incomplete = false;
+  if (info.last_complete != info.last_update ||
+      info.is_incomplete()) {
+    dout(10) << __func__ << " target incomplete" << dendl;
+    incomplete = true;
+  }
+  for (auto& i : sources) {
+    auto& source = i.second;
+    if (!source) {
+      dout(10) << __func__ << " source " << i.first << " missing" << dendl;
+      incomplete = true;
+      continue;
+    }
+    if (source->info.last_complete != source->info.last_update ||
+	source->info.is_incomplete()) {
+      dout(10) << __func__ << " source " << source->pg_id << " incomplete"
+	       << dendl;
+      incomplete = true;
+    }
+
+    // wipe out source's pgmeta
+    rctx->transaction->remove(source->coll, source->pgmeta_oid);
+
+    // merge (and destroy source collection)
+    rctx->transaction->merge_collection(source->coll, coll, split_bits);
+
+    // combine stats
+    info.stats.add(source->info.stats);
+
+    // pull up last_update
+    info.last_update = std::max(info.last_update, source->info.last_update);
+  }
+
+  // merge_collection does this, but maybe all of our sources were missing.
+  rctx->transaction->collection_set_bits(coll, split_bits);
+
+  info.last_complete = info.last_update;
+  info.log_tail = info.last_update;
+  if (incomplete) {
+    info.last_backfill = hobject_t();
+  }
+
+  snap_mapper.update_bits(split_bits);
+
+  // wipe our (target) log
+  pg_log.clear();
+  pg_log.set_head(info.last_update);
+  pg_log.set_tail(info.last_update);
+  pg_log.mark_log_for_rewrite();
+
+  dirty_info = true;
+  dirty_big_info = true;
+}
+
 void PG::add_backoff(SessionRef s, const hobject_t& begin, const hobject_t& end)
 {
   ConnectionRef con = s->con;
