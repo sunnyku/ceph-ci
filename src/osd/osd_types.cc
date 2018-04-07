@@ -1608,8 +1608,7 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
     v = 21;
   } else if (!HAVE_FEATURE(features, SERVER_LUMINOUS)) {
     v = 24;
-  }
-  if (!HAVE_FEATURE(features, SERVER_MIMIC)) {
+  } else if (!HAVE_FEATURE(features, SERVER_MIMIC)) {
     v = 26;
   }
 
@@ -1633,7 +1632,7 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
     encode(flags, bl);
   } else {
     auto tmp = flags;
-    tmp &= ~(FLAG_SELFMANAGED_SNAPS | FLAG_POOL_SNAPS);
+    tmp &= ~(FLAG_SELFMANAGED_SNAPS | FLAG_POOL_SNAPS | FLAG_CREATING);
     encode(tmp, bl);
   }
   encode((uint32_t)0, bl); // crash_replay_interval
