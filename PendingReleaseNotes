@@ -173,3 +173,9 @@ method. See http://docs.ceph.com/docs/luminous/mgr/restful for details.
 
 * The Ceph LZ4 compression plugin is now enabled by default, and introduces
   a new build depdendency.
+
+* The 'osd force-create-pg' command now requires a force option to
+  proceed because the command is dangerous: it declares that data loss
+  is permanent and instructs the cluster to proceed with an empty PG
+  in its place, without making any further efforts to find the missing
+  data.
