@@ -315,6 +315,7 @@ struct MockImageCtx {
   int mirroring_replay_delay;
   bool non_blocking_aio;
   bool blkin_trace_all;
+  bool qos_enabled;
 };
 
 } // namespace librbd
