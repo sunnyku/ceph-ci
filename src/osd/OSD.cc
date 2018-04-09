@@ -4025,12 +4025,13 @@ PGRef OSD::handle_pg_create_info(const OSDMapRef& osdmap,
       dout(10) << __func__ << " ignoring " << pgid << ", pool dne" << dendl;
       return nullptr;
     }
-    if (!pool->has_flag(pg_pool_t::FLAG_CREATING)) {
+    if (osdmap->require_osd_release >= CEPH_RELEASE_MIMIC &&
+	!pool->has_flag(pg_pool_t::FLAG_CREATING)) {
       // this ensures we do not process old creating messages after the
       // pool's initial pgs have been created (and pg are subsequently
       // allowed to split or merge).
-      dout(20) << __func__ << "  dropping" << pgid
-	       << ", pool does not have CREATING flag set" << dendl;
+      dout(20) << __func__ << "  dropping " << pgid
+	       << "create, pool does not have CREATING flag set" << dendl;
       return nullptr;
     }
   }
