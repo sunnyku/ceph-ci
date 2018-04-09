@@ -7934,7 +7934,9 @@ bool OSD::advance_pg(
   OSDMapRef lastmap = pg->get_osdmap();
   assert(lastmap->get_epoch() < osd_epoch);
   set<PGRef> new_pgs;  // any split children
-  unsigned old_pg_num = lastmap->get_pg_num(pg->pg_id.pool());
+
+  unsigned old_pg_num = lastmap->have_pg_pool(pg->pg_id.pool()) ?
+    lastmap->get_pg_num(pg->pg_id.pool()) : 0;
   for (epoch_t next_epoch = pg->get_osdmap_epoch() + 1;
        next_epoch <= osd_epoch;
        ++next_epoch) {
@@ -7945,9 +7947,9 @@ bool OSD::advance_pg(
     }
 
     unsigned new_pg_num =
-      nextmap->have_pg_pool(pg->pg_id.pool()) ?
+      (old_pg_num && nextmap->have_pg_pool(pg->pg_id.pool())) ?
       nextmap->get_pg_num(pg->pg_id.pool()) : 0;
-    if (new_pg_num && old_pg_num != new_pg_num) {
+    if (old_pg_num && new_pg_num && old_pg_num != new_pg_num) {
       // check for merge
       set<spg_t> children;
       if (nextmap->have_pg_pool(pg->pg_id.pool())) {
