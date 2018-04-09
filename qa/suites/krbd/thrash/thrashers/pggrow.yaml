@@ -3,6 +3,9 @@ overrides:
     log-whitelist:
     - but it is still running
     - objects unfound and apparently lost
+    conf:
+      mon:
+        mon osd max initial pgs: 1024
 tasks:
 - thrashosds:
     timeout: 1200

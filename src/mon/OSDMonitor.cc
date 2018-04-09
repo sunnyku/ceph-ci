@@ -49,6 +49,7 @@
 #include "messages/MOSDPGCreate2.h"
 #include "messages/MOSDPGCreated.h"
 #include "messages/MOSDPGTemp.h"
+#include "messages/MOSDPGReadyToMerge.h"
 #include "messages/MMonCommand.h"
 #include "messages/MRemoveSnaps.h"
 #include "messages/MOSDScrub.h"
@@ -959,6 +960,26 @@ void OSDMonitor::encode_pending(MonitorDBStore::TransactionRef t)
     tmp.deepish_copy_from(osdmap);
     tmp.apply_incremental(pending_inc);
 
+    // update creating pgs first so that we can remove the created pgid and
+    // process the pool flag removal below in the same osdmap epoch.
+    auto pending_creatings = update_pending_pgs(pending_inc, tmp);
+    bufferlist creatings_bl;
+    encode(pending_creatings, creatings_bl);
+    t->put(OSD_PG_CREATING_PREFIX, "creating", creatings_bl);
+
+    // remove any old POOL_CREATING flags
+    for (auto& i : tmp.get_pools()) {
+      if (i.second.has_flag(pg_pool_t::FLAG_CREATING) &&
+	  !pending_creatings.still_creating_pool(i.first)) {
+	dout(10) << __func__ << " done creating pool " << i.first
+		 << ", clearing CREATING flag" << dendl;
+	if (pending_inc.new_pools.count(i.first) == 0) {
+	  pending_inc.new_pools[i.first] = i.second;
+	}
+	pending_inc.new_pools[i.first].flags &= ~pg_pool_t::FLAG_CREATING;
+      }
+    }
+
     // remove any legacy osdmap nearfull/full flags
     {
       if (tmp.test_flag(CEPH_OSDMAP_FULL | CEPH_OSDMAP_NEARFULL)) {
@@ -1315,12 +1336,6 @@ void OSDMonitor::encode_pending(MonitorDBStore::TransactionRef t)
     t->erase(OSD_METADATA_PREFIX, stringify(*p));
   pending_metadata.clear();
   pending_metadata_rm.clear();
-
-  // and pg creating, also!
-  auto pending_creatings = update_pending_pgs(pending_inc, tmp);
-  bufferlist creatings_bl;
-  encode(pending_creatings, creatings_bl);
-  t->put(OSD_PG_CREATING_PREFIX, "creating", creatings_bl);
 
   // removed_snaps
   if (tmp.require_osd_release >= CEPH_RELEASE_MIMIC) {
@@ -1951,6 +1966,8 @@ bool OSDMonitor::preprocess_query(MonOpRequestRef op)
     return preprocess_alive(op);
   case MSG_OSD_PG_CREATED:
     return preprocess_pg_created(op);
+  case MSG_OSD_PG_READY_TO_MERGE:
+    return preprocess_pg_ready_to_merge(op);
   case MSG_OSD_PGTEMP:
     return preprocess_pgtemp(op);
   case MSG_OSD_BEACON:
@@ -1990,6 +2007,8 @@ bool OSDMonitor::prepare_update(MonOpRequestRef op)
     return prepare_pg_created(op);
   case MSG_OSD_PGTEMP:
     return prepare_pgtemp(op);
+  case MSG_OSD_PG_READY_TO_MERGE:
+    return prepare_pg_ready_to_merge(op);
   case MSG_OSD_BEACON:
     return prepare_beacon(op);
 
@@ -3052,6 +3071,66 @@ bool OSDMonitor::prepare_pg_created(MonOpRequestRef op)
   return true;
 }
 
+bool OSDMonitor::preprocess_pg_ready_to_merge(MonOpRequestRef op)
+{
+  op->mark_osdmon_event(__func__);
+  auto m = static_cast<MOSDPGReadyToMerge*>(op->get_req());
+  dout(10) << __func__ << " " << *m << dendl;
+  auto session = m->get_session();
+  if (!session) {
+    dout(10) << __func__ << ": no monitor session!" << dendl;
+    return true;
+  }
+  if (!session->is_capable("osd", MON_CAP_X)) {
+    derr << __func__ << " received from entity "
+         << "with insufficient privileges " << session->caps << dendl;
+    return true;
+  }
+  const pg_pool_t *pi = osdmap.get_pg_pool(m->pgid.pool());
+  if (!pi) {
+    derr << __func__ << " pool for " << m->pgid << " dne" << dendl;
+    return true;
+  }
+  if (pi->get_pg_num() <= m->pgid.ps()) {
+    dout(20) << " pg_num " << pi->get_pg_num() << " already < " << m->pgid << dendl;
+    return true;
+  }
+  if (pi->get_pg_num() != m->pgid.ps() + 1) {
+    derr << " OSD trying to merge wrong pgid " << m->pgid << dendl;
+    return true;
+  }
+  if (pi->get_pg_num_pending() > m->pgid.ps()) {
+    dout(20) << " pg_num_pending " << pi->get_pg_num_pending() << " > " << m->pgid << dendl;
+    return true;
+  }
+  return false;
+}
+
+bool OSDMonitor::prepare_pg_ready_to_merge(MonOpRequestRef op)
+{
+  op->mark_osdmon_event(__func__);
+  auto m = static_cast<MOSDPGReadyToMerge*>(op->get_req());
+  dout(10) << __func__ << " " << *m << dendl;
+  pg_pool_t p;
+  if (pending_inc.new_pools.count(m->pgid.pool()))
+    p = pending_inc.new_pools[m->pgid.pool()];
+  else
+    p = *osdmap.get_pg_pool(m->pgid.pool());
+  assert(p.get_pg_num() == m->pgid.ps() + 1);
+  assert(p.get_pg_num_pending() <= m->pgid.ps());
+
+  p.dec_pg_num();
+  p.last_change = pending_inc.epoch;
+
+  // force luminous clients to resend their ops, since they
+  // don't understand pg_num_pending changes form a new interval
+  p.last_force_op_resend_luminous = pending_inc.epoch;
+
+  pending_inc.new_pools[m->pgid.pool()] = p;
+  return true;
+}
+
+
 // -------------
 // pg_temp changes
 
@@ -3846,13 +3925,7 @@ epoch_t OSDMonitor::send_pg_creates(int osd, Connection *con, epoch_t next) cons
   MOSDPGCreate *oldm = nullptr; // for pre-mimic OSD compat
   MOSDPGCreate2 *m = nullptr;
 
-  // for now, keep sending legacy creates.  Until we sort out how to address
-  // racing mon create resends and splits, we are better off with the less
-  // drastic impacts of http://tracker.ceph.com/issues/22165.  The legacy
-  // create message handling path in the OSD still does the old thing where
-  // the pg history is pregenerated and it's instantiated at the latest osdmap
-  // epoch; child pgs are simply not created.
-  bool old = true; // !HAVE_FEATURE(con->get_features(), SERVER_MIMIC);
+  bool old = osdmap.require_osd_release < CEPH_RELEASE_MIMIC;
 
   epoch_t last = 0;
   for (auto epoch_pgs = creating_pgs_by_epoch->second.lower_bound(next);
@@ -6398,6 +6471,7 @@ int OSDMonitor::prepare_new_pool(string& name, uint64_t auid,
     pi->set_flag(pg_pool_t::FLAG_NOPGCHANGE);
   if (g_conf->osd_pool_default_flag_nosizechange)
     pi->set_flag(pg_pool_t::FLAG_NOSIZECHANGE);
+  pi->set_flag(pg_pool_t::FLAG_CREATING);
   if (g_conf->osd_pool_use_gmt_hitset)
     pi->use_gmt_hitset = true;
   else
@@ -6408,8 +6482,14 @@ int OSDMonitor::prepare_new_pool(string& name, uint64_t auid,
   pi->crush_rule = crush_rule;
   pi->expected_num_objects = expected_num_objects;
   pi->object_hash = CEPH_STR_HASH_RJENKINS;
-  pi->set_pg_num(pg_num);
-  pi->set_pgp_num(pgp_num);
+  auto max = g_conf->get_val<int64_t>("mon_osd_max_initial_pgs");
+  pi->set_pg_num(
+    max > 0 ? std::min<uint64_t>(pg_num, std::max<int64_t>(1, max))
+    : pg_num);
+  pi->set_pg_num_pending(pi->get_pg_num(), pending_inc.epoch);
+  pi->set_pg_num_target(pg_num);
+  pi->set_pgp_num(pi->get_pg_num());
+  pi->set_pgp_num_target(pgp_num);
   pi->last_change = pending_inc.epoch;
   pi->auid = auid;
   if (pool_type == pg_pool_t::TYPE_ERASURE) {
@@ -6570,6 +6650,48 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
       return -EINVAL;
     }
     p.auid = n;
+  } else if (var == "pg_num_actual") {
+    if (interr.length()) {
+      ss << "error parsing integer value '" << val << "': " << interr;
+      return -EINVAL;
+    }
+    if (n == (int)p.get_pg_num()) {
+      return 0;
+    }
+    if (static_cast<uint64_t>(n) > g_conf->get_val<uint64_t>("mon_max_pool_pg_num")) {
+      ss << "'pg_num' must be greater than 0 and less than or equal to "
+         << g_conf->get_val<uint64_t>("mon_max_pool_pg_num")
+         << " (you may adjust 'mon max pool pg num' for higher values)";
+      return -ERANGE;
+    }
+    if (p.has_flag(pg_pool_t::FLAG_CREATING)) {
+      ss << "cannot adjust pg_num while initial PGs are being created";
+      return -EBUSY;
+    }
+    if (n > (int)p.get_pg_num()) {
+      p.set_pg_num(n);
+    } else {
+      if (osdmap.require_osd_release < CEPH_RELEASE_MIMIC) {
+	ss << "mimic OSDs are required to adjust pg_num_pending";
+	return -EPERM;
+      }
+      if (n < (int)p.get_pgp_num()) {
+	ss << "specified pg_num " << n << " < pgp_num " << p.get_pgp_num();
+	return -EINVAL;
+      }
+      if (n < (int)p.get_pg_num() - 1) {
+	ss << "specified pg_num " << n << " < pg_num (" << p.get_pg_num()
+	   << ") - 1; only single pg decrease is currently supported";
+	return -EINVAL;
+      }
+      p.set_pg_num_pending(n, pending_inc.epoch);
+      // force luminous clients to resend their ops, since they
+      // don't understand pg_num_pending changes form a new interval
+      p.last_force_op_resend_luminous = pending_inc.epoch;
+    }
+    // force pre-luminous clients to resend their ops, since they
+    // don't understand that split PGs now form a new interval.
+    p.last_force_op_resend_preluminous = pending_inc.epoch;
   } else if (var == "pg_num") {
     if (p.has_flag(pg_pool_t::FLAG_NOPGCHANGE)) {
       ss << "pool pg_num change is disabled; you must unset nopgchange flag for the pool first";
@@ -6579,10 +6701,7 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
       ss << "error parsing integer value '" << val << "': " << interr;
       return -EINVAL;
     }
-    if (n <= (int)p.get_pg_num()) {
-      ss << "specified pg_num " << n << " <= current " << p.get_pg_num();
-      if (n < (int)p.get_pg_num())
-	return -EEXIST;
+    if (n == (int)p.get_pg_num_target()) {
       return 0;
     }
     if (static_cast<uint64_t>(n) > g_conf->get_val<uint64_t>("mon_max_pool_pg_num")) {
@@ -6591,31 +6710,41 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
          << " (you may adjust 'mon max pool pg num' for higher values)";
       return -ERANGE;
     }
-    int r = check_pg_num(pool, n, p.get_size(), &ss);
-    if (r) {
-      return r;
+    if (n > (int)p.get_pg_num_target()) {
+      int r = check_pg_num(pool, n, p.get_size(), &ss);
+      if (r) {
+	return r;
+      }
+      string force;
+      cmd_getval(cct,cmdmap, "force", force);
+      if (p.cache_mode != pg_pool_t::CACHEMODE_NONE &&
+	  force != "--yes-i-really-mean-it") {
+	ss << "splits in cache pools must be followed by scrubs and leave sufficient free space to avoid overfilling.  use --yes-i-really-mean-it to force.";
+	return -EPERM;
+      }
+      int expected_osds = std::min(p.get_pg_num(), osdmap.get_num_osds());
+      int64_t new_pgs = n - p.get_pg_num_target();
+      if (new_pgs > g_conf->mon_osd_max_split_count * expected_osds) {
+	ss << "specified pg_num " << n << " is too large (creating "
+	   << new_pgs << " new PGs on ~" << expected_osds
+	   << " OSDs exceeds per-OSD max with mon_osd_max_split_count of "
+	   << g_conf->mon_osd_max_split_count << ')';
+	return -E2BIG;
+      }
+    } else {
+      if (osdmap.require_osd_release < CEPH_RELEASE_MIMIC) {
+	ss << "mimic OSDs are required to adjust pg_num_pending";
+	return -EPERM;
+      }
+      if (n < (int)p.get_pgp_num_target()) {
+	ss << "specified pg_num " << n
+	   << " < pgp_num " << p.get_pgp_num_target();
+	return -EINVAL;
+      }
     }
-    string force;
-    cmd_getval(cct,cmdmap, "force", force);
-    if (p.cache_mode != pg_pool_t::CACHEMODE_NONE &&
-	force != "--yes-i-really-mean-it") {
-      ss << "splits in cache pools must be followed by scrubs and leave sufficient free space to avoid overfilling.  use --yes-i-really-mean-it to force.";
-      return -EPERM;
-    }
-    int expected_osds = std::min(p.get_pg_num(), osdmap.get_num_osds());
-    int64_t new_pgs = n - p.get_pg_num();
-    if (new_pgs > g_conf->mon_osd_max_split_count * expected_osds) {
-      ss << "specified pg_num " << n << " is too large (creating "
-	 << new_pgs << " new PGs on ~" << expected_osds
-	 << " OSDs exceeds per-OSD max with mon_osd_max_split_count of "
-         << g_conf->mon_osd_max_split_count << ')';
-      return -E2BIG;
-    }
-    p.set_pg_num(n);
-    // force pre-luminous clients to resend their ops, since they
-    // don't understand that split PGs now form a new interval.
-    p.last_force_op_resend_preluminous = pending_inc.epoch;
-  } else if (var == "pgp_num") {
+    // set target; mgr will adjust pg_num_actual later
+    p.set_pg_num_target(n);
+  } else if (var == "pgp_num_actual") {
     if (p.has_flag(pg_pool_t::FLAG_NOPGCHANGE)) {
       ss << "pool pgp_num change is disabled; you must unset nopgchange flag for the pool first";
       return -EPERM;
@@ -6632,7 +6761,30 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
       ss << "specified pgp_num " << n << " > pg_num " << p.get_pg_num();
       return -EINVAL;
     }
+    if (n > (int)p.get_pg_num_pending()) {
+      ss << "specified pgp_num " << n
+	 << " > pg_num_pending " << p.get_pg_num_pending();
+      return -EINVAL;
+    }
     p.set_pgp_num(n);
+  } else if (var == "pgp_num") {
+    if (p.has_flag(pg_pool_t::FLAG_NOPGCHANGE)) {
+      ss << "pool pgp_num change is disabled; you must unset nopgchange flag for the pool first";
+      return -EPERM;
+    }
+    if (interr.length()) {
+      ss << "error parsing integer value '" << val << "': " << interr;
+      return -EINVAL;
+    }
+    if (n <= 0) {
+      ss << "specified pgp_num must > 0, but you set to " << n;
+      return -EINVAL;
+    }
+    if (n > (int)p.get_pg_num_target()) {
+      ss << "specified pgp_num " << n << " > pg_num " << p.get_pg_num_target();
+      return -EINVAL;
+    }
+    p.set_pgp_num_target(n);
   } else if (var == "crush_rule") {
     int id = osdmap.crush->get_rule_id(val);
     if (id == -ENOENT) {
@@ -11543,6 +11695,13 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       err = -ENOENT;
       goto reply;
     }
+    string sure;
+    cmd_getval(cct, cmdmap, "sure", sure);
+    if (sure != "--yes-i-really-mean-it") {
+      ss << "This command will recreate a lost (as in data lost) PG with data in it, such that the cluster will give up ever trying to recover the lost data.  Do this only if you are certain that all copies of the PG are in fact lost and you are willing to accept that the data is permanently destroy.  Pass --yes-i-really-mean-it to proceed.";
+      err = -EPERM;
+      goto reply;
+    }
     bool creating_now;
     {
       std::lock_guard<std::mutex> l(creating_pgs_lock);
@@ -11553,6 +11712,13 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
     if (creating_now) {
       ss << "pg " << pgidstr << " now creating, ok";
+      // set the pool's CREATING flag so that (1) the osd won't ignore our
+      // create message and (2) we won't propose any future pg_num changes
+      // until after the PG has been instantiated.
+      if (pending_inc.new_pools.count(pgid.pool()) == 0) {
+	pending_inc.new_pools[pgid.pool()] = *osdmap.get_pg_pool(pgid.pool());
+      }
+      pending_inc.new_pools[pgid.pool()].flags |= pg_pool_t::FLAG_CREATING;
       err = 0;
       goto update;
     } else {

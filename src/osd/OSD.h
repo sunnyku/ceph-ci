@@ -715,6 +715,19 @@ public:
   AsyncReserver<spg_t> local_reserver;
   AsyncReserver<spg_t> remote_reserver;
 
+  // -- pg merge --
+  Mutex merge_lock = {"OSD::merge_lock"};
+  set<pg_t> ready_to_merge_source;
+  set<pg_t> ready_to_merge_target;
+  set<pg_t> sent_ready_to_merge_source;
+
+  void set_ready_to_merge_source(PG *pg);
+  void set_ready_to_merge_target(PG *pg);
+  void clear_ready_to_merge(PG *pg);
+  void send_ready_to_merge();
+  void _send_ready_to_merge();
+  void clear_sent_ready_to_merge();
+
   // -- pg_temp --
 private:
   Mutex pg_temp_lock;
@@ -869,6 +882,12 @@ public:
     OSDMapRef new_map,
     spg_t pgid,
     set<spg_t> *new_children);
+  void identify_merge_sources_targets(
+    OSDMapRef old_map,
+    OSDMapRef new_map,
+    spg_t pgid,
+    map<spg_t,spg_t> *sources,
+    set<spg_t> *targets);
 
   void need_heartbeat_peer_update();
 
@@ -1099,6 +1118,9 @@ struct OSDShardPGSlot {
 
   epoch_t epoch = 0;
   boost::intrusive::set_member_hook<> pg_epoch_item;
+
+  /// waiting for a merge (source or target) by this epoch
+  epoch_t waiting_for_merge_epoch = 0;
 };
 
 struct OSDShard {
@@ -1186,6 +1208,12 @@ struct OSDShard {
   void prime_splits(const OSDMapRef& as_of_osdmap, set<spg_t> *pgids);
   void register_and_wake_split_child(PG *pg);
   void unprime_split_children(spg_t parent, unsigned old_pg_num);
+
+  void identify_merges(OSDMapRef as_of_osdmap, map<spg_t,spg_t> *sources,
+		       set<spg_t> *targets);
+  void filter_merges(epoch_t epoch,
+		     map<spg_t,spg_t> *sources,
+		     set<spg_t> *targets);
 
   OSDShard(
     int id,
@@ -1801,8 +1829,9 @@ protected:
   void note_up_osd(int osd);
   friend class C_OnMapCommit;
 
-  void advance_pg(
-    epoch_t advance_to, PG *pg,
+  bool advance_pg(
+    epoch_t advance_to,
+    PG *pg,
     ThreadPool::TPHandle &handle,
     PG::RecoveryCtx *rctx);
   void consume_map();
@@ -1838,6 +1867,13 @@ public:
   }
 
 protected:
+  Mutex merge_lock = {"OSD::merge_lock"};
+  /// merge epoch -> target pgid -> source pgid -> pg
+  map<epoch_t,map<spg_t,map<spg_t,PGRef>>> merge_waiters;
+
+  bool add_merge_waiter(OSDMapRef nextmap, spg_t target, PGRef source,
+			unsigned need);
+
   // -- placement groups --
   std::atomic<size_t> num_pgs = {0};
 

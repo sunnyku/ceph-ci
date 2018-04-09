@@ -1,6 +1,8 @@
 overrides:
   ceph:
     conf:
+      mon:
+        mon osd max initial pgs: 1024
       osd:
         osd scrub min interval: 60
         osd scrub max interval: 120

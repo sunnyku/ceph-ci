@@ -7,6 +7,7 @@ overrides:
     conf:
       mon:
         mon min osdmap epochs: 2
+        mon osd max initial pgs: 1024
       osd:
         osd map cache size: 1
         osd scrub min interval: 60
@@ -15,6 +16,7 @@ tasks:
 - thrashosds:
     timeout: 1800
     chance_pgnum_grow: 1
+    chance_pgnum_shrink: 1
     chance_pgpnum_fix: 1
     chance_test_map_discontinuity: 0.5
     min_in: 8
