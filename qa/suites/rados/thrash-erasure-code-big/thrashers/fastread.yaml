@@ -6,6 +6,7 @@ overrides:
     conf:
       mon:
         mon osd pool ec fast read: 1
+        mon osd max initial pgs: 1024
       osd:
         osd debug reject backfill probability: .3
         osd scrub min interval: 60

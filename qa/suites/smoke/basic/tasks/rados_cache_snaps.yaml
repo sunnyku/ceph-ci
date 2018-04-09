@@ -1,6 +1,9 @@
 tasks:
 - install: null
 - ceph:
+    conf:
+      mon:
+        mon osd max initial pgs: 1024
     log-whitelist:
       - overall HEALTH_
       - \(OSDMAP_FLAGS\)

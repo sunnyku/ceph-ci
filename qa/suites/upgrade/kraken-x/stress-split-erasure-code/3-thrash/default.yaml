@@ -4,6 +4,9 @@ meta:
    small chance to increase the number of pgs
 overrides:
   ceph:
+    conf:
+      mon:
+        mon osd max initial pgs: 1024
     log-whitelist:
     - but it is still running
     - wrongly marked me down

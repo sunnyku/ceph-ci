@@ -4,6 +4,8 @@ overrides:
     - but it is still running
     - objects unfound and apparently lost
     conf:
+      mon:
+        mon osd max initial pgs: 1024
       osd:
         osd debug reject backfill probability: .3
         osd scrub min interval: 60

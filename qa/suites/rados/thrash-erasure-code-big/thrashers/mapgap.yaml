@@ -7,6 +7,7 @@ overrides:
     conf:
       mon:
         mon min osdmap epochs: 2
+        mon osd max initial pgs: 1024
       osd:
         osd map cache size: 1
         osd scrub min interval: 60
