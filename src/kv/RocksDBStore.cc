@@ -671,6 +671,24 @@ void RocksDBStore::split_stats(const std::string &s, char delim, std::vector<std
     }
 }
 
+int64_t RocksDBStore::estimate_prefix_size(const string& prefix)
+{
+  auto cf = get_cf_handle(prefix);
+  uint64_t size = 0;
+  uint8_t flags =
+    //rocksdb::DB::INCLUDE_MEMTABLES |
+    rocksdb::DB::INCLUDE_FILES;
+  if (cf) {
+    rocksdb::Range r(string(1, '\x00'), string("\xff\xff\xff\xff"));
+    db->GetApproximateSizes(cf, &r, 1, &size, flags);
+  } else {
+    rocksdb::Range r(prefix, prefix + "\xff\xff\xff\xff");
+    db->GetApproximateSizes(default_cf,
+			    &r, 1, &size, flags);
+  }
+  return size;
+}
+
 void RocksDBStore::get_statistics(Formatter *f)
 {
   if (!g_conf->rocksdb_perf)  {
