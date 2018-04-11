@@ -882,12 +882,11 @@ public:
     OSDMapRef new_map,
     spg_t pgid,
     set<spg_t> *new_children);
-  void identify_merge_sources_targets(
+  void identify_merge_pgs(
     OSDMapRef old_map,
     OSDMapRef new_map,
     spg_t pgid,
-    map<spg_t,spg_t> *sources,
-    set<spg_t> *targets);
+    set<spg_t> *pgs);
 
   void need_heartbeat_peer_update();
 
@@ -1209,11 +1208,8 @@ struct OSDShard {
   void register_and_wake_split_child(PG *pg);
   void unprime_split_children(spg_t parent, unsigned old_pg_num);
 
-  void identify_merges(OSDMapRef as_of_osdmap, map<spg_t,spg_t> *sources,
-		       set<spg_t> *targets);
-  void filter_merges(epoch_t epoch,
-		     map<spg_t,spg_t> *sources,
-		     set<spg_t> *targets);
+  void identify_merges(OSDMapRef as_of_osdmap,
+		       set<spg_t> *pgs);
 
   OSDShard(
     int id,

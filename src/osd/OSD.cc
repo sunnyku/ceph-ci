@@ -372,12 +372,11 @@ void OSDService::identify_split_children(
   }
 }
 
-void OSDService::identify_merge_sources_targets(
+void OSDService::identify_merge_pgs(
   OSDMapRef old_map,
   OSDMapRef new_map,
   spg_t pgid,
-  map<spg_t,spg_t> *sources,
-  set<spg_t> *targets)
+  set<spg_t> *pgs)
 {
   if (!old_map->have_pg_pool(pgid.pool())) {
     return;
@@ -391,24 +390,24 @@ void OSDService::identify_merge_sources_targets(
       dout(20) << __func__ << " target " << pgid << " source " << children
 	       << dendl;
       for (auto c : children) {
-	(*sources)[c] = pgid;
+	pgs->insert(c);
       }
-      targets->insert(pgid);
+      pgs->insert(pgid);
     }
   } else {
     spg_t parent;
     if (pgid.is_merge(old_pgnum, new_pgnum, &parent)) {
       dout(20) << __func__ << " source " << pgid << " target " << parent
 	       << dendl;
-      (*sources)[pgid] = parent;
-      targets->insert(parent);
+      pgs->insert(pgid);
+      pgs->insert(parent);
 
       set<spg_t> children;
       parent.is_split(new_pgnum, old_pgnum, &children);
       dout(20) << __func__ << "  target " << pgid << " source " << children
 	       << dendl;
       for (auto c : children) {
-	(*sources)[c] = parent;
+	pgs->insert(c);
       }
     }
   }
@@ -8056,32 +8055,70 @@ void OSD::consume_map()
   }
 
   // prime merges
-  map<spg_t,spg_t> sources;
-  set<spg_t> targets;
+  set<spg_t> merge_pgs;
+  // build a set of pgids that are sources or targets for any other pg
+  // that we store that will merge.
   for (auto& shard : shards) {
-    shard->identify_merges(osdmap, &sources, &targets);
+    shard->identify_merges(osdmap, &merge_pgs);
   }
-  if (!sources.empty() || !targets.empty()) {
+  // FIXME, maybe: We could race against an incoming peering message
+  // that instantiates a merge PG after identify_merges() below and
+  // never set up its peer to complete the merge.  An OSD restart
+  // would clear it up.  This is a hard race to resolve,
+  // extraordinarily rare (we only merge PGs that are stable and
+  // clean, so it'd have to be an imported PG to an OSD with a
+  // slightly stale OSDMap...), so I'm ignoring it for now.  We plan to
+  // replace all of this with a seastar-based code soon anyway.
+  if (!merge_pgs.empty()) {
+    // mark the pgs we already have, or create new and empty merge
+    // participants for those we are missing.  do this all under the
+    // shard lock so we don't have to worry about racing pg creates
+    // via _process.
     for (auto& shard : shards) {
-      shard->filter_merges(osdmap->get_epoch(), &sources, &targets);
+      Mutex::Locker l(shard->shard_lock);
+      dout(20) << __func__ << " checking shard " << shard->shard_id
+	       << " for remaining merge pgs " << merge_pgs << dendl;
+      auto p = merge_pgs.begin();
+      while (p != merge_pgs.end()) {
+	spg_t pgid = *p;
+	unsigned shard_index = pgid.hash_to_shard(num_shards);
+	if (shard_index != shard->shard_id) {
+	  ++p;
+	  continue;
+	}
+	OSDShardPGSlot *slot;
+	auto r = shard->pg_slots.emplace(pgid, nullptr);
+	if (r.second) {
+	  r.first->second = make_unique<OSDShardPGSlot>();
+	}
+	slot = r.first->second.get();
+	if (!slot->pg) {
+	  dout(20) << __func__ << "  creating empty merge participant " << pgid
+		   << dendl;
+	  // Construct a history with a single previous interval,
+	  // going back to the epoch that pg_num_pending was
+	  // adjusted. We know that the PG was clean as of that epoch or else
+	  // pg_num_pending wouldn't have been adjusted.
+	  pg_history_t history;
+	  epoch_t e =
+	    osdmap->get_pg_pool(pgid.pool())->get_pg_num_pending_dec_epoch();
+	  history.same_interval_since = e;
+	  history.last_epoch_started = e;
+	  history.last_epoch_clean = e;
+	  PGCreateInfo cinfo(pgid, e,
+			     history, PastIntervals(), false);
+	  PGRef pg = handle_pg_create_info(shard->shard_osdmap, &cinfo);
+	  shard->_attach_pg(r.first->second.get(), pg.get());
+	  shard->_wake_pg_slot(pgid, slot);
+	  pg->unlock();
+	}
+	// mark slot for merge
+	dout(20) << __func__ << "  marking merge participant " << pgid << dendl;
+	slot->waiting_for_merge_epoch = osdmap->get_epoch();
+	p = merge_pgs.erase(p);
+      }
     }
-    for (auto& i : sources) {
-      targets.insert(i.first);
-    }
-    for (auto pgid : targets) {
-      dout(20) << __func__ << " creating empty merge participant " << pgid
-	       << dendl;
-      pg_history_t history;
-      epoch_t e = osdmap->get_pg_pool(pgid.pool())->get_pg_num_pending_dec_epoch();
-      history.same_interval_since = e;
-      history.last_epoch_started = e;
-      history.last_epoch_clean = e;
-      PGCreateInfo cinfo(pgid, e,
-			 history, PastIntervals(), false);
-      PGRef pg = handle_pg_create_info(osdmap, &cinfo);
-      register_pg(pg);
-      pg->unlock();
-    }
+    assert(merge_pgs.empty());
   }
 
   unsigned pushes_to_free = 0;
@@ -9857,9 +9894,7 @@ void OSDShard::unprime_split_children(spg_t parent, unsigned old_pg_num)
   }
 }
 
-void OSDShard::identify_merges(OSDMapRef as_of_osdmap,
-			       map<spg_t,spg_t> *sources,
-			       set<spg_t> *targets)
+void OSDShard::identify_merges(OSDMapRef as_of_osdmap, set<spg_t> *pgs)
 {
   Mutex::Locker l(shard_lock);
   if (shard_osdmap) {
@@ -9867,44 +9902,9 @@ void OSDShard::identify_merges(OSDMapRef as_of_osdmap,
       const spg_t& pgid = i.first;
       auto *slot = i.second.get();
       if (slot->pg || slot->waiting_for_split) {
-	osd->service.identify_merge_sources_targets(
-	  shard_osdmap, as_of_osdmap,pgid, sources, targets);
+	osd->service.identify_merge_pgs(
+	  shard_osdmap, as_of_osdmap, pgid, pgs);
       }
-    }
-  }
-}
-
-void OSDShard::filter_merges(
-  epoch_t epoch,
-  map<spg_t,spg_t> *sources,
-  set<spg_t> *targets)
-{
-  Mutex::Locker l(shard_lock);
-  dout(20) << __func__ << " " << *sources << " " << *targets << dendl;
-  auto p = sources->begin();
-  while (p != sources->end()) {
-    unsigned shard_index = p->first.hash_to_shard(osd->num_shards);
-    if (shard_index == shard_id &&
-	pg_slots.count(p->first) &&
-	pg_slots[p->first]->pg) {
-      dout(20) << __func__ << "  saw source " << p->first << dendl;
-      pg_slots[p->first]->waiting_for_merge_epoch = epoch;
-      p = sources->erase(p);
-    } else {
-      ++p;
-    }
-  }
-  auto q = targets->begin();
-  while (q != targets->end()) {
-    unsigned shard_index = q->hash_to_shard(osd->num_shards);
-    if (shard_index == shard_id &&
-	pg_slots.count(*q) &&
-	pg_slots[*q]->pg) {
-      dout(20) << __func__ << "  saw target " << *q << dendl;
-      pg_slots[*q]->waiting_for_merge_epoch = epoch;
-      q = targets->erase(q);
-    } else {
-      ++q;
     }
   }
 }
