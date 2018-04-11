@@ -144,9 +144,7 @@ private:
     MapCacher::Transaction<std::string, bufferlist> *t);
 
   // True if hoid belongs in this mapping based on mask_bits and match
-  bool check(const hobject_t &hoid) const {
-    return hoid.match(mask_bits, match);
-  }
+  bool check(const hobject_t &hoid) const;
 
   int _remove_oid(
     const hobject_t &oid,    ///< [in] oid to remove
@@ -182,11 +180,10 @@ public:
   }
 
   set<string> prefixes;
-  /// Update bits in case of pg split
+  /// Update bits in case of pg split or merge
   void update_bits(
     uint32_t new_bits  ///< [in] new split bits
     ) {
-    assert(new_bits >= mask_bits);
     mask_bits = new_bits;
     set<string> _prefixes = hobject_t::get_prefixes(
       mask_bits,

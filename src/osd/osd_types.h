@@ -412,6 +412,8 @@ struct pg_t {
 
   bool is_split(unsigned old_pg_num, unsigned new_pg_num, set<pg_t> *pchildren) const;
 
+  bool is_merge(unsigned old_pg_num, unsigned new_pg_num, pg_t *parent) const;
+
   /**
    * Returns b such that for all object o:
    *   ~((~0)<<b) & o.hash) == 0 iff o is in the pg for *this
@@ -539,6 +541,15 @@ struct spg_t {
     }
     return is_split;
   }
+  bool is_merge(unsigned old_pg_num, unsigned new_pg_num, spg_t *parent) const {
+    spg_t out = *this;
+    bool r = pgid.is_merge(old_pg_num, new_pg_num, &out.pgid);
+    if (r && parent) {
+      *parent = out;
+    }
+    return r;
+  }
+
   bool is_no_shard() const {
     return shard == shard_id_t::NO_SHARD;
   }
@@ -986,7 +997,7 @@ inline ostream& operator<<(ostream& out, const osd_stat_t& s) {
 #define PG_STATE_DOWN               (1ULL << 4)  // a needed replica is down, PG offline
 #define PG_STATE_RECOVERY_UNFOUND   (1ULL << 5)  // recovery stopped due to unfound
 #define PG_STATE_BACKFILL_UNFOUND   (1ULL << 6)  // backfill stopped due to unfound
-//#define PG_STATE_SPLITTING        (1ULL << 7)  // i am splitting
+#define PG_STATE_PREMERGE           (1ULL << 7)  // i am prepare to merging
 #define PG_STATE_SCRUBBING          (1ULL << 8)  // scrubbing
 //#define PG_STATE_SCRUBQ           (1ULL << 9)  // queued for scrub
 #define PG_STATE_DEGRADED           (1ULL << 10) // pg contains objects with reduced redundancy
@@ -1165,6 +1176,7 @@ struct pg_pool_t {
     FLAG_BACKFILLFULL = 1<<12, // pool is backfillfull
     FLAG_SELFMANAGED_SNAPS = 1<<13, // pool uses selfmanaged snaps
     FLAG_POOL_SNAPS = 1<<14,        // pool has pool snaps
+    FLAG_CREATING = 1<<15,          // initial pool PGs are being created
   };
 
   static const char *get_flag_name(int f) {
@@ -1184,6 +1196,7 @@ struct pg_pool_t {
     case FLAG_BACKFILLFULL: return "backfillfull";
     case FLAG_SELFMANAGED_SNAPS: return "selfmanaged_snaps";
     case FLAG_POOL_SNAPS: return "pool_snaps";
+    case FLAG_CREATING: return "creating";
     default: return "???";
     }
   }
@@ -1232,6 +1245,8 @@ struct pg_pool_t {
       return FLAG_SELFMANAGED_SNAPS;
     if (name == "pool_snaps")
       return FLAG_POOL_SNAPS;
+    if (name == "creating")
+      return FLAG_CREATING;
     return 0;
   }
 
@@ -1301,16 +1316,24 @@ struct pg_pool_t {
   __u8 crush_rule;          ///< crush placement rule
   __u8 object_hash;         ///< hash mapping object name to ps
 private:
-  __u32 pg_num, pgp_num;    ///< number of pgs
-
+  __u32 pg_num = 0, pgp_num = 0;  ///< number of pgs
+  __u32 pg_num_pending = 0;       ///< pg_num we are about to merge down to
+  __u32 pg_num_target = 0;        ///< pg_num we should converge toward
+  __u32 pgp_num_target = 0;       ///< pgp_num we should converge toward
 
 public:
   map<string,string> properties;  ///< OBSOLETE
   string erasure_code_profile; ///< name of the erasure code profile in OSDMap
   epoch_t last_change;      ///< most recent epoch changed, exclusing snapshot changes
-  epoch_t last_force_op_resend; ///< last epoch that forced clients to resend
+
+  /// last epoch that forced clients to resend
+  epoch_t last_force_op_resend = 0;
+  /// last epoch that forced clients to resend (luminous clients only)
+  epoch_t last_force_op_resend_luminous = 0;
   /// last epoch that forced clients to resend (pre-luminous clients only)
-  epoch_t last_force_op_resend_preluminous;
+  epoch_t last_force_op_resend_preluminous = 0;
+
+  epoch_t pg_num_pending_dec_epoch = 0;  ///< epoch pg_num_pending decremented
   snapid_t snap_seq;        ///< seq for per-pool snapshot
   epoch_t snap_epoch;       ///< osdmap epoch of last snap
   uint64_t auid;            ///< who owns the pg
@@ -1424,10 +1447,7 @@ public:
   pg_pool_t()
     : flags(0), type(0), size(0), min_size(0),
       crush_rule(0), object_hash(0),
-      pg_num(0), pgp_num(0),
       last_change(0),
-      last_force_op_resend(0),
-      last_force_op_resend_preluminous(0),
       snap_seq(0), snap_epoch(0),
       auid(0),
       quota_max_bytes(0), quota_max_objects(0),
@@ -1480,6 +1500,9 @@ public:
   }
   epoch_t get_last_change() const { return last_change; }
   epoch_t get_last_force_op_resend() const { return last_force_op_resend; }
+  epoch_t get_last_force_op_resend_luminous() const {
+    return last_force_op_resend_luminous;
+  }
   epoch_t get_last_force_op_resend_preluminous() const {
     return last_force_op_resend_preluminous;
   }
@@ -1522,6 +1545,12 @@ public:
 
   unsigned get_pg_num() const { return pg_num; }
   unsigned get_pgp_num() const { return pgp_num; }
+  unsigned get_pg_num_target() const { return pg_num_target; }
+  unsigned get_pgp_num_target() const { return pgp_num_target; }
+  unsigned get_pg_num_pending() const { return pg_num_pending; }
+  epoch_t get_pg_num_pending_dec_epoch() const {
+    return pg_num_pending_dec_epoch;
+  }
 
   unsigned get_pg_num_mask() const { return pg_num_mask; }
   unsigned get_pgp_num_mask() const { return pgp_num_mask; }
@@ -1531,12 +1560,30 @@ public:
   // pool size that it represents.
   unsigned get_pg_num_divisor(pg_t pgid) const;
 
+  bool is_pending_merge(pg_t pgid, bool *target) const;
+
   void set_pg_num(int p) {
     pg_num = p;
+    pg_num_pending = p;
     calc_pg_masks();
   }
   void set_pgp_num(int p) {
     pgp_num = p;
+    calc_pg_masks();
+  }
+  void set_pg_num_pending(int p, epoch_t e) {
+    pg_num_pending = p;
+    pg_num_pending_dec_epoch = e;
+    calc_pg_masks();
+  }
+  void set_pg_num_target(int p) {
+    pg_num_target = p;
+  }
+  void set_pgp_num_target(int p) {
+    pgp_num_target = p;
+  }
+  void dec_pg_num() {
+    --pg_num;
     calc_pg_masks();
   }
 
@@ -1556,6 +1603,7 @@ public:
 
   void set_last_force_op_resend(uint64_t t) {
     last_force_op_resend = t;
+    last_force_op_resend_luminous = t;
     last_force_op_resend_preluminous = t;
   }
 
@@ -2734,6 +2782,8 @@ public:
     int new_min_size,
     unsigned old_pg_num,
     unsigned new_pg_num,
+    unsigned old_pg_num_pending,
+    unsigned new_pg_num_pending,
     bool old_sort_bitwise,
     bool new_sort_bitwise,
     bool old_recovery_deletes,

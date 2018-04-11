@@ -644,6 +644,18 @@ class Thrasher:
                                          self.max_pgs):
             self.pools_to_fix_pgp_num.add(pool)
 
+    def shrink_pool(self):
+        """
+        Decrease the size of the pool
+        """
+        pool = self.ceph_manager.get_pool()
+        orig_pg_num = self.ceph_manager.get_pool_pg_num(pool)
+        self.log("Shrinking pool %s" % (pool,))
+        if self.ceph_manager.expand_pool(pool,
+                                         self.config.get('pool_shrink_by', 10),
+                                         self.max_pgs):
+            self.pools_to_fix_pgp_num.add(pool)
+
     def fix_pgp_num(self, pool=None):
         """
         Fix number of pgs in pool.
@@ -815,6 +827,8 @@ class Thrasher:
                         self.config.get('reweight_osd', .5),))
         actions.append((self.grow_pool,
                         self.config.get('chance_pgnum_grow', 0),))
+        actions.append((self.shrink_pool,
+                        self.config.get('chance_pgnum_shrink', 0),))
         actions.append((self.fix_pgp_num,
                         self.config.get('chance_pgpnum_fix', 0),))
         actions.append((self.test_pool_min_size,
@@ -1742,6 +1756,24 @@ class CephManager:
                 return False
             self.log("increase pool size by %d" % (by,))
             new_pg_num = self.pools[pool_name] + by
+            self.set_pool_property(pool_name, "pg_num", new_pg_num)
+            self.pools[pool_name] = new_pg_num
+            return True
+
+    def contract_pool(self, pool_name, by, min_pgs):
+        """
+        Decrease the number of pgs in a pool
+        """
+        with self.lock:
+            assert isinstance(pool_name, basestring)
+            assert isinstance(by, int)
+            assert pool_name in self.pools
+            if self.get_num_creating() > 0:
+                return False
+            if (self.pools[pool_name] - by) < min_pgs:
+                return False
+            self.log("decrease pool size by %d" % (by,))
+            new_pg_num = self.pools[pool_name] - by
             self.set_pool_property(pool_name, "pg_num", new_pg_num)
             self.pools[pool_name] = new_pg_num
             return True
