@@ -114,3 +114,45 @@ TEST(LibRadosServicePP, Status) {
   }
   cluster.shutdown();
 }
+
+TEST(LibRadosServicePP, Close) {
+  int tries = 20;
+  string name = string("close-test-pid") + stringify(getpid());
+  int i;
+  for (i = 0; i < tries; ++i) {
+    cout << "attempt " << i << " of " << tries << std::endl;
+    {
+      Rados cluster;
+      cluster.init("admin");
+      ASSERT_EQ(0, cluster.conf_read_file(NULL));
+      cluster.conf_parse_env(NULL);
+      ASSERT_EQ(0, cluster.connect());
+      ASSERT_EQ(0, cluster.service_daemon_register(
+		  "laundry", name, {{"foo", "bar"}, {"this", "that"}}));
+      sleep(3); // let it register
+      cluster.shutdown();
+    }
+    // mgr updates servicemap every tick
+    sleep(g_conf->get_val<int64_t>("mgr_tick_period"));
+    // make sure we are deregistered
+    {
+      Rados cluster;
+      cluster.init("admin");
+      ASSERT_EQ(0, cluster.conf_read_file(NULL));
+      cluster.conf_parse_env(NULL);
+      ASSERT_EQ(0, cluster.connect());
+      bufferlist inbl, outbl;
+      ASSERT_EQ(0, cluster.mon_command("{\"prefix\": \"service dump\"}",
+				       inbl, &outbl, NULL));
+      string s = outbl.to_str();
+      cluster.shutdown();
+
+      if (s.find(name) != string::npos) {
+	cout << " failed to deregister:\n" << s << std::endl;
+      } else {
+	break;
+      }
+    }
+  }
+  ASSERT_LT(i, tries);
+}
