@@ -15,6 +15,7 @@ import { DashboardComponent } from './ceph/dashboard/dashboard/dashboard.compone
 import {
   PerformanceCounterComponent
 } from './ceph/performance-counter/performance-counter/performance-counter.component';
+import { PoolListComponent } from './ceph/pool/pool-list/pool-list.component';
 import { RgwDaemonListComponent } from './ceph/rgw/rgw-daemon-list/rgw-daemon-list.component';
 import { LoginComponent } from './core/auth/login/login.component';
 import { NotFoundComponent } from './core/not-found/not-found.component';
@@ -35,6 +36,7 @@ const routes: Routes = [
   { path: 'block/rbd', component: RbdListComponent, canActivate: [AuthGuardService] },
   { path: 'rbd/add', component: RbdFormComponent, canActivate: [AuthGuardService] },
   { path: 'rbd/edit/:pool/:name', component: RbdFormComponent, canActivate: [AuthGuardService] },
+  { path: 'pool', component: PoolListComponent, canActivate: [AuthGuardService] },
   {
     path: 'perf_counters/:type/:id',
     component: PerformanceCounterComponent,
