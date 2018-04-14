@@ -7981,6 +7981,7 @@ bool OSD::advance_pg(
 	    pg->merge_from(sources, rctx, split_bits);
 	  } else {
 	    dout(20) << __func__ << " not ready to merge yet" << dendl;
+	    pg->write_if_dirty(rctx);
 	    pg->unlock();
 	    return false;
 	  }
