@@ -6012,6 +6012,7 @@ void PG::start_peering_interval(
   // deactivate.
   state_clear(PG_STATE_ACTIVE);
   state_clear(PG_STATE_PEERED);
+  state_clear(PG_STATE_PREMERGE);
   state_clear(PG_STATE_DOWN);
   state_clear(PG_STATE_RECOVERY_WAIT);
   state_clear(PG_STATE_RECOVERY_TOOFULL);
