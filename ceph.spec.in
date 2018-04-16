@@ -1056,7 +1056,7 @@ fi
 %{_bindir}/cephfs-table-tool
 %{_bindir}/rados
 %{_bindir}/radosgw-admin
-%{_bindir}/rbd
+#%{_bindir}/rbd
 %{_bindir}/rbd-replay
 %{_bindir}/rbd-replay-many
 %{_bindir}/rbdmap
@@ -1541,6 +1541,7 @@ fi
 %{_libdir}/libradosstriper.so
 
 %files -n librbd1
+%{_bindir}/rbd
 %{_libdir}/librbd.so.*
 %if %{with lttng}
 %{_libdir}/librbd_tp.so.*
