@@ -6731,13 +6731,13 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
          << " (you may adjust 'mon max pool pg num' for higher values)";
       return -ERANGE;
     }
+    string force;
+    cmd_getval(cct,cmdmap, "force", force);
     if (n > (int)p.get_pg_num_target()) {
       int r = check_pg_num(pool, n, p.get_size(), &ss);
       if (r) {
 	return r;
       }
-      string force;
-      cmd_getval(cct,cmdmap, "force", force);
       if (p.cache_mode != pg_pool_t::CACHEMODE_NONE &&
 	  force != "--yes-i-really-mean-it") {
 	ss << "splits in cache pools must be followed by scrubs and leave sufficient free space to avoid overfilling.  use --yes-i-really-mean-it to force.";
@@ -6755,6 +6755,11 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
     } else {
       if (osdmap.require_osd_release < CEPH_RELEASE_MIMIC) {
 	ss << "mimic OSDs are required to adjust pg_num_pending";
+	return -EPERM;
+      }
+      if (!g_ceph_context->check_experimental_feature_enabled("pg-merging") &&
+	  force != "--yes-i-really-mean-it") {
+	ss << "pg_num reduction is a new and experimental feature ('pg-merging'). It may lead to data loss or cluster instability. To proceed, pass '--yes-i-really-mean-it', or add 'pg-merging' to the list of enabled experimental features.";
 	return -EPERM;
       }
     }
