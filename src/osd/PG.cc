@@ -7855,16 +7855,6 @@ PG::RecoveryState::Clean::Clean(my_context ctx)
   }
   pg->state_clear(PG_STATE_FORCED_RECOVERY | PG_STATE_FORCED_BACKFILL);
 
-  bool target;
-  if (pg->pool.info.is_pending_merge(pg->info.pgid.pgid, &target)) {
-    ldout(pg->cct, 10) << "ready to merge" << dendl;
-    if (target) {
-      pg->osd->set_ready_to_merge_target(pg);
-    } else {
-      pg->osd->set_ready_to_merge_source(pg);
-    }
-  }
-
   pg->share_pg_info();
   pg->publish_stats_to_osd();
   pg->requeue_ops(pg->waiting_for_clean_to_primary_repair);
@@ -8271,6 +8261,16 @@ boost::statechart::result PG::RecoveryState::Active::react(const AllReplicasActi
     pg->state_set(PG_STATE_PREMERGE);
   } else {
     pg->state_set(PG_STATE_ACTIVE);
+  }
+
+  bool target;
+  if (pg->pool.info.is_pending_merge(pg->info.pgid.pgid, &target)) {
+    ldout(pg->cct, 10) << "ready to merge" << dendl;
+    if (target) {
+      pg->osd->set_ready_to_merge_target(pg);
+    } else {
+      pg->osd->set_ready_to_merge_source(pg);
+    }
   }
 
   // info.last_epoch_started is set during activate()
