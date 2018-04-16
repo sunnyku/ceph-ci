@@ -7946,7 +7946,7 @@ bool OSD::advance_pg(
 	  PGRef spg = pg; // carry a ref
 	  dout(1) << __func__ << " we are merge source, target is " << parent
 		   << dendl;
-	  pg->ch->flush();
+	  pg->shutdown();  // this will osr->flush
 	  OSDShard *sdata = pg->osd_shard;
 	  {
 	    Mutex::Locker l(sdata->shard_lock);
