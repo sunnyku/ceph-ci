@@ -7948,7 +7948,8 @@ bool OSD::advance_pg(
 		   << dendl;
 	  pg->write_if_dirty(rctx);
 	  dispatch_context_transaction(*rctx, pg, &handle);
-	  pg->shutdown();  // this will osr->flush
+	  pg->ch->flush();
+	  pg->on_shutdown();
 	  OSDShard *sdata = pg->osd_shard;
 	  {
 	    Mutex::Locker l(sdata->shard_lock);
