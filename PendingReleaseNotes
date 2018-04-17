@@ -126,6 +126,7 @@ method. See http://docs.ceph.com/docs/luminous/mgr/restful for details.
   your cluster then your configuration should be adjusted in order to
   avoid reverting to the default value.
 
+<<<<<<< HEAD
 * *rados list-inconsistent-obj format changes:*
 
   * Various error strings have been improved.  For example, the "oi" or "oi_attr"
@@ -173,3 +174,10 @@ method. See http://docs.ceph.com/docs/luminous/mgr/restful for details.
 
 * The Ceph LZ4 compression plugin is now enabled by default, and introduces
   a new build depdendency.
+=======
+* The 'osd force-create-pg' command now requires a force option to
+  proceed because the command is dangerous: it declares that data loss
+  is permanent and instructs the cluster to proceed with an empty PG
+  in its place, without making any further efforts to find the missing
+  data.
+>>>>>>> d5d25fdba478efeb489e856fc70a5ed5f63a0620

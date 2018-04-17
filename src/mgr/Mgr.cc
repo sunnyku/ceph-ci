@@ -623,6 +623,7 @@ void Mgr::tick()
 {
   dout(10) << dendl;
   server.send_report();
+  server.adjust_pgs();
 }
 
 std::map<std::string, std::string> Mgr::get_services() const
