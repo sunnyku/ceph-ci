@@ -94,6 +94,12 @@ int KernelDevice::open(const string& p)
     derr << __func__ << " open got: " << cpp_strerror(r) << dendl;
     goto out_fail;
   }
+  r = posix_fadvise(fd_direct, 0, 0, POSIX_FADV_RANDOM);
+  if (r) {
+    r = -r;
+    derr << __func__ << " open got: " << cpp_strerror(r) << dendl;
+    goto out_fail;
+  }
 
   r = _lock();
   if (r < 0) {
