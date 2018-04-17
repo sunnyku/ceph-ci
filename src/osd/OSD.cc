@@ -7947,7 +7947,7 @@ bool OSD::advance_pg(
 	  dout(1) << __func__ << " we are merge source, target is " << parent
 		   << dendl;
 	  pg->write_if_dirty(rctx);
-	  dispatch_context_transaction(rctx);
+	  dispatch_context_transaction(*rctx, pg, &handle);
 	  pg->shutdown();  // this will osr->flush
 	  OSDShard *sdata = pg->osd_shard;
 	  {
