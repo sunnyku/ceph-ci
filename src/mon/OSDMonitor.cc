@@ -3104,7 +3104,12 @@ bool OSDMonitor::preprocess_pg_ready_to_merge(MonOpRequestRef op)
          << "with insufficient privileges " << session->caps << dendl;
     return true;
   }
-  const pg_pool_t *pi = osdmap.get_pg_pool(m->pgid.pool());
+  const pg_pool_t *pi;
+  if (pending_inc.new_pools.count(m->pgid.pool())) {
+    pi = &pending_inc.new_pools[m->pgid.pool()];
+  } else {
+    pi = osdmap.get_pg_pool(m->pgid.pool());
+  }
   if (!pi) {
     derr << __func__ << " pool for " << m->pgid << " dne" << dendl;
     return true;
