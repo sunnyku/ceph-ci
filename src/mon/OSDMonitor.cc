@@ -6773,7 +6773,10 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
       }
       if (!g_ceph_context->check_experimental_feature_enabled("pg-merging") &&
 	  force != "--yes-i-really-mean-it") {
-	ss << "pg_num reduction is a new and experimental feature ('pg-merging'). It may lead to data loss or cluster instability. To proceed, pass '--yes-i-really-mean-it', or add 'pg-merging' to the list of enabled experimental features.";
+	ss << "pg_num reduction is a new and experimental feature ('pg-merging'). It may "
+	   << "lead to data loss or cluster instability. To proceed, pass "
+	   << "'--yes-i-really-mean-it', or add 'pg-merging' to the list of enabled "
+	   << "experimental features.";
 	return -EPERM;
       }
     }
