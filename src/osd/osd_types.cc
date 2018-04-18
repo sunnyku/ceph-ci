@@ -483,7 +483,11 @@ pg_t pg_t::get_ancestor(unsigned old_pg_num) const
 
 bool pg_t::is_split(unsigned old_pg_num, unsigned new_pg_num, set<pg_t> *children) const
 {
-  assert(m_seed < old_pg_num);
+  //assert(m_seed < old_pg_num);
+  if (m_seed >= old_pg_num) {
+    // degenerate case
+    return false;
+  }
   if (new_pg_num <= old_pg_num)
     return false;
 
