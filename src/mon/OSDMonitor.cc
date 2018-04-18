@@ -3150,6 +3150,8 @@ bool OSDMonitor::prepare_pg_ready_to_merge(MonOpRequestRef op)
   p.last_force_op_resend_luminous = pending_inc.epoch;
 
   pending_inc.new_pools[m->pgid.pool()] = p;
+
+  wait_for_finished_proposal(op, new C_ReplyMap(this, op, m->version));
   return true;
 }
 
