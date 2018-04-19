@@ -1759,8 +1759,7 @@ void OSDService::prune_sent_ready_to_merge(OSDMapRef& osdmap)
   auto i = sent_ready_to_merge_source.begin();
   while (i != sent_ready_to_merge_source.end()) {
     if (!osdmap->pg_exists(*i)) {
-      dout(10) << __func__ << " " << *i << " parent " << i->get_parent() << dendl;
-      sent_ready_to_merge_target.erase(i->get_parent());
+      dout(10) << __func__ << " " << *i << dendl;
       i = sent_ready_to_merge_source.erase(i);
     } else {
       ++i;
@@ -8108,7 +8107,7 @@ void OSD::consume_map()
   }
 
   // prune sent_ready_to_merge
-  prune_sent_ready_to_merge(osdmap);
+  service.prune_sent_ready_to_merge(osdmap);
 
   // prime merges
   set<spg_t> merge_pgs;
