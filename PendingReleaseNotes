@@ -194,6 +194,7 @@ method. See http://docs.ceph.com/docs/luminous/mgr/restful for details.
 * The Ceph LZ4 compression plugin is now enabled by default, and introduces
   a new build depdendency.
 
+<<<<<<< HEAD
 * Monitors will now prune on-disk full maps if the number of maps grows above
   a certain number (mon_osdmap_full_prune_min, default: 10000), thus
   preventing unbounded growth of the monitor data store. This feature is
@@ -202,3 +203,10 @@ method. See http://docs.ceph.com/docs/luminous/mgr/restful for details.
 
 * Bootstrap auth keys will now be generated automatically on a fresh
   deployment; these keys will also be generated, if missing, during upgrade.
+=======
+* The 'osd force-create-pg' command now requires a force option to
+  proceed because the command is dangerous: it declares that data loss
+  is permanent and instructs the cluster to proceed with an empty PG
+  in its place, without making any further efforts to find the missing
+  data.
+>>>>>>> 3871448fd4e67d5544c6138362a35dd389537d84
