@@ -8151,12 +8151,14 @@ void OSD::consume_map()
 	  dout(20) << __func__ << "  creating empty merge participant " << pgid
 		   << dendl;
 	  // Construct a history with a single previous interval,
-	  // going back to the epoch that pg_num_pending was
-	  // adjusted. We know that the PG was clean as of that epoch or else
-	  // pg_num_pending wouldn't have been adjusted.
+	  // going back to the epoch *before* pg_num_pending was
+	  // adjusted (since we are creating the PG as it would have
+	  // existed just before the merge). We know that the PG was
+	  // clean as of that epoch or else pg_num_pending wouldn't
+	  // have been adjusted.
 	  pg_history_t history;
 	  epoch_t e =
-	    osdmap->get_pg_pool(pgid.pool())->get_pg_num_pending_dec_epoch();
+	    osdmap->get_pg_pool(pgid.pool())->get_pg_num_pending_dec_epoch() - 1;
 	  history.same_interval_since = e;
 	  history.last_epoch_started = e;
 	  history.last_epoch_clean = e;
