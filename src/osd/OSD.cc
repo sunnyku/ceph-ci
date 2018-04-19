@@ -1710,6 +1710,7 @@ void OSDService::finish_pg_delete(PG *pg, unsigned old_pg_num)
 void OSDService::set_ready_to_merge_source(PG *pg)
 {
   Mutex::Locker l(merge_lock);
+  dout(10) << __func__ << " " << pg->pg_id << dendl;
   ready_to_merge_source.insert(pg->pg_id.pgid);
   _send_ready_to_merge();
 }
@@ -1717,6 +1718,7 @@ void OSDService::set_ready_to_merge_source(PG *pg)
 void OSDService::set_ready_to_merge_target(PG *pg)
 {
   Mutex::Locker l(merge_lock);
+  dout(10) << __func__ << " " << pg->pg_id << dendl;
   ready_to_merge_target.insert(pg->pg_id.pgid);
   _send_ready_to_merge();
 }
@@ -1749,6 +1751,21 @@ void OSDService::clear_sent_ready_to_merge()
 {
   Mutex::Locker l(merge_lock);
   sent_ready_to_merge_source.clear();
+}
+
+void OSDService::prune_sent_ready_to_merge(OSDMapRef& osdmap)
+{
+  Mutex::Locker l(merge_lock);
+  auto i = sent_ready_to_merge_source.begin();
+  while (i != sent_ready_to_merge_source.end()) {
+    if (!osdmap->pg_exists(*i)) {
+      dout(10) << __func__ << " " << *i << " parent " << i->get_parent() << dendl;
+      sent_ready_to_merge_target.erase(i->get_parent());
+      i = sent_ready_to_merge_source.erase(i);
+    } else {
+      ++i;
+    }
+  }
 }
 
 // ---
@@ -8089,6 +8106,9 @@ void OSD::consume_map()
     }
     assert(newly_split.empty());
   }
+
+  // prune sent_ready_to_merge
+  prune_sent_ready_to_merge(osdmap);
 
   // prime merges
   set<spg_t> merge_pgs;

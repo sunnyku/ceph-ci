@@ -727,6 +727,7 @@ public:
   void send_ready_to_merge();
   void _send_ready_to_merge();
   void clear_sent_ready_to_merge();
+  void prune_sent_ready_to_merge(OSDMapRef& osdmap);
 
   // -- pg_temp --
 private:

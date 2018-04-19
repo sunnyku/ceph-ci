@@ -8268,10 +8268,11 @@ boost::statechart::result PG::RecoveryState::Active::react(const AllReplicasActi
 
   bool target;
   if (pg->pool.info.is_pending_merge(pg->info.pgid.pgid, &target)) {
-    ldout(pg->cct, 10) << "ready to merge" << dendl;
     if (target) {
+      ldout(pg->cct, 10) << "ready to merge (target)" << dendl;
       pg->osd->set_ready_to_merge_target(pg);
     } else {
+      ldout(pg->cct, 10) << "ready to merge (source)" << dendl;
       pg->osd->set_ready_to_merge_source(pg);
     }
   }
