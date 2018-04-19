@@ -98,6 +98,8 @@ OSD_STATS = ['apply_latency_ms', 'commit_latency_ms']
 
 POOL_METADATA = ('pool_id', 'name')
 
+RGW_METADATA = ('id', 'hostname', 'ceph_version')
+
 DISK_OCCUPATION = ('instance', 'device', 'ceph_daemon')
 
 
@@ -206,6 +208,13 @@ class Metrics(object):
             'pool_metadata',
             'POOL Metadata',
             POOL_METADATA
+        )
+
+        metrics['rgw_metadata'] = Metric(
+            'untyped',
+            'rgw_metadata',
+            'RGW Metadata',
+            RGW_METADATA
         )
 
         metrics['pg_total'] = Metric(
@@ -457,7 +466,7 @@ class Module(MgrModule):
         servers = self.get_service_list()
         for osd in osd_map['osds']:
             # id can be used to link osd metrics and metadata
-            id_ = str(osd['osd'])
+            id_ = osd['osd']
             # collect osd metadata
             p_addr = osd['public_addr'].split(':')[0]
             c_addr = osd['cluster_addr'].split(':')[0]
@@ -467,12 +476,27 @@ class Module(MgrModule):
                     " and metadata records for this osd".format(id_)
                 )
                 continue
-            dev_class = next((osd for osd in osd_devices if str(osd['id']) == id_))
-            host_version = servers.get((id_, 'osd'), ('',''))
-            self.metrics.append('osd_metadata', 1, (c_addr,
-                                                    dev_class.get('class',''),
-                                                    id_, host_version[0],
-                                                    p_addr, host_version[1]))
+
+            dev_class = None
+            for osd_device in osd_devices:
+                if osd_device['id'] == id_:
+                    dev_class = osd_device.get('class', '')
+                    break
+
+            if dev_class is None:
+                self.log.info(
+                    "OSD {0} is missing from CRUSH map, skipping output".format(
+                        id_))
+                continue
+
+            host_version = servers.get((str(id_), 'osd'), ('',''))
+
+            self.metrics.append('osd_metadata', 1, (
+                c_addr,
+                dev_class,
+                id_, host_version[0],
+                p_addr, host_version[1]
+            ))
 
             # collect osd status
             for state in OSD_STATUS:
@@ -481,7 +505,7 @@ class Module(MgrModule):
                                     ('osd.{}'.format(id_),))
 
             # collect disk occupation metadata
-            osd_metadata = self.get_metadata("osd", id_)
+            osd_metadata = self.get_metadata("osd", str(id_))
             if osd_metadata is None:
                 continue
             dev_keys = ("backend_filestore_dev_node", "bluestore_bdev_dev_node")
@@ -507,6 +531,18 @@ class Module(MgrModule):
         pool_meta = []
         for pool in osd_map['pools']:
             self.metrics.append('pool_metadata', 1, (pool['pool'], pool['pool_name']))
+
+        # Populate rgw_metadata
+        for key, value in servers.items():
+            service_id, service_type = key
+            if service_type != 'rgw':
+                continue
+            hostname, version = value
+            self.metrics.append(
+                'rgw_metadata',
+                1,
+                (service_id, hostname, version)
+            )
 
     def collect(self):
         self.get_health()
