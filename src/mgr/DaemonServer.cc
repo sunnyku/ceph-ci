@@ -1876,7 +1876,8 @@ void DaemonServer::maybe_reset_recovery_limits()
       total += o.second;
     }
     average = total / osd_num;
-    assert(average > 0);
+    if (total == 0)
+      return; // come back later
     for (auto &o : num_objects_to_recover_by_osd) {
       auto who = o.first;
       auto factor = o.second / (double)average;
