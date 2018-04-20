@@ -13642,6 +13642,7 @@ void PrimaryLogPG::agent_setup()
   assert(is_locked());
   if (!is_active() ||
       !is_primary() ||
+      state_test(PG_STATE_PREMERGE) ||
       pool.info.cache_mode == pg_pool_t::CACHEMODE_NONE ||
       pool.info.tier_of < 0 ||
       !get_osdmap()->have_pg_pool(pool.info.tier_of)) {
