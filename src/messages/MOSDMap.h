@@ -113,13 +113,15 @@ public:
 	OSDMap::Incremental inc;
 	bufferlist::iterator q = p->second.begin();
 	inc.decode(q);
+	// always encode with subset of osdmaps canonical features
+	uint64_t f = inc.encode_features & features;
 	p->second.clear();
 	if (inc.fullmap.length()) {
 	  // embedded full map?
 	  OSDMap m;
 	  m.decode(inc.fullmap);
 	  inc.fullmap.clear();
-	  m.encode(inc.fullmap, features | CEPH_FEATURE_RESERVED);
+	  m.encode(inc.fullmap, f | CEPH_FEATURE_RESERVED);
 	}
 	if (inc.crush.length()) {
 	  // embedded crush map
@@ -127,17 +129,19 @@ public:
 	  auto p = inc.crush.begin();
 	  c.decode(p);
 	  inc.crush.clear();
-	  c.encode(inc.crush, features);
+	  c.encode(inc.crush, f);
 	}
-	inc.encode(p->second, features | CEPH_FEATURE_RESERVED);
+	inc.encode(p->second, f | CEPH_FEATURE_RESERVED);
       }
       for (map<epoch_t,bufferlist>::iterator p = maps.begin();
 	   p != maps.end();
 	   ++p) {
 	OSDMap m;
 	m.decode(p->second);
+	// always encode with subset of osdmaps canonical features
+	uint64_t f = m.get_encoding_features() & features;
 	p->second.clear();
-	m.encode(p->second, features | CEPH_FEATURE_RESERVED);
+	m.encode(p->second, f | CEPH_FEATURE_RESERVED);
       }
     }
     encode(incremental_maps, payload);
