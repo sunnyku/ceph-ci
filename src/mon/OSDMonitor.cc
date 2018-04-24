@@ -3507,7 +3507,9 @@ void OSDMonitor::reencode_incremental_map(bufferlist& bl, uint64_t features)
   OSDMap::Incremental inc;
   bufferlist::iterator q = bl.begin();
   inc.decode(q);
-  dout(20) << __func__ << " " << inc.epoch << " with features " << features
+  // always encode with subset of osdmap's canonical features
+  uint64_t f = features & inc.encode_features;
+  dout(20) << __func__ << " " << inc.epoch << " with features " << f
 	   << dendl;
   bl.clear();
   if (inc.fullmap.length()) {
@@ -3515,7 +3517,7 @@ void OSDMonitor::reencode_incremental_map(bufferlist& bl, uint64_t features)
     OSDMap m;
     m.decode(inc.fullmap);
     inc.fullmap.clear();
-    m.encode(inc.fullmap, features | CEPH_FEATURE_RESERVED);
+    m.encode(inc.fullmap, f | CEPH_FEATURE_RESERVED);
   }
   if (inc.crush.length()) {
     // embedded crush map
@@ -3523,9 +3525,9 @@ void OSDMonitor::reencode_incremental_map(bufferlist& bl, uint64_t features)
     auto p = inc.crush.begin();
     c.decode(p);
     inc.crush.clear();
-    c.encode(inc.crush, features);
+    c.encode(inc.crush, f);
   }
-  inc.encode(bl, features | CEPH_FEATURE_RESERVED);
+  inc.encode(bl, f | CEPH_FEATURE_RESERVED);
 }
 
 void OSDMonitor::reencode_full_map(bufferlist& bl, uint64_t features)
@@ -3533,10 +3535,12 @@ void OSDMonitor::reencode_full_map(bufferlist& bl, uint64_t features)
   OSDMap m;
   bufferlist::iterator q = bl.begin();
   m.decode(q);
-  dout(20) << __func__ << " " << m.get_epoch() << " with features " << features
+  // always encode with subset of osdmap's canonical features
+  uint64_t f = features & m.get_encoding_features();
+  dout(20) << __func__ << " " << m.get_epoch() << " with features " << f
 	   << dendl;
   bl.clear();
-  m.encode(bl, features | CEPH_FEATURE_RESERVED);
+  m.encode(bl, f | CEPH_FEATURE_RESERVED);
 }
 
 int OSDMonitor::get_version(version_t ver, uint64_t features, bufferlist& bl)
