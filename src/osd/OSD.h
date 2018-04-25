@@ -1733,6 +1733,7 @@ private:
     }
 
     void maybe_update_spec() {
+      bool effect_now = true;
       if (mode == "default") {
         // basic-floor
         spec_toapply = spec_default;
@@ -1742,6 +1743,7 @@ private:
           // promote to unlimited (so we can recover at full speed)
           spec_toapply = spec_unlimited;
         }
+        effect_now = false;
       } else if (mode == "recovery_op_prioritized") {
         spec_toapply = spec_unlimited;
       } else {
@@ -1767,7 +1769,7 @@ private:
                                            << "reset to " << spec_toapply
                                            << dendl;
         osd->op_shardedwq.update_queue_config("osd_dmc_queue_spec_pullpush",
-          spec_toapply);
+          spec_toapply, effect_now);
         spec_applied = spec_toapply;
       }
     }
@@ -2002,12 +2004,14 @@ private:
       }
     }
 
-    void update_queue_config(const string item, const string value) {
+    void update_queue_config(const string item,
+                             const string value,
+                             bool effect_now = true) {
       for(uint32_t i = 0; i < num_shards; i++) {
 	ShardData* sdata = shard_list[i];
 	assert (NULL != sdata);
 	sdata->sdata_op_ordering_lock.Lock();
-	sdata->pqueue->update_config(item, value);
+	sdata->pqueue->update_config(item, value, false, effect_now);
 	sdata->sdata_op_ordering_lock.Unlock();
       }
     }
