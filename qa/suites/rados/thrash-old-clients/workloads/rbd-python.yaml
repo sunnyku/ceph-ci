@@ -1,0 +1,11 @@
+meta:
+- desc: |
+   librbd python api tests
+tasks:
+# NOTE: we specify the luminous branch here, but the workunit script hasn't
+# changed (much) from jewel to luminous, so it should work for both.
+- workunit:
+    branch: luminous
+    clients:
+      client.2:
+        - rbd/test_librbd_python.sh
