@@ -2,6 +2,9 @@ override:
   conf:
     osd:
       osd deep scrub update digest min age: 0
+  ceph:
+    log-whitelist:
+      - found snap mapper error
 tasks:
 - rados:
     clients: [client.0]

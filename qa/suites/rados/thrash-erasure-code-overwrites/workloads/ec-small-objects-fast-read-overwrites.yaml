@@ -3,6 +3,8 @@ overrides:
     conf:
       global:
         enable experimental unrecoverable data corrupting features: '*'
+    log-whitelist:
+      - found snap mapper error
   thrashosds:
     disable_objectstore_tool_tests: true
 tasks:
