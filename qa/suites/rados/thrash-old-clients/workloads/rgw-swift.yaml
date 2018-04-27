@@ -1,0 +1,6 @@
+tasks:
+- rgw:
+    client.2:
+- swift:
+    client.2:
+      rgw_server: client.2
