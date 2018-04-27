@@ -3553,7 +3553,7 @@ int OSDMonitor::get_version(version_t ver, uint64_t features, bufferlist& bl)
     return 0;
   }
   int ret = PaxosService::get_version(ver, bl);
-  if (!ret) {
+  if (ret < 0) {
     return ret;
   }
   // NOTE: this check is imprecise; the OSDMap encoding features may
@@ -3705,7 +3705,7 @@ int OSDMonitor::get_version_full(version_t ver, uint64_t features,
     // build map?
     ret = get_full_from_pinned_map(ver, bl);
   }
-  if (ret != 0) {
+  if (ret < 0) {
     return ret;
   }
   // NOTE: this check is imprecise; the OSDMap encoding features may
