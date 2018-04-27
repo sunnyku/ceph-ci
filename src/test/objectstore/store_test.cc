@@ -6984,6 +6984,34 @@ TEST_P(StoreTest, BluestoreRepairTest) {
   cerr << "Completing" << std::endl;
   bstore->mount();
 }
+TEST_P(StoreTest, BluestoreStatistics) {
+  if (string(GetParam()) != "bluestore")
+    return;
+
+  g_conf->set_val("rocksdb_perf", "true");
+  g_conf->set_val("rocksdb_collect_compaction_stats", "true");
+  g_conf->set_val("rocksdb_collect_extended_stats","true");
+  g_conf->set_val("rocksdb_collect_memory_stats","true");
+
+  // disable cache
+  g_ceph_context->_conf->set_val("bluestore_cache_size_ssd", "0");
+  g_ceph_context->_conf->set_val("bluestore_cache_size_hdd", "0");
+  g_ceph_context->_conf->set_val("bluestore_cache_size", "0");
+  g_ceph_context->_conf->apply_changes(NULL);
+
+  BlueStore* bstore = NULL;
+  EXPECT_NO_THROW(bstore = dynamic_cast<BlueStore*> (store.get()));
+
+  int r = store->umount();
+  ASSERT_EQ(r, 0);
+  r = store->mount(); //to force rocksdb stats
+  ASSERT_EQ(r, 0);
+
+  Formatter *f = Formatter::create("store_test", "json-pretty", "json-pretty");
+  EXPECT_NO_THROW(bstore->get_db_statistics(f));
+  f->flush(cout);
+  cout << std::endl;
+}
 #endif  // WITH_BLUESTORE
 
 int main(int argc, char **argv) {
