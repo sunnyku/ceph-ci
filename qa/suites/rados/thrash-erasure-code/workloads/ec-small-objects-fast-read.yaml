@@ -1,3 +1,7 @@
+overrides:
+  ceph:
+    log-whitelist:
+      - found snap mapper error
 tasks:
 - rados:
     clients: [client.0]

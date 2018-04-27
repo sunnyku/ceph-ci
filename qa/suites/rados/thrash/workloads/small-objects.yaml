@@ -4,6 +4,8 @@ overrides:
     conf:
       mon:
         mon osd initial require min compat client: jewel
+    log-whitelist:
+      - found snap mapper error
 tasks:
 - rados:
     clients: [client.0]
