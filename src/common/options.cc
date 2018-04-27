@@ -5887,6 +5887,14 @@ static std::vector<Option> get_rbd_options() {
     .set_default(5.0)
     .set_description(""),
 
+    Option("rbd_status_update_delay", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(10.0)
+    .set_description("delay a few seconds for the first update"),
+
+    Option("rbd_status_update_interval", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(60.0 * 5)
+    .set_description(""),
+
     Option("rbd_validate_pool", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(true)
     .set_description("validate empty pools for RBD compatibility"),

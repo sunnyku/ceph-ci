@@ -203,7 +203,8 @@ struct C_InvalidateCache : public Context {
       client_qos_reservation(cct->_conf->rbd_client_qos_reservation),
       client_qos_weight(cct->_conf->rbd_client_qos_weight),
       client_qos_limit(cct->_conf->rbd_client_qos_limit),
-      client_qos_bandwidth(cct->_conf->rbd_client_qos_bandwidth)
+      client_qos_bandwidth(cct->_conf->rbd_client_qos_bandwidth),
+      m_status_update_timer_lock(util::unique_lock_name("librbd::ImageCtx::status_update_timer_lock", this))
   {
     md_ctx.dup(p);
     data_ctx.dup(p);
@@ -236,6 +237,14 @@ struct C_InvalidateCache : public Context {
 
     if (m_report_timer) {
       perf_report_stop();
+    }
+    if (m_status_update_timer) {
+      status_update_stop();
+      {
+        Mutex::Locker timer_locker(m_status_update_timer_lock);
+        m_status_update_timer->shutdown();
+      }
+      delete m_status_update_timer;
     }
     if (perfcounter) {
       perf_stop();
@@ -281,6 +290,8 @@ struct C_InvalidateCache : public Context {
     trace_endpoint.copy_name(pname);
     perf_start(pname);
     perf_report_start();
+
+    status_update_start();
 
     if (cache) {
       Mutex::Locker l(cache_lock);
@@ -478,6 +489,83 @@ struct C_InvalidateCache : public Context {
 
     cur_stat.sub(pre_stat);
     *rpdata = cur_stat;
+  }
+
+  void ImageCtx::status_update_start() {
+    if (read_only || !snap_name.empty()) {
+      return;
+    }
+
+    double interval = cct->_conf->get_val<double>("rbd_status_update_interval");
+    if (interval < 0) {
+      return;
+    }
+
+    m_status_update_timer = new SafeTimer(cct, m_status_update_timer_lock, true);
+    m_status_update_timer->init();
+
+    double delay = cct->_conf->get_val<double>("rbd_status_update_delay");
+    delay += random() % (int)(delay + 1);
+
+    Mutex::Locker timer_locker(m_status_update_timer_lock);
+    m_status_update_callback = new FunctionContext([this](int r){
+      this->status_update();
+    });
+    m_status_update_timer->add_event_after(delay, m_status_update_callback);
+  }
+
+  void ImageCtx::status_update_stop() {
+    Mutex::Locker locker(m_status_update_timer_lock);
+    if (m_status_update_callback) {
+      m_status_update_timer->cancel_event(m_status_update_callback);
+    }
+    m_status_update_callback = nullptr;
+  }
+
+  void ImageCtx::status_update() {
+    assert(m_status_update_timer_lock.is_locked_by_me());
+
+    m_status_update_started = true;
+
+    uint64_t used = 0;
+    {
+      RWLock::RLocker snap_locker(snap_lock);
+      RWLock::RLocker object_map_locker(object_map_lock);
+      if (object_map != nullptr) {
+        object_map->calculate_usage(&used, nullptr);
+      }
+    }
+
+    librados::ObjectWriteOperation op;
+    if (used != 0) {
+      cls_client::status_update_used(&op, id, used);
+    } else {
+      cls_client::status_update_state(&op, id,
+          static_cast<uint64_t>(cls::rbd::STATUS_IMAGE_STATE_MAPPED),
+          static_cast<uint64_t>(cls::rbd::STATUS_IMAGE_STATE_MASK));
+    }
+    using klass = ImageCtx;
+    librados::AioCompletion *comp =
+        util::create_rados_callback<klass, &klass::handle_status_update>(this);
+    int r = md_ctx.aio_operate(RBD_STATUS, comp, &op);
+    assert(r == 0);
+    comp->release();
+
+    double delay = cct->_conf->get_val<double>("rbd_status_update_delay");
+    double interval = cct->_conf->get_val<double>("rbd_status_update_interval");
+    interval += random() % (int)(delay + 1);
+
+    m_status_update_callback = new FunctionContext([this](int r){
+      this->status_update();
+    });
+    m_status_update_timer->add_event_after(interval, m_status_update_callback);
+  }
+
+  void ImageCtx::handle_status_update(int r) {
+    if (r < 0) {
+      lderr(cct) << "failed to update image_status: "
+          << cpp_strerror(r) << dendl;
+    }
   }
 
   void ImageCtx::set_read_flag(unsigned flag) {

@@ -98,6 +98,8 @@ public:
   void snapshot_add(uint64_t snap_id, Context *on_finish);
   void snapshot_remove(uint64_t snap_id, Context *on_finish);
 
+  int calculate_usage(uint64_t *used, uint64_t *dirty);
+
 private:
   struct UpdateOperation {
     uint64_t start_object_no;

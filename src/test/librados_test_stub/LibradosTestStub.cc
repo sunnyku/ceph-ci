@@ -1250,6 +1250,12 @@ int cls_cxx_map_remove_key(cls_method_context_t hctx, const string &key) {
   return ctx->io_ctx_impl->omap_rm_keys(ctx->oid, keys);
 }
 
+int cls_cxx_map_remove_keys(cls_method_context_t hctx, const std::set<std::string> *keys) {
+  librados::TestClassHandler::MethodContext *ctx =
+    reinterpret_cast<librados::TestClassHandler::MethodContext*>(hctx);
+  return ctx->io_ctx_impl->omap_rm_keys(ctx->oid, *keys);
+}
+
 int cls_cxx_map_set_val(cls_method_context_t hctx, const string &key,
                         bufferlist *inbl) {
   std::map<std::string, bufferlist> m;
@@ -1353,6 +1359,11 @@ int cls_log(int level, const char *format, ...) {
     size *= 2;
   }
   return 0;
+}
+
+CephContext *cls_cct()
+{
+  return nullptr;
 }
 
 int cls_register(const char *name, cls_handle_t *handle) {

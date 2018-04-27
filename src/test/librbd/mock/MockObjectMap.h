@@ -53,6 +53,8 @@ struct MockObjectMap {
 
   MOCK_CONST_METHOD1(object_may_exist, bool(uint64_t));
 
+  MOCK_METHOD2(calculate_usage, int(uint64_t *used, uint64_t *dirty));
+
 };
 
 } // namespace librbd

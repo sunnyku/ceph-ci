@@ -490,5 +490,121 @@ void TrashImageSpec::dump(Formatter *f) const {
   }
 }
 
+void StatusCloneId::encode(bufferlist &bl) const {
+  ENCODE_START(1, 1, bl);
+  ::encode(pool_id, bl);
+  ::encode(image_id, bl);
+  ENCODE_FINISH(bl);
+}
+
+void StatusCloneId::decode(bufferlist::iterator &it) {
+  DECODE_START(1, it);
+  ::decode(pool_id, it);
+  ::decode(image_id, it);
+  DECODE_FINISH(it);
+}
+
+void StatusParentId::encode(bufferlist &bl) const {
+  ENCODE_START(1, 1, bl);
+  ::encode(pool_id, bl);
+  ::encode(image_id, bl);
+  ::encode(snapshot_id, bl);
+  ENCODE_FINISH(bl);
+}
+
+void StatusParentId::decode(bufferlist::iterator &it) {
+  DECODE_START(1, it);
+  ::decode(pool_id, it);
+  ::decode(image_id, it);
+  ::decode(snapshot_id, it);
+  DECODE_FINISH(it);
+}
+
+void StatusSnapshot::encode(bufferlist &bl) const {
+  ENCODE_START(1, 1, bl);
+  ::encode(create_timestamp, bl);
+  ::encode(snapshot_namespace, bl);
+  ::encode(name, bl);
+  ::encode(image_id, bl);
+  ::encode(id, bl);
+  ::encode(size, bl);
+  ::encode(used, bl);
+  ::encode(dirty, bl);
+  ::encode(clone_ids, bl);
+  ENCODE_FINISH(bl);
+}
+
+void StatusSnapshot::decode(bufferlist::iterator &it) {
+  DECODE_START(1, it);
+  ::decode(create_timestamp, it);
+  ::decode(snapshot_namespace, it);
+  ::decode(name, it);
+  ::decode(image_id, it);
+  ::decode(id, it);
+  ::decode(size, it);
+  ::decode(used, it);
+  ::decode(dirty, it);
+  ::decode(clone_ids, it);
+  DECODE_FINISH(it);
+}
+
+void StatusImage::encode(bufferlist &bl) const {
+  ENCODE_START(1, 1, bl);
+  ::encode(state, bl);
+  ::encode(last_update, bl);
+  ::encode(create_timestamp, bl);
+  ::encode(parent, bl);
+  ::encode(data_pool_id, bl);
+  ::encode(name, bl);
+  ::encode(id, bl);
+  ::encode(order, bl);
+  ::encode(stripe_unit, bl);
+  ::encode(stripe_count, bl);
+  ::encode(size, bl);
+  ::encode(used, bl);
+  ::encode(qos_iops, bl);
+  ::encode(qos_bw, bl);
+  ::encode(snapshot_ids, bl);
+  ENCODE_FINISH(bl);
+}
+
+void StatusImage::decode(bufferlist::iterator &it) {
+  DECODE_START(1, it);
+  ::decode(state, it);
+  ::decode(last_update, it);
+  ::decode(create_timestamp, it);
+  ::decode(parent, it);
+  ::decode(data_pool_id, it);
+  ::decode(name, it);
+  ::decode(id, it);
+  ::decode(order, it);
+  ::decode(stripe_unit, it);
+  ::decode(stripe_count, it);
+  ::decode(size, it);
+  ::decode(used, it);
+  ::decode(qos_iops, it);
+  ::decode(qos_bw, it);
+  ::decode(snapshot_ids, it);
+  DECODE_FINISH(it);
+}
+
+void StatusUsage::encode(bufferlist &bl) const {
+  ENCODE_START(1, 1, bl);
+  ::encode(state, bl);
+  ::encode(id, bl);
+  ::encode(size, bl);
+  ::encode(used, bl);
+  ENCODE_FINISH(bl);
+}
+
+void StatusUsage::decode(bufferlist::iterator &it) {
+  DECODE_START(1, it);
+  ::decode(state, it);
+  ::decode(id, it);
+  ::decode(size, it);
+  ::decode(used, it);
+  DECODE_FINISH(it);
+}
+
 } // namespace rbd
 } // namespace cls

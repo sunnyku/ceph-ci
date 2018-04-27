@@ -34,6 +34,11 @@ set(rbd_srcs
   action/Resize.cc
   action/Snap.cc
   action/Status.cc
+  action/StatusGetImageUsage.cc
+  action/StatusGetVersion.cc
+  action/StatusListImages.cc
+  action/StatusListSnapshots.cc
+  action/StatusListUsages.cc
   action/Trash.cc
   action/Watch.cc)
 if(FREEBSD)

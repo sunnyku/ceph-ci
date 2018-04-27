@@ -5,9 +5,11 @@
 #define LIBRBD_API_IMAGE_H
 
 #include "librbd/Types.h"
+#include "include/rbd/librbd.hpp"
 #include <map>
 #include <set>
 #include <string>
+#include <vector>
 
 namespace librados { struct IoCtx; }
 
@@ -26,9 +28,22 @@ struct Image {
 
   static int list_images(librados::IoCtx& io_ctx,
                          ImageNameToIds *images);
-
   static int list_children(ImageCtxT *ictx, const ParentSpec &parent_spec,
                            PoolImageIds *pool_image_ids);
+
+  static int status_get_version(librados::IoCtx &io_ctx,
+        uint64_t *version);
+  static int status_list_images(librados::IoCtx &io_ctx,
+      const std::string &start, size_t max,
+      std::vector<status_image_t> *statuses);
+  static int status_list_snapshots(librados::IoCtx &io_ctx,
+      uint64_t start, size_t max,
+      std::vector<status_snapshot_t> *snapshots);
+  static int status_list_usages(librados::IoCtx &io_ctx,
+      const std::string &start, size_t max,
+      std::vector<status_usage_t> *usages);
+  static int status_get_usage(ImageCtxT *ictx,
+      status_usage_t *usage);
 
 };
 

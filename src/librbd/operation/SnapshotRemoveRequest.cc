@@ -57,7 +57,7 @@ SnapshotRemoveRequest<I>::SnapshotRemoveRequest(I &image_ctx,
 
 template <typename I>
 void SnapshotRemoveRequest<I>::send_op() {
-  send_remove_object_map();
+  send_status_remove_snapshot();
 }
 
 template <typename I>
@@ -74,6 +74,9 @@ bool SnapshotRemoveRequest<I>::should_complete(int r) {
   RWLock::RLocker owner_lock(image_ctx.owner_lock);
   bool finished = false;
   switch (m_state) {
+  case STATE_STATUS_REMOVE_SNAPSHOT:
+    send_remove_object_map();
+    break;
   case STATE_REMOVE_OBJECT_MAP:
     send_remove_child();
     break;
@@ -93,6 +96,26 @@ bool SnapshotRemoveRequest<I>::should_complete(int r) {
   }
 
   return finished;
+}
+
+template <typename I>
+void SnapshotRemoveRequest<I>::send_status_remove_snapshot() {
+  I &image_ctx = this->m_image_ctx;
+  assert(image_ctx.owner_lock.is_locked());
+
+  CephContext *cct = image_ctx.cct;
+  ldout(cct, 5) << this << " " << __func__ << ": "
+                << "snap_name=" << m_snap_name << ", "
+                << "snap_id=" << m_snap_id << dendl;
+  m_state = STATE_STATUS_REMOVE_SNAPSHOT;
+
+  librados::ObjectWriteOperation op;
+  cls_client::status_remove_snapshot(&op, image_ctx.id, m_snap_id);
+
+  librados::AioCompletion *rados_completion = this->create_callback_completion();
+  int r = image_ctx.md_ctx.aio_operate(RBD_STATUS, rados_completion, &op);
+  assert(r == 0);
+  rados_completion->release();
 }
 
 template <typename I>

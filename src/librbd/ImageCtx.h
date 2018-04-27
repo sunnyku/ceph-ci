@@ -216,6 +216,11 @@ namespace librbd {
 
     op_stat_t m_perfstat;
 
+    SafeTimer *m_status_update_timer = nullptr;
+    Mutex m_status_update_timer_lock;
+    Context *m_status_update_callback = nullptr;
+    bool m_status_update_started = false;
+
     static bool _filter_metadata_confs(const string &prefix, std::map<string, bool> &configs,
                                        const map<string, bufferlist> &pairs, map<string, bufferlist> *res);
 
@@ -246,6 +251,12 @@ namespace librbd {
     void perf_report_stop();
     void send_report();
     void get_report_data(op_stat_t *rpdata);
+
+    void status_update_start();
+    void status_update_stop();
+    void status_update();
+    void handle_status_update(int r);
+
     void set_read_flag(unsigned flag);
     int get_read_flags(librados::snap_t snap_id);
     int snap_set(cls::rbd::SnapshotNamespace in_snap_namespace,
