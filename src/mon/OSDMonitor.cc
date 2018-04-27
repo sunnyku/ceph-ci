@@ -3547,6 +3547,9 @@ int OSDMonitor::get_version(version_t ver, uint64_t features, bufferlist& bl)
 {
   uint64_t significant_features = OSDMap::get_significant_features(features);
   if (inc_osd_cache.lookup({ver, significant_features}, &bl)) {
+    dout(20) << __func__ << " have cached with sig feat " << significant_features << "\n";
+    bl.hexdump(*_dout);
+    *_dout << dendl;
     return 0;
   }
   int ret = PaxosService::get_version(ver, bl);
@@ -3561,7 +3564,10 @@ int OSDMonitor::get_version(version_t ver, uint64_t features, bufferlist& bl)
       OSDMap::get_significant_features(mon->get_quorum_con_features())) {
     reencode_incremental_map(bl, features);
   }
-  inc_osd_cache.add({ver, significant_features}, bl);
+  dout(20) << __func__ << " add cached with sig feat " << significant_features << "\n";
+  bl.hexdump(*_dout);
+  *_dout << dendl;
+ inc_osd_cache.add({ver, significant_features}, bl);
   return 0;
 }
 
