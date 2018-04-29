@@ -413,11 +413,6 @@ int MgrClient::start_command(const vector<string>& cmd, const bufferlist& inbl,
 
   ldout(cct, 20) << "cmd: " << cmd << dendl;
 
-  if (map.epoch == 0) {
-    ldout(cct,20) << " no MgrMap, assuming EACCES" << dendl;
-    return -EACCES;
-  }
-
   auto &op = command_table.start_command();
   op.cmd = cmd;
   op.inbl = inbl;
@@ -429,6 +424,8 @@ int MgrClient::start_command(const vector<string>& cmd, const bufferlist& inbl,
     // Leaving fsid argument null because it isn't used.
     MCommand *m = op.get_message({});
     session->con->send_message(m);
+  } else {
+    ldout(cct, 4) << "start_command: no mgr session, waiting" << dendl;
   }
   return 0;
 }
