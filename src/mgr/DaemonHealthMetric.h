@@ -66,7 +66,7 @@ public:
   }
 
   friend ostream& operator<<(ostream& out, const DaemonHealthMetric& m) {
-    return out << "metric(" << daemon_metric_name(m.get_type()) << " n="
+    return out << daemon_metric_name(m.get_type()) << "("
 	       << m.get_n() << "|(" << m.get_n1() << "," << m.get_n2() << "))";
   }
 private:
