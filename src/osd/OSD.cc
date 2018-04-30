@@ -7026,7 +7026,6 @@ vector<DaemonHealthMetric> OSD::get_health_metrics()
     if (op_tracker.visit_ops_in_flight(&oldest_secs, count_slow_ops)) {
       if (slow) {
 	derr << __func__ << " reporting " << slow << " slow ops, oldest is "
-	     << oldest_op->get_initiated() << " secs, "
 	     << oldest_op->get_desc() << dendl;
       }
       metrics.emplace_back(daemon_metric::SLOW_OPS, slow, oldest_secs);
