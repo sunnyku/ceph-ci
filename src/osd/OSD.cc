@@ -9743,7 +9743,8 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
       dout(20) << __func__ << " slot " << token << " no longer attached to "
 	       << pg << dendl;
       pg->unlock();
-      pg = slot->pg;
+      sdata->shard_lock.Unlock();
+      return;
     }
 
     if (slot->to_process.empty()) {
