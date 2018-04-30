@@ -1840,6 +1840,8 @@ void DaemonServer::send_report()
               << static_cast<uint8_t>(metric.get_type()) << dendl;
             continue;
           }
+	  dout(20) << " + " << daemon.second->key << " "
+		   << metric << dendl;
           tie(acc, std::ignore) = accumulated.emplace(metric.get_type(),
               std::move(collector));
         }
