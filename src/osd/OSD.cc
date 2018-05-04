@@ -3915,7 +3915,6 @@ void OSD::load_pgs()
       dout(10) << "load_pgs " << *it << " deleting dne" << dendl;
       pg->ch = nullptr;
       pg->unlock();
-      unregister_pg(pg.get());
       recursive_remove_collection(cct, store, pgid, *it);
       continue;
     }
@@ -9756,9 +9755,7 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
       // raced with _wake_pg_slot or consume_map
       dout(20) << __func__ << " " << token
 	       << " nothing queued" << dendl;
-      if (pg) {
-	pg->unlock();
-      }
+      pg->unlock();
       sdata->shard_lock.Unlock();
       return;
     }
@@ -9767,9 +9764,7 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
 	       << " requeue_seq " << slot->requeue_seq << " > our "
 	       << requeue_seq << ", we raced with _wake_pg_slot"
 	       << dendl;
-      if (pg) {
-	pg->unlock();
-      }
+      pg->unlock();
       sdata->shard_lock.Unlock();
       return;
     }
