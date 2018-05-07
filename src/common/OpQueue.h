@@ -58,7 +58,8 @@ class OpQueue {
     // Formatted output of the queue
     virtual void dump(ceph::Formatter *f) const = 0;
     // Update configuration of the queue
-    virtual void update_config(const std::string sitem, const std::string svalue, bool init = false) {};
+    virtual void update_config(const std::string sitem, const std::string svalue,
+                               bool init = false, bool effect_now = true) {};
     // Don't leak resources on destruction
     virtual ~OpQueue() {}; 
 };

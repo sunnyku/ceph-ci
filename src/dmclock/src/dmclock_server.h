@@ -81,10 +81,11 @@ namespace crimson {
       double weight_inv;
       double limit_inv;
       double bandwidth_inv;
+      bool effect_now = true;
 
       // order parameters -- min, "normal", max
-      ClientInfo(double _reservation, double _weight,
-                  double _limit, double _bandwidth = 0.0, uint32_t _version = 0) :
+      ClientInfo(double _reservation, double _weight, double _limit,
+                 double _bandwidth = 0.0, uint32_t _version = 0, bool _effect_now = true) :
 	reservation(_reservation),
 	weight(_weight),
 	limit(_limit),
@@ -93,7 +94,8 @@ namespace crimson {
 	reservation_inv(0.0 == reservation ? 0.0 : 1.0 / reservation),
 	weight_inv(     0.0 == weight      ? 0.0 : 1.0 / weight),
 	limit_inv(      0.0 == limit       ? 0.0 : 1.0 / limit),
-	bandwidth_inv(  0.0 == bandwidth   ? 0.0 : 1.0 / bandwidth)
+	bandwidth_inv(  0.0 == bandwidth   ? 0.0 : 1.0 / bandwidth),
+	effect_now(_effect_now)
       {
 	// empty
       }
@@ -104,7 +106,7 @@ namespace crimson {
 
       ClientInfo(const ClientInfo &other) :
         ClientInfo(other.reservation, other.weight, other.limit,
-                   other.bandwidth, other.version) {
+                   other.bandwidth, other.version, other.effect_now) {
       }
 
       bool valid() const {
@@ -900,10 +902,11 @@ namespace crimson {
 	  temp_client = &(*client_it->second); // address of obj of shared_ptr
           if (!temp_client->info.unchanged(client_info)) {
             temp_client->info = client_info; // for update qos from client
-
-            // avoid reqs io drop to zero caused by qos update online
-            RequestTag tag(0, 0, 0, 0, time);
-            temp_client->update_req_tag(tag, tick);
+            if (client_info.effect_now) {
+              // avoid reqs io drop to zero caused by qos update online
+              RequestTag tag(0, 0, 0, 0, time);
+              temp_client->update_req_tag(tag, tick);
+            }
           }
 	} else {
 	  ClientInfo info = client_info.valid() ?

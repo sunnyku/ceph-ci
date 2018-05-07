@@ -85,15 +85,15 @@ public:
 
     void load_global_dmc_qos_config() {
       md_config_t *conf = cct->_conf;
-      update_config("osd_dmc_queue_spec_clientop", conf->osd_dmc_queue_spec_clientop, true);
-      update_config("osd_dmc_queue_spec_subop", conf->osd_dmc_queue_spec_subop, true);
-      update_config("osd_dmc_queue_spec_pullpush", conf->osd_dmc_queue_spec_pullpush, true);
-      update_config("osd_dmc_queue_spec_snaptrim", conf->osd_dmc_queue_spec_snaptrim, true);
-      update_config("osd_dmc_queue_spec_recovery", conf->osd_dmc_queue_spec_recovery, true);
-      update_config("osd_dmc_queue_spec_scrub", conf->osd_dmc_queue_spec_scrub, true);
+      update_config("osd_dmc_queue_spec_clientop", conf->osd_dmc_queue_spec_clientop, true, true);
+      update_config("osd_dmc_queue_spec_subop", conf->osd_dmc_queue_spec_subop, true, true);
+      update_config("osd_dmc_queue_spec_pullpush", conf->osd_dmc_queue_spec_pullpush, true, true);
+      update_config("osd_dmc_queue_spec_snaptrim", conf->osd_dmc_queue_spec_snaptrim, true, true);
+      update_config("osd_dmc_queue_spec_recovery", conf->osd_dmc_queue_spec_recovery, true, true);
+      update_config("osd_dmc_queue_spec_scrub", conf->osd_dmc_queue_spec_scrub, true, true);
     }
 
-    void update_config(const std::string sitem, std::string svalue, bool init) override final {
+    void update_config(const std::string sitem, std::string svalue, bool init, bool effect_now) override final {
       crimson::dmclock::ClientInfo qos;
       if (!parse_qos_spec_config(svalue,
           qos.reservation, qos.weight, qos.limit, qos.bandwidth) || !qos.valid()) {
@@ -122,6 +122,7 @@ public:
       } else if (sitem == "osd_dmc_queue_spec_pullpush") {
         global_dmc_qos_map[osd_op_type_t::osd_subop_pullpush].assign_spec(qos);
         global_dmc_qos_map[osd_op_type_t::osd_subop_pullpush].version++;
+        global_dmc_qos_map[osd_op_type_t::osd_subop_pullpush].effect_now = effect_now;
       } else if (sitem == "osd_dmc_queue_spec_snaptrim") {
         global_dmc_qos_map[osd_op_type_t::bg_snaptrim].assign_spec(qos);
         global_dmc_qos_map[osd_op_type_t::bg_snaptrim].version++;
