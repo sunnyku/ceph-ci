@@ -208,6 +208,7 @@ namespace librbd {
     int client_qos_weight;
     int client_qos_limit;
     int client_qos_bandwidth;
+    bool qos_enabled = false;
 
     SafeTimer *m_report_timer = nullptr;
     Mutex *report_timer_lock = nullptr;
@@ -350,6 +351,7 @@ namespace librbd {
     int get_image_perf(int64_t *pio, int64_t *pio_r = nullptr,
                        int64_t *pio_w = nullptr, int64_t *pbdw = nullptr,
                        int64_t *pbdw_r = nullptr, int64_t *pbdw_w = nullptr);
+    void set_qos_enabled(bool enabled = true);
     int set_qos_quota(int res = 0, int wgt = 0, int lim = 0, int bdw = 0);
   };
 }
