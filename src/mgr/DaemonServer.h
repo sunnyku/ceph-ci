@@ -88,6 +88,7 @@ protected:
   utime_t last_sample;
   set<int> last_adjusted_osds;
   set<int> last_adjusted_primaries;
+  std::map<int, cache_stat_t> cache_map; // record cache info by osd-id
 
   static void _generate_command_map(map<string,cmd_vartype>& cmdmap,
                                     map<string,string> &param_str_map);
