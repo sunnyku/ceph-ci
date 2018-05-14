@@ -2579,6 +2579,77 @@ void PG::finish_split_stats(const object_stat_sum_t& stats, ObjectStore::Transac
   write_if_dirty(*t);
 }
 
+void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
+		    unsigned split_bits)
+{
+  dout(10) << __func__ << " from " << sources << " split_bits " << split_bits
+	   << dendl;
+  bool incomplete = false;
+  if (info.last_complete != info.last_update ||
+      info.is_incomplete()) {
+    dout(10) << __func__ << " target incomplete" << dendl;
+    incomplete = true;
+  }
+
+  PGLogEntryHandler handler{this, rctx->transaction};
+  pg_log.roll_forward(&handler);
+
+  info.last_complete = info.last_update;  // to fake out trim()
+  pg_log.trim(info.last_update, info);
+
+  vector<PGLog*> log_from;
+  for (auto& i : sources) {
+    auto& source = i.second;
+    if (!source) {
+      dout(10) << __func__ << " source " << i.first << " missing" << dendl;
+      incomplete = true;
+      continue;
+    }
+    if (source->info.last_complete != source->info.last_update ||
+	source->info.is_incomplete()) {
+      dout(10) << __func__ << " source " << source->pg_id << " incomplete"
+	       << dendl;
+      incomplete = true;
+    }
+
+    // prepare log
+    PGLogEntryHandler handler{source.get(), rctx->transaction};
+    source->pg_log.roll_forward(&handler);
+    source->info.last_complete = source->info.last_update;  // to fake out trim()
+    source->pg_log.trim(source->info.last_update, source->info);
+    log_from.push_back(&source->pg_log);
+
+    // wipe out source's pgmeta
+    rctx->transaction->remove(source->coll, source->pgmeta_oid);
+
+    // merge (and destroy source collection)
+    rctx->transaction->merge_collection(source->coll, coll, split_bits);
+
+    // combine stats
+    info.stats.add(source->info.stats);
+
+    // pull up last_update
+    info.last_update = std::max(info.last_update, source->info.last_update);
+  }
+
+  // merge_collection does this, but maybe all of our sources were missing.
+  rctx->transaction->collection_set_bits(coll, split_bits);
+
+  info.last_complete = info.last_update;
+  info.log_tail = info.last_update;
+  if (incomplete) {
+    info.last_backfill = hobject_t();
+  }
+
+  snap_mapper.update_bits(split_bits);
+
+  // merge logs
+  pg_log.merge_from(log_from, info.last_update);
+
+  dirty_info = true;
+  dirty_big_info = true;
+}
+
 void PG::add_backoff(SessionRef s, const hobject_t& begin, const hobject_t& end)
 {
   ConnectionRef con = s->con;
@@ -5831,6 +5902,8 @@ void PG::start_peering_interval(
 
   unreg_next_scrub();
 
+  osd->clear_ready_to_merge(this);
+
   pg_shard_t old_acting_primary = get_primary();
   pg_shard_t old_up_primary = up_primary;
   bool was_old_primary = is_primary();
@@ -5945,6 +6018,7 @@ void PG::start_peering_interval(
   // deactivate.
   state_clear(PG_STATE_ACTIVE);
   state_clear(PG_STATE_PEERED);
+  state_clear(PG_STATE_PREMERGE);
   state_clear(PG_STATE_DOWN);
   state_clear(PG_STATE_RECOVERY_WAIT);
   state_clear(PG_STATE_RECOVERY_TOOFULL);
@@ -6180,10 +6254,23 @@ bool PG::can_discard_op(OpRequestRef& op)
   }
 
   if (m->get_connection()->has_feature(CEPH_FEATURE_RESEND_ON_SPLIT)) {
-    if (m->get_map_epoch() < pool.info.get_last_force_op_resend()) {
-      dout(7) << __func__ << " sent before last_force_op_resend "
-	      << pool.info.last_force_op_resend << ", dropping" << *m << dendl;
-      return true;
+    // >= luminous client
+    if (m->get_connection()->has_feature(CEPH_FEATURE_SERVER_NAUTILUS)) {
+      // >= nautilus client
+      if (m->get_map_epoch() < pool.info.get_last_force_op_resend()) {
+	dout(7) << __func__ << " sent before last_force_op_resend "
+		<< pool.info.last_force_op_resend
+		<< ", dropping" << *m << dendl;
+	return true;
+      }
+    } else {
+      // == < nautilus client (luminous or mimic)
+      if (m->get_map_epoch() < pool.info.get_last_force_op_resend_prenautilus()) {
+	dout(7) << __func__ << " sent before last_force_op_resend_prenautilus "
+		<< pool.info.last_force_op_resend_prenautilus
+		<< ", dropping" << *m << dendl;
+	return true;
+      }
     }
     if (m->get_map_epoch() < info.history.last_epoch_split) {
       dout(7) << __func__ << " pg split in "
@@ -6191,6 +6278,7 @@ bool PG::can_discard_op(OpRequestRef& op)
       return true;
     }
   } else if (m->get_connection()->has_feature(CEPH_FEATURE_OSD_POOLRESEND)) {
+    // < luminous client
     if (m->get_map_epoch() < pool.info.get_last_force_op_resend_preluminous()) {
       dout(7) << __func__ << " sent before last_force_op_resend_preluminous "
 	      << pool.info.last_force_op_resend_preluminous
@@ -7781,6 +7869,7 @@ PG::RecoveryState::Clean::Clean(my_context ctx)
     pg->mark_clean();
   }
   pg->state_clear(PG_STATE_FORCED_RECOVERY | PG_STATE_FORCED_BACKFILL);
+
   pg->share_pg_info();
   pg->publish_stats_to_osd();
   pg->requeue_ops(pg->waiting_for_clean_to_primary_repair);
@@ -8178,10 +8267,26 @@ boost::statechart::result PG::RecoveryState::Active::react(const AllReplicasActi
 
   pg->state_clear(PG_STATE_ACTIVATING);
   pg->state_clear(PG_STATE_CREATING);
-  if (pg->acting.size() >= pg->pool.info.min_size) {
-    pg->state_set(PG_STATE_ACTIVE);
-  } else {
+  pg->state_clear(PG_STATE_PREMERGE);
+
+  if (pg->acting.size() < pg->pool.info.min_size) {
     pg->state_set(PG_STATE_PEERED);
+  } else if (pg->pool.info.is_pending_merge(pg->info.pgid.pgid, nullptr)) {
+    pg->state_set(PG_STATE_PEERED);
+    pg->state_set(PG_STATE_PREMERGE);
+  } else {
+    pg->state_set(PG_STATE_ACTIVE);
+  }
+
+  bool target;
+  if (pg->pool.info.is_pending_merge(pg->info.pgid.pgid, &target)) {
+    if (target) {
+      ldout(pg->cct, 10) << "ready to merge (target)" << dendl;
+      pg->osd->set_ready_to_merge_target(pg);
+    } else {
+      ldout(pg->cct, 10) << "ready to merge (source)" << dendl;
+      pg->osd->set_ready_to_merge_source(pg);
+    }
   }
 
   // info.last_epoch_started is set during activate()
