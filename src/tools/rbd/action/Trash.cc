@@ -20,6 +20,7 @@
 #include "common/Formatter.h"
 #include "common/TextTable.h"
 #include "common/Clock.h"
+#include "cls/rbd/cls_rbd_client.h"
 #include <iostream>
 #include <sstream>
 #include <boost/program_options.hpp>
@@ -143,14 +144,16 @@ int execute_remove(const po::variables_map &vm) {
   return r;
 }
 
-std::string delete_status(time_t deferment_end_time) {
+std::string delete_status(time_t deferment_end_time, std::string state) {
   time_t now = ceph_clock_gettime();
 
   std::string time_str = ctime(&deferment_end_time);
   time_str = time_str.substr(0, time_str.length() - 1);
 
   std::stringstream ss;
-  if (now < deferment_end_time) {
+  if (state == "DELETING") {
+    ss << "DELETING";
+  } else if (now < deferment_end_time) {
     ss << "protected until " << time_str;
   }
 
@@ -232,6 +235,22 @@ int do_list(librbd::RBD &rbd, librados::IoCtx& io_ctx, bool long_flag,
         break;
     }
 
+    cls::rbd::TrashImageSpec trash_spec;
+    r = librbd::cls_client::trash_get(&io_ctx, entry.id, &trash_spec);
+    if (r < 0) {
+    std::cerr << "failed to get trash image spec: " << cpp_strerror(r)
+              << std::endl;
+    return r;
+    }
+    std::string del_state;
+    switch (trash_spec.state) {
+      case cls::rbd::TRASH_IMAGE_STATE_NORMAL:
+        del_state = "NORMAL";
+        break;
+      case cls::rbd::TRASH_IMAGE_STATE_DELETING:
+        del_state = "DELETING";
+        break;
+    }
     std::string time_str = ctime(&entry.deletion_time);
     time_str = time_str.substr(0, time_str.length() - 1);
 
@@ -254,7 +273,7 @@ int do_list(librbd::RBD &rbd, librados::IoCtx& io_ctx, bool long_flag,
       f->dump_string("source", del_source);
       f->dump_string("deleted_at", time_str);
       f->dump_string("status",
-                     delete_status(entry.deferment_end_time));
+                     delete_status(entry.deferment_end_time, del_state));
       if (has_parent) {
         f->open_object_section("parent");
         f->dump_string("pool", pool);
@@ -268,7 +287,7 @@ int do_list(librbd::RBD &rbd, librados::IoCtx& io_ctx, bool long_flag,
           << entry.name
           << del_source
           << time_str
-          << delete_status(entry.deferment_end_time);
+          << delete_status(entry.deferment_end_time, del_state);
       if (has_parent)
         tbl << parent;
       tbl << TextTable::endrow;
