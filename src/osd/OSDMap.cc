@@ -2383,6 +2383,9 @@ bool OSDMap::primary_changed(
 uint64_t OSDMap::get_encoding_features() const
 {
   uint64_t f = SIGNIFICANT_FEATURES;
+  if (require_osd_release < CEPH_RELEASE_NAUTILUS) {
+    f &= ~CEPH_FEATURE_SERVER_NAUTILUS;
+  }
   if (require_osd_release < CEPH_RELEASE_MIMIC) {
     f &= ~CEPH_FEATURE_SERVER_MIMIC;
   }
@@ -3692,6 +3695,8 @@ int OSDMap::build_simple_optioned(CephContext *cct, epoch_t e, uuid_d &fsid,
       pools[pool].object_hash = CEPH_STR_HASH_RJENKINS;
       pools[pool].set_pg_num(poolbase << pg_bits);
       pools[pool].set_pgp_num(poolbase << pgp_bits);
+      pools[pool].set_pg_num_target(poolbase << pg_bits);
+      pools[pool].set_pgp_num_target(poolbase << pgp_bits);
       pools[pool].last_change = epoch;
       pools[pool].application_metadata.insert(
         {pg_pool_t::APPLICATION_NAME_RBD, {}});

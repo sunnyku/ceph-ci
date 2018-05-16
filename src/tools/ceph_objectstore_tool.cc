@@ -1443,18 +1443,18 @@ int get_pg_metadata(ObjectStore *store, bufferlist &bl, metadata_section &ms,
     }
   }
 
-  if (debug) {
+  if (true || debug) {
     cerr << "Import pgid " << ms.info.pgid << std::endl;
     cerr << "Previous past_intervals " << ms.past_intervals << std::endl;
     cerr << "history.same_interval_since " << ms.info.history.same_interval_since << std::endl;
   }
 
-  if (debug)
+  if (true || debug)
     cerr << "Changing pg epoch " << ms.map_epoch << " to " << sb.current_epoch << std::endl;
 
   // advance map and fill in PastIntervals
   if (ms.map_epoch < sb.current_epoch) {
-    if (debug)
+    if (true || debug)
       cerr << "Advancing PG from " << ms.map_epoch << " to " << sb.current_epoch
 	   << std::endl;
 
@@ -1544,7 +1544,7 @@ int get_pg_metadata(ObjectStore *store, bufferlist &bl, metadata_section &ms,
       }
       lastmap = nextmap;
     }
-    if (debug)
+    if (true || debug)
       cerr << "new PastIntervals " << ms.past_intervals << std::endl;
   }
 
