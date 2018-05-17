@@ -364,7 +364,6 @@ public:
   /// compact the underlying store
   virtual void compact() {}
 
-
   /// compact the underlying store in async mode
   virtual void compact_async() {}
 

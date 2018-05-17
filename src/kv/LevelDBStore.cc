@@ -395,9 +395,7 @@ void LevelDBStore::compact_thread_entry()
       compact_queue_lock.Unlock();
       logger->inc(l_leveldb_compact_range);
       if (range.first.empty() && range.second.empty()) {
-        dout(0) << "Begin to compact leveldb store all..." << dendl;
         compact();
-        dout(0) << "Finished to compact leveldb store all..." << dendl;
       } else {
         compact_range(range.first, range.second);
       }
