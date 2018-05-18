@@ -8452,8 +8452,11 @@ void BlueStore::_txc_state_proc(TransContext *txc)
       return;
     case TransContext::STATE_KV_SUBMITTED:
       txc->log_state_latency(logger, l_bluestore_state_kv_committing_lat);
-      txc->state = TransContext::STATE_KV_DONE;
-      _txc_committed_kv(txc);
+      {
+	std::lock_guard<std::mutex> l(txc->osr->qlock);
+	txc->state = TransContext::STATE_KV_DONE;
+	_txc_committed_kv(txc);
+      }
       // ** fall-thru **
 
     case TransContext::STATE_KV_DONE:
