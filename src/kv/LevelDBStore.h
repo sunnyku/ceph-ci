@@ -98,7 +98,6 @@ public:
   /// compact the underlying leveldb store
   void compact() override;
 
-  /// compact the underlying leveldb store all
   void compact_async() override {
     compact_range_async(string(), string());
   }

@@ -120,7 +120,6 @@ public:
   bool enable_rmrange;
   void compact() override;
 
-  /// compact the underlying rocksdb store all
   void compact_async() override {
     compact_range_async(string(), string());
   }
