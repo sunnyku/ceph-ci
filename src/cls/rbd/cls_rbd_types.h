@@ -413,6 +413,17 @@ struct StatusCloneId {
       return false;
   }
 
+  friend bool operator==(const StatusCloneId &lhs, const StatusCloneId &rhs)
+  {
+      if (lhs.pool_id != rhs.pool_id) {
+        return false;
+      }
+      if (lhs.image_id != rhs.image_id) {
+        return false;
+      }
+      return true;
+  }
+
   void encode(bufferlist &bl) const;
   void decode(bufferlist::iterator &it);
 };
@@ -438,6 +449,24 @@ struct StatusSnapshot {
   uint64_t used = 0;
   uint64_t dirty = 0;
   std::set<StatusCloneId> clone_ids;
+
+  StatusSnapshot& operator=(StatusSnapshot &rhs) {
+    if (this == &rhs) {
+      return *this;
+    }
+
+    create_timestamp = rhs.create_timestamp;
+    snapshot_namespace = rhs.snapshot_namespace;
+    name = rhs.name;
+    image_id = rhs.image_id;
+    id = rhs.id;
+    size = rhs.size;
+    used = rhs.used;
+    dirty = rhs.dirty;
+    clone_ids = std::move(rhs.clone_ids);
+
+    return *this;
+  }
 
   void encode(bufferlist &bl) const;
   void decode(bufferlist::iterator &it);

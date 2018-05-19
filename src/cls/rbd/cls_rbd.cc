@@ -5169,17 +5169,17 @@ int trash_get(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
 #define STATUS_IMAGE_KEY_PREFIX         "zimage_"
 #define STATUS_SNAPSHOT_KEY_PREFIX      "zsnapshot_"
 
-static const std::string status_key_for_image(const std::string &id)
+static std::string status_key_for_image(const std::string &id)
 {
   return STATUS_IMAGE_KEY_PREFIX + id;
 }
 
-static const std::string status_key_for_snapshot(uint64_t id)
+static std::string status_key_for_snapshot(uint64_t id)
 {
-  char key[sizeof(STATUS_SNAPSHOT_KEY_PREFIX) + 16];
-  snprintf(key, sizeof(STATUS_SNAPSHOT_KEY_PREFIX) + 16,
-      STATUS_SNAPSHOT_KEY_PREFIX "%016lx", id);
-  return key;
+  ostringstream oss;
+  oss << STATUS_SNAPSHOT_KEY_PREFIX
+      << std::setw(16) << std::setfill('0') << std::hex << id;
+  return oss.str();
 }
 
 int status_get_version(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
