@@ -1598,6 +1598,7 @@ void DaemonServer::send_report()
   py_modules.get_health_checks(&m->health_checks);
 
   cluster_state.with_pgmap([&](const PGMap& pg_map) {
+      cluster_state.try_mark_pg_stale();
       cluster_state.update_delta_stats();
 
       if (pending_service_map.epoch) {
