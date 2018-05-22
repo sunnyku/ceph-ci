@@ -60,6 +60,7 @@ public:
 
   void try_mark_pg_stale();
   void update_delta_stats();
+  void dump(Formatter *f);
 
   const bufferlist &get_health() const {return health_json;}
   const bufferlist &get_mon_status() const {return mon_status_json;}
