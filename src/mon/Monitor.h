@@ -107,7 +107,7 @@ class MMonProbe;
 struct MMonSubscribe;
 struct MRoute;
 struct MForward;
-struct MTimeCheck;
+struct MTimeCheck2;
 struct MMonHealth;
 
 #define COMPAT_SET_LOC "feature_set"
@@ -485,9 +485,9 @@ private:
    *  - Once all the quorum members have pong'ed, the leader will share the
    *    clock skew and latency maps with all the monitors in the quorum.
    */
-  map<entity_inst_t, utime_t> timecheck_waiting;
-  map<entity_inst_t, double> timecheck_skews;
-  map<entity_inst_t, double> timecheck_latencies;
+  map<int, utime_t> timecheck_waiting;
+  map<int, double> timecheck_skews;
+  map<int, double> timecheck_latencies;
   // odd value means we are mid-round; even value means the round has
   // finished.
   version_t timecheck_round;
@@ -812,6 +812,8 @@ public:
   void send_command(const entity_inst_t& inst,
 		    const vector<string>& com);
 
+  void send_mon_message(Message *m, int rank);
+
 public:
   struct C_Command : public C_MonOp {
     Monitor *mon;
@@ -988,6 +990,7 @@ public:
 #define CEPH_MON_FEATURE_INCOMPAT_KRAKEN CompatSet::Feature(8, "support monmap features")
 #define CEPH_MON_FEATURE_INCOMPAT_LUMINOUS CompatSet::Feature(9, "luminous ondisk layout")
 #define CEPH_MON_FEATURE_INCOMPAT_MIMIC CompatSet::Feature(10, "mimic ondisk layout")
+#define CEPH_MON_FEATURE_INCOMPAT_NAUTILUS CompatSet::Feature(11, "nautilus ondisk layout")
 // make sure you add your feature to Monitor::get_supported_features
 
 
