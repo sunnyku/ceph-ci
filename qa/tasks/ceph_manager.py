@@ -1564,7 +1564,7 @@ class CephManager:
             args = cmd_erasure_code_profile(profile_name, profile)
             self.raw_cluster_cmd(*args)
 
-    def create_pool_with_unique_name(self, pg_num=16,
+    def create_pool_with_unique_name(self, pg_num=1,
                                      erasure_code_profile_name=None,
                                      min_size=None,
                                      erasure_code_use_overwrites=False):
