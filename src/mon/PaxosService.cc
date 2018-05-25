@@ -369,6 +369,8 @@ void PaxosService::shutdown()
 
 void PaxosService::maybe_trim()
 {
+  dout(10) << __func__
+	   << " is_writeable=" << is_writeable() << dendl;
   if (!is_writeable())
     return;
 

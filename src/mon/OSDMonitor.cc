@@ -1532,11 +1532,12 @@ version_t OSDMonitor::get_trim_to() const
 
   {
     epoch_t floor = get_min_last_epoch_clean();
-    dout(10) << " min_last_epoch_clean " << floor << dendl;
+    dout(10) << __func__ << " min_last_epoch_clean " << floor << dendl;
     if (g_conf->mon_osd_force_trim_to > 0 &&
 	g_conf->mon_osd_force_trim_to < (int)get_last_committed()) {
       floor = g_conf->mon_osd_force_trim_to;
-      dout(10) << " explicit mon_osd_force_trim_to = " << floor << dendl;
+      dout(10) << __func__ << " explicit mon_osd_force_trim_to = "
+	       << floor << dendl;
     }
     unsigned min = g_conf->mon_min_osdmap_epochs;
     if (floor + min > get_last_committed()) {
@@ -3995,6 +3996,10 @@ epoch_t OSDMonitor::send_pg_creates(int osd, Connection *con, epoch_t next) cons
 
 void OSDMonitor::tick()
 {
+  dout(10) << __func__
+	   << " DEBUG is_active=" << is_active()
+	   << " is_leader=" << mon->is_leader() << dendl;
+
   if (!is_active()) return;
 
   dout(10) << osdmap << dendl;
@@ -4129,8 +4134,10 @@ void OSDMonitor::tick()
     do_propose = true;
 
   if (do_propose ||
-      !pending_inc.new_pg_temp.empty())  // also propose if we adjusted pg_temp
+      !pending_inc.new_pg_temp.empty()) { // also propose if we adjusted pg_temp
+    dout(10) << __func__ << " DEBUG propose" << dendl;
     propose_pending();
+  }
 }
 
 bool OSDMonitor::handle_osd_timeouts(const utime_t &now,
