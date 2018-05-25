@@ -7735,6 +7735,7 @@ PG::RecoveryState::Recovered::Recovered(my_context ctx)
 
   PG *pg = context< RecoveryMachine >().pg;
 
+  assert(!pg->osd->is_recovery_active());
   assert(!pg->needs_recovery());
 
   // if we finished backfill, all acting are active; recheck if

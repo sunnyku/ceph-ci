@@ -1589,7 +1589,7 @@ class CephManager:
         yield
         self.remove_pool(pool_name)
 
-    def create_pool(self, pool_name, pg_num=16,
+    def create_pool(self, pool_name, pg_num=1,
                     erasure_code_profile_name=None,
                     min_size=None,
                     erasure_code_use_overwrites=False):
