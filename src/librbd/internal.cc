@@ -1550,6 +1550,13 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
       return -EPERM;
     }
 
+    r = cls_client::trash_update_state(&io_ctx, image_id,
+                                       cls::rbd::TRASH_IMAGE_STATE_DELETING);
+    if (r < 0) {
+      lderr(cct) << "error updating trash image state" << dendl;
+      return r;
+    }
+
     r = remove(io_ctx, "", image_id, prog_ctx, false, true);
     if (r < 0) {
       lderr(cct) << "error removing image " << image_id
@@ -1579,6 +1586,11 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
       return r;
     }
 
+    if (trash_spec.state == cls::rbd::TRASH_IMAGE_STATE_DELETING) {
+      lderr(cct) << "error restoring image id " << image_id
+                 << ", image is deleting" << dendl;
+      return -EBUSY;
+    }
     std::string image_name = image_new_name;
     if (image_name.empty()) {
       // if user didn't specify a new name, let's try using the old name

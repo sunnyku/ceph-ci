@@ -454,6 +454,7 @@ void TrashImageSpec::encode(bufferlist& bl) const {
   ::encode(name, bl);
   ::encode(deletion_time, bl);
   ::encode(deferment_end_time, bl);
+  ::encode(state, bl);
   ENCODE_FINISH(bl);
 }
 
@@ -463,6 +464,9 @@ void TrashImageSpec::decode(bufferlist::iterator &it) {
   ::decode(name, it);
   ::decode(deletion_time, it);
   ::decode(deferment_end_time, it);
+  if (!it.end()) {
+    ::decode(state, it);
+  }
   DECODE_FINISH(it);
 }
 
@@ -477,6 +481,13 @@ void TrashImageSpec::dump(Formatter *f) const {
   f->dump_string("name", name);
   f->dump_unsigned("deletion_time", deletion_time);
   f->dump_unsigned("deferment_end_time", deferment_end_time);
+  switch(state) {
+    case TRASH_IMAGE_STATE_NORMAL:
+      f->dump_string("state", "normal");
+      break;
+    case TRASH_IMAGE_STATE_DELETING:
+      f->dump_string("state", "deleting");
+  }
 }
 
 } // namespace rbd

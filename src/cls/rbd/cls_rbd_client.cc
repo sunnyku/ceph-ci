@@ -2046,6 +2046,25 @@ namespace librbd {
       return ioctx->operate(RBD_TRASH, &op);
     }
 
+    void trash_update_state(librados::ObjectWriteOperation *op,
+                            const std::string &id,
+                            const cls::rbd::TrashImageState &trash_state)
+    {
+      bufferlist bl;
+      ::encode(id, bl);
+      ::encode(trash_state, bl);
+      op->exec("rbd", "trash_update_state", bl);
+    }
+
+    int trash_update_state(librados::IoCtx *ioctx, const std::string &id,
+                           const cls::rbd::TrashImageState &trash_state)
+    {
+      librados::ObjectWriteOperation op;
+      trash_update_state(&op, id, trash_state);
+
+      return ioctx->operate(RBD_TRASH, &op);
+    }
+
     void trash_list_start(librados::ObjectReadOperation *op,
                           const std::string &start, uint64_t max_return)
     {

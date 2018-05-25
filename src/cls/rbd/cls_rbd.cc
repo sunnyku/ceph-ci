@@ -5032,6 +5032,41 @@ int trash_remove(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
   return 0;
 }
 
+int trash_update_state(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
+{
+  string id;
+  cls::rbd::TrashImageState trash_state;
+  try {
+    bufferlist::iterator iter = in->begin();
+    ::decode(id, iter);
+    ::decode(trash_state, iter);
+  } catch (const buffer::error &err) {
+    return -EINVAL;
+  }
+
+  CLS_LOG(20, "trash_update_state id=%s", id.c_str());
+
+  string key = trash::image_key(id);
+  cls::rbd::TrashImageSpec trash_spec;
+  int r = read_key(hctx, key, &trash_spec);
+  if (r < 0 && r != -ENOENT) {
+    CLS_ERR("Could not read trash image spec off disk: %s",
+            cpp_strerror(r).c_str());
+    return r;
+  }
+
+  map<string, bufferlist> omap_vals;
+  trash_spec.state = trash_state;
+  ::encode(trash_spec, omap_vals[key]);
+  r = cls_cxx_map_set_vals(hctx, &omap_vals);
+  if (r < 0) {
+    CLS_ERR("error updating trash image state: %s", cpp_strerror(r).c_str());
+    return r;
+  }
+
+  return 0;
+}
+
 /**
  * Returns the list of trash spec entries registered in the rbd_trash
  * object.
@@ -5225,6 +5260,7 @@ CLS_INIT(rbd)
   cls_method_handle_t h_trash_remove;
   cls_method_handle_t h_trash_list;
   cls_method_handle_t h_trash_get;
+  cls_method_handle_t h_trash_update_state;
 
   cls_register("rbd", &h_class);
   cls_register_cxx_method(h_class, "create",
@@ -5507,6 +5543,9 @@ CLS_INIT(rbd)
   cls_register_cxx_method(h_class, "trash_get",
                           CLS_METHOD_RD,
                           trash_get, &h_trash_get);
+  cls_register_cxx_method(h_class, "trash_update_state",
+                          CLS_METHOD_RD | CLS_METHOD_WR,
+                          trash_update_state, &h_trash_update_state);
 
   return;
 }
