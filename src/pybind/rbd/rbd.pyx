@@ -222,8 +222,12 @@ cdef extern from "rbd/librbd.h" nogil:
 
     int rbd_open(rados_ioctx_t io, const char *name,
                  rbd_image_t *image, const char *snap_name)
+    int rbd_open_by_id(rados_ioctx_t io, const char *image_id,
+                       rbd_image_t *image, const char *snap_name)
     int rbd_open_read_only(rados_ioctx_t io, const char *name,
                            rbd_image_t *image, const char *snap_name)
+    int rbd_open_by_id_read_only(rados_ioctx_t io, const char *image_id,
+                                 rbd_image_t *image, const char *snap_name)
     int rbd_close(rbd_image_t image)
     int rbd_resize(rbd_image_t image, uint64_t size)
     int rbd_stat(rbd_image_t image, rbd_image_info_t *info, size_t infosize)
@@ -236,6 +240,7 @@ cdef extern from "rbd/librbd.h" nogil:
     int rbd_get_stripe_count(rbd_image_t image, uint64_t *stripe_count)
     int rbd_get_create_timestamp(rbd_image_t image, timespec *timestamp)
     int rbd_get_overlap(rbd_image_t image, uint64_t *overlap)
+    int rbd_get_name(rbd_image_t image, char *name, size_t *name_len)
     int rbd_get_id(rbd_image_t image, char *id, size_t id_len)
     int rbd_get_block_name_prefix(rbd_image_t image, char *prefix,
                                   size_t prefix_len)
@@ -1369,9 +1374,12 @@ cdef class Image(object):
     cdef object ioctx
     cdef rados_ioctx_t _ioctx
 
-    def __init__(self, ioctx, name, snapshot=None, read_only=False):
+    def __init__(self, ioctx, name=None, snapshot=None,
+                 read_only=False, image_id=None):
         """
         Open the image at the given snapshot.
+        Specify either name or id, otherwise :class:`InvalidArgument` is raised.
+
         If a snapshot is specified, the image will be read-only, unless
         :func:`Image.set_snap` is called later.
 
@@ -1391,26 +1399,45 @@ cdef class Image(object):
         :type snaphshot: str
         :param read_only: whether to open the image in read-only mode
         :type read_only: bool
+        :param image_id: the id of the image
+        :type image_id: str
         """
-        name = cstr(name, 'name')
+        name = cstr(name, 'name', opt=True)
+        image_id = cstr(image_id, 'image_id', opt=True)
         snapshot = cstr(snapshot, 'snapshot', opt=True)
         self.closed = True
-        self.name = name
+        if name is not None and image_id is not None:
+            raise InvalidArgument("only need to specify image name or image id")
+        elif name is None and image_id is None:
+            raise InvalidArgument("image name or image id was not specified")
+        elif name is not None:
+            self.name = name
+        else:
+            self.name = image_id
         # Keep around a reference to the ioctx, so it won't get deleted
         self.ioctx = ioctx
         cdef:
             rados_ioctx_t _ioctx = convert_ioctx(ioctx)
-            char *_name = name
+            char *_name = opt_str(name)
+            char *_image_id = opt_str(image_id)
             char *_snapshot = opt_str(snapshot)
         if read_only:
             with nogil:
-                ret = rbd_open_read_only(_ioctx, _name, &self.image, _snapshot)
+                if name is not None:
+                    ret = rbd_open_read_only(_ioctx, _name, &self.image, _snapshot)
+                else:
+                    ret = rbd_open_by_id_read_only(_ioctx, _image_id, &self.image, _snapshot)
         else:
             with nogil:
-                ret = rbd_open(_ioctx, _name, &self.image, _snapshot)
+                if name is not None:
+                    ret = rbd_open(_ioctx, _name, &self.image, _snapshot)
+                else:
+                    ret = rbd_open_by_id(_ioctx, _image_id, &self.image, _snapshot)
         if ret != 0:
-            raise make_ex(ret, 'error opening image %s at snapshot %s' % (name, snapshot))
+            raise make_ex(ret, 'error opening image %s at snapshot %s' % (self.name, snapshot))
         self.closed = False
+        if name is None:
+            self.name = self.get_name()
 
     def __enter__(self):
         return self
@@ -1520,6 +1547,28 @@ cdef class Image(object):
             'parent_pool'       : info.parent_pool,
             'parent_name'       : info.parent_name
             }
+
+    def get_name(self):
+        """
+        Get the RBD image name
+
+        :returns: str - image name
+        """
+        cdef:
+            int ret = -errno.ERANGE
+            size_t size = 64
+            char *image_name = NULL
+        try:
+            while ret == -errno.ERANGE:
+                image_name =  <char *>realloc_chk(image_name, size)
+                with nogil:
+                    ret = rbd_get_name(self.image, image_name, &size)
+
+            if ret != 0:
+                raise make_ex(ret, 'error getting name for image %s' % (self.name,))
+            return decode_cstr(image_name)
+        finally:
+            free(image_name)
 
     def id(self):
         """
