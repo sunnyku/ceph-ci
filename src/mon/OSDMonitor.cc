@@ -1510,6 +1510,8 @@ void OSDMonitor::share_map_with_random_osd()
 
 version_t OSDMonitor::get_trim_to() const
 {
+  dout(10) << __func__ << dendl;
+
   if (mon->get_quorum().empty()) {
     dout(10) << __func__ << ": quorum not formed" << dendl;
     return 0;
@@ -1518,6 +1520,13 @@ version_t OSDMonitor::get_trim_to() const
   {
     std::lock_guard<std::mutex> l(creating_pgs_lock);
     if (!creating_pgs.pgs.empty()) {
+      dout(10) << __func__ << " creating_pgs not empty; "
+	       << creating_pgs.pgs.size() << " on list:" << dendl;
+      dout(10) << __func__ << " creating_pgs = ";
+      boost::scoped_ptr<Formatter> f(Formatter::create("json-pretty"));
+      creating_pgs.dump(f.get());
+      f->flush(*_dout);
+      *_dout << dendl;
       return 0;
     }
   }
