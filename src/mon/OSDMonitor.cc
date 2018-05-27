@@ -559,6 +559,7 @@ void OSDMonitor::on_active()
       op->mark_osdmon_event(__func__);
       dispatch(op);
       ls.pop_front();
+      // no need to mon->no_reply since this is a new quorum
     }
   }
   start_mapping();
@@ -2561,6 +2562,7 @@ void OSDMonitor::process_failures()
           o->mark_event(__func__);
           MOSDFailure *m = o->get_req<MOSDFailure>();
           send_latest(o, m->get_epoch());
+	  mon->no_reply(o);
         }
 	ls.pop_front();
       }
