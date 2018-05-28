@@ -87,7 +87,6 @@ protected:
 
   std::map<string, imageperf_t> imgsmap;
   SafeTimer timer;
-  utime_t last_sample;
   set<int> last_adjusted_osds;
   set<int> last_adjusted_primaries;
   std::map<int, cache_stat_t> cache_map; // record cache info by osd-id

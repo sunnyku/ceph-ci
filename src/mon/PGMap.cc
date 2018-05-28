@@ -409,27 +409,29 @@ void PGMapDigest::recovery_rate_summary(Formatter *f, ostream *out,
   // make non-negative; we can get negative values if osds send
   // uncommitted stats and then "go backward" or if they are just
   // buggy/wrong.
+  double duration = (double)delta_stamp;
   pool_stat_t pos_delta = delta_sum;
   pos_delta.floor(0);
-  if (pos_delta.stats.sum.num_objects_recovered ||
-      pos_delta.stats.sum.num_bytes_recovered ||
-      pos_delta.stats.sum.num_keys_recovered) {
-    int64_t objps = pos_delta.stats.sum.num_objects_recovered / (double)delta_stamp;
-    int64_t bps = pos_delta.stats.sum.num_bytes_recovered / (double)delta_stamp;
-    int64_t kps = pos_delta.stats.sum.num_keys_recovered / (double)delta_stamp;
-    if (f) {
-      f->dump_int("recovering_objects_per_sec", objps);
-      f->dump_int("recovering_bytes_per_sec", bps);
-      f->dump_int("recovering_keys_per_sec", kps);
-      f->dump_int("num_objects_recovered", pos_delta.stats.sum.num_objects_recovered);
-      f->dump_int("num_bytes_recovered", pos_delta.stats.sum.num_bytes_recovered);
-      f->dump_int("num_keys_recovered", pos_delta.stats.sum.num_keys_recovered);
-    } else {
+  int64_t ops = duration > 0 ?
+                pos_delta.stats.sum.num_objects_recovered / duration : 0;
+  int64_t bps = duration > 0 ?
+                pos_delta.stats.sum.num_bytes_recovered / duration : 0;
+  int64_t kps = duration > 0 ?
+                pos_delta.stats.sum.num_keys_recovered / duration : 0;
+  if (f) {
+    f->dump_int("recovering_objects_per_sec", ops);
+    f->dump_int("recovering_bytes_per_sec", bps);
+    f->dump_int("recovering_keys_per_sec", kps);
+    f->dump_int("num_objects_recovered", pos_delta.stats.sum.num_objects_recovered);
+    f->dump_int("num_bytes_recovered", pos_delta.stats.sum.num_bytes_recovered);
+    f->dump_int("num_keys_recovered", pos_delta.stats.sum.num_keys_recovered);
+  } else {
+    if (bps)
       *out << pretty_si_t(bps) << "B/s";
-      if (pos_delta.stats.sum.num_keys_recovered)
-	*out << ", " << pretty_si_t(kps) << "keys/s";
-      *out << ", " << pretty_si_t(objps) << "objects/s";
-    }
+    if (kps)
+      *out << ", " << pretty_si_t(kps) << "keys/s";
+    if (ops)
+      *out << ", " << pretty_si_t(ops) << "objects/s";
   }
 }
 
@@ -469,34 +471,32 @@ void PGMapDigest::client_io_rate_summary(Formatter *f, ostream *out,
                                    const pool_stat_t& delta_sum,
                                    utime_t delta_stamp) const
 {
+  double duration = (double)delta_stamp;
   pool_stat_t pos_delta = delta_sum;
   pos_delta.floor(0);
-  if (pos_delta.stats.sum.num_rd ||
-      pos_delta.stats.sum.num_wr) {
-    if (pos_delta.stats.sum.num_rd) {
-      int64_t rd = (pos_delta.stats.sum.num_rd_kb << 10) / (double)delta_stamp;
-      if (f) {
-	f->dump_int("read_bytes_sec", rd);
-      } else {
-	*out << pretty_si_t(rd) << "B/s rd, ";
-      }
-    }
-    if (pos_delta.stats.sum.num_wr) {
-      int64_t wr = (pos_delta.stats.sum.num_wr_kb << 10) / (double)delta_stamp;
-      if (f) {
-	f->dump_int("write_bytes_sec", wr);
-      } else {
-	*out << pretty_si_t(wr) << "B/s wr, ";
-      }
-    }
-    int64_t iops_rd = pos_delta.stats.sum.num_rd / (double)delta_stamp;
-    int64_t iops_wr = pos_delta.stats.sum.num_wr / (double)delta_stamp;
-    if (f) {
-      f->dump_int("read_op_per_sec", iops_rd);
-      f->dump_int("write_op_per_sec", iops_wr);
-    } else {
-      *out << pretty_si_t(iops_rd) << "op/s rd, " << pretty_si_t(iops_wr) << "op/s wr";
-    }
+
+  int64_t rd = duration > 0 ?
+               (pos_delta.stats.sum.num_rd_kb << 10) / duration : 0;
+  int64_t wr = duration > 0 ?
+               (pos_delta.stats.sum.num_wr_kb << 10) / duration : 0;
+  int64_t iops_rd = duration > 0 ?
+                    pos_delta.stats.sum.num_rd / duration : 0;
+  int64_t iops_wr = duration > 0 ?
+                    pos_delta.stats.sum.num_wr / duration : 0;
+  if (f) {
+    f->dump_int("read_bytes_sec", rd);
+    f->dump_int("write_bytes_sec", wr);
+    f->dump_int("read_op_per_sec", iops_rd);
+    f->dump_int("write_op_per_sec", iops_wr);
+  } else {
+    if (rd)
+      *out << pretty_si_t(rd) << "B/s rd";
+    if (wr)
+      *out << ", " << pretty_si_t(wr) << "B/s wr";
+    if (iops_rd)
+      *out << ", " << pretty_si_t(iops_rd) << "op/s rd";
+    if (iops_wr)
+      *out << ", " << pretty_si_t(iops_wr) << "op/s wr";
   }
 }
 
@@ -1264,15 +1264,18 @@ void PGMap::apply_incremental(CephContext *cct, const Incremental& inc)
     // calculate a delta, and average over the last 2 deltas.
     pool_stat_t d = pg_sum;
     d.stats.sub(pg_sum_old.stats);
-    pg_sum_deltas.push_back(make_pair(d, delta_t));
-    stamp_delta += delta_t;
-    pg_sum_delta.stats.add(d.stats);
-    auto smooth_intervals =
-      cct ? cct->_conf->get_val<uint64_t>("mon_stat_smooth_intervals") : 1;
-    if (pg_sum_deltas.size() > smooth_intervals) {
-      pg_sum_delta.stats.sub(pg_sum_deltas.front().first.stats);
-      stamp_delta -= pg_sum_deltas.front().second;
-      pg_sum_deltas.pop_front();
+    auto period = cct ? cct->_conf->get_val<int64_t>("mgr_tick_period") : 2;
+    if (!d.stats.sum.is_negative() && (double)delta_t >= period) {
+      pg_sum_deltas.push_back(make_pair(d, delta_t));
+      stamp_delta += delta_t;
+      pg_sum_delta.stats.add(d.stats);
+      auto smooth_intervals =
+        cct ? cct->_conf->get_val<uint64_t>("mon_stat_smooth_intervals") : 1;
+      if (pg_sum_deltas.size() > smooth_intervals) {
+        pg_sum_delta.stats.sub(pg_sum_deltas.front().first.stats);
+        stamp_delta -= pg_sum_deltas.front().second;
+        pg_sum_deltas.pop_front();
+      }
     }
   }
   stamp = inc.stamp;
@@ -1759,6 +1762,12 @@ void PGMap::dump_basic(Formatter *f) const
 void PGMap::dump_delta(Formatter *f) const
 {
   f->open_object_section("pg_stats_delta");
+  f->dump_float("stamp_delta", (double)stamp_delta);
+  f->open_array_section("stamp_deltas");
+  for(auto &sd : pg_sum_deltas) {
+    f->dump_float("time", (double)sd.second);
+  }
+  f->close_section();
   pg_sum_delta.dump(f);
   f->close_section();
 }
@@ -2331,6 +2340,8 @@ void PGMap::update_delta(
    */
   pool_stat_t d = current_pool_sum;
   d.stats.sub(old_pool_sum.stats);
+  if (d.stats.sum.is_negative())
+    return;
 
   /* Aggregate current delta, and take out the last seen delta (if any) to
    * average it out.

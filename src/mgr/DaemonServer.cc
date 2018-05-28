@@ -80,7 +80,6 @@ DaemonServer::DaemonServer(MonClient *monc_,
                       g_conf->auth_supported),
       lock("DaemonServer"),
       timer(g_ceph_context, lock),
-      last_sample(ceph_clock_now()),
       pgmap_ready(false)
 {
   g_conf->add_observer(this);
@@ -1359,18 +1358,8 @@ bool DaemonServer::handle_command(MCommand *m)
     }
 
     if (f) {
-      utime_t now = ceph_clock_now();
-      if (now - last_sample <
-          g_ceph_context->_conf->get_val<double>("rbd_perf_report_interval")) {
-        ss << "sample too frequently, interval: " << now - last_sample
-           << ", less than rbd_perf_report_interval: "
-           << g_ceph_context->_conf->get_val<double>("rbd_perf_report_interval");
-        cmdctx->reply(-EINVAL, ss);
-        return true;
-      }
       dump_imgsperf(f.get(), what);
       f->flush(cmdctx->odata);
-      last_sample = now;
     } else {
       stringstream dumps;
       ss << "dumping: " << what;
