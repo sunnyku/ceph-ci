@@ -20,7 +20,7 @@ public:
     encode(pgid, payload);
   }
   void decode_payload() override {
-    bufferlist::iterator p = payload.begin();
+    bufferlist::const_iterator p = payload.begin();
     paxos_decode(p);
     decode(pgid, p);
   }
