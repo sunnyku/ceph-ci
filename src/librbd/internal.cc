@@ -1561,6 +1561,11 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
     if (r < 0) {
       lderr(cct) << "error removing image " << image_id
                  << ", which is pending deletion" << dendl;
+      r = cls_client::trash_update_state(&io_ctx, image_id,
+                                         cls::rbd::TRASH_IMAGE_STATE_NORMAL);
+      if (r < 0) {
+        lderr(cct) << "error updating trash image state" << dendl;
+      }
       return r;
     }
     r = cls_client::trash_remove(&io_ctx, image_id);
