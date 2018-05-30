@@ -8081,6 +8081,8 @@ void OSD::consume_map()
 	  r.first->second = make_unique<OSDShardPGSlot>();
 	}
 	slot = r.first->second.get();
+	epoch_t last_merge =
+	  osdmap->get_pg_pool(pgid.pool())->get_pg_num_pending_dec_epoch();
 	if (!slot->pg) {
 	  dout(20) << __func__ << "  creating empty merge participant " << pgid
 		   << dendl;
@@ -8091,8 +8093,7 @@ void OSD::consume_map()
 	  // clean as of that epoch or else pg_num_pending wouldn't
 	  // have been adjusted.
 	  pg_history_t history;
-	  epoch_t e =
-	    osdmap->get_pg_pool(pgid.pool())->get_pg_num_pending_dec_epoch() - 1;
+	  epoch_t e = last_merge - 1;
 	  history.same_interval_since = e;
 	  history.last_epoch_started = e;
 	  history.last_epoch_clean = e;
@@ -8105,7 +8106,7 @@ void OSD::consume_map()
 	}
 	// mark slot for merge
 	dout(20) << __func__ << "  marking merge participant " << pgid << dendl;
-	slot->waiting_for_merge_epoch = osdmap->get_epoch();
+	slot->waiting_for_merge_epoch = last_merge;
 	p = merge_pgs.erase(p);
       }
     }
