@@ -423,6 +423,14 @@ int build_status_image(librados::IoCtx &ioctx, const std::string &id,
     }
   }
 
+  utime_t create_timestamp;
+  r = librbd::cls_client::get_create_timestamp(&ioctx, oid, &create_timestamp);
+  if (r < 0) {
+    std::cerr << __func__ << ": get_create_timestamp: " << oid << " failed: "
+        << cpp_strerror(r) << std::endl;
+    return r;
+  }
+
   int64_t data_pool_id = -1;
   r = librbd::cls_client::get_data_pool(&ioctx, oid, &data_pool_id);
   if (r < 0) {
@@ -463,6 +471,8 @@ int build_status_image(librados::IoCtx &ioctx, const std::string &id,
   if (!qos_bw_str.empty()) {
     qos_bw = std::stoll(qos_bw_str);
   }
+
+  image->create_timestamp = create_timestamp;
 
   image->parent.pool_id = parent_info.spec.pool_id;
   image->parent.image_id = parent_info.spec.image_id;
