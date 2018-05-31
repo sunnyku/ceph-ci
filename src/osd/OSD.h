@@ -1361,6 +1361,10 @@ public:
 	  CEPH_NOSNAP)));
   }
 
+  static ghobject_t make_pg_num_history_oid() {
+    return ghobject_t(hobject_t(sobject_t("pg_num_history", CEPH_NOSNAP)));
+  }
+
   static void recursive_remove_collection(CephContext* cct,
 					  ObjectStore *store,
 					  spg_t pgid,
@@ -1817,6 +1821,8 @@ protected:
     return osdmap ? osdmap->get_epoch() : 0;
   }
 
+  pool_pg_num_history_t pg_num_history;
+  
   utime_t         had_map_since;
   RWLock          map_lock;
   list<OpRequestRef>  waiting_for_osdmap;
