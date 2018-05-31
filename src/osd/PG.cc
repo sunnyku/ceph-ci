@@ -2605,6 +2605,7 @@ void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
   pg_log.roll_forward(&handler);
 
   info.last_complete = info.last_update;  // to fake out trim()
+  pg_log.reset_recovery_pointers();
   pg_log.trim(info.last_update, info);
 
   vector<PGLog*> log_from;
@@ -2626,6 +2627,7 @@ void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
     PGLogEntryHandler handler{source.get(), rctx->transaction};
     source->pg_log.roll_forward(&handler);
     source->info.last_complete = source->info.last_update;  // to fake out trim()
+    source->pg_log.reset_recovery_pointers();
     source->pg_log.trim(source->info.last_update, source->info);
     log_from.push_back(&source->pg_log);
 
