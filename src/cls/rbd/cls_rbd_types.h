@@ -426,6 +426,7 @@ struct StatusCloneId {
 
   void encode(bufferlist &bl) const;
   void decode(bufferlist::iterator &it);
+  void dump(Formatter *f) const;
 };
 WRITE_CLASS_ENCODER(StatusCloneId);
 
@@ -436,6 +437,7 @@ struct StatusParentId {
 
   void encode(bufferlist &bl) const;
   void decode(bufferlist::iterator &it);
+  void dump(Formatter *f) const;
 };
 WRITE_CLASS_ENCODER(StatusParentId);
 
@@ -470,6 +472,7 @@ struct StatusSnapshot {
 
   void encode(bufferlist &bl) const;
   void decode(bufferlist::iterator &it);
+  void dump2(Formatter *f) const;
 };
 WRITE_CLASS_ENCODER(StatusSnapshot);
 
@@ -492,6 +495,7 @@ struct StatusImage {
 
   void encode(bufferlist &bl) const;
   void decode(bufferlist::iterator &it);
+  void dump2(Formatter *f) const;
 };
 WRITE_CLASS_ENCODER(StatusImage);
 

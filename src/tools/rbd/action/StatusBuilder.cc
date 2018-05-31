@@ -121,7 +121,11 @@ void get_check_arguments(po::options_description *positional,
   at::add_image_option(options, at::ARGUMENT_MODIFIER_NONE);
   at::add_image_id_option(options);
   options->add_options()
-      ("status-only", po::bool_switch(), "check status only");
+      ("check-status", po::bool_switch(), "check status");
+  options->add_options()
+      ("check-directory", po::bool_switch(), "check directory");
+  options->add_options()
+      ("check-trash", po::bool_switch(), "check trash");
   options->add_options()
       ("rebuild", po::bool_switch(), "rebuild optionally");
 }
@@ -667,98 +671,105 @@ int compare_image(cls::rbd::StatusImage &image_new,
     std::map<uint64_t, cls::rbd::StatusSnapshot> &snapshots_new,
     cls::rbd::StatusImage &image_old,
     std::map<uint64_t, cls::rbd::StatusSnapshot> &snapshots_old,
-    std::string *diff) {
+    Formatter *f) {
   std::string id = image_new.id;
-  ostringstream oss;
+  bool inconsistent = false;
 
   uint64_t state_new, state_old;
   state_new = image_new.state & cls::rbd::STATUS_IMAGE_STATE_TRASH;
   state_old = image_old.state & cls::rbd::STATUS_IMAGE_STATE_TRASH;
   if (state_new != state_old) {
-    oss << "inconsistent trash state" << std::endl;
-  }
+    inconsistent = true;
+  } else
 
   // ignore create_timestamp
 
   if (image_new.parent.pool_id != image_old.parent.pool_id
       || image_new.parent.image_id != image_old.parent.image_id
       || image_new.parent.snapshot_id != image_old.parent.snapshot_id) {
-    oss << "inconsistent parent" << std::endl;
-  }
+    inconsistent = true;
+  } else
 
   if (image_new.data_pool_id != image_old.data_pool_id) {
-    oss << "inconsistent data pool id" << std::endl;
-  }
+    inconsistent = true;
+  } else
 
   if (image_new.name != image_old.name) {
-    oss << "inconsistent name" << std::endl;
-  }
+    inconsistent = true;
+  } else
 
-  if (image_new.id != image_old.id) {
-    oss << "inconsistent id" << std::endl;
-  }
+  if (image_new.id != image_old.id) { // should never happen
+    inconsistent = true;
+  } else
 
   if (image_new.order != image_old.order) {
-    oss << "inconsistent order" << std::endl;
-  }
+    inconsistent = true;
+  } else
 
   if (image_new.stripe_unit != image_old.stripe_unit) {
-    oss << "inconsistent stripe_unit" << std::endl;
-  }
+    inconsistent = true;
+  } else
 
   if (image_new.stripe_count != image_old.stripe_count) {
-    oss << "inconsistent stripe_count" << std::endl;
-  }
+    inconsistent = true;
+  } else
 
   if (image_new.size != image_old.size) {
-    oss << "inconsistent size" << std::endl;
-  }
+    inconsistent = true;
+  } else
 
   // ignore used
 
   if (image_new.qos_iops != image_old.qos_iops) {
-    oss << "inconsistent qos_iops" << std::endl;
-  }
+    inconsistent = true;
+  } else
 
   if (image_new.qos_bw != image_old.qos_bw) {
-    oss << "inconsistent qos_bw" << std::endl;
-  }
+    inconsistent = true;
+  } else
 
   if (image_new.snapshot_ids != image_old.snapshot_ids) {
-    oss << "inconsistent snapshot_ids" << std::endl;
+    inconsistent = true;
   }
 
-  for (auto &it : snapshots_new) {
-    uint64_t snapshot_id = it.first;
+  for (auto it = snapshots_new.begin(); it != snapshots_new.end();) {
+    uint64_t snapshot_id = it->first;
+    std::string snapshot_key = status_key_for_snapshot(snapshot_id);
 
     auto old_it = snapshots_old.find(snapshot_id);
     if (old_it == snapshots_old.end()) {
-      oss << "inconsistent snapshots" << std::endl;
+      it++;
       continue;
     }
 
-    const cls::rbd::StatusSnapshot &snapshot_new = it.second;
+    const cls::rbd::StatusSnapshot &snapshot_new = it->second;
     const cls::rbd::StatusSnapshot &snapshot_old = snapshots_old[snapshot_id];
 
     // ignore create_timestamp
+
     if (!(snapshot_new.snapshot_namespace == snapshot_old.snapshot_namespace)) {
-      oss << "inconsistent snapshot.snapshot_namespace" << std::endl;
+      it++;
+      continue;
     }
 
     if (snapshot_new.name != snapshot_old.name) {
-      oss << "inconsistent snapshot.name" << std::endl;
+      it++;
+      continue;
     }
 
     if (snapshot_new.image_id != snapshot_old.image_id) {
-      oss << "inconsistent snapshot.image_id" << std::endl;
+      it++;
+      continue;
     }
 
-    if (snapshot_new.id != snapshot_old.id) {
-      oss << "inconsistent snapshot.id" << std::endl;
+    if (snapshot_new.id != snapshot_old.id) { // should never happen
+      it++;
+      continue;
     }
 
     if (snapshot_new.size != snapshot_old.size) {
-      oss << "inconsistent snapshot.size" << std::endl;
+      it++;
+      continue;
     }
 
     // ignore used
@@ -766,12 +777,67 @@ int compare_image(cls::rbd::StatusImage &image_new,
     // ignore dirty
 
     if (snapshot_new.clone_ids != snapshot_old.clone_ids) {
-      oss << "inconsistent snapshot.clone_ids" << std::endl;
+      it++;
+      continue;
     }
+
+    it = snapshots_new.erase(it);
   }
 
-  *diff = std::move(oss.str());
-  if (!diff->empty()) {
+  // dump
+
+  if (inconsistent) {
+    f->open_object_section(id.c_str());
+
+    f->open_object_section("image_new");
+    image_new.dump2(f);
+    f->close_section();
+
+    f->open_object_section("image_old");
+    image_old.dump2(f);
+    f->close_section();
+  }
+
+  bool snapshots_inconsistent = false;
+  if (!snapshots_new.empty()) {
+    snapshots_inconsistent = true;
+
+    if (!inconsistent) {
+      f->open_object_section(id.c_str());
+    }
+
+    f->open_array_section("snapshots");
+    for (auto &it : snapshots_new) {
+      auto snapshot_id = it.first;
+      ostringstream oss;
+      oss << snapshot_id;
+      std::string snapshot_str = oss.str();
+
+      f->open_object_section("snapshot");
+
+      auto old_it = snapshots_old.find(snapshot_id);
+      if (old_it == snapshots_old.end()) {
+        f->dump_string(snapshot_str.c_str(), "no status");
+      } else {
+        f->open_object_section(snapshot_str.c_str());
+
+        f->open_object_section("new");
+        it.second.dump2(f);
+        f->close_section();
+        f->open_object_section("old");
+        old_it->second.dump2(f);
+        f->close_section();
+
+        f->close_section();
+      }
+
+      f->close_section();
+    }
+    f->close_section();
+  }
+
+  if (inconsistent || snapshots_inconsistent) {
+    f->close_section();
     return 1;
   }
   return 0;
@@ -837,6 +903,11 @@ int check_image(librados::IoCtx &ioctx, std::string id, bool rebuild) {
     return -ENOENT;
   }
 
+  at::Format format("json");
+  auto formatter = format.create_formatter(true);
+  formatter->open_object_section("image");
+  bool inconsistent = false;
+
   std::string image_name = name;
   uint64_t state = 0;
   if (r == -ENOENT) {
@@ -866,14 +937,17 @@ int check_image(librados::IoCtx &ioctx, std::string id, bool rebuild) {
     return r;
   }
 
-  std::string diff = "has no status associated with it\n";
   if (r != -ENOENT) {
     // compare
     r = compare_image(image_new, snapshots_new, image_old, snapshots_old,
-        &diff);
+        formatter.get());
+  } else {
+    formatter->dump_string(id.c_str(), "no status");
   }
 
   if (r != 0) {
+    inconsistent = true;
+
     if (rebuild) {
       r = write_image(ioctx, RBD_STATUS, image_new, snapshots_new);
       if (r < 0) {
@@ -881,18 +955,28 @@ int check_image(librados::IoCtx &ioctx, std::string id, bool rebuild) {
             << cpp_strerror(r) << std::endl;
         return r;
       }
-    } else {
-      std::cout << "inconsistent image: " << id << ", details:\n" << diff;
     }
   }
+
+  formatter->close_section();
+
+  if (inconsistent && !rebuild) {
+    formatter->flush(std::cout);
+  }
+
   return 0;
 }
 
-int check_images(librados::IoCtx &ioctx, bool rebuild) {
+int check_directory(librados::IoCtx &ioctx, bool rebuild) {
   int r, ret = 0;
   std::string last_read = RBD_DIR_ID_KEY_PREFIX;
   int max_read = RBD_MAX_KEYS_READ;
   bool more = true;
+
+  at::Format format("json");
+  auto formatter = format.create_formatter(true);
+  formatter->open_object_section("directory");
+  bool inconsistent = false;
 
   while (more) {
     std::map<std::string, bufferlist> vals;
@@ -948,14 +1032,17 @@ int check_images(librados::IoCtx &ioctx, bool rebuild) {
         }
       }
 
-      std::string diff = "has no status associated with it\n";
       if (r != -ENOENT) {
         // compare
         r = compare_image(image_new, snapshots_new, image_old, snapshots_old,
-            &diff);
+            formatter.get());
+      } else {
+        formatter->dump_string(id.c_str(), "no status");
       }
 
       if (r != 0) {
+        inconsistent = true;
+
         if (rebuild) {
           r = write_image(ioctx, RBD_STATUS, image_new, snapshots_new);
           if (r < 0) {
@@ -966,8 +1053,6 @@ int check_images(librados::IoCtx &ioctx, bool rebuild) {
               continue;
             }
           }
-        } else {
-          std::cout << "inconsistent image: " << id << ", details:\n" << diff;
         }
       }
     }
@@ -975,6 +1060,12 @@ int check_images(librados::IoCtx &ioctx, bool rebuild) {
     if (!vals.empty()) {
       last_read = vals.rbegin()->first;
     }
+  }
+
+  formatter->close_section();
+
+  if (inconsistent && !rebuild) {
+    formatter->flush(std::cout);
   }
 
   return ret;
@@ -985,6 +1076,11 @@ int check_trash(librados::IoCtx &ioctx, bool rebuild) {
   std::string last_read = TRASH_IMAGE_KEY_PREFIX;
   int max_read = RBD_MAX_KEYS_READ;
   bool more = true;
+
+  at::Format format("json");
+  auto formatter = format.create_formatter(true);
+  formatter->open_object_section("trash");
+  bool inconsistent = false;
 
   while (more) {
     std::map<std::string, bufferlist> vals;
@@ -1040,14 +1136,17 @@ int check_trash(librados::IoCtx &ioctx, bool rebuild) {
         }
       }
 
-      std::string diff = "has no status associated with it\n";
       if (r != -ENOENT) {
         // compare
         r = compare_image(image_new, snapshots_new, image_old, snapshots_old,
-            &diff);
+            formatter.get());
+      } else {
+        formatter->dump_string(id.c_str(), "no status");
       }
 
       if (r != 0) {
+        inconsistent = true;
+
         if (rebuild) {
           r = write_image(ioctx, RBD_STATUS, image_new, snapshots_new);
           if (r < 0) {
@@ -1058,8 +1157,6 @@ int check_trash(librados::IoCtx &ioctx, bool rebuild) {
               continue;
             }
           }
-        } else {
-          std::cout << "inconsistent image: " << id << ", details:\n" << diff;
         }
       }
     }
@@ -1068,6 +1165,13 @@ int check_trash(librados::IoCtx &ioctx, bool rebuild) {
       last_read = vals.rbegin()->first;;
     }
   }
+
+  formatter->close_section();
+
+  if (inconsistent && !rebuild) {
+    formatter->flush(std::cout);
+  }
+
   return ret;
 }
 
@@ -1108,8 +1212,15 @@ int execute_check(const po::variables_map &vm) {
     return r;
   }
 
-  bool status_only = vm["status-only"].as<bool>();
+  bool all = false;
+  bool status = vm["check-status"].as<bool>();
+  bool directory = vm["check-directory"].as<bool>();
+  bool trash = vm["check-trash"].as<bool>();
   bool rebuild = vm["rebuild"].as<bool>();
+
+  if (!status && !directory && !trash) {
+    all = true;
+  }
 
   librados::Rados rados;
   librados::IoCtx ioctx;
@@ -1137,30 +1248,34 @@ int execute_check(const po::variables_map &vm) {
   }
 
   int ret = 0;
-  r = check_status(ioctx, rebuild);
-  if (r < 0) {
-    std::cerr << __func__ << ": check_status failed: "
-        << cpp_strerror(r) << std::endl;
-    ret = r;
-  }
-  if (status_only) {
-    return ret;
-  }
-
-  r = check_images(ioctx, rebuild);
-  if (r < 0) {
-    std::cerr << __func__ << ": check_images failed: "
-        << cpp_strerror(r) << std::endl;
-    if (!ret) {
+  if (all || status) {
+    r = check_status(ioctx, rebuild);
+    if (r < 0) {
+      std::cerr << __func__ << ": check_status failed: "
+          << cpp_strerror(r) << std::endl;
       ret = r;
     }
   }
-  r = check_trash(ioctx, rebuild);
-  if (r < 0) {
-    std::cerr << __func__ << ": check_trash failed: "
-        << cpp_strerror(r) << std::endl;
-    if (!ret) {
-      ret = r;
+
+  if (all || directory) {
+    r = check_directory(ioctx, rebuild);
+    if (r < 0) {
+      std::cerr << __func__ << ": check_directory failed: "
+          << cpp_strerror(r) << std::endl;
+      if (!ret) {
+        ret = r;
+      }
+    }
+  }
+
+  if (all || trash) {
+    r = check_trash(ioctx, rebuild);
+    if (r < 0) {
+      std::cerr << __func__ << ": check_trash failed: "
+          << cpp_strerror(r) << std::endl;
+      if (!ret) {
+        ret = r;
+      }
     }
   }
   return ret;

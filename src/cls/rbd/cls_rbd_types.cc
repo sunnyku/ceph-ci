@@ -504,6 +504,11 @@ void StatusCloneId::decode(bufferlist::iterator &it) {
   DECODE_FINISH(it);
 }
 
+void StatusCloneId::dump(Formatter *f) const {
+  f->dump_int("pool_id", pool_id);
+  f->dump_string("image_id", image_id.c_str());
+}
+
 void StatusParentId::encode(bufferlist &bl) const {
   ENCODE_START(1, 1, bl);
   ::encode(pool_id, bl);
@@ -518,6 +523,12 @@ void StatusParentId::decode(bufferlist::iterator &it) {
   ::decode(image_id, it);
   ::decode(snapshot_id, it);
   DECODE_FINISH(it);
+}
+
+void StatusParentId::dump(Formatter *f) const {
+  f->dump_int("pool_id", pool_id);
+  f->dump_string("image_id", image_id.c_str());
+  f->dump_unsigned("snapshot_id", snapshot_id);
 }
 
 void StatusSnapshot::encode(bufferlist &bl) const {
@@ -546,6 +557,22 @@ void StatusSnapshot::decode(bufferlist::iterator &it) {
   ::decode(dirty, it);
   ::decode(clone_ids, it);
   DECODE_FINISH(it);
+}
+
+void StatusSnapshot::dump2(Formatter *f) const {
+  f->dump_string("image_id", image_id.c_str());
+  snapshot_namespace.dump(f);
+  f->dump_string("name", name.c_str());
+  f->dump_unsigned("id", id);
+  f->dump_unsigned("size", size);
+
+  f->open_array_section("clone_ids");
+  for (auto it : clone_ids) {
+    f->open_object_section("id");
+    it.dump(f);
+    f->close_section();
+  }
+  f->close_section();
 }
 
 void StatusImage::encode(bufferlist &bl) const {
@@ -586,6 +613,28 @@ void StatusImage::decode(bufferlist::iterator &it) {
   ::decode(qos_bw, it);
   ::decode(snapshot_ids, it);
   DECODE_FINISH(it);
+}
+
+void StatusImage::dump2(Formatter *f) const {
+  f->dump_unsigned("state", state);
+  f->open_object_section("parent");
+  parent.dump(f);
+  f->close_section();
+  f->dump_int("data_pool_id", data_pool_id);
+  f->dump_string("name", name.c_str());
+  f->dump_string("id", id.c_str());
+  f->dump_unsigned("order", order);
+  f->dump_unsigned("stripe_unit", stripe_unit);
+  f->dump_unsigned("stripe_count", stripe_count);
+  f->dump_unsigned("size", size);
+  f->dump_int("qos_iops", qos_iops);
+  f->dump_int("qos_bw", qos_bw);
+
+  f->open_array_section("snapshot_ids");
+  for (auto &it : snapshot_ids) {
+    f->dump_unsigned("id", it);
+  }
+  f->close_section();
 }
 
 void StatusUsage::encode(bufferlist &bl) const {
