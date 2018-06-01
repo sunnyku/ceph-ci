@@ -84,12 +84,16 @@ private:
 
   bool m_blocking_writes = false;
   decltype(ImageCtxT::object_map) m_object_map;
+  decltype(ImageCtxT::object_map) m_snap_object_map;
 
   void send_block_writes();
   Context *handle_block_writes(int *result);
 
   void send_resize_image();
   Context *handle_resize_image(int *result);
+
+  void send_get_snap_object_map();
+  Context *handle_get_snap_object_map(int *result);
 
   void send_rollback_object_map();
   Context *handle_rollback_object_map(int *result);
