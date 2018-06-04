@@ -337,25 +337,49 @@ void OSDService::identify_split_children(
   OSDMapRef old_map,
   OSDMapRef new_map,
   spg_t pgid,
-  set<spg_t> *new_children)
+  set<pair<spg_t,epoch_t>> *new_children)
 {
   if (!old_map->have_pg_pool(pgid.pool())) {
     return;
   }
   int old_pgnum = old_map->get_pg_num(pgid.pool());
-  int new_pgnum = get_possibly_deleted_pool_pg_num(
-    new_map, pgid.pool());
-  dout(20) << __func__ << " " << pgid << " old " << old_pgnum << " e" << old_map->get_epoch()
-	   << " new " << new_pgnum << " e" << new_map->get_epoch()
-	   << dendl;
-  if (pgid.ps() < static_cast<unsigned>(old_pgnum)) {
-    set<spg_t> children;
-    if (pgid.is_split(old_pgnum, new_pgnum, &children)) {
-      dout(20) << __func__ << " " << pgid << " children " << children << dendl;
-      new_children->insert(children.begin(), children.end());
+  auto p = osd->pg_num_history.pg_nums.find(pgid.pool());
+  if (p == osd->pg_num_history.pg_nums.end()) {
+    return;
+  }
+  dout(20) << __func__ << " " << pgid << " e" << old_map->get_epoch()
+	   << " to e" << new_map->get_epoch()
+	   << " pg_nums " << p->second << dendl;
+  deque<spg_t> queue;
+  queue.push_back(pgid);
+  while (!queue.empty()) {
+    auto pg = queue.front();
+    queue.pop_front();
+    unsigned pgnum = old_pgnum;
+    for (auto q = p->second.lower_bound(old_map->get_epoch());
+	 q != p->second.end() &&
+	   q->first <= new_map->get_epoch();
+	 ++q) {
+      derr << __func__ << " q " << q->first << " " << q->second << dendl;
+      if (pg.ps() < pgnum) {
+	set<spg_t> children;
+	if (pgnum < q->second &&
+	    pg.is_split(pgnum, q->second, &children)) {
+	  dout(20) << __func__ << " " << pg << " e" << q->first
+		   << " pg_num " << pgnum << " -> " << q->second
+		   << " children " << children << dendl;
+	  for (auto i : children) {
+	    new_children->insert(make_pair(i, q->first));
+	    queue.push_back(i);
+	  }
+	}
+      } else {
+	dout(20) << __func__ << " " << pg << " e" << q->first
+		 << " pg_num " << pgnum << " -> " << q->second
+		 << " is post-split, skipping" << dendl;
+      }
+      pgnum = q->second;
     }
-  } else if (pgid.ps() >= static_cast<unsigned>(new_pgnum)) {
-    dout(20) << __func__ << " " << pgid << " is post-split, skipping" << dendl;
   }
 }
 
@@ -3991,7 +4015,7 @@ void OSD::load_pgs()
       continue;
     }
 
-    set<spg_t> new_children;
+    set<pair<spg_t,epoch_t>> new_children;
     service.identify_split_children(pg->get_osdmap(), osdmap, pg->pg_id,
 				    &new_children);
     if (!new_children.empty()) {
@@ -8076,7 +8100,7 @@ void OSD::consume_map()
   service.publish_map(osdmap);
 
   // prime splits
-  set<spg_t> newly_split;
+  set<pair<spg_t,epoch_t>> newly_split;
   for (auto& shard : shards) {
     shard->identify_splits(osdmap, &newly_split);
   }
@@ -9723,9 +9747,9 @@ void OSDShard::consume_map(
     OSDShardPGSlot *slot = p->second.get();
     const spg_t& pgid = p->first;
     dout(20) << __func__ << " " << pgid << dendl;
-    if (slot->waiting_for_split) {
+    if (!slot->waiting_for_split.empty()) {
       dout(20) << __func__ << "  " << pgid
-	       << " waiting for split" << dendl;
+	       << " waiting for split " << slot->waiting_for_split << dendl;
       ++p;
       continue;
     }
@@ -9772,6 +9796,7 @@ void OSDShard::consume_map(
     }
     if (slot->waiting.empty() &&
 	slot->num_running == 0 &&
+	slot->waiting_for_split.empty() &&
 	!slot->pg) {
       dout(20) << __func__ << "  " << pgid << " empty, pruning" << dendl;
       p = pg_slots.erase(p);
@@ -9818,36 +9843,38 @@ void OSDShard::_wake_pg_slot(
     }
   }
   slot->waiting_peering.clear();
-  slot->waiting_for_split = false;
   ++slot->requeue_seq;
 }
 
-void OSDShard::identify_splits(const OSDMapRef& as_of_osdmap, set<spg_t> *pgids)
+void OSDShard::identify_splits(const OSDMapRef& as_of_osdmap,
+			       set<pair<spg_t,epoch_t>> *pgids)
 {
   Mutex::Locker l(shard_lock);
   if (shard_osdmap) {
     for (auto& i : pg_slots) {
       const spg_t& pgid = i.first;
       auto *slot = i.second.get();
-      if (slot->pg || slot->waiting_for_split) {
+      if (slot->pg || !slot->waiting_for_split.empty()) {
 	osd->service.identify_split_children(shard_osdmap, as_of_osdmap, pgid,
 					     pgids);
       } else {
 	dout(20) << __func__ << " slot " << pgid
-		 << " has no pg and !waiting_for_split" << dendl;
+		 << " has no pg and waiting_for_split "
+		 << slot->waiting_for_split << dendl;
       }
     }
   }
 }
 
-void OSDShard::prime_splits(const OSDMapRef& as_of_osdmap, set<spg_t> *pgids)
+void OSDShard::prime_splits(const OSDMapRef& as_of_osdmap,
+			    set<pair<spg_t,epoch_t>> *pgids)
 {
   Mutex::Locker l(shard_lock);
   _prime_splits(pgids);
   if (shard_osdmap->get_epoch() > as_of_osdmap->get_epoch()) {
-    set<spg_t> newer_children;
-    for (auto pgid : *pgids) {
-      osd->service.identify_split_children(as_of_osdmap, shard_osdmap, pgid,
+    set<pair<spg_t,epoch_t>> newer_children;
+    for (auto i : *pgids) {
+      osd->service.identify_split_children(as_of_osdmap, shard_osdmap, i.first,
 					   &newer_children);
     }
     newer_children.insert(pgids->begin(), pgids->end());
@@ -9866,27 +9893,24 @@ void OSDShard::prime_splits(const OSDMapRef& as_of_osdmap, set<spg_t> *pgids)
   }
 }
 
-void OSDShard::_prime_splits(set<spg_t> *pgids)
+void OSDShard::_prime_splits(set<pair<spg_t,epoch_t>> *pgids)
 {
   dout(10) << *pgids << dendl;
   auto p = pgids->begin();
   while (p != pgids->end()) {
-    unsigned shard_index = p->hash_to_shard(osd->num_shards);
+    unsigned shard_index = p->first.hash_to_shard(osd->num_shards);
     if (shard_index == shard_id) {
-      auto r = pg_slots.emplace(*p, nullptr);
+      auto r = pg_slots.emplace(p->first, nullptr);
       if (r.second) {
-	dout(10) << "priming slot " << *p << dendl;
+	dout(10) << "priming slot " << p->first << " e" << p->second << dendl;
 	r.first->second = make_unique<OSDShardPGSlot>();
-	r.first->second->waiting_for_split = true;
+	r.first->second->waiting_for_split.insert(p->second);
       } else {
 	auto q = r.first;
 	assert(q != pg_slots.end());
-	if (q->second->waiting_for_split) {
-	  dout(10) << "slot " << *p << " already primed" << dendl;
-	} else {
-	  dout(10) << "priming (existing) slot " << *p << dendl;
-	  q->second->waiting_for_split = true;
-	}
+	dout(10) << "priming (existing) slot " << p->first << " e" << p->second
+		 << dendl;
+	q->second->waiting_for_split.insert(p->second);
       }
       p = pgids->erase(p);
     } else {
@@ -9903,10 +9927,21 @@ void OSDShard::register_and_wake_split_child(PG *pg)
     auto p = pg_slots.find(pg->pg_id);
     assert(p != pg_slots.end());
     auto *slot = p->second.get();
+    dout(20) << pg->pg_id << " waiting_for_split " << slot->waiting_for_split
+	     << dendl;
     assert(!slot->pg);
-    assert(slot->waiting_for_split);
+    assert(!slot->waiting_for_split.empty());
     _attach_pg(slot, pg);
-    _wake_pg_slot(pg->pg_id, slot);
+
+    epoch_t epoch = pg->get_osdmap_epoch();
+    assert(slot->waiting_for_split.count(epoch));
+    slot->waiting_for_split.erase(epoch);
+    if (slot->waiting_for_split.empty()) {
+      _wake_pg_slot(pg->pg_id, slot);
+    } else {
+      dout(10) << __func__ << " still waiting for split on "
+	       << slot->waiting_for_split << dendl;
+    }
   }
   sdata_wait_lock.Lock();
   sdata_cond.SignalOne();
@@ -9937,7 +9972,7 @@ void OSDShard::identify_merges(OSDMapRef as_of_osdmap, set<spg_t> *pgs)
     for (auto& i : pg_slots) {
       const spg_t& pgid = i.first;
       auto *slot = i.second.get();
-      if (slot->pg || slot->waiting_for_split) {
+      if (slot->pg || !slot->waiting_for_split.empty()) {
 	osd->service.identify_merge_pgs(
 	  shard_osdmap, as_of_osdmap, pgid, pgs);
       }
@@ -10089,16 +10124,16 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
   auto qi = std::move(slot->to_process.front());
   slot->to_process.pop_front();
   dout(20) << __func__ << " " << qi << " pg " << pg << dendl;
-  set<spg_t> new_children;
+  set<pair<spg_t,epoch_t>> new_children;
   OSDMapRef osdmap;
 
   while (!pg) {
     // should this pg shard exist on this osd in this (or a later) epoch?
     osdmap = sdata->shard_osdmap;
     const PGCreateInfo *create_info = qi.creates_pg();
-    if (slot->waiting_for_split) {
+    if (!slot->waiting_for_split.empty()) {
       dout(20) << __func__ << " " << token
-	       << " splitting" << dendl;
+	       << " splitting " << slot->waiting_for_split << dendl;
       _add_slot_waiter(token, slot, std::move(qi));
     } else if (qi.get_map_epoch() > osdmap->get_epoch()) {
       dout(20) << __func__ << " " << token
