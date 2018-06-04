@@ -880,7 +880,7 @@ public:
     OSDMapRef old_map,
     OSDMapRef new_map,
     spg_t pgid,
-    set<spg_t> *new_children);
+    set<pair<spg_t,epoch_t>> *new_children);
   void identify_merge_pgs(
     OSDMapRef old_map,
     OSDMapRef new_map,
@@ -1111,8 +1111,8 @@ struct OSDShardPGSlot {
   /// should bail out (their op has been requeued)
   uint64_t requeue_seq = 0;
 
-  /// waiting for split child to materialize
-  bool waiting_for_split = false;
+  /// waiting for split child to materialize in these epoch(s)
+  set<epoch_t> waiting_for_split;
 
   epoch_t epoch = 0;
   boost::intrusive::set_member_hook<> pg_epoch_item;
@@ -1201,9 +1201,11 @@ struct OSDShard {
 
   void _wake_pg_slot(spg_t pgid, OSDShardPGSlot *slot);
 
-  void identify_splits(const OSDMapRef& as_of_osdmap, set<spg_t> *pgids);
-  void _prime_splits(set<spg_t> *pgids);
-  void prime_splits(const OSDMapRef& as_of_osdmap, set<spg_t> *pgids);
+  void identify_splits(const OSDMapRef& as_of_osdmap,
+		       set<pair<spg_t,epoch_t>> *pgids);
+  void _prime_splits(set<pair<spg_t,epoch_t>> *pgids);
+  void prime_splits(const OSDMapRef& as_of_osdmap,
+		    set<pair<spg_t,epoch_t>> *pgids);
   void register_and_wake_split_child(PG *pg);
   void unprime_split_children(spg_t parent, unsigned old_pg_num);
 
