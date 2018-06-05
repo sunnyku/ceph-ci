@@ -36,10 +36,10 @@ set(rbd_srcs
   action/Status.cc
   action/StatusBuilder.cc
   action/StatusGetImageUsage.cc
-  action/StatusGetVersion.cc
   action/StatusListImages.cc
   action/StatusListSnapshots.cc
   action/StatusListUsages.cc
+  action/StatusVersion.cc
   action/Trash.cc
   action/Watch.cc)
 if(FREEBSD)

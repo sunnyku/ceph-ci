@@ -5194,6 +5194,31 @@ int status_get_version(cls_method_context_t hctx, bufferlist *in, bufferlist *ou
   return 0;
 }
 
+int status_inc_version(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
+{
+  uint64_t version = 0;
+  int r = read_key(hctx, STATUS_VERSION_KEY, &version);
+  if (r < 0 && r != -ENOENT) {
+    return r;
+  }
+
+  std::map<std::string, bufferlist> vals;
+
+  version++;
+  bufferlist version_bl;
+  ::encode(version, version_bl);
+
+  vals[STATUS_VERSION_KEY] = version_bl;
+
+  r = cls_cxx_map_set_vals(hctx, &vals);
+  if (r < 0) {
+    CLS_ERR("error set status version: %s", cpp_strerror(r).c_str());
+    return r;
+  }
+
+  return 0;
+}
+
 int status_list_images(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
 {
   std::string start_after;
@@ -6285,6 +6310,7 @@ CLS_INIT(rbd)
   cls_method_handle_t h_trash_update_state;
 
   cls_method_handle_t h_status_get_version;
+  cls_method_handle_t h_status_inc_version;
   cls_method_handle_t h_status_list_images;
   cls_method_handle_t h_status_list_snapshots;
   cls_method_handle_t h_status_list_usages;
@@ -6591,6 +6617,9 @@ CLS_INIT(rbd)
   cls_register_cxx_method(h_class, "status_get_version",
       CLS_METHOD_RD,
       status_get_version, &h_status_get_version);
+  cls_register_cxx_method(h_class, "status_inc_version",
+      CLS_METHOD_RD | CLS_METHOD_WR,
+      status_inc_version, &h_status_inc_version);
   cls_register_cxx_method(h_class, "status_list_images",
       CLS_METHOD_RD,
       status_list_images, &h_status_list_images);
