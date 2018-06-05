@@ -31,8 +31,14 @@ protected:
   }
 
 private:
+  enum State {
+    STATE_STATUS_UPDATE,
+    STATE_REMOVE_METADATA
+  };
+  State m_state;
   std::string m_key;
 
+  void send_status_update();
   void send_metadata_remove();
 };
 

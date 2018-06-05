@@ -328,6 +328,81 @@ void ObjectMap<I>::aio_update(uint64_t snap_id, uint64_t start_object_no,
   req->send();
 }
 
+template <typename I>
+int ObjectMap<I>::calculate_usage(uint64_t *used, uint64_t *dirty) {
+  assert(m_image_ctx.snap_lock.is_locked());
+  assert(m_image_ctx.object_map_lock.is_locked());
+  assert(used || dirty);
+
+  CephContext* cct = m_image_ctx.cct;
+  ldout(cct, 5) <<  dendl;
+
+  if ((m_image_ctx.features & RBD_FEATURE_FAST_DIFF) == 0) {
+    return -ENOENT;
+  }
+
+  uint64_t flags;
+  int r = m_image_ctx.get_flags(CEPH_NOSNAP, &flags);
+  if (r < 0) {
+    lderr(cct) << "failed to retrieve image flags" << dendl;
+    return r;
+  }
+  if ((flags & RBD_FLAG_FAST_DIFF_INVALID) != 0) {
+    ldout(cct, 1) << "calculate_usage: cannot perform fast diff on invalid "
+                  << "object map" << dendl;
+    return -EINVAL;
+  }
+
+  uint64_t r_used = 0, r_dirty = 0;
+
+  uint64_t period = m_image_ctx.get_stripe_period();
+  uint64_t off = 0;
+  uint64_t left = m_image_ctx.size;
+
+  while (left > 0) {
+    uint64_t period_off = off - (off % period);
+    uint64_t read_len = min(period_off + period - off, left);
+
+    // map to extents
+    map<object_t,vector<ObjectExtent> > object_extents;
+    Striper::file_to_extents(cct, m_image_ctx.format_string,
+                             &m_image_ctx.layout, off, read_len, 0,
+                             object_extents, 0);
+
+    for (map<object_t,vector<ObjectExtent> >::iterator p =
+           object_extents.begin();
+         p != object_extents.end(); ++p) {
+      ldout(cct, 20) << "object " << p->first << dendl;
+
+      const uint64_t object_no = p->second.front().objectno;
+      if (m_object_map[object_no] == OBJECT_EXISTS) {
+        for (std::vector<ObjectExtent>::iterator q = p->second.begin();
+             q != p->second.end(); ++q) {
+          r_used += q->length;
+          r_dirty += q->length;
+        }
+      } else if (m_object_map[object_no] == OBJECT_EXISTS_CLEAN) {
+        for (std::vector<ObjectExtent>::iterator q = p->second.begin();
+             q != p->second.end(); ++q) {
+          r_used += q->length;
+        }
+      }
+    }
+
+    left -= read_len;
+    off += read_len;
+  }
+
+  if (used) {
+    *used = r_used;
+  }
+  if (dirty) {
+    *dirty = r_dirty;
+  }
+
+  return 0;
+}
+
 } // namespace librbd
 
 template class librbd::ObjectMap<librbd::ImageCtx>;

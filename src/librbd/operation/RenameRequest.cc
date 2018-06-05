@@ -87,6 +87,9 @@ bool RenameRequest<I>::should_complete(int r) {
     send_write_destination_header();
     break;
   case STATE_WRITE_DEST_HEADER:
+    send_status_update();
+    break;
+  case STATE_STATUS_UPDATE:
     send_update_directory();
     break;
   case STATE_UPDATE_DIRECTORY:
@@ -152,6 +155,22 @@ void RenameRequest<I>::send_write_destination_header() {
 
   librados::AioCompletion *rados_completion = this->create_callback_completion();
   int r = image_ctx.md_ctx.aio_operate(m_dest_oid, rados_completion, &op);
+  assert(r == 0);
+  rados_completion->release();
+}
+
+template <typename I>
+void RenameRequest<I>::send_status_update() {
+  I &image_ctx = this->m_image_ctx;
+  CephContext *cct = image_ctx.cct;
+  ldout(cct, 5) << this << " " << __func__ << dendl;
+  m_state = STATE_STATUS_UPDATE;
+
+  librados::ObjectWriteOperation op;
+  cls_client::status_rename_image(&op, image_ctx.id, m_dest_name);
+
+  librados::AioCompletion *rados_completion = this->create_callback_completion();
+  int r = image_ctx.md_ctx.aio_operate(RBD_STATUS, rados_completion, &op);
   assert(r == 0);
   rados_completion->release();
 }

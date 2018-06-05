@@ -154,6 +154,60 @@ cdef extern from "rbd/librbd.h" nogil:
         time_t deletion_time
         time_t deferment_end_time
 
+    ctypedef enum rbd_status_image_state_t:
+        _RBD_STATUS_IMAGE_STATE_IDLE "RBD_STATUS_IMAGE_STATE_IDLE",
+        _RBD_STATUS_IMAGE_STATE_MAPPED "RBD_STATUS_IMAGE_STATE_MAPPED",
+        _RBD_STATUS_IMAGE_STATE_TRASH "RBD_STATUS_IMAGE_STATE_TRASH",
+        _RBD_STATUS_IMAGE_STATE_ALL "RBD_STATUS_IMAGE_STATE_ALL"
+
+    ctypedef enum rbd_status_snapshot_namespace_type_t:
+        _RBD_STATUS_SNAPSHOT_NAMESPACE_TYPE_USER "RBD_STATUS_SNAPSHOT_NAMESPACE_TYPE_USER"
+        _RBD_STATUS_SNAPSHOT_NAMESPACE_TYPE_GROUP "RBD_STATUS_SNAPSHOT_NAMESPACE_TYPE_GROUP"
+
+    ctypedef struct rbd_status_parent_id_t:
+        int64_t pool_id
+        char *image_id
+        uint64_t snapshot_id
+
+    ctypedef struct rbd_status_clone_id_t:
+        int64_t pool_id
+        char *image_id
+
+    ctypedef struct rbd_status_snapshot_t:
+        time_t create_timestamp
+        rbd_status_snapshot_namespace_type_t namespace_type
+        char *name
+        char *image_id
+        uint64_t id
+        uint64_t size
+        uint64_t used
+        uint64_t dirty
+        uint64_t clones_count
+        rbd_status_clone_id_t *clone_ids
+
+    ctypedef struct rbd_status_image_t:
+        uint64_t state
+        time_t create_timestamp
+        rbd_status_parent_id_t parent
+        int64_t data_pool_id
+        char *name
+        char *id
+        uint8_t order
+        uint64_t stripe_unit
+        uint64_t stripe_count
+        uint64_t size
+        uint64_t used
+        int64_t qos_iops
+        int64_t qos_bw
+        uint64_t snapshots_count
+        uint64_t *snapshot_ids
+
+    ctypedef struct rbd_status_usage_t:
+        uint64_t state
+        char *id
+        uint64_t size
+        uint64_t used
+
     ctypedef void (*rbd_callback_t)(rbd_completion_t cb, void *arg)
     ctypedef int (*librbd_progress_fn_t)(uint64_t offset, uint64_t total, void* ptr)
 
@@ -365,6 +419,19 @@ cdef extern from "rbd/librbd.h" nogil:
                     int *metaflag)
     int rbd_qos_del(rbd_image_t image, int flag)
 
+    int rbd_status_get_version(rados_ioctx_t io, uint64_t *version)
+    int rbd_status_list_images(rados_ioctx_t io, char *start_name, size_t max,
+                               rbd_status_image_t *images, size_t *size)
+    void rbd_status_list_images_cleanup(rbd_status_image_t *images, size_t size)
+
+    int rbd_status_list_snapshots(rados_ioctx_t io, size_t start_id, size_t max,
+                                  rbd_status_snapshot_t *snapshots, size_t *size)
+    void rbd_status_list_snapshots_cleanup(rbd_status_snapshot_t *snapshots, size_t size)
+    int rbd_status_list_usages(rados_ioctx_t io, char *start_name, size_t max,
+                               rbd_status_usage_t *usages, size_t *size)
+    void rbd_status_list_usages_cleanup(rbd_status_usage_t *usages, size_t size)
+    int rbd_status_get_usage(rbd_image_t image, rbd_status_usage_t *usage)
+
 RBD_FEATURE_LAYERING = _RBD_FEATURE_LAYERING
 RBD_FEATURE_STRIPINGV2 = _RBD_FEATURE_STRIPINGV2
 RBD_FEATURE_EXCLUSIVE_LOCK = _RBD_FEATURE_EXCLUSIVE_LOCK
@@ -407,6 +474,14 @@ RBD_IMAGE_OPTION_ORDER = _RBD_IMAGE_OPTION_ORDER
 RBD_IMAGE_OPTION_STRIPE_UNIT = _RBD_IMAGE_OPTION_STRIPE_UNIT
 RBD_IMAGE_OPTION_STRIPE_COUNT = _RBD_IMAGE_OPTION_STRIPE_COUNT
 RBD_IMAGE_OPTION_DATA_POOL = _RBD_IMAGE_OPTION_DATA_POOL
+
+RBD_STATUS_IMAGE_STATE_IDLE = _RBD_STATUS_IMAGE_STATE_IDLE
+RBD_STATUS_IMAGE_STATE_MAPPED = _RBD_STATUS_IMAGE_STATE_MAPPED
+RBD_STATUS_IMAGE_STATE_TRASH = _RBD_STATUS_IMAGE_STATE_TRASH
+RBD_STATUS_IMAGE_STATE_ALL = _RBD_STATUS_IMAGE_STATE_ALL
+
+RBD_STATUS_SNAPSHOT_NAMESPACE_TYPE_USER = _RBD_STATUS_SNAPSHOT_NAMESPACE_TYPE_USER
+RBD_STATUS_SNAPSHOT_NAMESPACE_TYPE_GROUP = _RBD_STATUS_SNAPSHOT_NAMESPACE_TYPE_GROUP
 
 class Error(Exception):
     pass
@@ -1211,6 +1286,54 @@ class RBD(object):
         finally:
             free(states)
             free(counts)
+
+    def status_get_version(self, ioctx):
+        """
+        Get the version number of status.
+
+        :param ioctx: determines which RADOS pool is read
+        :type ioctx: :class:`rados.Ioctx`
+        :returns: uint64_t - version number
+        """
+        cdef:
+            rados_ioctx_t _ioctx = convert_ioctx(ioctx)
+            cdef uint64_t version = 0
+        with nogil:
+            ret = rbd_status_get_version(_ioctx, &version)
+        if ret != 0:
+            raise make_ex(ret, 'error getting status version')
+        return version
+
+    def status_list_images(self, ioctx):
+        """
+        List images.
+
+        :param ioctx: determines which RADOS pool is read
+        :type ioctx: :class:`rados.Ioctx`
+        :returns: :class:`StatusImageIterator`
+        """
+        return StatusImageIterator(ioctx)
+
+    def status_list_snapshots(self, ioctx):
+        """
+        List snapshots.
+
+        :param ioctx: determines which RADOS pool is read
+        :type ioctx: :class:`rados.Ioctx`
+        :returns: :class:`StatusSnapshotIterator`
+        """
+        return StatusSnapshotIterator(ioctx)
+
+    def status_list_usages(self, ioctx):
+        """
+        List image usages.
+
+        :param ioctx: determines which RADOS pool is read
+        :type ioctx: :class:`rados.Ioctx`
+        :returns: :class:`StatusUsageIterator`
+        """
+        return StatusUsagetIterator(ioctx)
+
 
 cdef class MirrorPeerIterator(object):
     """
@@ -2970,6 +3093,24 @@ written." % (self.name, ret, length))
         """
         return MetadataIterator(self)
 
+    def status_get_usage(self):
+        """
+        Get image usage.
+        """
+        cdef:
+            rbd_status_usage_t usage
+        with nogil:
+            ret = rbd_status_get_usage(self.image, &usage)
+        if ret < 0:
+            raise make_ex(ret, 'error getting image %s usage' % (self.name,))
+
+        return {
+            'Status'        : usage.state,
+            'Capacity'      : usage.size,
+            'UsedCapacity'  : usage.used,
+            }
+
+
 cdef class LockOwnerIterator(object):
     """
     Iterator over managed lock owners for an image
@@ -3241,3 +3382,213 @@ cdef class ChildIterator(object):
         if self.children:
             rbd_list_children_cleanup(self.children, self.num_children)
             free(self.children)
+
+
+cdef class StatusImageIterator(object):
+    """
+    Iterator over image details for a pool.
+
+    Yields a dictionary containing details of an image.
+    """
+
+    cdef:
+        rados_ioctx_t ioctx
+        size_t max_read
+        char *start_read
+        rbd_status_image_t *images
+        size_t size
+
+    def __init__(self, ioctx):
+        self.ioctx = convert_ioctx(ioctx)
+        self.max_read = 1024
+        self.start_read = strdup("")
+        self.images = <rbd_status_image_t *>realloc_chk(NULL,
+            sizeof(rbd_status_image_t) * self.max_read)
+        self.size = 0
+        self.get_next_chunk()
+
+    def __iter__(self):
+        while self.size > 0:
+            for i in range(self.size):
+                snapshot_ids = []
+                snaps_count = self.images[i].snapshots_count
+                if (snaps_count > 0):
+                    snapshot_ids = [self.images[i].snapshot_ids[j] for j in range(snaps_count)]
+                yield {
+                    'Name'           : decode_cstr(self.images[i].name),
+                    'Id'             : decode_cstr(self.images[i].id),
+                    'Capacity'       : self.images[i].size,
+                    'UsedCapacity'   : self.images[i].used,
+                    'Snapshots'      : snapshot_ids,
+                    'QoSs'           : {
+                        'total_bytes_sec' : self.images[i].qos_bw,
+                        'total_iops_sec'  : self.images[i].qos_iops,
+                        },
+                    'Timestamp'      : datetime.utcfromtimestamp(self.images[i].create_timestamp),
+                    'Status'         : self.images[i].state,
+                    'Order'          : self.images[i].order,
+                    'DataPool'       : self.images[i].data_pool_id,
+                    'Striping'       : {
+                        'stripe_unit'     : self.images[i].stripe_unit,
+                        'stripe_count'    : self.images[i].stripe_count,
+                        },
+                    'Parent'         : {
+                        'pool_id'         : self.images[i].parent.pool_id,
+                        'image_id'        : decode_cstr(self.images[i].parent.image_id),
+                        'snapshot_id'     : self.images[i].parent.snapshot_id,
+                        },
+                    }
+            if self.size < self.max_read:
+                break
+            self.get_next_chunk()
+
+    def __dealloc__(self):
+        rbd_status_list_images_cleanup(self.images, self.size)
+        if self.start_read:
+            free(self.start_read)
+        if self.images:
+            free(self.images)
+
+    def get_next_chunk(self):
+        if self.size > 0:
+            rbd_status_list_images_cleanup(self.images, self.size)
+            self.size = 0
+        with nogil:
+            ret = rbd_status_list_images(self.ioctx, self.start_read, self.max_read,
+                                         self.images, &self.size)
+        if ret < 0:
+            raise make_ex(ret, 'error listing images')
+        if self.size > 0:
+            free(self.start_read)
+            start_read = decode_cstr(self.images[self.size - 1].id)
+            self.start_read = strdup(start_read)
+        else:
+            free(self.start_read)
+            self.start_read = strdup("")
+
+
+cdef class StatusSnapshotIterator(object):
+    """
+    Iterator over snapshot details for a pool.
+
+    Yields a dictionary containing details of a snapshot.
+    """
+
+    cdef:
+        rados_ioctx_t ioctx
+        size_t max_read
+        size_t start_read
+        rbd_status_snapshot_t *snapshots
+        size_t size
+
+    def __init__(self, ioctx):
+        self.ioctx = convert_ioctx(ioctx)
+        self.max_read = 1024
+        self.start_read = 0
+        self.snapshots = <rbd_status_snapshot_t *>realloc_chk(NULL,
+            sizeof(rbd_status_snapshot_t) * self.max_read)
+        self.size = 0
+        self.get_next_chunk()
+
+    def __iter__(self):
+        while self.size > 0:
+            for i in range(self.size):
+                clones_count = self.snapshots[i].clones_count
+                clone_ids = []
+                if (clones_count > 0):
+                    clone_ids = [{'PoolId'      : self.snapshots[i].clone_ids[j].pool_id, 
+                                  'VolumeId'    : decode_cstr(self.snapshots[i].clone_ids[j].image_id)
+                                  } for j in range(clones_count)]
+                yield {
+                    'Name'           : decode_cstr(self.snapshots[i].name),
+                    'VolumeId'       : decode_cstr(self.snapshots[i].image_id),
+                    'Id'             : self.snapshots[i].id,
+                    'Timestamp'      : datetime.utcfromtimestamp(self.snapshots[i].create_timestamp),
+                    'Namespace'      : self.snapshots[i].namespace_type,
+                    'Capacity'       : self.snapshots[i].size,
+                    'UsedCapacity'   : self.snapshots[i].used,
+                    'Dirty'          : self.snapshots[i].dirty,
+                    'Volumes'        : clone_ids,
+                    }
+            if self.size < self.max_read:
+                break
+            self.get_next_chunk()
+
+    def __dealloc__(self):
+        rbd_status_list_snapshots_cleanup(self.snapshots, self.size)
+        if self.snapshots:
+            free(self.snapshots)
+
+    def get_next_chunk(self):
+        if self.size > 0:
+            rbd_status_list_snapshots_cleanup(self.snapshots, self.size)
+            self.size = 0
+        with nogil:
+            ret = rbd_status_list_snapshots(self.ioctx, self.start_read, self.max_read,
+                                            self.snapshots, &self.size)
+        if ret < 0:
+            raise make_ex(ret, 'error listing snapshots')
+        if self.size > 0:
+            self.start_read = self.snapshots[self.size - 1].id
+        else:
+            self.start_read = 0
+
+
+cdef class StatusUsagetIterator(object):
+    """
+    Iterator over image usages for a pool.
+
+    Yields a dictionary containing disk usage of an image.
+    """
+
+    cdef:
+        rados_ioctx_t ioctx
+        size_t max_read
+        char *start_read
+        rbd_status_usage_t *usages
+        size_t size
+
+    def __init__(self, ioctx):
+        self.ioctx = convert_ioctx(ioctx)
+        self.max_read = 1024
+        self.start_read = strdup("")
+        self.usages = <rbd_status_usage_t *>realloc_chk(NULL,
+            sizeof(rbd_status_usage_t) * self.max_read)
+        self.size = 0
+        self.get_next_chunk()
+
+    def __iter__(self):
+        while self.size > 0:
+            for i in range(self.size):
+                yield {
+                    'Id'            : self.usages[i].id,
+                    'Status'        : self.usages[i].state,
+                    'Capacity'      : self.usages[i].size,
+                    'UsedCapacity'  : self.usages[i].used,
+                    }
+            if self.size < self.max_read:
+                break
+            self.get_next_chunk()
+
+    def __dealloc__(self):
+        rbd_status_list_usages_cleanup(self.usages, self.size)
+        if self.start_read:
+            free(self.start_read)
+        if self.usages:
+            free(self.usages)
+
+    def get_next_chunk(self):
+        if self.size > 0:
+            rbd_status_list_usages_cleanup(self.usages, self.size)
+            self.size = 0
+        with nogil:
+            ret = rbd_status_list_usages(self.ioctx, self.start_read, self.max_read,
+                                         self.usages, &self.size)
+        if ret < 0:
+            raise make_ex(ret, 'error listing usages')
+        if self.size > 0:
+            start_read = decode_cstr(self.usages[self.size - 1].id)
+            self.start_read = strdup(start_read)
+        else:
+            self.start_read = strdup("")
+
