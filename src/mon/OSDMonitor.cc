@@ -11695,11 +11695,60 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
   return true;
 }
 
-bool OSDMonitor::preprocess_pool_op(MonOpRequestRef op) 
+bool OSDMonitor::enforce_pool_op_caps(MonOpRequestRef op)
+{
+  typedef std::map<std::string, std::string> CommandArgs;
+
+  op->mark_osdmon_event(__func__);
+
+  MPoolOp *m = static_cast<MPoolOp*>(op->get_req());
+  MonSession *session = m->get_session();
+  if (!session) {
+    _pool_op_reply(op, -EPERM, osdmap.get_epoch());
+    return true;
+  }
+
+  switch (m->op) {
+  case POOL_OP_CREATE_UNMANAGED_SNAP:
+  case POOL_OP_DELETE_UNMANAGED_SNAP:
+    {
+      const std::string* pool_name = nullptr;
+      const pg_pool_t *pg_pool = osdmap.get_pg_pool(m->pool);
+      if (pg_pool != nullptr) {
+        pool_name = &osdmap.get_pool_name(m->pool);
+      }
+
+      if (!session->caps.is_capable(cct, CEPH_ENTITY_TYPE_MON,
+                                    session->entity_name, "osd",
+                                    "osd pool op unmanaged-snap",
+                                    (pool_name == nullptr ?
+                                      CommandArgs{} /* pool DNE, require unrestricted cap */ :
+                                      CommandArgs{{"poolname", *pool_name}}),
+                                    false, true, false)) {
+        dout(0) << "got unmanaged-snap pool op from entity with insufficient "
+                << "privileges. message: " << *m  << std::endl
+                << "caps: " << session->caps << dendl;
+        _pool_op_reply(op, -EPERM, osdmap.get_epoch());
+        return true;
+      }
+    }
+    break;
+  default:
+    break;
+  }
+
+  return false;
+}
+
+bool OSDMonitor::preprocess_pool_op(MonOpRequestRef op)
 {
   op->mark_osdmon_event(__func__);
   MPoolOp *m = static_cast<MPoolOp*>(op->get_req());
-  
+
+  if (enforce_pool_op_caps(op)) {
+    return true;
+  }
+
   if (m->fsid != mon->monmap->fsid) {
     dout(0) << __func__ << " drop message on fsid " << m->fsid
             << " != " << mon->monmap->fsid << " for " << *m << dendl;
