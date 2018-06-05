@@ -439,6 +439,7 @@ namespace librbd {
 
     int status_get_version(librados::IoCtx *ioctx, const std::string &oid,
             uint64_t *version);
+    int status_inc_version(librados::IoCtx *ioctx, const std::string &oid);
     int status_list_images(librados::IoCtx *ioctx, const std::string &oid,
         const std::string &start, uint64_t max_return,
         std::vector<cls::rbd::StatusImage> *statuses);

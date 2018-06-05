@@ -121,7 +121,22 @@ int Image<I>::status_get_version(librados::IoCtx &io_ctx,
 
   int r = cls_client::status_get_version(&io_ctx, RBD_STATUS, version);
   if (r < 0 && r != -ENOENT) {
-    lderr(cct) << "error listing images: "
+    lderr(cct) << "error get status version: "
+               << cpp_strerror(r) << dendl;
+    return r;
+  }
+
+  return 0;
+}
+
+template <typename I>
+int Image<I>::status_inc_version(librados::IoCtx &io_ctx) {
+  CephContext *cct = (CephContext *)io_ctx.cct();
+  ldout(cct, 20) << "status_inc_version io_ctx=" << &io_ctx << dendl;
+
+  int r = cls_client::status_inc_version(&io_ctx, RBD_STATUS);
+  if (r < 0 && r != -ENOENT) {
+    lderr(cct) << "error inc status version: "
                << cpp_strerror(r) << dendl;
     return r;
   }

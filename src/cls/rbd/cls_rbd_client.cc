@@ -2164,6 +2164,19 @@ namespace librbd {
       return 0;
     }
 
+    int status_inc_version(librados::IoCtx *ioctx, const std::string &oid)
+    {
+      bufferlist in_bl;
+      librados::ObjectWriteOperation op;
+      op.exec("rbd", "status_inc_version", in_bl);
+
+      int r = ioctx->operate(oid, &op);
+      if (r < 0) {
+        return r;
+      }
+      return 0;
+    }
+
     int status_list_images(librados::IoCtx *ioctx, const std::string &oid,
         const std::string &start, uint64_t max_return,
         std::vector<cls::rbd::StatusImage> *statuses)

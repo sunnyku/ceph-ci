@@ -33,6 +33,7 @@ struct Image {
 
   static int status_get_version(librados::IoCtx &io_ctx,
         uint64_t *version);
+  static int status_inc_version(librados::IoCtx &io_ctx);
   static int status_list_images(librados::IoCtx &io_ctx,
       const std::string &start, size_t max,
       std::vector<status_image_t> *statuses);
