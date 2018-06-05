@@ -95,6 +95,7 @@ TYPE(obj_list_snap_response_t)
 TYPE_FEATUREFUL(PullOp)
 TYPE_FEATUREFUL(PushOp)
 TYPE(PushReplyOp)
+TYPE(pool_pg_num_history_t)
 
 #include "osd/ECUtil.h"
 TYPE(ECUtil::HashInfo)
