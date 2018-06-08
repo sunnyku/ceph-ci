@@ -6102,12 +6102,12 @@ int status_update_qos(cls_method_context_t hctx, bufferlist *in, bufferlist *out
 {
   std::string image_id;
   int64_t iops = -2;
-  int64_t bw = -2;
+  int64_t bps = -2;
   try {
     bufferlist::iterator iter = in->begin();
     ::decode(image_id, iter);
     ::decode(iops, iter);
-    ::decode(bw, iter);
+    ::decode(bps, iter);
   } catch (const buffer::error &err) {
     return -EINVAL;
   }
@@ -6137,8 +6137,8 @@ int status_update_qos(cls_method_context_t hctx, bufferlist *in, bufferlist *out
   if (iops != -2) {     // -2 -> we don't care, -1 -> unset
     image.qos_iops = iops;
   }
-  if (bw != -2) {
-    image.qos_bw = bw;
+  if (bps != -2) {
+    image.qos_bps = bps;
   }
 
   bufferlist image_bl;

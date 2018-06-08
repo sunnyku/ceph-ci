@@ -76,8 +76,8 @@ void MetadataSetRequest<I>::send_status_update() {
     cls_client::status_update_qos(&op, image_ctx.id, iops, -2);
   }
   if (m_key == QOS_MBDW) {
-    int bw = std::stoi(m_value);
-    cls_client::status_update_qos(&op, image_ctx.id, -2, bw);
+    int bps = std::stoi(m_value);
+    cls_client::status_update_qos(&op, image_ctx.id, -2, bps);
   }
 
   librados::AioCompletion *comp = this->create_callback_completion();

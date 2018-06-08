@@ -490,7 +490,7 @@ struct StatusImage {
   uint64_t size = 0;
   uint64_t used = 0;
   int64_t qos_iops = -1;
-  int64_t qos_bw = -1;
+  int64_t qos_bps = -1;
   std::set<uint64_t> snapshot_ids;
 
   void encode(bufferlist &bl) const;
