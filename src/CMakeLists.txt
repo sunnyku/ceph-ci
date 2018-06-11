@@ -798,9 +798,7 @@ if(NOT CEPH_BUILD_VIRTUALENV)
 endif()
 
 add_subdirectory(pybind)
-add_subdirectory(ceph-disk)
 add_subdirectory(ceph-volume)
-add_subdirectory(ceph-detect-init)
 
 ## dencoder
 if(HAS_VTA)
@@ -985,7 +983,6 @@ install(PROGRAMS
 
 install(PROGRAMS
   ${CMAKE_SOURCE_DIR}/src/ceph-create-keys
-#  ${CMAKE_SOURCE_DIR}/src/ceph-disk
   DESTINATION sbin)
 
 add_subdirectory(bash_completion)
