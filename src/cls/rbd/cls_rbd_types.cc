@@ -591,6 +591,8 @@ void StatusImage::encode(bufferlist &bl) const {
   ::encode(used, bl);
   ::encode(qos_iops, bl);
   ::encode(qos_bps, bl);
+  ::encode(qos_reservation, bl);
+  ::encode(qos_weight, bl);
   ::encode(snapshot_ids, bl);
   ENCODE_FINISH(bl);
 }
@@ -611,6 +613,8 @@ void StatusImage::decode(bufferlist::iterator &it) {
   ::decode(used, it);
   ::decode(qos_iops, it);
   ::decode(qos_bps, it);
+  ::decode(qos_reservation, it);
+  ::decode(qos_weight, it);
   ::decode(snapshot_ids, it);
   DECODE_FINISH(it);
 }
@@ -629,6 +633,8 @@ void StatusImage::dump2(Formatter *f) const {
   f->dump_unsigned("size", size);
   f->dump_int("qos_iops", qos_iops);
   f->dump_int("qos_bps", qos_bps);
+  f->dump_int("qos_reservation", qos_reservation);
+  f->dump_int("qos_weight", qos_weight);
 
   f->open_array_section("snapshot_ids");
   for (auto &it : snapshot_ids) {

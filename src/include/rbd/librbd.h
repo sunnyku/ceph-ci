@@ -233,6 +233,8 @@ typedef struct {
   uint64_t used;
   int64_t qos_iops;
   int64_t qos_bps;
+  int64_t qos_reservation;
+  int64_t qos_weight;
   uint64_t snapshots_count;
   uint64_t *snapshot_ids;
 } rbd_status_image_t;

@@ -2386,12 +2386,15 @@ namespace librbd {
     }
 
     void status_update_qos(librados::ObjectWriteOperation *op,
-        const std::string &image_id, int64_t iops, int64_t bps)
+        const std::string &image_id, int64_t iops, int64_t bps,
+        int64_t reservation, int64_t weight)
     {
       bufferlist bl;
       ::encode(image_id, bl);
       ::encode(iops, bl);
       ::encode(bps, bl);
+      ::encode(reservation, bl);
+      ::encode(weight, bl);
       op->exec("rbd", "status_update_qos", bl);
     }
 

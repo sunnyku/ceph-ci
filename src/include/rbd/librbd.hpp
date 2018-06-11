@@ -135,6 +135,8 @@ namespace librbd {
     uint64_t used;
     int64_t qos_iops;
     int64_t qos_bps;
+    int64_t qos_reservation;
+    int64_t qos_weight;
     std::vector<uint64_t> snapshot_ids;
   } status_image_t;
 
