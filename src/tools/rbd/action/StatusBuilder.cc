@@ -448,7 +448,7 @@ int build_status_image(librados::IoCtx &ioctx, const std::string &id,
     return r;
   }
 
-  std::string qos_iops_str, qos_bw_str;
+  std::string qos_iops_str, qos_bps_str;
   r = librbd::cls_client::metadata_get(&ioctx, oid, QOS_MLMT, &qos_iops_str);
   if (r < 0 && r != -ENOENT) {
     std::cerr << __func__ << ": metadata_get: "
@@ -456,7 +456,7 @@ int build_status_image(librados::IoCtx &ioctx, const std::string &id,
         << cpp_strerror(r) << std::endl;
     return r;
   }
-  r = librbd::cls_client::metadata_get(&ioctx, oid, QOS_MBDW, &qos_bw_str);
+  r = librbd::cls_client::metadata_get(&ioctx, oid, QOS_MBDW, &qos_bps_str);
   if (r < 0 && r != -ENOENT) {
     std::cerr << __func__ << ": metadata_get: "
         << oid << "/" << QOS_MBDW << " failed: "
@@ -464,12 +464,12 @@ int build_status_image(librados::IoCtx &ioctx, const std::string &id,
     return r;
   }
 
-  int64_t qos_iops = -1, qos_bw = -1;
+  int64_t qos_iops = -1, qos_bps = -1;
   if (!qos_iops_str.empty()) {
     qos_iops = std::stoll(qos_iops_str);
   }
-  if (!qos_bw_str.empty()) {
-    qos_bw = std::stoll(qos_bw_str);
+  if (!qos_bps_str.empty()) {
+    qos_bps = std::stoll(qos_bps_str);
   }
 
   image->create_timestamp = create_timestamp;
@@ -490,7 +490,7 @@ int build_status_image(librados::IoCtx &ioctx, const std::string &id,
   image->stripe_count = stripe_count;
 
   image->qos_iops = qos_iops;
-  image->qos_bw = qos_bw;
+  image->qos_bps = qos_bps;
 
   return 0;
 }
@@ -734,7 +734,7 @@ int compare_image(cls::rbd::StatusImage &image_new,
     inconsistent = true;
   } else
 
-  if (image_new.qos_bw != image_old.qos_bw) {
+  if (image_new.qos_bps != image_old.qos_bps) {
     inconsistent = true;
   } else
 

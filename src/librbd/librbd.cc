@@ -4317,7 +4317,7 @@ extern "C"  int rbd_status_list_images(rados_ioctx_t p,
     c_image.size = cpp_image.size;
     c_image.used = cpp_image.used;
     c_image.qos_iops = cpp_image.qos_iops;
-    c_image.qos_bw = cpp_image.qos_bw;
+    c_image.qos_bps = cpp_image.qos_bps;
     c_image.snapshots_count = (uint64_t)cpp_image.snapshot_ids.size();
     c_image.snapshot_ids = NULL;
     if (c_image.snapshots_count > 0) {

@@ -198,7 +198,7 @@ cdef extern from "rbd/librbd.h" nogil:
         uint64_t size
         uint64_t used
         int64_t qos_iops
-        int64_t qos_bw
+        int64_t qos_bps
         uint64_t snapshots_count
         uint64_t *snapshot_ids
 
@@ -3421,7 +3421,7 @@ cdef class StatusImageIterator(object):
                     'UsedCapacity'   : self.images[i].used,
                     'Snapshots'      : snapshot_ids,
                     'QoSs'           : {
-                        'total_bytes_sec' : self.images[i].qos_bw,
+                        'total_bytes_sec' : self.images[i].qos_bps,
                         'total_iops_sec'  : self.images[i].qos_iops,
                         },
                     'Timestamp'      : datetime.utcfromtimestamp(self.images[i].create_timestamp),

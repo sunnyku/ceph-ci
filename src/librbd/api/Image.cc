@@ -190,7 +190,7 @@ int Image<I>::status_list_images(librados::IoCtx &io_ctx,
       image.size = it.size;
       image.used = it.used;
       image.qos_iops = it.qos_iops;
-      image.qos_bw = it.qos_bw;
+      image.qos_bps = it.qos_bps;
       for (auto &snap_it : it.snapshot_ids) {
         image.snapshot_ids.push_back(snap_it);
       }
