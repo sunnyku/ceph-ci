@@ -232,7 +232,7 @@ public:
       std::map<mirror_image_status_state_t, int> *states);
 
   int status_get_version(IoCtx &io_ctx, uint64_t *version);
-  int status_inc_version(IoCtx &io_ctx);
+  int status_inc_version(IoCtx &io_ctx, uint64_t version);
   int status_list_images(IoCtx &io_ctx, const std::string &start, size_t max,
       std::vector<status_image_t> *images);
   int status_list_snapshots(IoCtx &io_ctx, uint64_t start, size_t max,

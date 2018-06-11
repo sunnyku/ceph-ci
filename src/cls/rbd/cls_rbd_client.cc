@@ -2164,9 +2164,11 @@ namespace librbd {
       return 0;
     }
 
-    int status_inc_version(librados::IoCtx *ioctx, const std::string &oid)
+    int status_inc_version(librados::IoCtx *ioctx, const std::string &oid,
+        uint64_t version)
     {
       bufferlist in_bl;
+      ::encode(version, in_bl);
       librados::ObjectWriteOperation op;
       op.exec("rbd", "status_inc_version", in_bl);
 

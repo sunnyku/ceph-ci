@@ -1290,9 +1290,18 @@ int execute_check(const po::variables_map &vm) {
     return r;
   }
 
-  if (from_scratch) {
+  uint64_t version = 0;
+  if (rebuild && from_scratch) {
+    librbd::RBD rbd;
+    r = rbd.status_get_version(ioctx, &version);
+    if (r < 0 && r != -ENOENT) {
+      std::cerr << __func__ << ": status_get_version failed: "
+          << cpp_strerror(r) << std::endl;
+      return r;
+    }
+
     r = ioctx.omap_clear(RBD_STATUS);
-    if (r < 0) {
+    if (r < 0 && r != -ENOENT) {
       std::cerr << __func__ << ": omap_clear: " << RBD_STATUS << " failed: "
           << cpp_strerror(r) << std::endl;
       return r;
@@ -1333,7 +1342,9 @@ int execute_check(const po::variables_map &vm) {
 
   if (rebuild) { // always increase the version for convenient
     librbd::RBD rbd;
-    r = rbd.status_inc_version(ioctx);
+
+    version++;
+    r = rbd.status_inc_version(ioctx, version);
     if (r < 0) {
       std::cerr << __func__ << ": status_inc_version failed: "
           << cpp_strerror(r) << std::endl;
