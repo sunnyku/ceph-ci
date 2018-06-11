@@ -1443,18 +1443,18 @@ int get_pg_metadata(ObjectStore *store, bufferlist &bl, metadata_section &ms,
     }
   }
 
-  if (debug) {
+  if (true || debug) {
     cerr << "Import pgid " << ms.info.pgid << std::endl;
     cerr << "Previous past_intervals " << ms.past_intervals << std::endl;
     cerr << "history.same_interval_since " << ms.info.history.same_interval_since << std::endl;
   }
 
-  if (debug)
+  if (true || debug)
     cerr << "Changing pg epoch " << ms.map_epoch << " to " << sb.current_epoch << std::endl;
 
   // advance map and fill in PastIntervals
   if (ms.map_epoch < sb.current_epoch) {
-    if (debug)
+    if (true || debug)
       cerr << "Advancing PG from " << ms.map_epoch << " to " << sb.current_epoch
 	   << std::endl;
 
@@ -1466,7 +1466,10 @@ int get_pg_metadata(ObjectStore *store, bufferlist &bl, metadata_section &ms,
     vector<int> up, acting;
     lastmap->pg_to_up_acting_osds(
       ms.info.pgid.pgid, &up, &up_primary, &acting, &acting_primary);
-
+    cerr << "initial e" << lastmap->get_epoch()
+	 << " up " << up << "/" << up_primary
+	 << " acting " << acting << "/" << acting_primary
+	 << std::endl;
     while (ms.map_epoch < sb.current_epoch) {
       ++ms.map_epoch;
       if (ms.map_epoch < sb.oldest_map) {
@@ -1488,6 +1491,11 @@ int get_pg_metadata(ObjectStore *store, bufferlist &bl, metadata_section &ms,
       nextmap->pg_to_up_acting_osds(
 	ms.info.pgid.pgid, &new_up, &new_up_primary, &new_acting,
 	&new_acting_primary);
+
+      cerr << "e" << nextmap->get_epoch()
+	   << " up " << up << "/" << up_primary
+	   << " acting " << acting << "/" << acting_primary
+	   << std::endl;
 
       // this is a bit imprecise, but sufficient?
       struct min_size_predicate_t : public IsPGRecoverablePredicate {
@@ -1544,7 +1552,7 @@ int get_pg_metadata(ObjectStore *store, bufferlist &bl, metadata_section &ms,
       }
       lastmap = nextmap;
     }
-    if (debug)
+    if (true || debug)
       cerr << "new PastIntervals " << ms.past_intervals << std::endl;
   }
 
