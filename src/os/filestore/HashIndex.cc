@@ -161,6 +161,8 @@ int HashIndex::col_split_level(
   uint32_t match,
   unsigned *mkdirred)
 {
+  dout(20) << __func__ << " path " << path << " inbits " << inbits
+	   << " match " << match << dendl;
   /* For each subdir, move, recurse, or ignore based on comparing the low order
    * bits of the hash represented by the subdir path with inbits, match passed
    * in.
@@ -173,6 +175,8 @@ int HashIndex::col_split_level(
   r = from.list_objects(path, 0, 0, &objects);
   if (r < 0)
     return r;
+  dout(20) << " subdirs " << subdirs
+	   << ", objects.size() " << objects.size() << dendl;
 
   set<string> to_move;
   for (vector<string>::iterator i = subdirs.begin();
@@ -216,6 +220,9 @@ int HashIndex::col_split_level(
 
   if (objs_to_move.empty() && to_move.empty())
     return 0;
+
+  dout(20) << " objs_to_move " << objs_to_move << dendl;
+  dout(20) << " to_move " << to_move << dendl;
 
   // Make parent directories as needed
   while (*mkdirred < path.size()) {
@@ -296,6 +303,7 @@ int HashIndex::_split(
   uint32_t match,
   uint32_t bits,
   CollectionIndex* dest) {
+  dout(20) << __func__ << " match " << match << " bits " << bits << dendl;
   assert(collection_version() == dest->collection_version());
   unsigned mkdirred = 0;
   return col_split_level(
