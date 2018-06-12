@@ -553,9 +553,8 @@ function run_mgr() {
 # The CEPH_CONF variable is expected to be set to /dev/null to
 # only rely on arguments for configuration.
 #
-# The run_osd function creates the OSD data directory with ceph-disk
-# prepare on the **dir**/**id** directory and relies on the
-# activate_osd function to run the daemon.
+# The run_osd function creates the OSD data directory on the **dir**/**id**
+# directory and relies on the activate_osd function to run the daemon.
 #
 # Examples:
 #
@@ -750,7 +749,7 @@ function test_destroy_osd() {
 # The activate_osd function expects a valid OSD data directory
 # in **dir**/**id**, either just created via run_osd or re-using
 # one left by a previous run of ceph-osd. The ceph-osd daemon is
-# run indirectly via ceph-disk activate.
+# run directly on the foreground
 #
 # The activate_osd function blocks until the monitor reports the osd
 # up. If it fails to do so within $TIMEOUT seconds, activate_osd
@@ -774,12 +773,6 @@ function activate_osd() {
     shift
     local osd_data=$dir/$id
 
-    local ceph_disk_args
-    ceph_disk_args+=" --verbose"
-    ceph_disk_args+=" --statedir=$dir"
-    ceph_disk_args+=" --sysconfdir=$dir"
-    ceph_disk_args+=" --prepend-to-path="
-
     local ceph_args="$CEPH_ARGS"
     ceph_args+=" --osd-failsafe-full-ratio=.99"
     ceph_args+=" --osd-journal-size=100"
@@ -798,10 +791,9 @@ function activate_osd() {
     ceph_args+=" "
     ceph_args+="$@"
     mkdir -p $osd_data
-    CEPH_ARGS="$ceph_args " ceph-disk $ceph_disk_args \
-        activate \
-        --mark-init=none \
-        $osd_data || return 1
+
+    echo start osd.$id
+    ceph-osd -i $id $ceph_args &
 
     [ "$id" = "$(cat $osd_data/whoami)" ] || return 1
 
