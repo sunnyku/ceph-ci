@@ -387,7 +387,8 @@ class Module(MgrModule):
                            begin_time, end_time, timeofday)
             sleep_interval = float(self.get_config('sleep_interval',
                                                    default_sleep_interval))
-            if self.active:
+            enable_smart_optimize = bool(int(self.get_config('enable_smart_optimize', 1)))
+            if enable_smart_optimize:
                 auto_optimize_pool_age = int(self.get_config('auto_optimize_pool_age', 300))
                 auto_optimize_pool_mode = self.get_config('auto_optimize_pool_mode', 'upmap')
                 osdmap = self.get_osdmap()
@@ -431,8 +432,7 @@ class Module(MgrModule):
                         if i['pool'] == pool_id and i['pool_name'] not in pools:
                             pools.append(i['pool_name'])
                             break
-                enable_smart_optimize = bool(int(self.get_config('enable_smart_optimize', 1)))
-                if enable_smart_optimize and len(pools):
+                if len(pools):
                     self.log.info('will do automatical optimization for pools:%s' \
                                   % pools)
                     name = 'auto_optimize_pools_%s' \

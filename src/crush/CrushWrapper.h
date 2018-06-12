@@ -586,6 +586,7 @@ public:
    * Note that these may not be parentless roots.
    */
   void find_takes(set<int> *roots) const;
+  void find_takes_by_rule(int rule, set<int> *roots) const;
 
   /**
    * find tree roots
@@ -681,9 +682,10 @@ public:
 
   /**
    * return ancestor of the given type, or 0 if none
+   * can pass in a specific crush **rule** to return ancestor from that rule only 
    * (parent is always a bucket and thus <0)
    */
-  int get_parent_of_type(int id, int type) const;
+  int get_parent_of_type(int id, int type, int rule = -1) const;
 
   /**
    * get the fully qualified location of a device by successively finding
@@ -729,7 +731,7 @@ public:
   void get_children_of_type(int id,
                             int type,
                             set<int> *children,
-                            bool exclude_shadow = true);
+                            bool exclude_shadow = true) const;
   void get_all_children_of_type(int type,
                                 set<int> *children,
                                 bool exclude_shadow = true);
