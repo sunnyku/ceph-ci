@@ -2243,7 +2243,9 @@ will start to track new ops received afterwards.";
     }
     f->close_section();
   } else if (admin_command == "smart") {
-    probe_smart(ss);
+    string devid;
+    cmd_getval(cct, cmdmap, "devid", devid);
+    probe_smart(devid, ss);
   } else if (admin_command == "list_devices") {
     set<string> devnames;
     store->get_devices(&devnames);
@@ -6171,7 +6173,9 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
   }
 
   else if (prefix == "smart") {
-    probe_smart(ds);
+    string devid;
+    cmd_getval(cct, cmdmap, "devid", devid);
+    probe_smart(devid, ds);
   }
 
   else {
@@ -6192,14 +6196,15 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
   }
 }
 
-void OSD::probe_smart(ostream& ss)
+void OSD::probe_smart(const string& only_devid, ostream& ss)
 {
   set<string> devnames;
   store->get_devices(&devnames);
-  uint64_t smart_timeout = cct->_conf->get_val<uint64_t>("osd_smart_report_timeout");
-  std::string result;
+  uint64_t smart_timeout = cct->_conf->get_val<uint64_t>(
+    "osd_smart_report_timeout");
 
-  json_spirit::mObject json_map; // == typedef std::map<std::string, mValue> mObject;
+  // == typedef std::map<std::string, mValue> mObject;
+  json_spirit::mObject json_map;
   json_spirit::mValue smart_json;
 
   for (auto dev : devnames) {
@@ -6208,16 +6213,28 @@ void OSD::probe_smart(ostream& ss)
       continue;
     }
 
+    string devid = get_device_id(dev);
+    if (devid.size() == 0) {
+      dout(10) << __func__ << " no unique id for dev " << dev << ", skipping"
+	       << dendl;
+      continue;
+    }
+    if (only_devid.size() && devid != only_devid) {
+      continue;
+    }
+
+    std::string result;
     if (probe_smart_device(("/dev/" + dev).c_str(), smart_timeout, &result)) {
       dout(10) << "probe_smart_device failed for /dev/" << dev << dendl;
-      continue;
+      //continue;
+      result = "{\"error\": \"smartctl failed\", \"dev\": \"" + dev + "\"}";
     }
 
     // TODO: change to read_or_throw?
     if (!json_spirit::read(result, smart_json)) {
       derr << "smartctl JSON output of /dev/" + dev + " is invalid" << dendl;
     } else { //json is valid, assigning
-      json_map[dev] = smart_json;
+      json_map[devid] = smart_json;
     }
     // no need to result.clear() or clear smart_json
   }
@@ -6227,8 +6244,9 @@ void OSD::probe_smart(ostream& ss)
 int OSD::probe_smart_device(const char *device, int timeout, std::string *result)
 {
   // when using --json, smartctl will report its errors in JSON format to stdout 
-  SubProcessTimed smartctl("sudo", SubProcess::CLOSE, SubProcess::PIPE, SubProcess::CLOSE,
-			   timeout);
+  SubProcessTimed smartctl(
+    "sudo", SubProcess::CLOSE, SubProcess::PIPE, SubProcess::CLOSE,
+    timeout);
   smartctl.add_cmd_args(
     "smartctl",
     "-a",
