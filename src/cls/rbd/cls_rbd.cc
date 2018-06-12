@@ -5196,6 +5196,14 @@ int status_get_version(cls_method_context_t hctx, bufferlist *in, bufferlist *ou
 
 int status_inc_version(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
 {
+  uint64_t version_inc = 0;
+  try {
+    bufferlist::iterator iter = in->begin();
+    ::decode(version_inc, iter);
+  } catch (const buffer::error &err) {
+    return -EINVAL;
+  }
+
   uint64_t version = 0;
   int r = read_key(hctx, STATUS_VERSION_KEY, &version);
   if (r < 0 && r != -ENOENT) {
@@ -5204,7 +5212,7 @@ int status_inc_version(cls_method_context_t hctx, bufferlist *in, bufferlist *ou
 
   std::map<std::string, bufferlist> vals;
 
-  version++;
+  version += version_inc;
   bufferlist version_bl;
   ::encode(version, version_bl);
 
@@ -6103,11 +6111,15 @@ int status_update_qos(cls_method_context_t hctx, bufferlist *in, bufferlist *out
   std::string image_id;
   int64_t iops = -2;
   int64_t bps = -2;
+  int64_t reservation = -2;
+  int64_t weight = -2;
   try {
     bufferlist::iterator iter = in->begin();
     ::decode(image_id, iter);
     ::decode(iops, iter);
     ::decode(bps, iter);
+    ::decode(reservation, iter);
+    ::decode(weight, iter);
   } catch (const buffer::error &err) {
     return -EINVAL;
   }
@@ -6139,6 +6151,12 @@ int status_update_qos(cls_method_context_t hctx, bufferlist *in, bufferlist *out
   }
   if (bps != -2) {
     image.qos_bps = bps;
+  }
+  if (reservation != -2) {
+    image.qos_reservation = reservation;
+  }
+  if (weight != -2) {
+    image.qos_weight = weight;
   }
 
   bufferlist image_bl;

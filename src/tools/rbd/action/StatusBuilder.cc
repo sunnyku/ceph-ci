@@ -128,6 +128,8 @@ void get_check_arguments(po::options_description *positional,
       ("check-trash", po::bool_switch(), "check trash");
   options->add_options()
       ("rebuild", po::bool_switch(), "rebuild optionally");
+  options->add_options()
+      ("from-scratch", po::bool_switch(), "rebuild from scratch");
 }
 
 template<typename T>
@@ -448,7 +450,7 @@ int build_status_image(librados::IoCtx &ioctx, const std::string &id,
     return r;
   }
 
-  std::string qos_iops_str, qos_bps_str;
+  std::string qos_iops_str, qos_bps_str, qos_reservation_str, qos_weight_str;
   r = librbd::cls_client::metadata_get(&ioctx, oid, QOS_MLMT, &qos_iops_str);
   if (r < 0 && r != -ENOENT) {
     std::cerr << __func__ << ": metadata_get: "
@@ -463,13 +465,33 @@ int build_status_image(librados::IoCtx &ioctx, const std::string &id,
         << cpp_strerror(r) << std::endl;
     return r;
   }
+  r = librbd::cls_client::metadata_get(&ioctx, oid, QOS_MRSV, &qos_reservation_str);
+  if (r < 0 && r != -ENOENT) {
+    std::cerr << __func__ << ": metadata_get: "
+        << oid << "/" << QOS_MRSV << " failed: "
+        << cpp_strerror(r) << std::endl;
+    return r;
+  }
+  r = librbd::cls_client::metadata_get(&ioctx, oid, QOS_MWGT, &qos_weight_str);
+  if (r < 0 && r != -ENOENT) {
+    std::cerr << __func__ << ": metadata_get: "
+        << oid << "/" << QOS_MWGT << " failed: "
+        << cpp_strerror(r) << std::endl;
+    return r;
+  }
 
-  int64_t qos_iops = -1, qos_bps = -1;
+  int64_t qos_iops = -1, qos_bps = -1, qos_reservation = -1, qos_weight = -1;
   if (!qos_iops_str.empty()) {
     qos_iops = std::stoll(qos_iops_str);
   }
   if (!qos_bps_str.empty()) {
     qos_bps = std::stoll(qos_bps_str);
+  }
+  if (!qos_reservation_str.empty()) {
+    qos_reservation = std::stoll(qos_reservation_str);
+  }
+  if (!qos_weight_str.empty()) {
+    qos_weight = std::stoll(qos_weight_str);
   }
 
   image->create_timestamp = create_timestamp;
@@ -491,6 +513,8 @@ int build_status_image(librados::IoCtx &ioctx, const std::string &id,
 
   image->qos_iops = qos_iops;
   image->qos_bps = qos_bps;
+  image->qos_reservation = qos_reservation;
+  image->qos_weight = qos_weight;
 
   return 0;
 }
@@ -735,6 +759,14 @@ int compare_image(cls::rbd::StatusImage &image_new,
   } else
 
   if (image_new.qos_bps != image_old.qos_bps) {
+    inconsistent = true;
+  } else
+
+  if (image_new.qos_reservation != image_old.qos_reservation) {
+    inconsistent = true;
+  } else
+
+  if (image_new.qos_weight != image_old.qos_weight) {
     inconsistent = true;
   } else
 
@@ -1227,6 +1259,7 @@ int execute_check(const po::variables_map &vm) {
   bool directory = vm["check-directory"].as<bool>();
   bool trash = vm["check-trash"].as<bool>();
   bool rebuild = vm["rebuild"].as<bool>();
+  bool from_scratch = vm["from-scratch"].as<bool>();
 
   if (!status && !directory && !trash) {
     all = true;
@@ -1255,6 +1288,24 @@ int execute_check(const po::variables_map &vm) {
           << cpp_strerror(r) << std::endl;
     }
     return r;
+  }
+
+  uint64_t version = 0;
+  if (rebuild && from_scratch) {
+    librbd::RBD rbd;
+    r = rbd.status_get_version(ioctx, &version);
+    if (r < 0 && r != -ENOENT) {
+      std::cerr << __func__ << ": status_get_version failed: "
+          << cpp_strerror(r) << std::endl;
+      return r;
+    }
+
+    r = ioctx.omap_clear(RBD_STATUS);
+    if (r < 0 && r != -ENOENT) {
+      std::cerr << __func__ << ": omap_clear: " << RBD_STATUS << " failed: "
+          << cpp_strerror(r) << std::endl;
+      return r;
+    }
   }
 
   int ret = 0;
@@ -1288,6 +1339,21 @@ int execute_check(const po::variables_map &vm) {
       }
     }
   }
+
+  if (rebuild) { // always increase the version for convenient
+    librbd::RBD rbd;
+
+    version++;
+    r = rbd.status_inc_version(ioctx, version);
+    if (r < 0) {
+      std::cerr << __func__ << ": status_inc_version failed: "
+          << cpp_strerror(r) << std::endl;
+      if (!ret) {
+        ret = r;
+      }
+    }
+  }
+
   return ret;
 }
 

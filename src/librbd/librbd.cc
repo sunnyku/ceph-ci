@@ -671,9 +671,9 @@ namespace librbd {
     return librbd::api::Image<>::status_get_version(io_ctx, version);
   }
 
-  int RBD::status_inc_version(IoCtx &io_ctx)
+  int RBD::status_inc_version(IoCtx &io_ctx, uint64_t version)
   {
-    return librbd::api::Image<>::status_inc_version(io_ctx);
+    return librbd::api::Image<>::status_inc_version(io_ctx, version);
   }
 
   int RBD::status_list_images(IoCtx &io_ctx, const std::string &start,
@@ -4269,11 +4269,11 @@ extern "C"  int rbd_status_get_version(rados_ioctx_t p, uint64_t *version)
   return 0;
 }
 
-extern "C"  int rbd_status_inc_version(rados_ioctx_t p)
+extern "C"  int rbd_status_inc_version(rados_ioctx_t p, uint64_t version)
 {
   librados::IoCtx io_ctx;
   librados::IoCtx::from_rados_ioctx_t(p, io_ctx);
-  int r = librbd::api::Image<>::status_inc_version(io_ctx);
+  int r = librbd::api::Image<>::status_inc_version(io_ctx, version);
   if (r < 0) {
     return r;
   }
@@ -4318,6 +4318,8 @@ extern "C"  int rbd_status_list_images(rados_ioctx_t p,
     c_image.used = cpp_image.used;
     c_image.qos_iops = cpp_image.qos_iops;
     c_image.qos_bps = cpp_image.qos_bps;
+    c_image.qos_reservation = cpp_image.qos_reservation;
+    c_image.qos_weight = cpp_image.qos_weight;
     c_image.snapshots_count = (uint64_t)cpp_image.snapshot_ids.size();
     c_image.snapshot_ids = NULL;
     if (c_image.snapshots_count > 0) {

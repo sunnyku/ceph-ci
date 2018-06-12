@@ -135,6 +135,8 @@ namespace librbd {
     uint64_t used;
     int64_t qos_iops;
     int64_t qos_bps;
+    int64_t qos_reservation;
+    int64_t qos_weight;
     std::vector<uint64_t> snapshot_ids;
   } status_image_t;
 
@@ -230,7 +232,7 @@ public:
       std::map<mirror_image_status_state_t, int> *states);
 
   int status_get_version(IoCtx &io_ctx, uint64_t *version);
-  int status_inc_version(IoCtx &io_ctx);
+  int status_inc_version(IoCtx &io_ctx, uint64_t version);
   int status_list_images(IoCtx &io_ctx, const std::string &start, size_t max,
       std::vector<status_image_t> *images);
   int status_list_snapshots(IoCtx &io_ctx, uint64_t start, size_t max,

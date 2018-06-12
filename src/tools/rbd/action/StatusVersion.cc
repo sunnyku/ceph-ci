@@ -60,7 +60,7 @@ int do_inc(std::string &pool_name, Formatter *f) {
     return r;
   }
 
-  r = rbd.status_inc_version(ioctx);
+  r = rbd.status_inc_version(ioctx, 1);
   if (r < 0)
     return r;
 

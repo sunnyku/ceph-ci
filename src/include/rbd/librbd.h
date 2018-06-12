@@ -233,6 +233,8 @@ typedef struct {
   uint64_t used;
   int64_t qos_iops;
   int64_t qos_bps;
+  int64_t qos_reservation;
+  int64_t qos_weight;
   uint64_t snapshots_count;
   uint64_t *snapshot_ids;
 } rbd_status_image_t;
@@ -909,7 +911,7 @@ CEPH_RBD_API int rbd_qos_get(rbd_image_t image,
 CEPH_RBD_API int rbd_qos_del(rbd_image_t image, int flag);
 
 CEPH_RBD_API int rbd_status_get_version(rados_ioctx_t io, uint64_t *version);
-CEPH_RBD_API int rbd_status_inc_version(rados_ioctx_t io);
+CEPH_RBD_API int rbd_status_inc_version(rados_ioctx_t io, uint64_t version);
 CEPH_RBD_API int rbd_status_list_images(rados_ioctx_t io,
     const char *start, size_t max,
     rbd_status_image_t *images, size_t *size);

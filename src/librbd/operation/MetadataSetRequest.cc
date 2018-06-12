@@ -65,7 +65,8 @@ void MetadataSetRequest<I>::send_status_update() {
 
   m_state = STATE_STATUS_UPDATE;
 
-  if (m_key != QOS_MLMT && m_key != QOS_MBDW) {
+  if (m_key != QOS_MLMT && m_key != QOS_MBDW
+      && m_key != QOS_MRSV && m_key != QOS_MWGT) {
     send_metadata_set();
     return;
   }
@@ -73,11 +74,19 @@ void MetadataSetRequest<I>::send_status_update() {
   librados::ObjectWriteOperation op;
   if (m_key == QOS_MLMT) {
     int iops = std::stoi(m_value);
-    cls_client::status_update_qos(&op, image_ctx.id, iops, -2);
+    cls_client::status_update_qos(&op, image_ctx.id, iops, -2, -2, -2);
   }
   if (m_key == QOS_MBDW) {
     int bps = std::stoi(m_value);
-    cls_client::status_update_qos(&op, image_ctx.id, -2, bps);
+    cls_client::status_update_qos(&op, image_ctx.id, -2, bps, -2, -2);
+  }
+  if (m_key == QOS_MRSV) {
+    int reservation = std::stoi(m_value);
+    cls_client::status_update_qos(&op, image_ctx.id, -2, -2, reservation, -2);
+  }
+  if (m_key == QOS_MWGT) {
+    int weight = std::stoi(m_value);
+    cls_client::status_update_qos(&op, image_ctx.id, -2, -2, -2, weight);
   }
 
   librados::AioCompletion *comp = this->create_callback_completion();

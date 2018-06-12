@@ -2164,9 +2164,11 @@ namespace librbd {
       return 0;
     }
 
-    int status_inc_version(librados::IoCtx *ioctx, const std::string &oid)
+    int status_inc_version(librados::IoCtx *ioctx, const std::string &oid,
+        uint64_t version)
     {
       bufferlist in_bl;
+      ::encode(version, in_bl);
       librados::ObjectWriteOperation op;
       op.exec("rbd", "status_inc_version", in_bl);
 
@@ -2386,12 +2388,15 @@ namespace librbd {
     }
 
     void status_update_qos(librados::ObjectWriteOperation *op,
-        const std::string &image_id, int64_t iops, int64_t bps)
+        const std::string &image_id, int64_t iops, int64_t bps,
+        int64_t reservation, int64_t weight)
     {
       bufferlist bl;
       ::encode(image_id, bl);
       ::encode(iops, bl);
       ::encode(bps, bl);
+      ::encode(reservation, bl);
+      ::encode(weight, bl);
       op->exec("rbd", "status_update_qos", bl);
     }
 

@@ -438,8 +438,9 @@ namespace librbd {
                   cls::rbd::TrashImageSpec *trash_spec);
 
     int status_get_version(librados::IoCtx *ioctx, const std::string &oid,
-            uint64_t *version);
-    int status_inc_version(librados::IoCtx *ioctx, const std::string &oid);
+        uint64_t *version);
+    int status_inc_version(librados::IoCtx *ioctx, const std::string &oid,
+        uint64_t version);
     int status_list_images(librados::IoCtx *ioctx, const std::string &oid,
         const std::string &start, uint64_t max_return,
         std::vector<cls::rbd::StatusImage> *statuses);
@@ -487,7 +488,8 @@ namespace librbd {
     void status_rename_snapshot(librados::ObjectWriteOperation *op,
         uint64_t snap_id, const std::string &snap_name);
     void status_update_qos(librados::ObjectWriteOperation *op,
-        const std::string &image_id, int64_t iops, int64_t bps);
+        const std::string &image_id, int64_t iops, int64_t bps,
+        int64_t reservation, int64_t weight);
     int status_get_usage(librados::IoCtx *ioctx, const std::string &oid,
         const std::string &id, uint64_t snapshot_id,
         cls::rbd::StatusUsage *usage);

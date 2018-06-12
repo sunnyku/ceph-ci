@@ -85,6 +85,12 @@ int do_list(std::string &pool_name, Formatter *f) {
         if (!(it.qos_bps < 0)) {
           f->dump_unsigned("qos_bps", it.qos_bps);
         }
+        if (!(it.qos_reservation < 0)) {
+          f->dump_unsigned("qos_reservation", it.qos_reservation);
+        }
+        if (!(it.qos_weight < 0)) {
+          f->dump_unsigned("qos_weight", it.qos_weight);
+        }
         if (!it.snapshot_ids.empty()) {
           f->open_array_section("snapshots");
 

@@ -64,17 +64,24 @@ void MetadataRemoveRequest<I>::send_status_update() {
 
   m_state = STATE_STATUS_UPDATE;
 
-  if (m_key != QOS_MLMT && m_key != QOS_MBDW) {
+  if (m_key != QOS_MLMT && m_key != QOS_MBDW
+      && m_key != QOS_MRSV && m_key != QOS_MWGT) {
     send_metadata_remove();
     return;
   }
 
   librados::ObjectWriteOperation op;
   if (m_key == QOS_MLMT) {
-    cls_client::status_update_qos(&op, image_ctx.id, -1, -2);
+    cls_client::status_update_qos(&op, image_ctx.id, -1, -2, -2, -2);
   }
   if (m_key == QOS_MBDW) {
-    cls_client::status_update_qos(&op, image_ctx.id, -2, -1);
+    cls_client::status_update_qos(&op, image_ctx.id, -2, -1, -2, -2);
+  }
+  if (m_key == QOS_MRSV) {
+    cls_client::status_update_qos(&op, image_ctx.id, -2, -2, -1, -2);
+  }
+  if (m_key == QOS_MWGT) {
+    cls_client::status_update_qos(&op, image_ctx.id, -2, -2, -2, -1);
   }
 
   librados::AioCompletion *comp = this->create_callback_completion();
