@@ -3416,6 +3416,10 @@ cdef class StatusImageIterator(object):
                 snaps_count = self.images[i].snapshots_count
                 if (snaps_count > 0):
                     snapshot_ids = [self.images[i].snapshot_ids[j] for j in range(snaps_count)]
+                qos_iops = 0 if self.images[i].qos_iops < 0 else self.images[i].qos_iops
+                qos_bps = 0 if self.images[i].qos_bps < 0 else self.images[i].qos_bps
+                qos_reservation = 0 if self.images[i].qos_reservation < 0 else self.images[i].qos_reservation
+                qos_weight = 100 if self.images[i].qos_weight < 0 else self.images[i].qos_weight
                 yield {
                     'Name'           : decode_cstr(self.images[i].name),
                     'Id'             : decode_cstr(self.images[i].id),
@@ -3423,10 +3427,10 @@ cdef class StatusImageIterator(object):
                     'UsedCapacity'   : self.images[i].used,
                     'Snapshots'      : snapshot_ids,
                     'QoSs'           : {
-                        'total_iops_sec'  : self.images[i].qos_iops,
-                        'total_bytes_sec' : self.images[i].qos_bps,
-                        'iops_reservation': self.images[i].qos_reservation,
-                        'iops_weight'     : self.images[i].qos_weight,
+                        'total_iops_sec'  : qos_iops,
+                        'total_bytes_sec' : qos_bps,
+                        'iops_reservation': qos_reservation,
+                        'iops_weight'     : qos_weight,
                         },
                     'Timestamp'      : datetime.utcfromtimestamp(self.images[i].create_timestamp),
                     'Status'         : self.images[i].state,
