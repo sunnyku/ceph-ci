@@ -2340,7 +2340,9 @@ void PGMap::update_delta(
    */
   pool_stat_t d = current_pool_sum;
   d.stats.sub(old_pool_sum.stats);
-  if (d.stats.sum.is_negative())
+  // filter non-negative delta value that updated by mgr tick
+  auto period = cct ? cct->_conf->get_val<int64_t>("mgr_tick_period") : 2;
+  if (d.stats.sum.is_negative() || (double)delta_t < period)
     return;
 
   /* Aggregate current delta, and take out the last seen delta (if any) to
