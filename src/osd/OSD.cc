@@ -412,7 +412,7 @@ void OSDService::identify_merge_pgs(
     }
   } else {
     spg_t parent;
-    if (pgid.is_merge(old_pgnum, new_pgnum, &parent)) {
+    if (pgid.is_merge_source(old_pgnum, new_pgnum, &parent)) {
       dout(20) << __func__ << " source " << pgid << " target " << parent
 	       << dendl;
       pgs->insert(pgid);
@@ -7988,7 +7988,7 @@ bool OSD::advance_pg(
       set<spg_t> children;
       if (nextmap->have_pg_pool(pg->pg_id.pool())) {
 	spg_t parent;
-	if (pg->pg_id.is_merge(
+	if (pg->pg_id.is_merge_source(
 	      old_pg_num,
 	      new_pg_num,
 	      &parent)) {
