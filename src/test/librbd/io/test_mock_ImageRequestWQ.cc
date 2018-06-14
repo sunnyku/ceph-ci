@@ -222,6 +222,10 @@ struct TestMockIoImageRequestWQ : public TestMockFixture {
   void expect_all_throttled(MockImageRequest &mock_image_request, bool value) {
     EXPECT_CALL(mock_image_request, were_all_throttled()).WillOnce(Return(value));
   }
+
+  void expect_start_op(MockImageRequest &mock_image_request) {
+    EXPECT_CALL(mock_image_request, start_op()).Times(1);
+  }
 };
 
 TEST_F(TestMockIoImageRequestWQ, AcquireLockError) {
@@ -306,7 +310,7 @@ TEST_F(TestMockIoImageRequestWQ, RefreshError) {
   aio_comp->release();
 }
 
-TEST_F(TestMockIoImageRequestWQ, IOPSQos) {
+TEST_F(TestMockIoImageRequestWQ, QosNoLimit) {
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
@@ -319,10 +323,33 @@ TEST_F(TestMockIoImageRequestWQ, IOPSQos) {
   InSequence seq;
   MockImageRequestWQ mock_image_request_wq(&mock_image_ctx, "io", 60, nullptr);
 
-  mock_image_request_wq.apply_qos_limit(1, RBD_QOS_IOPS_THROTTLE);
+  mock_image_request_wq.apply_qos_limit(0, RBD_QOS_BPS_THROTTLE);
 
   expect_front(mock_image_request_wq, &mock_queued_image_request);
-  expect_tokens_requested(mock_queued_image_request, 1);
+  expect_is_refresh_request(mock_image_ctx, false);
+  expect_is_write_op(mock_queued_image_request, true);
+  expect_dequeue(mock_image_request_wq, &mock_queued_image_request);
+  expect_start_op(mock_queued_image_request);
+  ASSERT_TRUE(mock_image_request_wq.invoke_dequeue() == &mock_queued_image_request);
+}
+
+TEST_F(TestMockIoImageRequestWQ, BPSQos) {
+  librbd::ImageCtx *ictx;
+  ASSERT_EQ(0, open_image(m_image_name, &ictx));
+
+  MockTestImageCtx mock_image_ctx(*ictx);
+
+  MockImageRequest mock_queued_image_request;
+  expect_was_throttled(mock_queued_image_request, false);
+  expect_set_throttled(mock_queued_image_request);
+
+  InSequence seq;
+  MockImageRequestWQ mock_image_request_wq(&mock_image_ctx, "io", 60, nullptr);
+
+  mock_image_request_wq.apply_qos_limit(1, RBD_QOS_BPS_THROTTLE);
+
+  expect_front(mock_image_request_wq, &mock_queued_image_request);
+  expect_tokens_requested(mock_queued_image_request, 2);
   expect_dequeue(mock_image_request_wq, &mock_queued_image_request);
   expect_all_throttled(mock_queued_image_request, true);
   expect_requeue(mock_image_request_wq);
