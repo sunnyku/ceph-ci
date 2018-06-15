@@ -664,6 +664,10 @@ private:
 			CollectionRef& c,
 			CollectionRef& d,
 			unsigned bits, int rem);
+  int _merge_collection(TransContext *txc,
+			CollectionRef *c,
+			CollectionRef& d,
+			unsigned bits);
 
 };
 
