@@ -5759,6 +5759,12 @@ int FileStore::_merge_collection(const coll_t& cid,
   if (r < 0)
     return r;
 
+  // temp too!
+  r = _split_collection(cid.get_temp(), bits, pgid.pgid.ps(), dest.get_temp(),
+			spos);
+  if (r < 0)
+    return r;
+
   // remove source
   if (_check_replay_guard(cid, spos) > 0)
     r = _destroy_collection(cid);
