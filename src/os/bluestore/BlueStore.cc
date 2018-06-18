@@ -3218,13 +3218,24 @@ void BlueStore::DeferredBatch::_audit(CephContext *cct)
 BlueStore::Collection::Collection(BlueStore *ns, Cache *c, coll_t cid)
   : CollectionImpl(cid),
     store(ns),
-    osr(new OpSequencer(store)),
     cache(c),
     lock("BlueStore::Collection::lock", true, false),
     exists(true),
     onode_map(c)
 {
-  osr->shard = cid.hash_to_shard(ns->m_finisher_num);
+  {
+    std::lock_guard<std::mutex> l(store->zombie_osr_lock);
+    auto p = store->zombie_osr_set.find(cid);
+    if (p == store->zombie_osr_set.end()) {
+      osr = new OpSequencer(store, cid);
+    } else {
+      osr = p->second;
+      store->zombie_osr_set.erase(p);
+      ldout(store->cct, 10) << "resurrecting zombie osr " << osr << dendl;
+      osr->zombie = false;
+    }
+  }
+  osr->shard = cid.hash_to_shard(store->m_finisher_num);
 }
 
 bool BlueStore::Collection::flush_commit(Context *c)
@@ -8692,7 +8703,7 @@ void BlueStore::_txc_finish(TransContext *txc)
 
   if (empty && osr->zombie) {
     std::lock_guard<std::mutex> l(zombie_osr_lock);
-    auto p = zombie_osr_set.find(osr);
+    auto p = zombie_osr_set.find(osr->cid);
     if (p != zombie_osr_set.end()) {
       dout(10) << __func__ << " reaping empty zombie osr " << osr << dendl;
       zombie_osr_set.erase(p);
@@ -8734,9 +8745,10 @@ out:
 void BlueStore::_osr_register_zombie(OpSequencer *osr)
 {
   std::lock_guard<std::mutex> l(zombie_osr_lock);
-  dout(10) << __func__ << " " << osr << dendl;
+  dout(10) << __func__ << " " << osr << " " << osr->cid << dendl;
   osr->zombie = true;
-  zombie_osr_set.insert(osr);
+  auto i = zombie_osr_set.insert(make_pair(osr->cid, osr));
+  assert(i.second); // this should be a new insertion
 }
 
 void BlueStore::_osr_drain_preceding(TransContext *txc)
@@ -8778,8 +8790,8 @@ void BlueStore::_osr_drain_all()
   {
     std::lock_guard<std::mutex> l(zombie_osr_lock);
     for (auto& i : zombie_osr_set) {
-      s.insert(i);
-      zombies.insert(i);
+      s.insert(i.second);
+      zombies.insert(i.second);
     }
   }
   dout(20) << __func__ << " osr_set " << s << dendl;
@@ -8807,14 +8819,19 @@ void BlueStore::_osr_drain_all()
   {
     std::lock_guard<std::mutex> l(zombie_osr_lock);
     for (auto& osr : zombies) {
-      auto p = zombie_osr_set.find(osr);
+      auto p = zombie_osr_set.find(osr->cid);
       if (p != zombie_osr_set.end()) {
 	dout(10) << __func__ << " reaping empty zombie osr " << osr << dendl;
 	zombie_osr_set.erase(p);
+	assert(osr->q.empty());
+      } else if (osr->zombie) {
+	dout(10) << __func__ << " empty zombie osr " << osr
+		 << " already reaped" << dendl;
+	assert(osr->q.empty());
       } else {
-	dout(10) << __func__ << " empty zombie osr " << osr << " already reaped" << dendl;
+	dout(10) << __func__ << " empty zombie osr " << osr
+		 << " resurrected" << dendl;
       }
-      assert(osr->q.empty());
     }
   }
 
