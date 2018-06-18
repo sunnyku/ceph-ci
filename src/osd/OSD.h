@@ -876,16 +876,12 @@ public:
   }
 
   /// identify split child pgids over a osdmap interval
-  void identify_split_children(
+  void identify_splits_and_merges(
     OSDMapRef old_map,
     OSDMapRef new_map,
     spg_t pgid,
-    set<pair<spg_t,epoch_t>> *new_children);
-  void identify_merge_pgs(
-    OSDMapRef old_map,
-    OSDMapRef new_map,
-    spg_t pgid,
-    set<spg_t> *pgs);
+    set<pair<spg_t,epoch_t>> *new_children,
+    map<spg_t,epoch_t> *merge_pgs);
 
   void need_heartbeat_peer_update();
 
@@ -1201,16 +1197,17 @@ struct OSDShard {
 
   void _wake_pg_slot(spg_t pgid, OSDShardPGSlot *slot);
 
-  void identify_splits(const OSDMapRef& as_of_osdmap,
-		       set<pair<spg_t,epoch_t>> *pgids);
+  void identify_splits_and_merges(
+    const OSDMapRef& as_of_osdmap,
+    set<pair<spg_t,epoch_t>> *split_children,
+    map<spg_t,epoch_t> *merge_pgs);
   void _prime_splits(set<pair<spg_t,epoch_t>> *pgids);
   void prime_splits(const OSDMapRef& as_of_osdmap,
 		    set<pair<spg_t,epoch_t>> *pgids);
+  void prime_merges(const OSDMapRef& as_of_osdmap,
+		    map<spg_t,epoch_t> *merge_pgs);
   void register_and_wake_split_child(PG *pg);
   void unprime_split_children(spg_t parent, unsigned old_pg_num);
-
-  void identify_merges(OSDMapRef as_of_osdmap,
-		       set<spg_t> *pgs);
 
   OSDShard(
     int id,
@@ -2032,7 +2029,10 @@ protected:
   void handle_fast_pg_info(MOSDPGInfo *m);
   void handle_fast_pg_remove(MOSDPGRemove *m);
 
+public:
+  // used by OSDShard
   PGRef handle_pg_create_info(const OSDMapRef& osdmap, const PGCreateInfo *info);
+protected:
 
   void handle_fast_force_recovery(MOSDForceRecovery *m);
 
