@@ -54,6 +54,7 @@
 #include "messages/MOSDScrub.h"
 #include "messages/MRoute.h"
 
+#include "common/version.h"
 #include "common/TextTable.h"
 #include "common/Timer.h"
 #include "common/ceph_argparse.h"
@@ -1516,6 +1517,13 @@ int OSDMonitor::load_metadata(int osd, map<string, string>& m, ostream *err)
       *err << "osd." << osd << " metadata is corrupt";
     return -EIO;
   }
+
+  std::string version = pretty_version_to_str();
+  auto vi = m.find("ceph_version");
+  if (vi != m.end()) {
+    vi->second = version;
+  }
+
   return 0;
 }
 

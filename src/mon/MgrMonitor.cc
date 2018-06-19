@@ -23,6 +23,8 @@
 #include "mgr/mgr_commands.h"
 #include "OSDMonitor.h"
 
+#include "common/version.h"
+
 #include "MgrMonitor.h"
 
 #define MGR_METADATA_PREFIX "mgr_metadata"
@@ -984,6 +986,13 @@ int MgrMonitor::load_metadata(const string& name, std::map<string, string>& m,
       *err << "mgr." << name << " metadata is corrupt";
     return -EIO;
   }
+
+  std::string version = pretty_version_to_str();
+  auto vi = m.find("ceph_version");
+  if (vi != m.end()) {
+    vi->second = version;
+  }
+
   return 0;
 }
 

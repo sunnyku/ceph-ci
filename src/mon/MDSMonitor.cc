@@ -23,6 +23,7 @@
 #include "OSDMonitor.h"
 #include "PGMonitor.h"
 
+#include "common/version.h"
 #include "common/strtol.h"
 #include "common/perf_counters.h"
 #include "common/config.h"
@@ -1918,6 +1919,15 @@ int MDSMonitor::load_metadata(map<mds_gid_t, Metadata>& m)
 
   bufferlist::iterator it = bl.begin();
   ::decode(m, it);
+
+  std::string version = pretty_version_to_str();
+  for (auto& i : m) {
+    auto vi = i.second.find("ceph_version");
+    if (vi != i.second.end()) {
+      vi->second = version;
+    }
+  }
+
   return 0;
 }
 
