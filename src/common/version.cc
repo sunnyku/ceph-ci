@@ -14,8 +14,12 @@
 
 #include <string.h>
 
+#include <unistd.h>
+
 #include "ceph_ver.h"
 #include "common/version.h"
+#include "common/safe_io.h"
+#include "common/SubProcess.h"
 #include "include/rados.h"
 
 #include <sstream>
@@ -51,4 +55,31 @@ unsigned ceph_release(void)
 const char *ceph_release_type(void)
 {
   return CEPH_RELEASE_TYPE;
+}
+
+std::string executable_version()
+{
+  SubProcess rados("rados", SubProcess::CLOSE, SubProcess::PIPE, SubProcess::CLOSE);
+  rados.add_cmd_arg("-v");
+
+  if (rados.spawn() != 0) {
+    std::cerr << "rados -v failed: " << rados.err() << std::endl;
+    return pretty_version_to_str();
+  }
+
+  int fd = rados.get_stdout();
+  char buf[256] = {0};
+  ssize_t r = safe_read(fd, buf, 256);
+  if (r < 0) {
+    std::cerr << "safe_read failed: " << r << std::endl;
+    return pretty_version_to_str();
+  }
+
+  if (rados.join() != 0) {
+    std::cerr << rados.err() << std::endl;
+  }
+
+  buf[255] = 0; // for max safety
+  buf[strlen(buf) - 1] = 0; // strip '\n'
+  return buf;
 }

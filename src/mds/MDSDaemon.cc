@@ -778,13 +778,14 @@ int MDSDaemon::_handle_command(
 
   cmd_getval(cct, cmdmap, "format", format);
   if (prefix == "version") {
+    std::string v = executable_version();
     if (f) {
       f->open_object_section("version");
-      f->dump_string("version", pretty_version_to_str());
+      f->dump_string("version", v);
       f->close_section();
       f->flush(ds);
     } else {
-      ds << pretty_version_to_str();
+      ds << v;
     }
   } else if (prefix == "injectargs") {
     vector<string> argsvec;
