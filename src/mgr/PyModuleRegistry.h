@@ -140,6 +140,7 @@ public:
   int handle_command(
     std::string const &module_name,
     const cmdmap_t &cmdmap,
+    bufferlist inbuf,
     std::stringstream *ds,
     std::stringstream *ss);
 

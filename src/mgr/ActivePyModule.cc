@@ -104,6 +104,7 @@ void ActivePyModule::notify_clog(const LogEntry &log_entry)
 
 int ActivePyModule::handle_command(
   const cmdmap_t &cmdmap,
+  bufferlist inbuf,
   std::stringstream *ds,
   std::stringstream *ss)
 {
@@ -124,7 +125,8 @@ int ActivePyModule::handle_command(
   PyObject *py_cmd = f.get();
 
   auto pResult = PyObject_CallMethod(pClassInstance,
-      const_cast<char*>("handle_command"), const_cast<char*>("(O)"), py_cmd);
+      const_cast<char*>("handle_command"), const_cast<char*>("s#O"),
+      inbuf.c_str(), inbuf.length(), py_cmd);
 
   Py_DECREF(py_cmd);
 
