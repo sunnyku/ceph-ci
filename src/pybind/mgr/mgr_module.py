@@ -516,7 +516,7 @@ class MgrModule(ceph_module.BaseMgrModule):
         """
         self._ceph_set_health_checks(checks)
 
-    def handle_command(self, cmd):
+    def handle_command(self, inbuf, cmd):
         """
         Called by ceph-mgr to request the plugin to handle one
         of the commands that it declared in self.COMMANDS
