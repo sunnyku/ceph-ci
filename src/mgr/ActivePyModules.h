@@ -96,7 +96,7 @@ public:
   int handle_command(
     const std::string &module_name,
     const cmdmap_t &cmdmap,
-    bufferlist inbuf,
+    const bufferlist &inbuf,
     std::stringstream *ds,
     std::stringstream *ss);
 

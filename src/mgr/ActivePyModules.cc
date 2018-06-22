@@ -774,7 +774,7 @@ void ActivePyModules::set_health_checks(const std::string& module_name,
 int ActivePyModules::handle_command(
   std::string const &module_name,
   const cmdmap_t &cmdmap,
-  bufferlist inbuf,
+  const bufferlist &inbuf,
   std::stringstream *ds,
   std::stringstream *ss)
 {

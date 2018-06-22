@@ -287,7 +287,7 @@ std::set<std::string> PyModuleRegistry::probe_modules() const
 int PyModuleRegistry::handle_command(
   std::string const &module_name,
   const cmdmap_t &cmdmap,
-  bufferlist inbuf,
+  const bufferlist &inbuf,
   std::stringstream *ds,
   std::stringstream *ss)
 {
