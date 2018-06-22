@@ -4424,7 +4424,7 @@ std::vector<Option> get_global_options() {
     .set_description(""),
 
     Option("mgr_op_latency_in_us", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
-    .set_default(false)
+    .set_default(true)
     .set_description(""),
 
     Option("mgr_image_perf_cleanup_interval", Option::TYPE_INT, Option::LEVEL_ADVANCED)
