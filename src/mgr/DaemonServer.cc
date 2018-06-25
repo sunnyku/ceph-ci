@@ -1749,6 +1749,7 @@ void DaemonServer::calc_perf() {
   utime_t now = ceph_clock_now();
   int64_t calc_interval = g_ceph_context->_conf->get_val<int64_t>("mgr_image_perf_calc_interval");
   int64_t clean_interval = g_ceph_context->_conf->get_val<int64_t>("mgr_image_perf_cleanup_interval");
+  bool latency_us = g_ceph_context->_conf->get_val<bool>("mgr_op_latency_in_us");
 
   for (auto it = imgsmap.begin(); it != imgsmap.end(); /* empty */) {
     auto it2 = it++;
@@ -1760,17 +1761,20 @@ void DaemonServer::calc_perf() {
     it2->second.rd_ops = (it2->second.raw_data.rd_num - it2->second.pre_data.rd_num)/calc_interval;
     it2->second.rd_bws = (it2->second.raw_data.rd_bytes - it2->second.pre_data.rd_bytes)/calc_interval;
     it2->second.rd_lat = (double)(it2->second.raw_data.rd_latency - it2->second.pre_data.rd_latency)/
-                         (it2->second.raw_data.rd_num - it2->second.pre_data.rd_num)/1000000 + 0.5; // to millisecond and round
+                         (it2->second.raw_data.rd_num - it2->second.pre_data.rd_num)/
+                         (latency_us ? 1.0e3 : 1.0e6) + 0.5; // to microsecond or millisecond and round
 
     it2->second.wr_ops = (it2->second.raw_data.wr_num - it2->second.pre_data.wr_num)/calc_interval;
     it2->second.wr_bws = (it2->second.raw_data.wr_bytes - it2->second.pre_data.wr_bytes)/calc_interval;
     it2->second.wr_lat = (double)(it2->second.raw_data.wr_latency - it2->second.pre_data.wr_latency)/
-                         (it2->second.raw_data.wr_num - it2->second.pre_data.wr_num)/1000000 + 0.5;
+                         (it2->second.raw_data.wr_num - it2->second.pre_data.wr_num)/
+                         (latency_us ? 1.0e3 : 1.0e6) + 0.5;
 
     it2->second.total_ops = (it2->second.raw_data.op_num - it2->second.pre_data.op_num)/calc_interval;
     it2->second.total_bws = (it2->second.raw_data.op_bytes - it2->second.pre_data.op_bytes)/calc_interval;
     it2->second.total_lat = (double)(it2->second.raw_data.op_latency - it2->second.pre_data.op_latency)/
-                            (it2->second.raw_data.op_num - it2->second.pre_data.op_num)/1000000 + 0.5;
+                            (it2->second.raw_data.op_num - it2->second.pre_data.op_num)/
+                            (latency_us ? 1.0e3 : 1.0e6) + 0.5;
 
     it2->second.pre_data = it2->second.raw_data;
   }

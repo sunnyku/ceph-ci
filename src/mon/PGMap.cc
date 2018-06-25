@@ -895,13 +895,13 @@ void PGMap::calc_pool_op_latency()
       wr_average_latency = op_stat.wr_latency / op_stat.wr_num;
 
     if (g_conf->get_val<bool>("mgr_op_latency_in_us")) {
-      op_average_latency /= 1000;
-      rd_average_latency /= 1000;
-      wr_average_latency /= 1000;
+      op_average_latency = op_average_latency / 1.0e3 + 0.5;
+      rd_average_latency = rd_average_latency / 1.0e3 + 0.5;
+      wr_average_latency = wr_average_latency / 1.0e3 + 0.5;
     } else { // to milliseconds
-      op_average_latency /= 1000000;
-      rd_average_latency /= 1000000;
-      wr_average_latency /= 1000000;
+      op_average_latency = op_average_latency / 1.0e6 + 0.5;
+      rd_average_latency = rd_average_latency / 1.0e6 + 0.5;
+      wr_average_latency = wr_average_latency / 1.0e6 + 0.5;
     }
 
     op_stat.op_average_latency = op_average_latency;
