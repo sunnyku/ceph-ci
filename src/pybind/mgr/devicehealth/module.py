@@ -343,6 +343,8 @@ class Module(MgrModule):
             self.log.debug('device %s expectancy min %s', dev,
                            life_expectancy_min)
             now = datetime.now()
+            osdmap = self.get("osd_map")
+            assert osdmap is not None
 
             if life_expectancy_min - now <= mark_out_threshold_td:
                 if self.self_heal:
@@ -354,7 +356,7 @@ class Module(MgrModule):
                         osds_in = []
                         osds_out = []
                         for _id in osd_ids:
-                            if self.is_osd_in(_id):
+                            if self.is_osd_in(osdmap, _id):
                                 osds_in.append(_id)
                             else:
                                 osds_out.append(_id)
@@ -399,9 +401,7 @@ class Module(MgrModule):
         self.set_health_checks(checks)
         return (0,"","")
 
-    def is_osd_in(self, osd_id):
-        osdmap = self.get("osd_map")
-        assert osdmap is not None
+    def is_osd_in(self, osdmap, osd_id):
         for osd in osdmap['osds']:
             if str(osd_id) == str(osd['osd']):
                 return osd['in']
