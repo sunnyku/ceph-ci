@@ -225,6 +225,8 @@ private:
     } catch (buffer::error& e) { /* fallthrough */ }
     return false;
   }
+
+  void derive_synthetic_caps(const EntityName& entity_name, MonCap* mon_caps);
 };
 
 

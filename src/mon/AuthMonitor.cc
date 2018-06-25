@@ -39,6 +39,24 @@
 #define dout_subsys ceph_subsys_mon
 #undef dout_prefix
 #define dout_prefix _prefix(_dout, mon, get_last_committed())
+
+namespace {
+
+void detect_osd_writable_cap(const OSDCapGrant& grant, bool* allow_all,
+                             std::set<std::string>* pool_names) {
+  // Note: this doesn't include support for the application tag match
+  if ((grant.spec.allow & OSD_CAP_W) != 0) {
+    auto& match = grant.match;
+    if (match.is_match_all()) {
+      *allow_all = true;
+    } else if (match.auid < 0 && !match.pool_namespace.pool_name.empty()) {
+      pool_names->insert(match.pool_namespace.pool_name);
+    }
+  }
+}
+
+} // anonymous namespace
+
 static ostream& _prefix(std::ostream *_dout, Monitor *mon, version_t v) {
   return *_dout << "mon." << mon->name << "@" << mon->rank
 		<< "(" << mon->get_state_name()
@@ -605,7 +623,12 @@ bool AuthMonitor::prep_auth(MonOpRequestRef op, bool paxos_writable)
 	derr << "corrupt cap data for " << entity_name << " in auth db" << dendl;
 	str.clear();
       }
+
       s->caps.parse(str, NULL);
+      if (!s->caps.is_allow_all()) {
+        derive_synthetic_caps(s->entity_name, &s->caps);
+      }
+
       s->auid = auid;
       s->authenticated = true;
       finished = true;
@@ -1806,4 +1829,70 @@ void AuthMonitor::dump_info(Formatter *f)
   f->dump_unsigned("last_committed", get_last_committed());
   f->dump_unsigned("num_secrets", mon->key_server.get_num_secrets());
   f->close_section();
+}
+
+void AuthMonitor::derive_synthetic_caps(const EntityName& entity_name,
+                                        MonCap* mon_caps)
+{
+  AuthCapsInfo caps_info;
+  if (!mon->key_server.get_service_caps(entity_name, CEPH_ENTITY_TYPE_OSD,
+                                        caps_info)) {
+    return;
+  }
+
+  string caps_str;
+  if (caps_info.caps.length() > 0) {
+    auto p = caps_info.caps.cbegin();
+    try {
+      decode(caps_str, p);
+    } catch (const buffer::error &err) {
+      derr << "corrupt OSD cap data for " << entity_name << " in auth db"
+           << dendl;
+      return;
+    }
+  }
+
+  OSDCap osd_cap;
+  if (!osd_cap.parse(caps_str, nullptr)) {
+    dout(10) << "unable to parse OSD cap data for " << entity_name
+             << " in auth db" << dendl;
+    return;
+  }
+
+  // if the entity has write permissions in one or all pools, generate a
+  // synthetic cap to permit the removal of self-managed snapshots.
+  bool allow_all = false;
+  if (osd_cap.allow_all()) {
+    allow_all = true;
+  }
+
+  std::set<std::string> pool_names;
+  for (auto& grant : osd_cap.grants) {
+    if (allow_all) {
+      break;
+    }
+
+    if (grant.profile.is_valid()) {
+      for (auto& profile_grant : grant.profile_grants) {
+        detect_osd_writable_cap(profile_grant, &allow_all, &pool_names);
+      }
+    } else {
+      detect_osd_writable_cap(grant, &allow_all, &pool_names);
+    }
+  }
+
+  if (allow_all) {
+    mon_caps->grants.push_back(MonCapGrant("osd pool op unmanaged-snap"));
+  } else {
+    for (auto& pool_name : pool_names) {
+      mon_caps->grants.push_back(MonCapGrant("osd pool op unmanaged-snap"));
+      mon_caps->grants.back().command_args["poolname"] = StringConstraint(
+        StringConstraint::MATCH_TYPE_EQUAL, pool_name);
+    }
+  }
+
+  if (allow_all || !pool_names.empty()) {
+    dout(10) << "added synthetic caps for entity " << entity_name << ": "
+             << *mon_caps << dendl;
+  }
 }
