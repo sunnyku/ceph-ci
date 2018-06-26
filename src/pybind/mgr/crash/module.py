@@ -73,20 +73,37 @@ class Module(MgrModule):
         self.set_store(key, None)       # removes key
         return 0, '', ''
 
-    def do_prune(self, cmd, inbuf):
+    def do_prune(self, cmd, inbuf, testmeta=None):
         now = datetime.datetime.utcnow()
 
-        removed = list()
-        for key, meta in self.get_store_prefix('crash/').iteritems():
-            meta = json.loads(meta)
-            keep = meta['keep']
-            stamp = self.time_from_string(meta['timestamp'])
-            keeptime = datetime.timedelta(days=keep)
-            if stamp <= now - keeptime:
-                # accumulate removed messages
-                removed.append(self.do_rm(cmd, inbuf)[2])
+        keep = cmd['keep']
+        try:
+            keep = int(keep)
+        except ValueError:
+            return errno.EINVAL, '', 'keep argument must be integer'
 
-            return 0, '', '\n'.join(removed)
+        keeptime = datetime.timedelta(days=keep)
+
+        # testability
+        if testmeta is not None:
+            iterator = testmeta
+            test_removed = list()
+        else:
+            iterator = self.get_store_prefix('crash/')
+
+        for key, meta in iterator.iteritems():
+            meta = json.loads(meta)
+            stamp = self.time_from_string(meta['timestamp'])
+            if stamp <= now - keeptime:
+                if testmeta:
+                    test_removed.append('rm(%s)' % key)
+                else:
+                    self.do_rm(cmd, inbuf)
+
+        if testmeta:
+            return 0, '\n'.join(test_removed), ''
+
+        return 0, '', ''
 
     def do_stat(self, cmd, inbuf, testmeta=None):
         # age in days for reporting, ordered smallest first
@@ -144,6 +161,7 @@ class Module(MgrModule):
         if dt != datetime.datetime(2018, 6, 22, 20, 35, 38, 58818):
             return errno.EINVAL, '', 'time_from_string() failed'
 
+        # test do_stat
         stat_dict = dict()
         now = datetime.datetime.utcnow()
         uuid = 'd5775432-0742-44a3-a435-45095e32e6b1'
@@ -155,6 +173,8 @@ class Module(MgrModule):
             stat_dict[crash_id] = json.dumps(
                 {'crash_id': crash_id, 'timestamp': timestamp}
             )
+        # save oldest for do_prune test below
+        oldest_id = crash_id
 
         retval, retstr, _ = self.do_stat(
             {'prefix': 'crash stat'},
@@ -168,6 +188,17 @@ class Module(MgrModule):
 
         if fail:
             return errno.EINVAL, '', json.dumps(stat_dict) + '\n\n' + retstr
+
+        # test do_prune
+        retval, retstr, _ = self.do_prune(
+            {'prefix': 'crash prune', 'keep': '5'},
+            '',
+            testmeta=stat_dict,
+        )
+        if len(retstr.split('\n')) > 1:
+            return errno.EINVAL, '', 'do_prune returned too many: %s' % retstr
+        if oldest_id not in retstr:
+            return errno.EINVAL, '', 'do_prune did not prune %s' % oldest_id
 
         return 0, '', 'self-test succeeded'
 
