@@ -48,7 +48,7 @@ class Module(MgrModule):
 
     def do_post(self, cmd, inbuf):
         try:
-            metadata = Module.validate_crash_metadata(inbuf)
+            metadata = self.validate_crash_metadata(inbuf)
         except Exception as e:
             return errno.EINVAL, '', 'malformed crash metadata: %s' % e
 
@@ -81,7 +81,7 @@ class Module(MgrModule):
         for key, meta in self.get_store_prefix('crash/').iteritems():
             meta = json.loads(meta)
             keep = meta['keep']
-            stamp = Module.time_from_string(meta['timestamp'])
+            stamp = self.time_from_string(meta['timestamp'])
             keeptime = datetime.timedelta(days=keep)
             if stamp <= now - keeptime:
                 # accumulate removed messages
@@ -124,7 +124,7 @@ class Module(MgrModule):
         for key, meta in iterator.iteritems():
             total += 1
             meta = json.loads(meta)
-            stamp = Module.time_from_string(meta['timestamp'])
+            stamp = self.time_from_string(meta['timestamp'])
             crashid = meta['crash_id']
             for i, bindict in enumerate(bins):
                 if stamp <= bindict['agelimit']:
@@ -141,7 +141,7 @@ class Module(MgrModule):
     def do_self_test(self, cmd, inbuf):
         # test time conversion
         timestr = '2018-06-22 20:35:38.058818Z'
-        dt = Module.time_from_string(timestr)
+        dt = self.time_from_string(timestr)
         if dt != datetime.datetime(2018, 6, 22, 20, 35, 38, 58818):
             return errno.EINVAL, '', 'time_from_string() failed'
 
