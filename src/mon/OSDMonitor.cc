@@ -10500,7 +10500,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
 
   } else if (prefix == "osd destroy-actual" ||
-	     prefix == "osd purge" ||
+	     prefix == "osd purge-actual" ||
 	     prefix == "osd purge-new") {
     /* Destroying an OSD means that we don't expect to further make use of
      * the OSDs data (which may even become unreadable after this operation),
@@ -10537,7 +10537,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 
     bool is_destroy = (prefix == "osd destroy-actual");
     if (!is_destroy) {
-      assert("osd purge" == prefix ||
+      assert("osd purge-actual" == prefix ||
 	     "osd purge-new" == prefix);
     }
 
