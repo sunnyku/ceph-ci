@@ -54,11 +54,10 @@ class Module(MgrModule):
 
         crashid = metadata['crash_id']
         key = 'crash/%s' % crashid
-        if self.get_store(key):
-            return errno.EADDRINUSE, '', 'crash id %s already saved' % crashid
-
-        self.set_store(key, inbuf)
-        return 0, '', 'Posted %s' % crashid
+        # repeated stores of same item are ignored silently
+        if not self.get_store(key):
+            self.set_store(key, inbuf)
+        return 0, '', ''
 
     def do_ls(self, cmd, inbuf):
         keys = []
@@ -72,7 +71,7 @@ class Module(MgrModule):
         if self.get_store(key) is None:
             return errno.EINVAL, '', 'crash rm: id %s not present' % crashid
         self.set_store(key, None)       # removes key
-        return 0, '', 'Removed %s' % crashid
+        return 0, '', ''
 
     def do_prune(self, cmd, inbuf):
         now = datetime.datetime.utcnow()
