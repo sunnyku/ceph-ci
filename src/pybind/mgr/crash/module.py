@@ -27,7 +27,7 @@ class Module(MgrModule):
         # raise any exceptions to caller
         metadata = json.loads(inbuf)
         if 'crash_id' not in metadata:
-            raise AttributeError
+            raise AttributeError("missing 'crash_id' field")
         return metadata
 
     @staticmethod
