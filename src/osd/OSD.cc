@@ -361,11 +361,12 @@ void OSDService::identify_splits_and_merges(
 	 q != p->second.end() &&
 	   q->first <= new_map->get_epoch();
 	 ++q) {
-      derr << __func__ << " q " << q->first << " " << q->second << dendl;
-      if (pg.ps() < pgnum) {
-	set<spg_t> children;
-	if (pgnum < q->second) {
-	  // split?
+      derr << __func__ << " q " << q->first
+	   << " pgnum " << pgnum << " -> " << q->second << dendl;
+      if (pgnum < q->second) {
+	// split?
+	if (pg.ps() < pgnum) {
+	  set<spg_t> children;
 	  if (pg.is_split(pgnum, q->second, &children)) {
 	    dout(20) << __func__ << " " << pg << " e" << q->first
 		     << " pg_num " << pgnum << " -> " << q->second
@@ -375,19 +376,15 @@ void OSDService::identify_splits_and_merges(
 	      queue.push_back(i);
 	    }
 	  }
-	} else if (merge_pgs) {
-	  // merge?
-	  if (pgid.ps() < q->second) {
-	    set<spg_t> children;
-	    if (pgid.is_split(q->second, pgnum, &children)) {
-	      dout(20) << __func__ << " " << pg << " e" << q->first
-		       << " pg_num " << pgnum << " -> " << q->second
-		       << " is merge target, source " << children << dendl;
-	      for (auto c : children) {
-		merge_pgs->insert(make_pair(c, q->first));
-	      }
-	      merge_pgs->insert(make_pair(pgid, q->first));
-	    }
+	} else {
+	  dout(20) << __func__ << " " << pg << " e" << q->first
+		   << " pg_num " << pgnum << " -> " << q->second
+		   << " is post-split, skipping" << dendl;
+	}
+      } else if (merge_pgs) {
+	// merge?
+	if (pgid.ps() >= q->second) {
+	  if (pgid.ps() < pgnum) {
 	    spg_t parent;
 	    if (pgid.is_merge_source(pgnum, q->second, &parent)) {
 	      set<spg_t> children;
@@ -402,12 +399,23 @@ void OSDService::identify_splits_and_merges(
 		merge_pgs->insert(make_pair(c, q->first));
 	      }
 	    }
+	  } else {
+	    dout(20) << __func__ << " " << pg << " e" << q->first
+		     << " pg_num " << pgnum << " -> " << q->second
+		     << " is beyond old pgnum, skipping" << dendl;
+	  }
+	} else {
+	  set<spg_t> children;
+	  if (pgid.is_split(q->second, pgnum, &children)) {
+	    dout(20) << __func__ << " " << pg << " e" << q->first
+		     << " pg_num " << pgnum << " -> " << q->second
+		     << " is merge target, source " << children << dendl;
+	    for (auto c : children) {
+	      merge_pgs->insert(make_pair(c, q->first));
+	    }
+	    merge_pgs->insert(make_pair(pgid, q->first));
 	  }
 	}
-      } else {
-	dout(20) << __func__ << " " << pg << " e" << q->first
-		 << " pg_num " << pgnum << " -> " << q->second
-		 << " is post-split, skipping" << dendl;
       }
       pgnum = q->second;
     }
