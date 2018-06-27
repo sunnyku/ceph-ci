@@ -68,8 +68,6 @@ class Module(MgrModule):
     def do_rm(self, cmd, inbuf):
         crashid = cmd['id']
         key = 'crash/%s' % crashid
-        if self.get_store(key) is None:
-            return errno.EINVAL, '', 'crash rm: id %s not present' % crashid
         self.set_store(key, None)       # removes key
         return 0, '', ''
 
