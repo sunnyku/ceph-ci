@@ -104,6 +104,7 @@ public:
                          double md_config_t::*,
                          bool md_config_t::*,
                          entity_addr_t md_config_t::*,
+			 entity_addrvec_t md_config_t::*,
                          uuid_d md_config_t::*> member_ptr_t;
 
   // For use when intercepting configuration updates
@@ -153,7 +154,7 @@ public:
 
   typedef enum {
     OPT_INT, OPT_LONGLONG, OPT_STR, OPT_DOUBLE, OPT_FLOAT, OPT_BOOL,
-    OPT_ADDR, OPT_U32, OPT_U64, OPT_UUID
+    OPT_ADDR, OPT_ADDRVEC, OPT_U32, OPT_U64, OPT_UUID
   } opt_type_t;
 
   // Create a new md_config_t structure.
@@ -387,6 +388,7 @@ public:
 #define OPTION_OPT_FLOAT(name) double name;
 #define OPTION_OPT_BOOL(name) bool name;
 #define OPTION_OPT_ADDR(name) entity_addr_t name;
+#define OPTION_OPT_ADDRVEC(name) entity_addrvec_t name;
 #define OPTION_OPT_U32(name) uint64_t name;
 #define OPTION_OPT_U64(name) uint64_t name;
 #define OPTION_OPT_UUID(name) uuid_d name;
@@ -404,6 +406,7 @@ public:
 #undef OPTION_OPT_FLOAT
 #undef OPTION_OPT_BOOL
 #undef OPTION_OPT_ADDR
+#undef OPTION_OPT_ADDRVEC
 #undef OPTION_OPT_U32
 #undef OPTION_OPT_U64
 #undef OPTION_OPT_UUID
