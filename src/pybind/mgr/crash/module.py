@@ -73,7 +73,7 @@ class Module(MgrModule):
         self.set_store(key, None)       # removes key
         return 0, '', ''
 
-    def do_prune(self, cmd, inbuf, testmeta=None):
+    def do_prune(self, cmd, inbuf):
         now = datetime.datetime.utcnow()
 
         keep = cmd['keep']
@@ -84,28 +84,15 @@ class Module(MgrModule):
 
         keeptime = datetime.timedelta(days=keep)
 
-        # testability
-        if testmeta is not None:
-            iterator = testmeta
-            test_removed = list()
-        else:
-            iterator = self.get_store_prefix('crash/')
-
-        for key, meta in iterator.iteritems():
+        for key, meta in self.get_store_prefix('crash/').iteritems():
             meta = json.loads(meta)
             stamp = self.time_from_string(meta['timestamp'])
             if stamp <= now - keeptime:
-                if testmeta:
-                    test_removed.append('rm(%s)' % key)
-                else:
-                    self.do_rm(cmd, inbuf)
-
-        if testmeta:
-            return 0, '\n'.join(test_removed), ''
+                self.set_store(key, None)
 
         return 0, '', ''
 
-    def do_stat(self, cmd, inbuf, testmeta=None):
+    def do_stat(self, cmd, inbuf):
         # age in days for reporting, ordered smallest first
         bins = [1, 3, 7]
         retlines = list()
@@ -131,13 +118,7 @@ class Module(MgrModule):
                 'idlist': list()
             }
 
-        # testability
-        if testmeta is not None:
-            iterator = testmeta
-        else:
-            iterator = self.get_store_prefix('crash/')
-
-        for key, meta in iterator.iteritems():
+        for key, meta in self.get_store_prefix('crash/').iteritems():
             total += 1
             meta = json.loads(meta)
             stamp = self.time_from_string(meta['timestamp'])
@@ -160,45 +141,6 @@ class Module(MgrModule):
         dt = self.time_from_string(timestr)
         if dt != datetime.datetime(2018, 6, 22, 20, 35, 38, 58818):
             return errno.EINVAL, '', 'time_from_string() failed'
-
-        # test do_stat
-        stat_dict = dict()
-        now = datetime.datetime.utcnow()
-        uuid = 'd5775432-0742-44a3-a435-45095e32e6b1'
-
-        for i in (0, 1, 3, 4, 8):
-            timestamp = now - datetime.timedelta(days=i)
-            timestamp = timestamp.strftime(DATEFMT) + 'Z'
-            crash_id = '_'.join((timestamp, uuid))
-            stat_dict[crash_id] = json.dumps(
-                {'crash_id': crash_id, 'timestamp': timestamp}
-            )
-        # save oldest for do_prune test below
-        oldest_id = crash_id
-
-        retval, retstr, _ = self.do_stat(
-            {'prefix': 'crash stat'},
-            '',
-            testmeta=stat_dict
-        )
-        fail = '5 crashes recorded' not in retstr or \
-               '4 older than 1 days old:' not in retstr or \
-               '3 older than 3 days old:' not in retstr or \
-               '1 older than 7 days old:' not in retstr
-
-        if fail:
-            return errno.EINVAL, '', json.dumps(stat_dict) + '\n\n' + retstr
-
-        # test do_prune
-        retval, retstr, _ = self.do_prune(
-            {'prefix': 'crash prune', 'keep': '5'},
-            '',
-            testmeta=stat_dict,
-        )
-        if len(retstr.split('\n')) > 1:
-            return errno.EINVAL, '', 'do_prune returned too many: %s' % retstr
-        if oldest_id not in retstr:
-            return errno.EINVAL, '', 'do_prune did not prune %s' % oldest_id
 
         return 0, '', 'self-test succeeded'
 
