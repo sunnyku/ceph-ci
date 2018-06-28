@@ -6,6 +6,7 @@ import json
 import logging
 import tempfile
 import datetime
+import os
 
 log = logging.getLogger(__name__)
 UUID = 'd5775432-0742-44a3-a435-45095e32e6b1'
@@ -30,15 +31,16 @@ class TestCrash(MgrTestCase):
                 'crash_id': crash_id, 'timestamp': timestamp,
             }
 
-            with tempfile.NamedTemporaryFile() as f:
+            with tempfile.NamedTemporaryFile(delete=False) as f:
                 f.write(json.dumps(self.crashes[crash_id]))
-                f.flush()
+                f.close()
                 self.assertEqual(
                     0,
                     self.mgr_cluster.mon_manager.raw_cluster_cmd_result(
                         'crash', 'post', '-i', f.name,
                     )
                 )
+                os.remove(f.name)
 
         retstr = self.mgr_cluster.mon_manager.raw_cluster_cmd(
             'crash', 'ls',
