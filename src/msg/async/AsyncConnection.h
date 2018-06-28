@@ -1,4 +1,4 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*- 
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 /*
  * Ceph - scalable distributed file system
@@ -23,6 +23,8 @@
 #include <list>
 #include <mutex>
 #include <map>
+#include <functional>
+#include <optional>
 
 #include "auth/AuthSessionHandler.h"
 #include "common/ceph_time.h"
@@ -37,6 +39,7 @@
 class AsyncMessenger;
 class DispatchQueue;
 class Worker;
+class Protocol;
 
 static const int ASYNC_IOV_MAX = (IOV_MAX >= 1024 ? IOV_MAX / 4 : IOV_MAX);
 
@@ -56,79 +59,23 @@ class AsyncConnection : public Connection {
     outcoming_bl.claim_append(bl);
     return _try_send(more);
   }
+  void write(bufferlist &bl, std::function<void(ssize_t)> callback,
+             bool more=false);
   ssize_t _try_send(bool more=false);
   ssize_t _send(Message *m);
   void prepare_send_message(uint64_t features, Message *m, bufferlist &bl);
+  void read(unsigned len, char *buffer,
+            std::function<void(char *, ssize_t)> callback);
   ssize_t read_until(unsigned needed, char *p);
-  ssize_t _process_connection();
   void _connect();
   void _stop();
-  int handle_connect_reply(ceph_msg_connect &connect, ceph_msg_connect_reply &r);
-  ssize_t handle_connect_msg(ceph_msg_connect &m, bufferlist &aubl, bufferlist &bl);
-  void was_session_reset();
   void fault();
-  void discard_out_queue();
-  void discard_requeued_up_to(uint64_t seq);
-  void requeue_sent();
-  void randomize_out_seq();
-  void handle_ack(uint64_t seq);
   void _append_keepalive_or_ack(bool ack=false, utime_t *t=NULL);
-  ssize_t write_message(Message *m, bufferlist& bl, bool more);
   void inject_delay();
-  ssize_t _reply_accept(char tag, ceph_msg_connect &connect, ceph_msg_connect_reply &reply,
-                    bufferlist &authorizer_reply) {
-    bufferlist reply_bl;
-    reply.tag = tag;
-    reply.features = ((uint64_t)connect.features & policy.features_supported) | policy.features_required;
-    reply.authorizer_len = authorizer_reply.length();
-    reply_bl.append((char*)&reply, sizeof(reply));
-    if (reply.authorizer_len) {
-      reply_bl.append(authorizer_reply.c_str(), authorizer_reply.length());
-    }
-    ssize_t r = try_send(reply_bl);
-    if (r < 0) {
-      inject_delay();
-      return -1;
-    }
 
-    state = STATE_ACCEPTING_WAIT_CONNECT_MSG;
-    return 0;
-  }
-  bool is_queued() const {
-    return !out_q.empty() || outcoming_bl.length();
-  }
-  void shutdown_socket() {
-    for (auto &&t : register_time_events)
-      center->delete_time_event(t);
-    register_time_events.clear();
-    if (last_tick_id) {
-      center->delete_time_event(last_tick_id);
-      last_tick_id = 0;
-    }
-    if (cs) {
-      center->delete_file_event(cs.fd(), EVENT_READABLE|EVENT_WRITABLE);
-      cs.shutdown();
-      cs.close();
-    }
-  }
-  Message *_get_next_outgoing(bufferlist *bl) {
-    Message *m = 0;
-    if (!out_q.empty()) {
-      map<int, list<pair<bufferlist, Message*> > >::reverse_iterator it = out_q.rbegin();
-      ceph_assert(!it->second.empty());
-      list<pair<bufferlist, Message*> >::iterator p = it->second.begin();
-      m = p->second;
-      if (bl)
-	bl->swap(p->first);
-      it->second.erase(p);
-      if (it->second.empty())
-	out_q.erase(it->first);
-    }
-    return m;
-  }
-  bool _has_next_outgoing() const {
-    return !out_q.empty();
-  }
+  bool is_queued() const;
+  void shutdown_socket();
+
   void reset_recv_state();
 
    /**
@@ -176,9 +123,7 @@ class AsyncConnection : public Connection {
 
   ostream& _conn_prefix(std::ostream *_dout);
 
-  bool is_connected() override {
-    return can_write.load() == WriteStatus::CANWRITE;
-  }
+  bool is_connected() override;
 
   // Only call when AsyncConnection first construct
   void connect(const entity_addrvec_t& addrs, int type, entity_addr_t& target) {
@@ -198,10 +143,11 @@ class AsyncConnection : public Connection {
     std::lock_guard<std::mutex> l(lock);
     policy.lossy = true;
   }
-  entity_addr_t get_peer_socket_addr() const override {
-    return target_addr;
-  }
-  
+
+ entity_addr_t get_peer_socket_addr() const override {
+   return target_addr;
+ }
+
  private:
   enum {
     STATE_NONE,
@@ -280,12 +226,7 @@ class AsyncConnection : public Connection {
   AsyncMessenger *async_msgr;
   uint64_t conn_id;
   PerfCounters *logger;
-  int global_seq;
-  __u32 connect_seq, peer_global_seq;
-  std::atomic<uint64_t> out_seq{0};
-  std::atomic<uint64_t> ack_left{0}, in_seq{0};
   int state;
-  int state_after_send;
   ConnectedSocket cs;
   int port;
   Messenger::Policy policy;
@@ -297,23 +238,15 @@ class AsyncConnection : public Connection {
   bool open_write = false;
 
   std::mutex write_lock;
-  enum class WriteStatus {
-    NOWRITE,
-    REPLACING,
-    CANWRITE,
-    CLOSED
-  };
-  std::atomic<WriteStatus> can_write;
-  list<Message*> sent; // the first bufferlist need to inject seq
-  map<int, list<pair<bufferlist, Message*> > > out_q;  // priority queue for outbound msgs
-  bool keepalive;
 
   std::mutex lock;
   utime_t backoff;         // backoff time
   EventCallbackRef read_handler;
   EventCallbackRef write_handler;
+  EventCallbackRef write_callback_handler;
   EventCallbackRef wakeup_handler;
   EventCallbackRef tick_handler;
+  EventCallbackRef connection_handler;
   char *recv_buf;
   uint32_t recv_max_prefetch;
   uint32_t recv_start;
@@ -331,31 +264,12 @@ class AsyncConnection : public Connection {
   unsigned msg_left;
   uint64_t cur_msg_size;
   ceph_msg_header current_header;
-  bufferlist data_buf;
-  bufferlist::iterator data_blp;
-  bufferlist front, middle, data;
-  ceph_msg_connect connect_msg;
-  // Connecting state
-  bool got_bad_auth;
-  AuthAuthorizer *authorizer;
-  bufferlist authorizer_buf;
-  ceph_msg_connect_reply connect_reply;
   // Accepting state
   bool msgr2 = false;
   entity_addr_t socket_addr;
   entity_addr_t target_addr;  // which of the peer_addrs we're using
   CryptoKey session_key;
-  bool replacing;    // when replacing process happened, we will reply connect
-                     // side with RETRY tag and accept side will clear replaced
-                     // connection. So when connect side reissue connect_msg,
-                     // there won't exists conflicting connection so we use
-                     // "replacing" to skip RESETSESSION to avoid detect wrong
-                     // presentation
-  bool is_reset_from_peer;
-  bool once_ready;
 
-  // used only for local state, it will be overwrite when state transition
-  char *state_buffer;
   // used only by "read_until"
   uint64_t state_offset;
   Worker *worker;
@@ -363,9 +277,18 @@ class AsyncConnection : public Connection {
   std::shared_ptr<AuthSessionHandler> session_security;
   std::unique_ptr<AuthAuthorizerChallenge> authorizer_challenge; // accept side
 
+  std::unique_ptr<Protocol> protocol;
+
+  std::optional<std::function<void(ssize_t)>> writeCallback;
+  std::function<void(char *, ssize_t)> readCallback;
+  std::optional<unsigned> pendingReadLen;
+  char *read_buffer;
+
  public:
   // used by eventcallback
   void handle_write();
+  void handle_write_callback();
+  void continue_read();
   void process();
   void wakeup_from(uint64_t id);
   void tick(uint64_t id);
@@ -375,16 +298,24 @@ class AsyncConnection : public Connection {
     shutdown_socket();
     delete read_handler;
     delete write_handler;
+    delete write_callback_handler;
     delete wakeup_handler;
     delete tick_handler;
+    delete connection_handler;
     if (delay_state) {
       delete delay_state;
       delay_state = NULL;
     }
   }
+  void init_loopback_protocol();
   PerfCounters *get_perf_counter() {
     return logger;
   }
+
+  friend class Protocol;
+  friend class ProtocolV1;
+  friend class ClientProtocolV1;
+  friend class ServerProtocolV1;
 }; /* AsyncConnection */
 
 typedef boost::intrusive_ptr<AsyncConnection> AsyncConnectionRef;
