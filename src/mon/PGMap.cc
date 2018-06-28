@@ -879,9 +879,6 @@ int64_t PGMapDigest::get_pool_free_space(const OSDMap &osd_map,
 
 void PGMap::calc_pool_op_latency()
 {
-  auto latency_us = g_conf->get_val<bool>("mgr_op_latency_in_us");
-  int64_t unit = latency_us ? 1000 : 1000000;
-
   for (auto &p : pool_op_stat) {
     auto &op_stat = p.second;
     uint64_t op_average_latency = 0;
@@ -897,9 +894,15 @@ void PGMap::calc_pool_op_latency()
     if (op_stat.wr_num)
       wr_average_latency = op_stat.wr_latency / op_stat.wr_num;
 
-    op_average_latency = (op_average_latency + unit - 1) / unit;
-    rd_average_latency = (rd_average_latency + unit - 1) / unit;
-    wr_average_latency = (wr_average_latency + unit - 1) / unit;
+    if (g_conf->get_val<bool>("mgr_op_latency_in_us")) {
+      op_average_latency = op_average_latency / 1.0e3 + 0.5;
+      rd_average_latency = rd_average_latency / 1.0e3 + 0.5;
+      wr_average_latency = wr_average_latency / 1.0e3 + 0.5;
+    } else { // to milliseconds
+      op_average_latency = op_average_latency / 1.0e6 + 0.5;
+      rd_average_latency = rd_average_latency / 1.0e6 + 0.5;
+      wr_average_latency = wr_average_latency / 1.0e6 + 0.5;
+    }
 
     op_stat.op_average_latency = op_average_latency;
     op_stat.rd_average_latency = rd_average_latency;
