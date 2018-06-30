@@ -5210,7 +5210,7 @@ void OSD::heartbeat_check()
       if (p->second.last_rx_back == utime_t() ||
 	  p->second.last_rx_front == utime_t()) {
         derr << "heartbeat_check: no reply from "
-             << p->second.con_front->get_peer_addr().get_sockaddr()
+             << p->second.con_back->get_peer_addr().get_sockaddr()
              << " osd." << p->first
              << " ever on either front or back, first ping sent "
              << p->second.first_tx
@@ -5220,7 +5220,7 @@ void OSD::heartbeat_check()
 	failure_queue[p->first] = p->second.first_tx;
       } else {
 	derr << "heartbeat_check: no reply from "
-             << p->second.con_front->get_peer_addr().get_sockaddr()
+             << p->second.con_back->get_peer_addr().get_sockaddr()
 	     << " osd." << p->first << " since back " << p->second.last_rx_back
 	     << " front " << p->second.last_rx_front
 	     << " (oldest deadline " << oldest_deadline << ")"
