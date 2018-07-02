@@ -1250,9 +1250,14 @@ void PG::calc_replicated_acting(
          << std::endl;
       primary = auth_log_shard;
     } else if (!compat_mode) {
-      if (up_primary_info.last_update == auth_log_shard->second.last_update) {
+      bool auth_log_shard_is_complete = auth_log_shard->second.last_complete ==
+        auth_log_shard->second.last_update;
+      bool up_primary_is_complete = up_primary_info.last_complete ==
+        up_primary_info.last_update;
+      if (up_primary_is_complete &&
+          up_primary_info.last_update == auth_log_shard->second.last_update) {
         ss << " up_primary " << up_primary
-           << " has identical log as auth_log_shard, selected as primary"
+           << " is complete and has identical log as auth_log_shard, selected as primary"
            << std::endl;
         primary = up_primary_it;
       } else if (restrict_to_up_acting) {
@@ -1261,15 +1266,20 @@ void PG::calc_replicated_acting(
            << " selected as primary because restrict_to_up_acting is set true"
            << std::endl;
         primary = up_primary_it;
+      } else if (!auth_log_shard_is_complete) {
+        ss << " up_primary " << up_primary
+           << " selected as primary because auth_log_shard itself is not complete"
+           << std::endl;
+        primary = up_primary_it;
       } else {
         // use the approximate magnitude of the difference in length of
         // logs as the cost of recovery
         version_t auth_version = auth_log_shard->second.last_update.version;
-        version_t candidate_version = up_primary_info.last_update.version;
+        version_t candidate_version = up_primary_info.last_complete.version;
         uint64_t approx_entries = (auth_version > candidate_version) ?
                                   (auth_version - candidate_version) :
                                   (candidate_version - auth_version);
-        if (approx_entries >= cct->_conf->get_val<uint64_t>(
+        if (approx_entries > cct->_conf->get_val<uint64_t>(
             "osd_force_auth_log_shard_primary_min_pg_log_entries")) {
           ss << " up_primary "<< up_primary
              << " has too many (" << approx_entries << ") missing log entries, "
@@ -1468,7 +1478,7 @@ void PG::choose_async_recovery_replicated(
     // use the approximate magnitude of the difference in length of
     // logs as the cost of recovery
     auto auth_version = auth_info.last_update.version;
-    auto candidate_version = candidate_info.last_update.version;
+    auto candidate_version = candidate_info.last_complete.version;
     uint64_t approx_log_entries = (auth_version > candidate_version) ?
                                   (auth_version - candidate_version) :
                                   (candidate_version - auth_version);
@@ -1491,10 +1501,10 @@ void PG::choose_async_recovery_replicated(
 	   << dendl;
 
   // take out as many osds as we can for async recovery, in order of cost
-  int max_condidates = want.size() - pool.info.min_size;
-  if (max_async_recovery_targets > max_condidates) {
-    max_async_recovery_targets = max_condidates;
-    dout(10) << __func__ << " not enough condidates, reset"
+  int max_candidates = want.size() - pool.info.min_size;
+  if (max_async_recovery_targets > max_candidates) {
+    max_async_recovery_targets = max_candidates;
+    dout(10) << __func__ << " not enough candidates, reset"
              << " max_async_recovery_targets to " << max_async_recovery_targets
              << dendl;
   }
