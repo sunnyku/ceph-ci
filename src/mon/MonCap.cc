@@ -113,6 +113,8 @@ ostream& operator<<(ostream& out, const MonCapGrant& m)
   }
   if (m.allow != 0)
     out << " " << m.allow;
+  if (m.network.size())
+    out << " network " << m.network;
   return out;
 }
 
@@ -127,7 +129,8 @@ BOOST_FUSION_ADAPT_STRUCT(MonCapGrant,
 			  (std::string, profile)
 			  (std::string, command)
 			  (kvmap, command_args)
-			  (mon_rwxa_t, allow))
+			  (mon_rwxa_t, allow)
+			  (std::string, network))
 
 BOOST_FUSION_ADAPT_STRUCT(StringConstraint,
                           (StringConstraint::MatchType, match_type)
@@ -484,7 +487,7 @@ struct MonCapParser : qi::grammar<Iterator, MonCap()>
     quoted_string %=
       lexeme['"' >> +(char_ - '"') >> '"'] | 
       lexeme['\'' >> +(char_ - '\'') >> '\''];
-    unquoted_word %= +char_("a-zA-Z0-9_.-");
+    unquoted_word %= +char_("a-zA-Z0-9_./-");
     str %= quoted_string | unquoted_word;
 
     spaces = +(lit(' ') | lit('\n') | lit('\t'));
@@ -501,13 +504,15 @@ struct MonCapParser : qi::grammar<Iterator, MonCap()>
 			    >> qi::attr(string()) >> qi::attr(string())
 			    >> str
 			    >> -(spaces >> lit("with") >> spaces >> kv_map)
-			    >> qi::attr(0);
+			    >> qi::attr(0)
+			    >> -(spaces >> lit("network") >> spaces >> str);
 
     // service foo rwxa
     service_match %= -spaces >> lit("allow") >> spaces >> lit("service") >> (lit('=') | spaces)
 			     >> str >> qi::attr(string()) >> qi::attr(string())
 			     >> qi::attr(map<string,StringConstraint>())
-                             >> spaces >> rwxa;
+                             >> spaces >> rwxa
+			     >> -(spaces >> lit("network") >> spaces >> str);
 
     // profile foo
     profile_match %= -spaces >> -(lit("allow") >> spaces)
@@ -516,13 +521,15 @@ struct MonCapParser : qi::grammar<Iterator, MonCap()>
 			     >> str
 			     >> qi::attr(string())
 			     >> qi::attr(map<string,StringConstraint>())
-			     >> qi::attr(0);
+			     >> qi::attr(0)
+			     >> -(spaces >> lit("network") >> spaces >> str);
 
     // rwxa
     rwxa_match %= -spaces >> lit("allow") >> spaces
 			  >> qi::attr(string()) >> qi::attr(string()) >> qi::attr(string())
 			  >> qi::attr(map<string,StringConstraint>())
-			  >> rwxa;
+			  >> rwxa
+			  >> -(spaces >> lit("network") >> spaces >> str);
 
     // rwxa := * | [r][w][x]
     rwxa =

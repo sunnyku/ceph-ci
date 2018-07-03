@@ -59,6 +59,11 @@ const char *parse_good[] = {
   "allow command \"foo bar\" with arg=\"baz.xx\"",
   "profile osd",
   "profile \"mds-bootstrap\", profile foo",
+  "allow * network 1.2.3.4/24",
+  "allow service=foo x network 1.2.3.4/16",
+  "allow command abc network 1.2.3.4/8",
+  "profile osd network 1.2.3.4/32",
+  "allow profile mon network 1.2.3.4/32",
   0
 };
 
