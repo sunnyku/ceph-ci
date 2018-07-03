@@ -402,6 +402,12 @@ int RocksDBStore::load_rocksdb_options(bool create_if_missing, rocksdb::Options&
     bbt_opts.block_cache = rocksdb::NewClockCache(
       block_cache_size,
       g_conf()->rocksdb_cache_shard_bits);
+    if (!bbt_opts.block_cache) {
+      derr << "rocksdb_cache_type '" << g_conf()->rocksdb_cache_type
+           << "' chosen, but RocksDB not compiled with LibTBB. "
+           << dendl;
+      return -EINVAL;
+    }
   } else {
     derr << "unrecognized rocksdb_cache_type '" << g_conf()->rocksdb_cache_type
       << "'" << dendl;
@@ -1306,21 +1312,6 @@ int64_t RocksDBStore::commit_cache_size()
   return total_bytes;
 }
 
-<<<<<<< HEAD
-int RocksDBStore::set_cache_high_pri_pool_ratio(double ratio)
-{
-  if (g_conf()->rocksdb_cache_type != "lru") {
-    return -EOPNOTSUPP;
-  }
-  dout(10) << __func__ << " old ratio: " 
-          << bbt_opts.block_cache->GetHighPriPoolRatio() << " new ratio: "
-          << ratio << dendl;
-  bbt_opts.block_cache->SetHighPriPoolRatio(ratio);
-  return 0;
-}
-
-=======
->>>>>>> src/kv: Initial import of a custom RocksDB cache.
 int64_t RocksDBStore::get_cache_capacity() {
   return bbt_opts.block_cache->GetCapacity();
 }
