@@ -156,8 +156,11 @@ class SAIDiskAgent(MetricsAgent):
                     str(s_val.get('model_family', '')).replace('\"', '\'')
                 try:
                     if isinstance(s_val.get('user_capacity'), dict):
-                        user_capacity = \
-                            s_val['user_capacity'].get('bytes', {}).get('n', 0)
+                        if isinstance(s_val['user_capacity'].get('bytes'), dict):
+                            user_capacity = \
+                                s_val['user_capacity'].get('bytes', {}).get('n', 0)
+                        else:
+                            user_capacity = s_val['user_capacity'].get('bytes')
                     else:
                         user_capacity = s_val.get('user_capacity', 0)
                 except ValueError:
