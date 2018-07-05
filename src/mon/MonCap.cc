@@ -22,6 +22,7 @@
 
 #include "MonCap.h"
 #include "include/stringify.h"
+#include "include/ipaddr.h"
 #include "common/debug.h"
 #include "common/Formatter.h"
 
@@ -398,11 +399,64 @@ bool MonCap::is_capable(
 		   << " addr " << addr
 		   << " on cap " << *this
 		   << dendl;
+
   mon_rwxa_t allow = 0;
   for (vector<MonCapGrant>::const_iterator p = grants.begin();
        p != grants.end(); ++p) {
     if (cct)
-      ldout(cct, 20) << " allow so far " << allow << ", doing grant " << *p << dendl;
+      ldout(cct, 20) << " allow so far " << allow << ", doing grant " << *p
+		     << dendl;
+
+    if (p->network.size()) {
+      sockaddr_storage ss;
+      unsigned mask = 0;
+      if (!parse_network(p->network.c_str(), &ss, &mask)) {
+	continue;
+      }
+      entity_addr_t n;
+      n.set_type(entity_addr_t::TYPE_LEGACY);
+      n.set_sockaddr((sockaddr *)&ss);
+      if (cct)
+	ldout(cct, 20) << __func__ << " network " << n << " mask " << mask
+		       << dendl;
+      if (addr.get_family() != n.get_family()) {
+	continue;
+      }
+      switch (n.get_family()) {
+      case AF_INET:
+        {
+	  struct in_addr a, b;
+	  netmask_ipv4(&((sockaddr_in*)n.get_sockaddr())->sin_addr, mask, &a);
+	  netmask_ipv4(&((sockaddr_in*)addr.get_sockaddr())->sin_addr, mask, &b);
+	  if (memcmp(&a, &b, sizeof(a)) != 0) {
+	    if (cct)
+	      ldout(cct, 20) << __func__ << " addr " << addr
+			     << " not in network " << n << dendl;
+	    continue;
+	  }
+	}
+	break;
+      case AF_INET6:
+        {
+	  struct in6_addr a, b;
+	  netmask_ipv6(&((sockaddr_in6*)n.get_sockaddr())->sin6_addr, mask, &a);
+	  netmask_ipv6(&((sockaddr_in6*)addr.get_sockaddr())->sin6_addr, mask,
+		       &b);
+	  if (memcmp(&a, &b, sizeof(a)) != 0) {
+	    if (cct)
+	      ldout(cct, 20) << __func__ << " addr " << addr
+			     << " not in network " << n << dendl;
+	    continue;
+	  }
+	}
+	break;
+      default:
+	if (cct)
+	  ldout(cct, 20) << __func__ << " unrecognized family for network "
+			 << n << dendl;
+	continue;
+      }
+    }
 
     if (p->is_allow_all()) {
       if (cct)
