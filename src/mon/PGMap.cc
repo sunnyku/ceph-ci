@@ -491,8 +491,11 @@ void PGMapDigest::client_io_rate_summary(Formatter *f, ostream *out,
   } else {
     if (rd)
       *out << pretty_si_t(rd) << "B/s rd";
-    if (wr)
-      *out << ", " << pretty_si_t(wr) << "B/s wr";
+    if (wr) {
+      if (rd)
+        *out << ", ";
+      *out << pretty_si_t(wr) << "B/s wr";
+    }
     if (iops_rd)
       *out << ", " << pretty_si_t(iops_rd) << "op/s rd";
     if (iops_wr)
