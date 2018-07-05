@@ -376,6 +376,15 @@ void OSDService::identify_splits_and_merges(
 	      queue.push_back(i);
 	    }
 	  }
+	} else if (pg.ps() < q->second) {
+	  dout(20) << __func__ << " " << pg << " e" << q->first
+		   << " pg_num " << pgnum << " -> " << q->second
+		   << " is a child" << dendl;
+	  // normally we'd capture this from the parent, but it's
+	  // possible the parent doesn't exist yet (it will be
+	  // fabricated to allow an intervening merge).  note this PG
+	  // as a split child here to be sure we catch it.
+	  split_children->insert(make_pair(pg, q->first));
 	} else {
 	  dout(20) << __func__ << " " << pg << " e" << q->first
 		   << " pg_num " << pgnum << " -> " << q->second
