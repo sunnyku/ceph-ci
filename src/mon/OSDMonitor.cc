@@ -3243,7 +3243,7 @@ bool OSDMonitor::preprocess_remove_snaps(MonOpRequestRef op)
 	CEPH_ENTITY_TYPE_MON,
 	session->entity_name,
         "osd", "osd pool rmsnap", {}, true, true, false,
-	session->get_peer_addr())) {
+	session->get_peer_socket_addr())) {
     dout(0) << "got preprocess_remove_snaps from entity with insufficient caps "
 	    << session->caps << dendl;
     goto ignore;
