@@ -9944,7 +9944,14 @@ void OSDShard::prime_merges(const OSDMapRef& as_of_osdmap,
       r.first->second = make_unique<OSDShardPGSlot>();
     }
     slot = r.first->second.get();
-    if (!slot->pg) {
+    if (slot->pg) {
+      // already have pg
+      dout(20) << __func__ << "  have merge target pg " << pgid
+	       << " " << slot->pg << dendl;
+    } else if (!slot->waiting_for_split.empty()) {
+      dout(20) << __func__ << "  pending split on merge target pg " << pgid
+	       << " " << slot->waiting_for_split << dendl;
+    } else {
       dout(20) << __func__ << "  creating empty merge participant " << pgid
 	       << dendl;
       // Construct a history with a single previous interval,
