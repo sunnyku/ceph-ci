@@ -24,6 +24,7 @@
 #include <type_traits>
 
 #include <boost/thread/shared_mutex.hpp>
+#include <boost/asio.hpp>
 
 #include "include/ceph_assert.h"
 #include "include/buffer.h"
@@ -36,7 +37,6 @@
 #include "common/config_obs.h"
 #include "common/shunique_lock.h"
 #include "common/zipkin_trace.h"
-#include "common/Finisher.h"
 #include "common/Throttle.h"
 
 #include "messages/MOSDOp.h"
@@ -48,7 +48,6 @@ class Context;
 class Messenger;
 class MonClient;
 class Message;
-class Finisher;
 
 class MPoolOpReply;
 
@@ -1228,10 +1227,13 @@ public:
 public:
   Messenger *messenger;
   MonClient *monc;
-  Finisher *finisher;
-  ZTracer::Endpoint trace_endpoint;
+  boost::asio::io_context& service;
+  // The guaranteed sequenced, one-at-a-time execution and apparently
+  // people sometimes depend on this.
+  boost::asio::io_context::strand finish_strand{service};
+  ZTracer::Endpoint trace_endpoint{"0.0.0.0", 0, "Objecter"};
 private:
-  std::unique_ptr<OSDMap> osdmap;
+  std::unique_ptr<OSDMap> osdmap{std::make_unique<OSDMap>()};
 public:
   using Dispatcher::cct;
   std::multimap<std::string,std::string> crush_location;
@@ -1328,7 +1330,7 @@ private:
   using shunique_lock = ceph::shunique_lock<decltype(rwlock)>;
   ceph::timer<ceph::coarse_mono_clock> timer;
 
-  PerfCounters *logger = nullptr;
+  PerfCounters* logger = nullptr;
 
   uint64_t tick_event = 0;
 
@@ -1788,7 +1790,6 @@ public:
     bool canceled;
     Context *on_reg_commit;
 
-    // we trigger these from an async finisher
     Context *on_notify_finish;
     ceph::buffer::list *notify_result_bl;
     uint64_t notify_id;
@@ -1969,7 +1970,8 @@ public:
   std::map<ceph_tid_t,PoolOp*> pool_ops;
   std::atomic<unsigned> num_homeless_ops{0};
 
-  OSDSession *homeless_session;
+  OSDSession* homeless_session = new OSDSession(cct, -1);
+
 
   // ops waiting for an osdmap with a new pool or confirmation that
   // the pool does not exist (may be expanded to other uses later)
@@ -2033,10 +2035,11 @@ public:
 		    uint32_t register_gen);
   int _normalize_watch_error(int r);
 
-  friend class C_DoWatchError;
+  friend class CB_DoWatchError;
 public:
-  void linger_callback_flush(Context *ctx) {
-    finisher->queue(ctx);
+  template<typename CT>
+  auto linger_callback_flush(CT&& ct) {
+    return boost::asio::defer(finish_strand, std::forward<CT>(ct));
   }
 
 private:
@@ -2092,11 +2095,15 @@ private:
     op_throttle_ops.put(1);
   }
   void put_nlist_context_budget(NListContext *list_context);
-  Throttle op_throttle_bytes, op_throttle_ops;
-
+  Throttle op_throttle_bytes{cct, "objecter_bytes",
+			     static_cast<int64_t>(
+			       cct->_conf->objecter_inflight_op_bytes)};
+  Throttle op_throttle_ops{cct, "objecter_ops",
+			   static_cast<int64_t>(
+			     cct->_conf->objecter_inflight_ops)};
  public:
-  Objecter(CephContext *cct_, Messenger *m, MonClient *mc,
-	   Finisher *fin,
+  Objecter(CephContext *cct, Messenger *m, MonClient *mc,
+	   boost::asio::io_context& service,
 	   double mon_timeout,
 	   double osd_timeout);
   ~Objecter() override;
@@ -3115,7 +3122,9 @@ public:
 
 private:
   epoch_t epoch_barrier = 0;
-  bool retry_writes_after_first_reply;
+  bool retry_writes_after_first_reply =
+    cct->_conf->objecter_retry_writes_after_first_reply;
+
 public:
   void set_epoch_barrier(epoch_t epoch);
 

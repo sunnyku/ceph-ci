@@ -80,6 +80,8 @@ using ceph::timespan;
 using ceph::shunique_lock;
 using ceph::acquire_shared;
 using ceph::acquire_unique;
+using boost::asio::dispatch;
+
 
 #define dout_subsys ceph_subsys_objecter
 #undef dout_prefix
@@ -629,16 +631,16 @@ void Objecter::_linger_commit(LingerOp *info, int r, ceph::buffer::list& outbl)
   }
 }
 
-struct C_DoWatchError : public Context {
+struct CB_DoWatchError {
   Objecter *objecter;
   Objecter::LingerOp *info;
   int err;
-  C_DoWatchError(Objecter *o, Objecter::LingerOp *i, int r)
+  CB_DoWatchError(Objecter *o, Objecter::LingerOp *i, int r)
     : objecter(o), info(i), err(r) {
     info->get();
     info->_queued_async();
   }
-  void finish(int r) override {
+  void operator()() {
     Objecter::unique_lock wl(objecter->rwlock);
     bool canceled = info->canceled;
     wl.unlock();
@@ -672,7 +674,7 @@ void Objecter::_linger_reconnect(LingerOp *info, int r)
       r = _normalize_watch_error(r);
       info->last_error = r;
       if (info->watch_context) {
-	finisher->queue(new C_DoWatchError(this, info, r));
+        boost::asio::defer(finish_strand, CB_DoWatchError(this, info, r));
       }
     }
     wl.unlock();
@@ -734,7 +736,7 @@ void Objecter::_linger_ping(LingerOp *info, int r, ceph::coarse_mono_time sent,
       r = _normalize_watch_error(r);
       info->last_error = r;
       if (info->watch_context) {
-	finisher->queue(new C_DoWatchError(this, info, r));
+        boost::asio::defer(finish_strand, CB_DoWatchError(this, info, r));
       }
     }
   } else {
@@ -891,17 +893,17 @@ void Objecter::_linger_submit(LingerOp *info, shunique_lock& sul)
   _send_linger(info, sul);
 }
 
-struct C_DoWatchNotify : public Context {
+struct CB_DoWatchNotify {
   Objecter *objecter;
   Objecter::LingerOp *info;
   MWatchNotify *msg;
-  C_DoWatchNotify(Objecter *o, Objecter::LingerOp *i, MWatchNotify *m)
+  CB_DoWatchNotify(Objecter *o, Objecter::LingerOp *i, MWatchNotify *m)
     : objecter(o), info(i), msg(m) {
     info->get();
     info->_queued_async();
     msg->get();
   }
-  void finish(int r) override {
+  void operator()() {
     objecter->_do_watch_notify(info, msg);
   }
 };
@@ -923,7 +925,7 @@ void Objecter::handle_watch_notify(MWatchNotify *m)
     if (!info->last_error) {
       info->last_error = -ENOTCONN;
       if (info->watch_context) {
-	finisher->queue(new C_DoWatchError(this, info, -ENOTCONN));
+        boost::asio::defer(finish_strand, CB_DoWatchError(this, info, -ENOTCONN));
       }
     }
   } else if (!info->is_watch) {
@@ -943,7 +945,7 @@ void Objecter::handle_watch_notify(MWatchNotify *m)
       info->on_notify_finish = NULL;
     }
   } else {
-    finisher->queue(new C_DoWatchNotify(this, info, m));
+    boost::asio::defer(finish_strand, CB_DoWatchNotify(this, info, m));
   }
 }
 
@@ -4973,20 +4975,14 @@ Objecter::OSDSession::~OSDSession()
   ceph_assert(command_ops.empty());
 }
 
-Objecter::Objecter(CephContext *cct_, Messenger *m, MonClient *mc,
-		   Finisher *fin,
+Objecter::Objecter(CephContext *cct,
+		   Messenger *m, MonClient *mc,
+		   boost::asio::io_context& service,
 		   double mon_timeout,
 		   double osd_timeout) :
-  Dispatcher(cct_), messenger(m), monc(mc), finisher(fin),
-  trace_endpoint("0.0.0.0", 0, "Objecter"),
-  osdmap{std::make_unique<OSDMap>()},
-  homeless_session(new OSDSession(cct, -1)),
+  Dispatcher(cct), messenger(m), monc(mc), service(service),
   mon_timeout(ceph::make_timespan(mon_timeout)),
-  osd_timeout(ceph::make_timespan(osd_timeout)),
-  op_throttle_bytes(cct, "objecter_bytes",
-		    cct->_conf->objecter_inflight_op_bytes),
-  op_throttle_ops(cct, "objecter_ops", cct->_conf->objecter_inflight_ops),
-  retry_writes_after_first_reply(cct->_conf->objecter_retry_writes_after_first_reply)
+  osd_timeout(ceph::make_timespan(osd_timeout))
 {}
 
 Objecter::~Objecter()
