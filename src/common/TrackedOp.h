@@ -133,7 +133,8 @@ public:
   bool dump_historic_ops(Formatter *f, bool by_duration = false, set<string> filters = {""});
   bool dump_historic_slow_ops(Formatter *f, set<string> filters = {""});
   bool register_inflight_op(TrackedOp *i);
-  void unregister_inflight_op(TrackedOp *i);
+  void unregister_inflight_op(TrackedOp* i);
+  void record_history_op(TrackedOpRef&& i);
 
   void get_age_ms_histogram(pow2_hist_t *h);
 
@@ -303,9 +304,10 @@ public:
     ++nref;
   }
   void put() {
-    if (--nref == 0) {
+    if (nref.load() == 1) {
       switch (state.load()) {
       case STATE_UNTRACKED:
+	--nref;
 	_unregistered();
 	delete this;
 	break;
@@ -313,15 +315,25 @@ public:
       case STATE_LIVE:
 	mark_event("done");
 	tracker->unregister_inflight_op(this);
+	_unregistered();
+	if (!tracker->is_tracking()) {
+	  delete this;
+	} else {
+	  tracker->record_history_op(
+	    TrackedOpRef(this, false /* = add_ref */));
+	}
 	break;
 
       case STATE_HISTORY:
+	--nref;
 	delete this;
 	break;
 
       default:
 	ceph_abort();
       }
+    } else {
+      --nref;
     }
   }
 

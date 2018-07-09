@@ -265,7 +265,7 @@ bool OpTracker::register_inflight_op(TrackedOp *i)
   return true;
 }
 
-void OpTracker::unregister_inflight_op(TrackedOp *i)
+void OpTracker::unregister_inflight_op(TrackedOp* const i)
 {
   // caller checks;
   assert(i->state);
@@ -278,16 +278,14 @@ void OpTracker::unregister_inflight_op(TrackedOp *i)
     auto p = sdata->ops_in_flight_sharded.iterator_to(*i);
     sdata->ops_in_flight_sharded.erase(p);
   }
-  i->_unregistered();
+}
 
-  if (!tracking_enabled)
-    delete i;
-  else {
-    RWLock::RLocker l(lock);
-    i->state = TrackedOp::STATE_HISTORY;
-    utime_t now = ceph_clock_now();
-    history.insert(now, TrackedOpRef(i));
-  }
+void OpTracker::record_history_op(TrackedOpRef&& i)
+{
+  RWLock::RLocker l(lock);
+  i->state = TrackedOp::STATE_HISTORY;
+  utime_t now = ceph_clock_now();
+  history.insert(now, std::move(i));
 }
 
 bool OpTracker::visit_ops_in_flight(utime_t* oldest_secs,
@@ -328,7 +326,7 @@ bool OpTracker::visit_ops_in_flight(utime_t* oldest_secs,
     assert(NULL != sdata);
     Mutex::Locker locker(sdata->ops_in_flight_lock_sharded);
     for (auto& op : sdata->ops_in_flight_sharded) {
-      if (op.nref > 0 && !visit(op))
+      if (!visit(op))
 	break;
     }
   }
