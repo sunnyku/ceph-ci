@@ -8082,6 +8082,17 @@ bool OSD::advance_pg(
 	    dout(20) << __func__ << " not ready to merge yet" << dendl;
 	    pg->write_if_dirty(rctx);
 	    pg->unlock();
+	    // kick source(s) to get them ready
+	    for (auto& i : sources) {
+	      dout(20) << __func__ << " kicking source " << i.first << dendl;
+	      enqueue_peering_evt(
+		i.first,
+		PGPeeringEventRef(
+		  std::make_shared<PGPeeringEvent>(
+		    nextmap->get_epoch(),
+		    nextmap->get_epoch(),
+		    NullEvt())));
+	    }
 	    return false;
 	  }
 	}
