@@ -22,6 +22,7 @@
 
 #include "MonCap.h"
 #include "include/stringify.h"
+#include "include/ipaddr.h"
 #include "common/debug.h"
 #include "common/Formatter.h"
 
@@ -113,6 +114,8 @@ ostream& operator<<(ostream& out, const MonCapGrant& m)
   }
   if (m.allow != 0)
     out << " " << m.allow;
+  if (m.network.size())
+    out << " network " << m.network;
   return out;
 }
 
@@ -127,7 +130,8 @@ BOOST_FUSION_ADAPT_STRUCT(MonCapGrant,
 			  (std::string, profile)
 			  (std::string, command)
 			  (kvmap, command_args)
-			  (mon_rwxa_t, allow))
+			  (mon_rwxa_t, allow)
+			  (std::string, network))
 
 BOOST_FUSION_ADAPT_STRUCT(StringConstraint,
                           (StringConstraint::MatchType, match_type)
@@ -378,25 +382,81 @@ void MonCap::set_allow_all()
   text = "allow *";
 }
 
-bool MonCap::is_capable(CephContext *cct,
-			int daemon_type,
-			EntityName name,
-			const string& service,
-			const string& command, const map<string,string>& command_args,
-			bool op_may_read, bool op_may_write, bool op_may_exec) const
+bool MonCap::is_capable(
+  CephContext *cct,
+  int daemon_type,
+  EntityName name,
+  const string& service,
+  const string& command, const map<string,string>& command_args,
+  bool op_may_read, bool op_may_write, bool op_may_exec,
+  const entity_addr_t& addr) const
 {
   if (cct)
     ldout(cct, 20) << "is_capable service=" << service << " command=" << command
 		   << (op_may_read ? " read":"")
 		   << (op_may_write ? " write":"")
 		   << (op_may_exec ? " exec":"")
+		   << " addr " << addr
 		   << " on cap " << *this
 		   << dendl;
+
   mon_rwxa_t allow = 0;
   for (vector<MonCapGrant>::const_iterator p = grants.begin();
        p != grants.end(); ++p) {
     if (cct)
-      ldout(cct, 20) << " allow so far " << allow << ", doing grant " << *p << dendl;
+      ldout(cct, 20) << " allow so far " << allow << ", doing grant " << *p
+		     << dendl;
+
+    if (p->network.size()) {
+      sockaddr_storage ss;
+      unsigned mask = 0;
+      if (!parse_network(p->network.c_str(), &ss, &mask)) {
+	continue;
+      }
+      entity_addr_t n;
+      n.set_type(entity_addr_t::TYPE_LEGACY);
+      n.set_sockaddr((sockaddr *)&ss);
+      if (cct)
+	ldout(cct, 20) << __func__ << " network " << n << " mask " << mask
+		       << dendl;
+      if (addr.get_family() != n.get_family()) {
+	continue;
+      }
+      switch (n.get_family()) {
+      case AF_INET:
+        {
+	  struct in_addr a, b;
+	  netmask_ipv4(&((sockaddr_in*)n.get_sockaddr())->sin_addr, mask, &a);
+	  netmask_ipv4(&((sockaddr_in*)addr.get_sockaddr())->sin_addr, mask, &b);
+	  if (memcmp(&a, &b, sizeof(a)) != 0) {
+	    if (cct)
+	      ldout(cct, 20) << __func__ << " addr " << addr
+			     << " not in network " << n << dendl;
+	    continue;
+	  }
+	}
+	break;
+      case AF_INET6:
+        {
+	  struct in6_addr a, b;
+	  netmask_ipv6(&((sockaddr_in6*)n.get_sockaddr())->sin6_addr, mask, &a);
+	  netmask_ipv6(&((sockaddr_in6*)addr.get_sockaddr())->sin6_addr, mask,
+		       &b);
+	  if (memcmp(&a, &b, sizeof(a)) != 0) {
+	    if (cct)
+	      ldout(cct, 20) << __func__ << " addr " << addr
+			     << " not in network " << n << dendl;
+	    continue;
+	  }
+	}
+	break;
+      default:
+	if (cct)
+	  ldout(cct, 20) << __func__ << " unrecognized family for network "
+			 << n << dendl;
+	continue;
+      }
+    }
 
     if (p->is_allow_all()) {
       if (cct)
@@ -484,7 +544,7 @@ struct MonCapParser : qi::grammar<Iterator, MonCap()>
     quoted_string %=
       lexeme['"' >> +(char_ - '"') >> '"'] | 
       lexeme['\'' >> +(char_ - '\'') >> '\''];
-    unquoted_word %= +char_("a-zA-Z0-9_.-");
+    unquoted_word %= +char_("a-zA-Z0-9_./-");
     str %= quoted_string | unquoted_word;
 
     spaces = +(lit(' ') | lit('\n') | lit('\t'));
@@ -501,13 +561,15 @@ struct MonCapParser : qi::grammar<Iterator, MonCap()>
 			    >> qi::attr(string()) >> qi::attr(string())
 			    >> str
 			    >> -(spaces >> lit("with") >> spaces >> kv_map)
-			    >> qi::attr(0);
+			    >> qi::attr(0)
+			    >> -(spaces >> lit("network") >> spaces >> str);
 
     // service foo rwxa
     service_match %= -spaces >> lit("allow") >> spaces >> lit("service") >> (lit('=') | spaces)
 			     >> str >> qi::attr(string()) >> qi::attr(string())
 			     >> qi::attr(map<string,StringConstraint>())
-                             >> spaces >> rwxa;
+                             >> spaces >> rwxa
+			     >> -(spaces >> lit("network") >> spaces >> str);
 
     // profile foo
     profile_match %= -spaces >> -(lit("allow") >> spaces)
@@ -516,13 +578,15 @@ struct MonCapParser : qi::grammar<Iterator, MonCap()>
 			     >> str
 			     >> qi::attr(string())
 			     >> qi::attr(map<string,StringConstraint>())
-			     >> qi::attr(0);
+			     >> qi::attr(0)
+			     >> -(spaces >> lit("network") >> spaces >> str);
 
     // rwxa
     rwxa_match %= -spaces >> lit("allow") >> spaces
 			  >> qi::attr(string()) >> qi::attr(string()) >> qi::attr(string())
 			  >> qi::attr(map<string,StringConstraint>())
-			  >> rwxa;
+			  >> rwxa
+			  >> -(spaces >> lit("network") >> spaces >> str);
 
     // rwxa := * | [r][w][x]
     rwxa =
