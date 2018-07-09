@@ -1877,7 +1877,7 @@ int ObjectStoreTool::do_import(ObjectStore *store, OSDSuperblock& sb,
       if (ret) return ret;
       found_metadata = true;
 
-      // make sure there are on conflicting merges
+      // make sure there are no conflicting merges
       {
 	auto p = pg_num_history.pg_nums.find(pgid.pgid.m_pool);
 	if (p != pg_num_history.pg_nums.end()) {
@@ -1892,7 +1892,7 @@ int ObjectStoreTool::do_import(ObjectStore *store, OSDSuperblock& sb,
 		   << " -> " << q->second << std::endl;
 	      return 12;
 	    }
-	    if (pgid.pgid.is_merge_target(q->second, pg_num)) {
+	    if (pgid.pgid.is_merge_target(pg_num, q->second)) {
 	      cerr << "PG " << pgid.pgid << " merge target in epoch "
 		   << q->first << " pg_num " << pg_num
 		   << " -> " << q->second << std::endl;
