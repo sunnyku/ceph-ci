@@ -1268,7 +1268,7 @@ void PGMap::apply_incremental(CephContext *cct, const Incremental& inc)
     pool_stat_t d = pg_sum;
     d.stats.sub(pg_sum_old.stats);
     auto period = cct ? cct->_conf->get_val<int64_t>("mgr_tick_period") : 2;
-    if (!d.stats.sum.is_negative() && (double)delta_t >= period) {
+    if (!d.stats.sum.invalid() && (double)delta_t >= period) {
       pg_sum_deltas.push_back(make_pair(d, delta_t));
       stamp_delta += delta_t;
       pg_sum_delta.stats.add(d.stats);
@@ -2354,7 +2354,7 @@ void PGMap::update_delta(
   d.stats.sub(old_pool_sum.stats);
   // filter non-negative delta value that updated by mgr tick
   auto period = cct ? cct->_conf->get_val<int64_t>("mgr_tick_period") : 2;
-  if (d.stats.sum.is_negative() || (double)delta_t < period)
+  if (d.stats.sum.invalid() || (double)delta_t < period)
     return;
 
   /* Aggregate current delta, and take out the last seen delta (if any) to
