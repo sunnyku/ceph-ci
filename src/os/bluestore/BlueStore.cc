@@ -12134,7 +12134,10 @@ int BlueStore::_merge_collection(
   (*c)->split_cache(d.get());
 
   // remove source collection
-  _do_remove_collection(txc, c);
+  {
+    RWLock::WLocker l3(coll_lock);
+    _do_remove_collection(txc, c);
+  }
 
   r = 0;
 
