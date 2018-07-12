@@ -41,7 +41,7 @@ void MonmapMonitor::create_initial()
   pending_map = *mon->monmap;
   pending_map.epoch = 1;
 
-  if (g_conf->mon_debug_no_initial_persistent_features) {
+  if (g_conf()->mon_debug_no_initial_persistent_features) {
     derr << __func__ << " mon_debug_no_initial_persistent_features=true"
 	 << dendl;
   } else {
@@ -504,8 +504,8 @@ bool MonmapMonitor::prepare_command(MonOpRequestRef op)
     }
 
     if (addr.get_port() == 0) {
-      ss << "port defaulted to " << CEPH_MON_PORT;
-      addr.set_port(CEPH_MON_PORT);
+      ss << "port defaulted to " << CEPH_MON_PORT_LEGACY;
+      addr.set_port(CEPH_MON_PORT_LEGACY);
     }
 
     /**

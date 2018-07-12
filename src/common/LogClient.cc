@@ -84,7 +84,7 @@ int parse_log_client_options(CephContext *cct,
     return r;
   }
 
-  fsid = cct->_conf->get_val<uuid_d>("fsid");
+  fsid = cct->_conf.get_val<uuid_d>("fsid");
   host = cct->_conf->host;
   return 0;
 }
@@ -343,7 +343,7 @@ uint64_t LogClient::get_next_seq()
 
 entity_addrvec_t LogClient::get_myaddrs()
 {
-  return entity_addrvec_t(messenger->get_myaddr());
+  return messenger->get_myaddrs();
 }
 
 entity_name_t LogClient::get_myrank()

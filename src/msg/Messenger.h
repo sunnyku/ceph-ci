@@ -29,6 +29,7 @@
 #include "include/types.h"
 #include "include/ceph_features.h"
 #include "auth/Crypto.h"
+#include "common/item_history.h"
 
 #include <errno.h>
 #include <sstream>
@@ -44,6 +45,7 @@ private:
   list <Dispatcher*> fast_dispatchers;
   ZTracer::Endpoint trace_endpoint;
 
+protected:
   void set_endpoint_addr(const entity_addr_t& a,
                          const entity_name_t &name);
 
@@ -52,7 +54,7 @@ protected:
   entity_name_t my_name;
 
   /// my addr
-  entity_addr_t my_addr;
+  safe_item_history<entity_addrvec_t> my_addrs;
 
   int default_send_priority;
   /// set to true once the Messenger has started, and set to false on shutdown
@@ -82,15 +84,7 @@ public:
    * Messenger users should construct full implementations directly,
    * or use the create() function.
    */
-  Messenger(CephContext *cct_, entity_name_t w)
-    : trace_endpoint("0.0.0.0", 0, "Messenger"),
-      my_name(w),
-      default_send_priority(CEPH_MSG_PRIO_DEFAULT),
-      started(false),
-      magic(0),
-      socket_priority(-1),
-      cct(cct_),
-      crcflags(get_default_crc_flags(cct->_conf)) {}
+  Messenger(CephContext *cct_, entity_name_t w);
   virtual ~Messenger() {}
 
   /**
@@ -149,9 +143,11 @@ public:
    * @return A const reference to the address this Messenger
    * currently believes to be its own.
    */
-  const entity_addr_t& get_myaddr() { return my_addr; }
-  entity_addrvec_t get_myaddrs() {
-    return entity_addrvec_t(my_addr);
+  entity_addr_t get_myaddr() {
+    return my_addrs->front();
+  }
+  const entity_addrvec_t& get_myaddrs() {
+    return *my_addrs;
   }
 
   /**
@@ -164,9 +160,9 @@ protected:
   /**
    * set messenger's address
    */
-  virtual void set_myaddr(const entity_addr_t& a) {
-    my_addr = a;
-    set_endpoint_addr(a, my_name);
+  virtual void set_myaddrs(const entity_addrvec_t& a) {
+    my_addrs = a;
+    set_endpoint_addr(a.front(), my_name);
   }
 public:
   /**
@@ -194,7 +190,7 @@ public:
    *
    * @param addr The address to use as a template.
    */
-  virtual void set_addr_unknowns(const entity_addr_t &addr) = 0;
+  virtual bool set_addr_unknowns(const entity_addrvec_t &addrs) = 0;
   /**
    * Set the address for this Messenger. This is useful if the Messenger
    * binds to a specific address but advertises a different address on the
@@ -202,7 +198,7 @@ public:
    *
    * @param addr The address to use.
    */
-  virtual void set_addr(const entity_addr_t &addr) = 0;
+  virtual void set_addrs(const entity_addrvec_t &addr) = 0;
   /// Get the default send priority.
   int get_default_send_priority() { return default_send_priority; }
   /**
@@ -216,11 +212,6 @@ public:
    * (0 if the queue is empty)
    */
   virtual double get_dispatch_queue_max_age(utime_t now) = 0;
-  /**
-   * Get the default crc flags for this messenger.
-   * but not yet dispatched.
-   */
-  static int get_default_crc_flags(md_config_t *);
 
   /**
    * @} // Accessors
@@ -361,6 +352,7 @@ public:
    * we can be more specific about the failure.
    */
   virtual int bind(const entity_addr_t& bind_addr) = 0;
+
   /**
    * This function performs a full restart of the Messenger component,
    * whatever that means.  Other entities who connect to this
@@ -379,6 +371,9 @@ public:
    * @return 0 on success, or -1 on error, or -errno if
    */
   virtual int client_bind(const entity_addr_t& bind_addr) = 0;
+
+  virtual int bindv(const entity_addrvec_t& addrs);
+
   /**
    * @} // Configuration
    */
@@ -793,11 +788,13 @@ public:
    */
   bool ms_deliver_verify_authorizer(Connection *con, int peer_type,
 				    int protocol, bufferlist& authorizer, bufferlist& authorizer_reply,
-				    bool& isvalid, CryptoKey& session_key) {
+				    bool& isvalid, CryptoKey& session_key,
+				    std::unique_ptr<AuthAuthorizerChallenge> *challenge) {
     for (list<Dispatcher*>::iterator p = dispatchers.begin();
 	 p != dispatchers.end();
 	 ++p) {
-      if ((*p)->ms_verify_authorizer(con, peer_type, protocol, authorizer, authorizer_reply, isvalid, session_key))
+      if ((*p)->ms_verify_authorizer(con, peer_type, protocol, authorizer, authorizer_reply,
+				     isvalid, session_key, challenge))
 	return true;
     }
     return false;

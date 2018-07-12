@@ -131,7 +131,7 @@ class BlueStore : public ObjectStore,
 public:
   // config observer
   const char** get_tracked_conf_keys() const override;
-  void handle_conf_change(const md_config_t *conf,
+  void handle_conf_change(const ConfigProxy& conf,
 			  const std::set<std::string> &changed) override;
 
   //handler for discard event
@@ -2082,6 +2082,7 @@ private:
   void _close_fsid();
   void _set_alloc_sizes();
   void _set_blob_size();
+  void _set_finisher_num();
 
   int _open_bdev(bool create);
   void _close_bdev();
