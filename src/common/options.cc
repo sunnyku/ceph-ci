@@ -242,6 +242,12 @@ int Option::parse_value(
       return -EINVAL;
     }
     *out = addr;
+  } else if (type == Option::TYPE_ADDR) {
+    entity_addrvec_t addr;
+    if (!addr.parse(val.c_str())){
+      return -EINVAL;
+    }
+    *out = addr;
   } else if (type == Option::TYPE_UUID) {
     uuid_d uuid;
     if (!uuid.parse(val.c_str())) {
@@ -554,6 +560,10 @@ std::vector<Option> get_global_options() {
     .set_long_description("This is normally true for daemons and values for libraries.")
     .add_service({"mon", "mgr", "osd", "mds"})
     .add_tag("service"),
+
+    Option("crash_dir", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("/var/lib/ceph/crash")
+    .set_description("Directory where crash reports are archived"),
 
     // restapi
     Option("restapi_log_level", Option::TYPE_STR, Option::LEVEL_ADVANCED)
@@ -914,9 +924,29 @@ std::vector<Option> get_global_options() {
     .set_default(100_M)
     .set_description(""),
 
+    Option("ms_bind_ipv4", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .set_description("Bind servers to IPV4 address(es)")
+    .add_see_also("ms_bind_ipv6"),
+
     Option("ms_bind_ipv6", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)
-    .set_description(""),
+    .set_description("Bind servers to IPV6 address(es)")
+    .add_see_also("ms_bind_ipv4"),
+
+    Option("ms_bind_prefer_ipv4", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("Prefer IPV4 over IPV6 address(es)"),
+
+    Option("ms_bind_msgr1", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .set_description("Bind servers to msgr1 (legacy) protocol address(es)")
+    .add_see_also("ms_bind_msgr2"),
+
+    Option("ms_bind_msgr2", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("Bind servers to msgr2 (nautilus+) protocol address(es)")
+    .add_see_also("ms_bind_msgr1"),
 
     Option("ms_bind_port_min", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(6800)
@@ -1042,6 +1072,10 @@ std::vector<Option> get_global_options() {
     .set_default(4096)
     .set_description(""),
 
+    Option("ms_async_rdma_support_srq", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .set_description(""),
+
     Option("ms_async_rdma_port_num", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
     .set_default(1)
     .set_description(""),
@@ -1064,6 +1098,14 @@ std::vector<Option> get_global_options() {
 
     Option("ms_async_rdma_dscp", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(96)
+    .set_description(""),
+
+    Option("ms_async_rdma_cm", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description(""),
+
+    Option("ms_async_rdma_type", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("ib")
     .set_description(""),
 
     Option("ms_dpdk_port_id", Option::TYPE_INT, Option::LEVEL_ADVANCED)
@@ -1818,13 +1860,25 @@ std::vector<Option> get_global_options() {
     .set_default(false)
     .set_description(""),
 
+    Option("cephx_require_version", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(1)
+    .set_description("Cephx version required (1 = pre-mimic, 2 = mimic+)"),
+
     Option("cephx_cluster_require_signatures", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)
     .set_description(""),
 
+    Option("cephx_cluster_require_version", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(1)
+    .set_description("Cephx version required by the cluster from clients (1 = pre-mimic, 2 = mimic+)"),
+
     Option("cephx_service_require_signatures", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)
     .set_description(""),
+
+    Option("cephx_service_require_version", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(1)
+    .set_description("Cephx version required from ceph services (1 = pre-mimic, 2 = mimic+)"),
 
     Option("cephx_sign_messages", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(true)
@@ -2872,10 +2926,6 @@ std::vector<Option> get_global_options() {
 
     Option("osd_command_thread_suicide_timeout", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(15_min)
-    .set_description(""),
-
-    Option("osd_heartbeat_addr", Option::TYPE_ADDR, Option::LEVEL_ADVANCED)
-    .set_default(entity_addr_t())
     .set_description(""),
 
     Option("osd_heartbeat_interval", Option::TYPE_INT, Option::LEVEL_ADVANCED)
@@ -4631,7 +4681,7 @@ std::vector<Option> get_global_options() {
     .set_description(""),
 
     Option("filestore_merge_threshold", Option::TYPE_INT, Option::LEVEL_DEV)
-    .set_default(10)
+    .set_default(-10)
     .set_description(""),
 
     Option("filestore_split_multiple", Option::TYPE_INT, Option::LEVEL_DEV)
@@ -4792,7 +4842,7 @@ std::vector<Option> get_global_options() {
     .set_description("Filesystem path to manager modules."),
 
     Option("mgr_initial_modules", Option::TYPE_STR, Option::LEVEL_BASIC)
-    .set_default("restful status balancer iostat")
+    .set_default("restful status balancer iostat devicehealth")
     .set_flag(Option::FLAG_NO_MON_UPDATE)
     .set_flag(Option::FLAG_CLUSTER_CREATE)
     .add_service("mon")
@@ -4919,6 +4969,10 @@ std::vector<Option> get_global_options() {
     Option("debug_asserts_on_shutdown", Option::TYPE_BOOL,Option::LEVEL_DEV)
     .set_default(false)
     .set_description("Enable certain asserts to check for refcounting bugs on shutdown; see http://tracker.ceph.com/issues/21738"),
+
+    Option("debug_asok_assert_abort", Option::TYPE_BOOL, Option::LEVEL_DEV)
+    .set_default(false)
+    .set_description("allow commands 'assert' and 'abort' via asok for testing crash dumps etc"),
   });
 }
 
@@ -5112,6 +5166,11 @@ std::vector<Option> get_rgw_options() {
           "Number of RADOS objects to use for storing lifecycle index. This can affect "
           "concurrency of lifecycle maintenance, but requires multiple RGW processes "
           "running on the zone to be utilized."),
+
+    Option("rgw_lc_max_rules", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(1000)
+    .set_description("Max number of lifecycle rules set on one bucket")
+    .set_long_description("Number of lifecycle rules set on one bucket should be limited."),
 
     Option("rgw_lc_debug_interval", Option::TYPE_INT, Option::LEVEL_DEV)
     .set_default(-1)
@@ -6490,6 +6549,26 @@ static std::vector<Option> get_rbd_options() {
     Option("rbd_qos_iops_limit", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
     .set_default(0)
     .set_description("the desired limit of IO operations per second"),
+
+    Option("rbd_qos_bps_limit", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(0)
+    .set_description("the desired limit of IO bytes per second"),
+
+    Option("rbd_qos_read_iops_limit", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(0)
+    .set_description("the desired limit of read operations per second"),
+
+    Option("rbd_qos_write_iops_limit", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(0)
+    .set_description("the desired limit of write operations per second"),
+
+    Option("rbd_qos_read_bps_limit", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(0)
+    .set_description("the desired limit of read bytes per second"),
+
+    Option("rbd_qos_write_bps_limit", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(0)
+    .set_description("the desired limit of write bytes per second"),
 
     Option("rbd_discard_on_zeroed_write_same", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(true)

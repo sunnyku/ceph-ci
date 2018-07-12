@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
 
+from distutils.util import strtobool
+
 import cherrypy
 
-from . import Controller, BaseController, AuthRequired, Endpoint, ENDPOINT_MAP
-from .. import logger
+from . import Controller, BaseController, Endpoint, ENDPOINT_MAP
+from .. import logger, mgr
 
 
 @Controller('/docs')
-@AuthRequired()
 class Docs(BaseController):
 
     @classmethod
@@ -172,6 +173,12 @@ class Docs(BaseController):
 
         if not baseUrl:
             baseUrl = "/"
+
+        scheme = 'https'
+        ssl = strtobool(mgr.get_localized_config('ssl', 'True'))
+        if not ssl:
+            scheme = 'http'
+
         spec = {
             'swagger': "2.0",
             'info': {
@@ -187,7 +194,7 @@ class Docs(BaseController):
             'host': host,
             'basePath': baseUrl,
             'tags': self._gen_tags(all_endpoints),
-            'schemes': ["https"],
+            'schemes': [scheme],
             'paths': paths
         }
 

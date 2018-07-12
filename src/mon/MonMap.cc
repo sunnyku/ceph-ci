@@ -329,7 +329,7 @@ int MonMap::build_from_host_list(std::string hostlist, const std::string &prefix
       n[0] = 'a' + i;
       n[1] = 0;
       if (addrs[i].get_port() == 0)
-	addrs[i].set_port(CEPH_MON_PORT);
+	addrs[i].set_port(CEPH_MON_PORT_LEGACY);
       string name = prefix;
       name += n;
       if (!contains(addrs[i]))
@@ -339,8 +339,7 @@ int MonMap::build_from_host_list(std::string hostlist, const std::string &prefix
   }
 
   // maybe they passed us a DNS-resolvable name
-  char *hosts = NULL;
-  hosts = resolve_addrs(hostlist.c_str());
+  char *hosts = resolve_addrs(hostlist.c_str());
   if (!hosts)
     return -EINVAL;
   bool success = parse_ip_port_vec(hosts, addrs);
@@ -356,7 +355,7 @@ int MonMap::build_from_host_list(std::string hostlist, const std::string &prefix
     n[0] = 'a' + i;
     n[1] = 0;
     if (addrs[i].get_port() == 0)
-      addrs[i].set_port(CEPH_MON_PORT);
+      addrs[i].set_port(CEPH_MON_PORT_LEGACY);
     string name = prefix;
     name += n;
     if (!contains(addrs[i]) &&
@@ -416,9 +415,9 @@ void MonMap::set_initial_members(CephContext *cct,
 
 int MonMap::build_initial(CephContext *cct, ostream& errout)
 {
-  const md_config_t *conf = cct->_conf;
+  const auto& conf = cct->_conf;
   // file?
-  const auto monmap = conf->get_val<std::string>("monmap");
+  const auto monmap = conf.get_val<std::string>("monmap");
   if (!monmap.empty()) {
     int r;
     try {
@@ -435,13 +434,13 @@ int MonMap::build_initial(CephContext *cct, ostream& errout)
   }
 
   // fsid from conf?
-  const auto new_fsid = conf->get_val<uuid_d>("fsid");
+  const auto new_fsid = conf.get_val<uuid_d>("fsid");
   if (!new_fsid.is_zero()) {
     fsid = new_fsid;
   }
 
   // -m foo?
-  const auto mon_host = conf->get_val<std::string>("mon_host");
+  const auto mon_host = conf.get_val<std::string>("mon_host");
   if (!mon_host.empty()) {
     int r = build_from_host_list(mon_host, "noname-");
     if (r < 0) {
@@ -457,7 +456,7 @@ int MonMap::build_initial(CephContext *cct, ostream& errout)
 
   // What monitors are in the config file?
   std::vector <std::string> sections;
-  int ret = conf->get_all_sections(sections);
+  int ret = conf.get_all_sections(sections);
   if (ret) {
     errout << "Unable to find any monitors in the configuration "
          << "file, because there was an error listing the sections. error "
@@ -483,7 +482,7 @@ int MonMap::build_initial(CephContext *cct, ostream& errout)
     sections.push_back("mon");
     sections.push_back("global");
     std::string val;
-    int res = conf->get_val_from_conf_file(sections, "mon addr", val, true);
+    int res = conf.get_val_from_conf_file(sections, "mon addr", val, true);
     if (res) {
       errout << "failed to get an address for mon." << *m << ": error "
 	   << res << std::endl;
@@ -496,10 +495,10 @@ int MonMap::build_initial(CephContext *cct, ostream& errout)
       continue;
     }
     if (addr.get_port() == 0)
-      addr.set_port(CEPH_MON_PORT);
+      addr.set_port(CEPH_MON_PORT_LEGACY);
 
     uint16_t priority = 0;
-    if (!conf->get_val_from_conf_file(sections, "mon priority", val, false)) {
+    if (!conf.get_val_from_conf_file(sections, "mon priority", val, false)) {
       try {
         priority = std::stoul(val);
       } catch (std::logic_error&) {
@@ -519,7 +518,7 @@ int MonMap::build_initial(CephContext *cct, ostream& errout)
 
   if (size() == 0) {
     // no info found from conf options lets try use DNS SRV records
-    string srv_name = conf->get_val<std::string>("mon_dns_srv_name");
+    string srv_name = conf.get_val<std::string>("mon_dns_srv_name");
     string domain;
     // check if domain is also provided and extract it from srv_name
     size_t idx = srv_name.find("_");

@@ -253,12 +253,13 @@ else
         esac
         munge_ceph_spec_in $DIR/ceph.spec
         $SUDO $builddepcmd $DIR/ceph.spec 2>&1 | tee $DIR/yum-builddep.out
+        [ ${PIPESTATUS[0]} -ne 0 ] && exit 1
 	if [ -n "$dts_ver" ]; then
             ensure_decent_gcc_on_rh $dts_ver
 	fi
         ! grep -q -i error: $DIR/yum-builddep.out || exit 1
         ;;
-    opensuse|suse|sles|opensuse-tumbleweed)
+    opensuse*|suse|sles)
         echo "Using zypper to install dependencies"
         zypp_install="zypper --gpg-auto-import-keys --non-interactive install --no-recommends"
         $SUDO $zypp_install lsb-release systemd-rpm-macros

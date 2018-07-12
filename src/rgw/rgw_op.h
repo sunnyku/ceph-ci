@@ -1975,7 +1975,7 @@ static inline int rgw_get_request_metadata(CephContext* const cct,
        * as ObjectStore::get_max_attr_name_length() can set the limit even
        * lower than the "osd_max_attr_name_len" configurable.  */
       const size_t max_attr_name_len = \
-        cct->_conf->get_val<size_t>("rgw_max_attr_name_len");
+        cct->_conf.get_val<size_t>("rgw_max_attr_name_len");
       if (max_attr_name_len && attr_name.length() > max_attr_name_len) {
         return -ENAMETOOLONG;
       }
@@ -1983,7 +1983,7 @@ static inline int rgw_get_request_metadata(CephContext* const cct,
       /* Similar remarks apply to the check for value size. We're veryfing
        * it early at the RGW's side as it's being claimed in /info. */
       const size_t max_attr_size = \
-        cct->_conf->get_val<Option::size_t>("rgw_max_attr_size");
+        cct->_conf.get_val<Option::size_t>("rgw_max_attr_size");
       if (max_attr_size && xattr.length() > max_attr_size) {
         return -EFBIG;
       }
@@ -1991,7 +1991,7 @@ static inline int rgw_get_request_metadata(CephContext* const cct,
       /* Swift allows administrators to limit the number of metadats items
        * send _in a single request_. */
       const auto rgw_max_attrs_num_in_req = \
-        cct->_conf->get_val<size_t>("rgw_max_attrs_num_in_req");
+        cct->_conf.get_val<size_t>("rgw_max_attrs_num_in_req");
       if (rgw_max_attrs_num_in_req &&
           ++valid_meta_count > rgw_max_attrs_num_in_req) {
         return -E2BIG;
@@ -2190,15 +2190,15 @@ public:
   void execute() override {}
 
   const char* name() const override { return "get_bucket_meta_search"; }
-  virtual RGWOpType get_type() { return RGW_OP_GET_BUCKET_META_SEARCH; }
-  virtual uint32_t op_mask() { return RGW_OP_TYPE_READ; }
+  virtual RGWOpType get_type() override { return RGW_OP_GET_BUCKET_META_SEARCH; }
+  virtual uint32_t op_mask() override { return RGW_OP_TYPE_READ; }
 };
 
 class RGWDelBucketMetaSearch : public RGWOp {
 public:
   RGWDelBucketMetaSearch() {}
 
-  int verify_permission();
+  int verify_permission() override;
   void pre_exec() override;
   void execute() override;
 

@@ -279,7 +279,7 @@ void PurgeQueue::push(const PurgeItem &pi, Context *completion)
           });
 
       timer.add_event_after(
-          g_conf->mds_purge_queue_busy_flush_period,
+	  g_conf()->mds_purge_queue_busy_flush_period,
           delayed_flush);
     }
   }
@@ -301,7 +301,7 @@ uint32_t PurgeQueue::_calculate_ops(const PurgeItem &item) const
     const uint64_t num = (item.size > 0) ?
       Striper::get_num_objects(item.layout, item.size) : 1;
 
-    ops_required = std::min(num, g_conf->filer_max_purge_ops);
+    ops_required = std::min(num, g_conf()->filer_max_purge_ops);
 
     // Account for removing (or zeroing) backtrace
     ops_required += 1;
@@ -318,7 +318,7 @@ uint32_t PurgeQueue::_calculate_ops(const PurgeItem &item) const
 bool PurgeQueue::can_consume()
 {
   dout(20) << ops_in_flight << "/" << max_purge_ops << " ops, "
-           << in_flight.size() << "/" << g_conf->mds_max_purge_files
+           << in_flight.size() << "/" << g_conf()->mds_max_purge_files
            << " files" << dendl;
 
   if (in_flight.size() == 0 && cct->_conf->mds_max_purge_files > 0) {
@@ -359,6 +359,12 @@ bool PurgeQueue::_consume()
       delayed_flush = nullptr;
     }
 
+    if (int r = journaler.get_error()) {
+      derr << "Error " << r << " recovering write_pos" << dendl;
+      on_error->complete(r);
+      return could_consume;
+    }
+
     if (!journaler.is_readable()) {
       dout(10) << " not readable right now" << dendl;
       // Because we are the writer and the reader of the journal
@@ -368,6 +374,8 @@ bool PurgeQueue::_consume()
           Mutex::Locker l(lock);
           if (r == 0) {
             _consume();
+          } else if (r != -EAGAIN) {
+            on_error->complete(r);
           }
         }));
       }
@@ -582,7 +590,7 @@ void PurgeQueue::update_op_limit(const MDSMap &mds_map)
   }
 }
 
-void PurgeQueue::handle_conf_change(const struct md_config_t *conf,
+void PurgeQueue::handle_conf_change(const ConfigProxy& conf,
 			     const std::set <std::string> &changed,
                              const MDSMap &mds_map)
 {
@@ -591,7 +599,6 @@ void PurgeQueue::handle_conf_change(const struct md_config_t *conf,
     update_op_limit(mds_map);
   } else if (changed.count("mds_max_purge_files")) {
     Mutex::Locker l(lock);
-
     if (in_flight.empty()) {
       // We might have gone from zero to a finite limit, so
       // might need to kick off consume.

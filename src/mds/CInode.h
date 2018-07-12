@@ -538,6 +538,11 @@ public:
   // -- cache infrastructure --
 private:
   mempool::mds_co::compact_map<frag_t,CDir*> dirfrags; // cached dir fragments under this Inode
+
+  //for the purpose of quickly determining whether there's a subtree root or exporting dir
+  int num_subtree_roots = 0;
+  int num_exporting_dirs = 0;
+
   int stickydir_ref = 0;
   scrub_info_t *scrub_infop = nullptr;
 
@@ -546,7 +551,7 @@ public:
   CDir* get_dirfrag(frag_t fg) {
     auto pi = dirfrags.find(fg);
     if (pi != dirfrags.end()) {
-      //assert(g_conf->debug_mds < 2 || dirfragtree.is_leaf(fg)); // performance hack FIXME
+      //assert(g_conf()->debug_mds < 2 || dirfragtree.is_leaf(fg)); // performance hack FIXME
       return pi->second;
     } 
     return NULL;
@@ -689,6 +694,8 @@ public:
     assert(num_projected_xattrs == 0);
     assert(num_projected_srnodes == 0);
     assert(num_caps_wanted == 0);
+    assert(num_subtree_roots == 0);
+    assert(num_exporting_dirs == 0);
   }
   
 
@@ -1076,7 +1083,7 @@ public:
 public:
   void set_primary_parent(CDentry *p) {
     assert(parent == 0 ||
-	   g_conf->get_val<bool>("mds_hack_allow_loading_invalid_metadata"));
+	   g_conf().get_val<bool>("mds_hack_allow_loading_invalid_metadata"));
     parent = p;
   }
   void remove_primary_parent(CDentry *dn) {

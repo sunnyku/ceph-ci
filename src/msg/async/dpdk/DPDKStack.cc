@@ -181,14 +181,14 @@ DPDKWorker::Impl::Impl(CephContext *cct, unsigned i, EventCenter *c, std::shared
     : id(i), _netif(cct, dev, c), _dev(dev), _inet(cct, c, &_netif)
 {
   vector<AvailableIPAddress> tuples;
-  bool parsed = parse_available_address(cct->_conf->get_val<std::string>("ms_dpdk_host_ipv4_addr"),
-                                        cct->_conf->get_val<std::string>("ms_dpdk_gateway_ipv4_addr"),
-                                        cct->_conf->get_val<std::string>("ms_dpdk_netmask_ipv4_addr"), tuples);
+  bool parsed = parse_available_address(cct->_conf.get_val<std::string>("ms_dpdk_host_ipv4_addr"),
+                                        cct->_conf.get_val<std::string>("ms_dpdk_gateway_ipv4_addr"),
+                                        cct->_conf.get_val<std::string>("ms_dpdk_netmask_ipv4_addr"), tuples);
   if (!parsed) {
     lderr(cct) << __func__ << " no available address "
-               << cct->_conf->get_val<std::string>("ms_dpdk_host_ipv4_addr") << ", "
-               << cct->_conf->get_val<std::string>("ms_dpdk_gateway_ipv4_addr") << ", "
-               << cct->_conf->get_val<std::string>("ms_dpdk_netmask_ipv4_addr") << ", "
+               << cct->_conf.get_val<std::string>("ms_dpdk_host_ipv4_addr") << ", "
+               << cct->_conf.get_val<std::string>("ms_dpdk_gateway_ipv4_addr") << ", "
+               << cct->_conf.get_val<std::string>("ms_dpdk_netmask_ipv4_addr") << ", "
                << dendl;
     ceph_abort();
   }
@@ -225,7 +225,8 @@ int DPDKWorker::listen(entity_addr_t &sa, const SocketOptions &opt,
   // _inet.set_host_address(ipv4_address(std::get<0>(tuples[idx])));
   // _inet.set_gw_address(ipv4_address(std::get<1>(tuples[idx])));
   // _inet.set_netmask_address(ipv4_address(std::get<2>(tuples[idx])));
-  return tcpv4_listen(_impl->_inet.get_tcp(), sa.get_port(), opt, sock);
+  return tcpv4_listen(_impl->_inet.get_tcp(), sa.get_port(), opt, sa.get_type(),
+		      sock);
 }
 
 int DPDKWorker::connect(const entity_addr_t &addr, const SocketOptions &opts, ConnectedSocket *socket)

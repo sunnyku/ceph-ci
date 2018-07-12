@@ -35,6 +35,7 @@ enum {
   l_bluefs_files_written_sst,
   l_bluefs_bytes_written_wal,
   l_bluefs_bytes_written_sst,
+  l_bluefs_bytes_written_slow,
   l_bluefs_last,
 };
 
@@ -132,7 +133,7 @@ public:
       : file(f),
 	pos(0),
 	buffer_appender(buffer.get_page_aligned_appender(
-			  g_conf->bluefs_alloc_size / CEPH_PAGE_SIZE)) {
+			  g_conf()->bluefs_alloc_size / CEPH_PAGE_SIZE)) {
       ++file->num_writers;
       iocv.fill(nullptr);
       dirty_devs.fill(false);

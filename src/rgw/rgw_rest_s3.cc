@@ -1436,7 +1436,7 @@ void RGWPutObj_ObjStore_S3::send_response()
       if (strftime(buf, sizeof(buf), "%Y-%m-%dT%T.000Z", &tmp) > 0) {
         s->formatter->dump_string("LastModified", buf);
       }
-      s->formatter->dump_string("ETag", etag);
+      dump_etag(s, etag);
       s->formatter->close_section();
       rgw_flush_formatter_and_reset(s, s->formatter);
       return;
@@ -2008,7 +2008,7 @@ done:
     for (auto &it : crypt_http_responses)
       dump_header(s, it.first, it.second);
     s->formatter->open_object_section("PostResponse");
-    if (g_conf->rgw_dns_name.length())
+    if (g_conf()->rgw_dns_name.length())
       s->formatter->dump_format("Location", "%s/%s",
 				s->info.script_uri.c_str(),
 				s->object.name.c_str());
@@ -2192,9 +2192,7 @@ void RGWCopyObj_ObjStore_S3::send_response()
 
   if (op_ret == 0) {
     dump_time(s, "LastModified", &mtime);
-    if (! etag.empty()) {
-      s->formatter->dump_string("ETag", std::move(etag));
-    }
+    dump_etag(s, etag);
     s->formatter->close_section();
     rgw_flush_formatter_and_reset(s, s->formatter);
   }

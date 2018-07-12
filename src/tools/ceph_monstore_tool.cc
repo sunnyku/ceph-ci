@@ -237,7 +237,7 @@ void usage(const char *n, po::options_description &d)
 }
 
 int update_osdmap(MonitorDBStore& store, version_t ver, bool copy,
-		  ceph::shared_ptr<CrushWrapper> crush,
+		  std::shared_ptr<CrushWrapper> crush,
 		  MonitorDBStore::Transaction* t) {
   const string prefix("osdmap");
 
@@ -320,7 +320,7 @@ int rewrite_transaction(MonitorDBStore& store, int version,
 
   // load/extract the crush map
   int r = 0;
-  ceph::shared_ptr<CrushWrapper> crush(new CrushWrapper);
+  std::shared_ptr<CrushWrapper> crush(new CrushWrapper);
   if (crush_file.empty()) {
     bufferlist bl;
     r = store.get(prefix, store.combine_strings("full", good_version), bl);
@@ -603,7 +603,7 @@ static int update_mgrmap(MonitorDBStore& st)
     // mgr expects epoch > 1
     map.epoch++;
     auto initial_modules =
-      get_str_vec(g_ceph_context->_conf->get_val<string>("mgr_initial_modules"));
+      get_str_vec(g_ceph_context->_conf.get_val<string>("mgr_initial_modules"));
     copy(begin(initial_modules),
 	 end(initial_modules),
 	 inserter(map.modules, end(map.modules)));
@@ -840,8 +840,7 @@ int main(int argc, char **argv) {
     CODE_ENVIRONMENT_UTILITY,
     CINIT_FLAG_NO_MON_CONFIG);
   common_init_finish(g_ceph_context);
-  g_ceph_context->_conf->apply_changes(NULL);
-  g_conf = g_ceph_context->_conf;
+  cct->_conf.apply_changes(nullptr);
 
   // this is where we'll write *whatever*, on a per-command basis.
   // not all commands require some place to write their things.

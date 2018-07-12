@@ -266,6 +266,7 @@ rgw_pool RGWZoneGroup::get_pool(CephContext *cct_)
 int RGWZoneGroup::create_default(bool old_format)
 {
   name = default_zonegroup_name;
+  api_name = default_zonegroup_name;
   is_master = true;
 
   RGWZoneGroupPlacementTarget placement_target;
@@ -3141,6 +3142,9 @@ class RGWMetaNotifier : public RGWRadosThread {
   uint64_t interval_msec() override {
     return cct->_conf->rgw_md_notify_interval_msec;
   }
+  void stop_process() override {
+    notify_mgr.stop();
+  }
 public:
   RGWMetaNotifier(RGWRados *_store, RGWMetadataLog* log)
     : RGWRadosThread(_store, "meta-notifier"), notify_mgr(_store), log(log) {}
@@ -3171,7 +3175,10 @@ class RGWDataNotifier : public RGWRadosThread {
   RGWDataNotifierManager notify_mgr;
 
   uint64_t interval_msec() override {
-    return cct->_conf->get_val<int64_t>("rgw_data_notify_interval_msec");
+    return cct->_conf.get_val<int64_t>("rgw_data_notify_interval_msec");
+  }
+  void stop_process() override {
+    notify_mgr.stop();
   }
 public:
   RGWDataNotifier(RGWRados *_store) : RGWRadosThread(_store, "data-notifier"), notify_mgr(_store) {}
@@ -4627,6 +4634,14 @@ int RGWRados::init_complete()
   }
 
   if (run_sync_thread) {
+
+    for (const auto &pt: get_zonegroup().placement_targets) {
+      if (get_zone_params().placement_pools.find(pt.second.name)
+          == get_zone_params().placement_pools.end()){
+        ldout(cct, 0) << "WARNING: This zone does not contain the placement target "
+                      << pt.second.name << " present in zonegroup" << dendl;
+      }
+    }
     Mutex::Locker l(meta_sync_thread_lock);
     meta_sync_processor_thread = new RGWMetaSyncProcessorThread(this, async_rados);
     ret = meta_sync_processor_thread->init();
@@ -6204,6 +6219,8 @@ int RGWRados::select_bucket_location_by_rule(const string& location_rule, RGWZon
     if (get_zonegroup().equals(zonegroup.get_id())) {
       /* that's a configuration error, zone should have that rule, as we're within the requested
        * zonegroup */
+      ldout(cct, 0) << "ERROR: This zone does not contain placement rule"
+                    << location_rule << " present in the zonegroup!" << dendl;
       return -EINVAL;
     } else {
       /* oh, well, data is not going to be placed here, bucket object is just a placeholder */
@@ -11312,9 +11329,8 @@ int RGWRados::bucket_index_link_olh(const RGWBucketInfo& bucket_info, RGWObjStat
   rgw_zone_set zones_trace;
   if (_zones_trace) {
     zones_trace = *_zones_trace;
-  } else {
-    zones_trace.insert(get_zone().id);
   }
+  zones_trace.insert(get_zone().id);
 
   BucketShard bs(this);
 
@@ -13078,10 +13094,9 @@ int RGWRados::process_lc()
   return lc->process();
 }
 
-int RGWRados::process_expire_objects()
+bool RGWRados::process_expire_objects()
 {
-  obj_expirer->inspect_all_shards(utime_t(), ceph_clock_now());
-  return 0;
+  return obj_expirer->inspect_all_shards(utime_t(), ceph_clock_now());
 }
 
 int RGWRados::cls_rgw_init_index(librados::IoCtx& index_ctx, librados::ObjectWriteOperation& op, string& oid)
@@ -13098,10 +13113,8 @@ int RGWRados::cls_obj_prepare_op(BucketShard& bs, RGWModifyOp op, string& tag,
   if (_zones_trace) {
     zones_trace = *_zones_trace;
   }
-  else {
-    zones_trace.insert(get_zone().id);
-  }
-  
+  zones_trace.insert(get_zone().id);
+
   ObjectWriteOperation o;
   cls_rgw_obj_key key(obj.key.get_index_key_name(), obj.key.instance);
   cls_rgw_guard_bucket_resharding(o, -ERR_BUSY_RESHARDING);
@@ -13119,16 +13132,22 @@ int RGWRados::cls_obj_complete_op(BucketShard& bs, const rgw_obj& obj, RGWModify
   dir_meta = ent.meta;
   dir_meta.category = category;
 
+  rgw_zone_set zones_trace;
+  if (_zones_trace) {
+    zones_trace = *_zones_trace;
+  }
+  zones_trace.insert(get_zone().id);
+
   rgw_bucket_entry_ver ver;
   ver.pool = pool;
   ver.epoch = epoch;
   cls_rgw_obj_key key(ent.key.name, ent.key.instance);
   cls_rgw_guard_bucket_resharding(o, -ERR_BUSY_RESHARDING);
   cls_rgw_bucket_complete_op(o, op, tag, ver, key, dir_meta, remove_objs,
-                             get_zone().log_data, bilog_flags, _zones_trace);
+                             get_zone().log_data, bilog_flags, &zones_trace);
   complete_op_data *arg;
   index_completion_manager->create_completion(obj, op, tag, ver, key, dir_meta, remove_objs,
-                                              get_zone().log_data, bilog_flags, _zones_trace, &arg);
+                                              get_zone().log_data, bilog_flags, &zones_trace, &arg);
   librados::AioCompletion *completion = arg->rados_completion;
   int ret = bs.index_ctx.aio_operate(bs.bucket_obj, arg->rados_completion, &o);
   completion->release(); /* can't reference arg here, as it might have already been released */

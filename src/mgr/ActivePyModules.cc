@@ -191,9 +191,9 @@ PyObject *ActivePyModules::get_python(const std::string &what)
   } else if (what.substr(0, 6) == "config") {
     PyFormatter f;
     if (what == "config_options") {
-      g_conf->config_options(&f);  
+      g_conf().config_options(&f);
     } else if (what == "config") {
-      g_conf->show_config(&f);
+      g_conf().show_config(&f);
     }
     return f.get();
   } else if (what == "mon_map") {
@@ -281,10 +281,10 @@ PyObject *ActivePyModules::get_python(const std::string &what)
     return f.get();
   } else if (what == "pg_dump") {
     PyFormatter f;
-        cluster_state.with_pgmap(
-        [&f](const PGMap &pg_map) {
-	  pg_map.dump(&f);
-        }
+    cluster_state.with_pgmap(
+      [&f](const PGMap &pg_map) {
+	pg_map.dump(&f);
+      }
     );
     return f.get();
   } else if (what == "devices") {
@@ -294,6 +294,14 @@ PyObject *ActivePyModules::get_python(const std::string &what)
 	f.dump_object("device", dev);
       });
     f.close_section();
+    return f.get();
+  } else if (what.size() > 7 &&
+	     what.substr(0, 7) == "device ") {
+    string devid = what.substr(7);
+    PyFormatter f;
+    daemon_state.with_device(devid, [&f] (const DeviceState& dev) {
+	f.dump_object("device", dev);
+      });
     return f.get();
   } else if (what == "io_rate") {
     PyFormatter f;
@@ -367,16 +375,14 @@ int ActivePyModules::start_one(PyModuleRef py_module)
   assert(modules.count(py_module->get_name()) == 0);
 
   modules[py_module->get_name()].reset(new ActivePyModule(py_module, clog));
+  auto active_module = modules.at(py_module->get_name()).get();
 
-  int r = modules[py_module->get_name()]->load(this);
+  int r = active_module->load(this);
   if (r != 0) {
     return r;
   } else {
     dout(4) << "Starting thread for " << py_module->get_name() << dendl;
-    // Giving Thread the module's module_name member as its
-    // char* thread name: thread must not outlive module class lifetime.
-    modules[py_module->get_name()]->thread.create(
-        py_module->get_name().c_str());
+    active_module->thread.create(active_module->get_thread_name());
 
     return 0;
   }
@@ -774,6 +780,7 @@ void ActivePyModules::set_health_checks(const std::string& module_name,
 int ActivePyModules::handle_command(
   std::string const &module_name,
   const cmdmap_t &cmdmap,
+  const bufferlist &inbuf,
   std::stringstream *ds,
   std::stringstream *ss)
 {
@@ -785,7 +792,7 @@ int ActivePyModules::handle_command(
   }
 
   lock.Unlock();
-  return mod_iter->second->handle_command(cmdmap, ds, ss);
+  return mod_iter->second->handle_command(cmdmap, inbuf, ds, ss);
 }
 
 void ActivePyModules::get_health_checks(health_check_map_t *checks)

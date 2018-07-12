@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { FormControl, FormGroup, ValidatorFn, Validators } from '@angular/forms';
+import { FormControl, ValidatorFn, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import * as _ from 'lodash';
@@ -7,8 +7,11 @@ import { Observable } from 'rxjs/Observable';
 
 import { PoolService } from '../../../shared/api/pool.service';
 import { RbdService } from '../../../shared/api/rbd.service';
+import { CdFormGroup } from '../../../shared/forms/cd-form-group';
 import { FinishedTask } from '../../../shared/models/finished-task';
+import { Permission } from '../../../shared/models/permissions';
 import { DimlessBinaryPipe } from '../../../shared/pipes/dimless-binary.pipe';
+import { AuthStorageService } from '../../../shared/services/auth-storage.service';
 import { FormatterService } from '../../../shared/services/formatter.service';
 import { TaskWrapperService } from '../../../shared/services/task-wrapper.service';
 import { RbdFormCloneRequestModel } from './rbd-form-clone-request.model';
@@ -24,9 +27,9 @@ import { RbdFormResponseModel } from './rbd-form-response.model';
   styleUrls: ['./rbd-form.component.scss']
 })
 export class RbdFormComponent implements OnInit {
-
-  rbdForm: FormGroup;
-  featuresFormGroups: FormGroup;
+  poolPermission: Permission;
+  rbdForm: CdFormGroup;
+  featuresFormGroups: CdFormGroup;
   deepFlattenFormControl: FormControl;
   layeringFormControl: FormControl;
   exclusiveLockFormControl: FormControl;
@@ -51,26 +54,27 @@ export class RbdFormComponent implements OnInit {
   response: RbdFormResponseModel;
   snapName: string;
 
-  defaultObjectSize = '4MiB';
+  defaultObjectSize = '4 MiB';
 
   objectSizes: Array<string> = [
-    '4KiB',
-    '8KiB',
-    '16KiB',
-    '32KiB',
-    '64KiB',
-    '128KiB',
-    '256KiB',
-    '512KiB',
-    '1MiB',
-    '2MiB',
-    '4MiB',
-    '8MiB',
-    '16MiB',
-    '32MiB'
+    '4 KiB',
+    '8 KiB',
+    '16 KiB',
+    '32 KiB',
+    '64 KiB',
+    '128 KiB',
+    '256 KiB',
+    '512 KiB',
+    '1 MiB',
+    '2 MiB',
+    '4 MiB',
+    '8 MiB',
+    '16 MiB',
+    '32 MiB'
   ];
 
   constructor(
+    private authStorageService: AuthStorageService,
     private route: ActivatedRoute,
     private router: Router,
     private poolService: PoolService,
@@ -79,6 +83,7 @@ export class RbdFormComponent implements OnInit {
     private taskWrapper: TaskWrapperService,
     private dimlessBinaryPipe: DimlessBinaryPipe
   ) {
+    this.poolPermission = this.authStorageService.getPermissions().pool;
     this.features = {
       'deep-flatten': {
         desc: 'Deep flatten',
@@ -86,7 +91,7 @@ export class RbdFormComponent implements OnInit {
         allowEnable: false,
         allowDisable: true
       },
-      'layering': {
+      layering: {
         desc: 'Layering',
         requires: null,
         allowEnable: false,
@@ -104,7 +109,7 @@ export class RbdFormComponent implements OnInit {
         allowEnable: true,
         allowDisable: true
       },
-      'journaling': {
+      journaling: {
         desc: 'Journaling (requires exclusive-lock)',
         requires: 'exclusive-lock',
         allowEnable: true,
@@ -129,41 +134,40 @@ export class RbdFormComponent implements OnInit {
     this.deepFlattenFormControl = new FormControl(false);
     this.layeringFormControl = new FormControl(false);
     this.exclusiveLockFormControl = new FormControl(false);
-    this.objectMapFormControl = new FormControl({value: false, disabled: true});
-    this.journalingFormControl = new FormControl({value: false, disabled: true});
-    this.fastDiffFormControl = new FormControl({value: false, disabled: true});
-    this.featuresFormGroups = new FormGroup({
+    this.objectMapFormControl = new FormControl({ value: false, disabled: true });
+    this.journalingFormControl = new FormControl({ value: false, disabled: true });
+    this.fastDiffFormControl = new FormControl({ value: false, disabled: true });
+    this.featuresFormGroups = new CdFormGroup({
       'deep-flatten': this.deepFlattenFormControl,
-      'layering': this.layeringFormControl,
+      layering: this.layeringFormControl,
       'exclusive-lock': this.exclusiveLockFormControl,
       'object-map': this.objectMapFormControl,
-      'journaling': this.journalingFormControl,
-      'fast-diff': this.fastDiffFormControl,
+      journaling: this.journalingFormControl,
+      'fast-diff': this.fastDiffFormControl
     });
-    this.rbdForm = new FormGroup({
-      parent: new FormControl(''),
-      name: new FormControl('', {
-        validators: [
-          Validators.required
-        ]
-      }),
-      pool: new FormControl(null, {
-        validators: [
-          Validators.required
-        ]
-      }),
-      useDataPool: new FormControl(false),
-      dataPool: new FormControl(null),
-      size: new FormControl(null, {
-        updateOn: 'blur'
-      }),
-      obj_size: new FormControl(this.defaultObjectSize),
-      features: this.featuresFormGroups,
-      stripingUnit: new FormControl(null),
-      stripingCount: new FormControl(null, {
-        updateOn: 'blur'
-      })
-    }, this.validateRbdForm(this.formatter));
+    this.rbdForm = new CdFormGroup(
+      {
+        parent: new FormControl(''),
+        name: new FormControl('', {
+          validators: [Validators.required]
+        }),
+        pool: new FormControl(null, {
+          validators: [Validators.required]
+        }),
+        useDataPool: new FormControl(false),
+        dataPool: new FormControl(null),
+        size: new FormControl(null, {
+          updateOn: 'blur'
+        }),
+        obj_size: new FormControl(this.defaultObjectSize),
+        features: this.featuresFormGroups,
+        stripingUnit: new FormControl(null),
+        stripingCount: new FormControl(null, {
+          updateOn: 'blur'
+        })
+      },
+      this.validateRbdForm(this.formatter)
+    );
   }
 
   disableForEdit() {
@@ -197,29 +201,30 @@ export class RbdFormComponent implements OnInit {
       this.mode = this.rbdFormMode.copying;
       this.disableForCopy();
     }
-    if (this.mode === this.rbdFormMode.editing ||
-        this.mode === this.rbdFormMode.cloning ||
-        this.mode === this.rbdFormMode.copying) {
-      this.route.params.subscribe(
-        (params: { pool: string, name: string, snap: string }) => {
-          const poolName = params.pool;
-          const rbdName = params.name;
-          this.snapName = params.snap;
-          this.rbdService.get(poolName, rbdName)
-            .subscribe((resp: RbdFormResponseModel) => {
-              this.setResponse(resp, this.snapName);
-            });
+    if (
+      this.mode === this.rbdFormMode.editing ||
+      this.mode === this.rbdFormMode.cloning ||
+      this.mode === this.rbdFormMode.copying
+    ) {
+      this.route.params.subscribe((params: { pool: string; name: string; snap: string }) => {
+        const poolName = decodeURIComponent(params.pool);
+        const rbdName = decodeURIComponent(params.name);
+        if (params.snap) {
+          this.snapName = decodeURIComponent(params.snap);
         }
-      );
-    } else {
-      this.rbdService.defaultFeatures()
-        .subscribe((defaultFeatures: Array<string>) => {
-          this.setFeatures(defaultFeatures);
+        this.rbdService.get(poolName, rbdName).subscribe((resp: RbdFormResponseModel) => {
+          this.setResponse(resp, this.snapName);
         });
+      });
+    } else {
+      this.rbdService.defaultFeatures().subscribe((defaultFeatures: Array<string>) => {
+        this.setFeatures(defaultFeatures);
+      });
     }
-    if (this.mode !== this.rbdFormMode.editing) {
-      this.poolService.list(['pool_name', 'type', 'flags_names', 'application_metadata']).then(
-        resp => {
+    if (this.mode !== this.rbdFormMode.editing && this.poolPermission.read) {
+      this.poolService
+        .list(['pool_name', 'type', 'flags_names', 'application_metadata'])
+        .then((resp) => {
           const pools = [];
           const dataPools = [];
           for (const pool of resp) {
@@ -227,8 +232,10 @@ export class RbdFormComponent implements OnInit {
               if (pool.type === 'replicated') {
                 pools.push(pool);
                 dataPools.push(pool);
-              } else if (pool.type === 'erasure' &&
-                pool.flags_names.indexOf('ec_overwrites') !== -1) {
+              } else if (
+                pool.type === 'erasure' &&
+                pool.flags_names.indexOf('ec_overwrites') !== -1
+              ) {
                 dataPools.push(pool);
               }
             }
@@ -242,8 +249,7 @@ export class RbdFormComponent implements OnInit {
             this.rbdForm.get('pool').setValue(poolName);
             this.onPoolChange(poolName);
           }
-        }
-      );
+        });
     }
     this.deepFlattenFormControl.valueChanges.subscribe((value) => {
       this.watchDataFeatures('deep-flatten', value);
@@ -269,14 +275,14 @@ export class RbdFormComponent implements OnInit {
     const newDataPools = this.allDataPools.filter((dataPool: any) => {
       return dataPool.pool_name !== selectedPoolName;
     });
-    if (this.rbdForm.get('dataPool').value === selectedPoolName) {
+    if (this.rbdForm.getValue('dataPool') === selectedPoolName) {
       this.rbdForm.get('dataPool').setValue(null);
     }
     this.dataPools = newDataPools;
   }
 
-  onUseDataPoolChange () {
-    if (!this.rbdForm.get('useDataPool').value) {
+  onUseDataPoolChange() {
+    if (!this.rbdForm.getValue('useDataPool')) {
       this.rbdForm.get('dataPool').setValue(null);
       this.onDataPoolChange(null);
     }
@@ -286,36 +292,37 @@ export class RbdFormComponent implements OnInit {
     const newPools = this.allPools.filter((pool: any) => {
       return pool.pool_name !== selectedDataPoolName;
     });
-    if (this.rbdForm.get('pool').value === selectedDataPoolName) {
+    if (this.rbdForm.getValue('pool') === selectedDataPoolName) {
       this.rbdForm.get('pool').setValue(null);
     }
     this.pools = newPools;
   }
 
   validateRbdForm(formatter: FormatterService): ValidatorFn {
-    return (formGroup: FormGroup) => {
+    return (formGroup: CdFormGroup) => {
       // Data Pool
       const useDataPoolControl = formGroup.get('useDataPool');
       const dataPoolControl = formGroup.get('dataPool');
       let dataPoolControlErrors = null;
       if (useDataPoolControl.value && dataPoolControl.value == null) {
-        dataPoolControlErrors = {'required': true};
+        dataPoolControlErrors = { required: true };
       }
       dataPoolControl.setErrors(dataPoolControlErrors);
       // Size
       const sizeControl = formGroup.get('size');
       const objectSizeControl = formGroup.get('obj_size');
       const objectSizeInBytes = formatter.toBytes(
-        objectSizeControl.value != null ? objectSizeControl.value : this.defaultObjectSize);
+        objectSizeControl.value != null ? objectSizeControl.value : this.defaultObjectSize
+      );
       const stripingCountControl = formGroup.get('stripingCount');
       const stripingCount = stripingCountControl.value != null ? stripingCountControl.value : 1;
       let sizeControlErrors = null;
       if (sizeControl.value === null) {
-        sizeControlErrors = {'required': true};
+        sizeControlErrors = { required: true };
       } else {
         const sizeInBytes = formatter.toBytes(sizeControl.value);
         if (stripingCount * objectSizeInBytes > sizeInBytes) {
-          sizeControlErrors = {'invalidSizeObject': true};
+          sizeControlErrors = { invalidSizeObject: true };
         }
       }
       sizeControl.setErrors(sizeControlErrors);
@@ -323,20 +330,20 @@ export class RbdFormComponent implements OnInit {
       const stripingUnitControl = formGroup.get('stripingUnit');
       let stripingUnitControlErrors = null;
       if (stripingUnitControl.value === null && stripingCountControl.value !== null) {
-        stripingUnitControlErrors = {'required': true};
+        stripingUnitControlErrors = { required: true };
       } else if (stripingUnitControl.value !== null) {
         const stripingUnitInBytes = formatter.toBytes(stripingUnitControl.value);
         if (stripingUnitInBytes > objectSizeInBytes) {
-          stripingUnitControlErrors = {'invalidStripingUnit': true};
+          stripingUnitControlErrors = { invalidStripingUnit: true };
         }
       }
       stripingUnitControl.setErrors(stripingUnitControlErrors);
       // Striping Count
       let stripingCountControlErrors = null;
       if (stripingCountControl.value === null && stripingUnitControl.value !== null) {
-        stripingCountControlErrors = {'required': true};
+        stripingCountControlErrors = { required: true };
       } else if (stripingCount < 1) {
-        stripingCountControlErrors = {'min': true};
+        stripingCountControlErrors = { min: true };
       }
       stripingCountControl.setErrors(stripingCountControlErrors);
       return null;
@@ -347,21 +354,19 @@ export class RbdFormComponent implements OnInit {
     _.forIn(this.features, (details, feature) => {
       if (details.requires === key) {
         if (checked) {
-          this.featuresFormGroups.get(feature).enable();
+          this.rbdForm.get(feature).enable();
         } else {
-          this.featuresFormGroups.get(feature).disable();
-          this.featuresFormGroups.get(feature).setValue(checked);
+          this.rbdForm.get(feature).disable();
+          this.rbdForm.get(feature).setValue(checked);
           this.watchDataFeatures(feature, checked);
           this.deepBoxCheck(feature, checked);
         }
       }
-      if (this.mode === this.rbdFormMode.editing && this.featuresFormGroups.get(feature).enabled) {
-
+      if (this.mode === this.rbdFormMode.editing && this.rbdForm.get(feature).enabled) {
         if (this.response.features_name.indexOf(feature) !== -1 && !details.allowDisable) {
-          this.featuresFormGroups.get(feature).disable();
-
+          this.rbdForm.get(feature).disable();
         } else if (this.response.features_name.indexOf(feature) === -1 && !details.allowEnable) {
-          this.featuresFormGroups.get(feature).disable();
+          this.rbdForm.get(feature).disable();
         }
       }
     });
@@ -370,8 +375,8 @@ export class RbdFormComponent implements OnInit {
   featureFormUpdate(key, checked) {
     if (checked) {
       const required = this.features[key].requires;
-      if (required && !this.featuresFormGroups.get(required).value) {
-        this.featuresFormGroups.get(key).setValue(false);
+      if (required && !this.rbdForm.getValue(required)) {
+        this.rbdForm.get(key).setValue(false);
         return;
       }
     }
@@ -404,7 +409,8 @@ export class RbdFormComponent implements OnInit {
       }
     } else if (response.parent) {
       const parent = response.parent;
-      this.rbdForm.get('parent')
+      this.rbdForm
+        .get('parent')
         .setValue(`${parent.pool_name}/${parent.image_name}@${parent.snap_name}`);
     }
     if (this.mode === this.rbdFormMode.editing) {
@@ -418,25 +424,26 @@ export class RbdFormComponent implements OnInit {
     this.rbdForm.get('size').setValue(this.dimlessBinaryPipe.transform(response.size));
     this.rbdForm.get('obj_size').setValue(this.dimlessBinaryPipe.transform(response.obj_size));
     this.setFeatures(response.features_name);
-    this.rbdForm.get('stripingUnit').setValue(
-      this.dimlessBinaryPipe.transform(response.stripe_unit));
+    this.rbdForm
+      .get('stripingUnit')
+      .setValue(this.dimlessBinaryPipe.transform(response.stripe_unit));
     this.rbdForm.get('stripingCount').setValue(response.stripe_count);
   }
 
   createRequest() {
     const request = new RbdFormCreateRequestModel();
-    request.pool_name = this.rbdForm.get('pool').value;
-    request.name = this.rbdForm.get('name').value;
-    request.size = this.formatter.toBytes(this.rbdForm.get('size').value);
-    request.obj_size = this.formatter.toBytes(this.rbdForm.get('obj_size').value);
+    request.pool_name = this.rbdForm.getValue('pool');
+    request.name = this.rbdForm.getValue('name');
+    request.size = this.formatter.toBytes(this.rbdForm.getValue('size'));
+    request.obj_size = this.formatter.toBytes(this.rbdForm.getValue('obj_size'));
     _.forIn(this.features, (feature) => {
-      if (this.featuresFormGroups.get(feature.key).value) {
+      if (this.rbdForm.getValue(feature.key)) {
         request.features.push(feature.key);
       }
     });
-    request.stripe_unit = this.formatter.toBytes(this.rbdForm.get('stripingUnit').value);
-    request.stripe_count = this.rbdForm.get('stripingCount').value;
-    request.data_pool = this.rbdForm.get('dataPool').value;
+    request.stripe_unit = this.formatter.toBytes(this.rbdForm.getValue('stripingUnit'));
+    request.stripe_count = this.rbdForm.getValue('stripingCount');
+    request.data_pool = this.rbdForm.getValue('dataPool');
     return request;
   }
 
@@ -453,10 +460,10 @@ export class RbdFormComponent implements OnInit {
 
   editRequest() {
     const request = new RbdFormEditRequestModel();
-    request.name = this.rbdForm.get('name').value;
-    request.size = this.formatter.toBytes(this.rbdForm.get('size').value);
+    request.name = this.rbdForm.getValue('name');
+    request.size = this.formatter.toBytes(this.rbdForm.getValue('size'));
     _.forIn(this.features, (feature) => {
-      if (this.featuresFormGroups.get(feature.key).value) {
+      if (this.rbdForm.getValue(feature.key)) {
         request.features.push(feature.key);
       }
     });
@@ -465,17 +472,17 @@ export class RbdFormComponent implements OnInit {
 
   cloneRequest(): RbdFormCloneRequestModel {
     const request = new RbdFormCloneRequestModel();
-    request.child_pool_name = this.rbdForm.get('pool').value;
-    request.child_image_name = this.rbdForm.get('name').value;
-    request.obj_size = this.formatter.toBytes(this.rbdForm.get('obj_size').value);
+    request.child_pool_name = this.rbdForm.getValue('pool');
+    request.child_image_name = this.rbdForm.getValue('name');
+    request.obj_size = this.formatter.toBytes(this.rbdForm.getValue('obj_size'));
     _.forIn(this.features, (feature) => {
-      if (this.featuresFormGroups.get(feature.key).value) {
+      if (this.rbdForm.getValue(feature.key)) {
         request.features.push(feature.key);
       }
     });
-    request.stripe_unit = this.formatter.toBytes(this.rbdForm.get('stripingUnit').value);
-    request.stripe_count = this.rbdForm.get('stripingCount').value;
-    request.data_pool = this.rbdForm.get('dataPool').value;
+    request.stripe_unit = this.formatter.toBytes(this.rbdForm.getValue('stripingUnit'));
+    request.stripe_count = this.rbdForm.getValue('stripingCount');
+    request.data_pool = this.rbdForm.getValue('dataPool');
     return request;
   }
 
@@ -513,17 +520,17 @@ export class RbdFormComponent implements OnInit {
     if (this.snapName) {
       request.snapshot_name = this.snapName;
     }
-    request.dest_pool_name = this.rbdForm.get('pool').value;
-    request.dest_image_name = this.rbdForm.get('name').value;
-    request.obj_size = this.formatter.toBytes(this.rbdForm.get('obj_size').value);
+    request.dest_pool_name = this.rbdForm.getValue('pool');
+    request.dest_image_name = this.rbdForm.getValue('name');
+    request.obj_size = this.formatter.toBytes(this.rbdForm.getValue('obj_size'));
     _.forIn(this.features, (feature) => {
-      if (this.featuresFormGroups.get(feature.key).value) {
+      if (this.rbdForm.getValue(feature.key)) {
         request.features.push(feature.key);
       }
     });
-    request.stripe_unit = this.formatter.toBytes(this.rbdForm.get('stripingUnit').value);
-    request.stripe_count = this.rbdForm.get('stripingCount').value;
-    request.data_pool = this.rbdForm.get('dataPool').value;
+    request.stripe_unit = this.formatter.toBytes(this.rbdForm.getValue('stripingUnit'));
+    request.stripe_count = this.rbdForm.getValue('stripingCount');
+    request.data_pool = this.rbdForm.getValue('dataPool');
     return request;
   }
 

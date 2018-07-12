@@ -130,6 +130,7 @@ cdef extern from "rados/librados.h" nogil:
     int rados_create_with_context(rados_t *cluster, rados_config_t cct)
     int rados_connect(rados_t cluster)
     void rados_shutdown(rados_t cluster)
+    uint64_t rados_get_instance_id(rados_t cluster)
     int rados_conf_read_file(rados_t cluster, const char *path)
     int rados_conf_parse_argv_remainder(rados_t cluster, int argc, const char **argv, const char **remargv)
     int rados_conf_parse_env(rados_t cluster, const char *var)
@@ -235,6 +236,17 @@ cdef extern from "rados/librados.h" nogil:
     int rados_ioctx_snap_list(rados_ioctx_t io, rados_snap_t * snaps, int maxlen)
     int rados_ioctx_snap_get_stamp(rados_ioctx_t io, rados_snap_t id, time_t * t)
 
+    int rados_ioctx_selfmanaged_snap_create(rados_ioctx_t io,
+                                            rados_snap_t *snapid)
+    int rados_ioctx_selfmanaged_snap_remove(rados_ioctx_t io,
+                                            rados_snap_t snapid)
+    int rados_ioctx_selfmanaged_snap_set_write_ctx(rados_ioctx_t io,
+                                                   rados_snap_t snap_seq,
+                                                   rados_snap_t *snap,
+                                                   int num_snaps)
+    int rados_ioctx_selfmanaged_snap_rollback(rados_ioctx_t io, const char *oid,
+                                              rados_snap_t snapid)
+
     int rados_lock_exclusive(rados_ioctx_t io, const char * oid, const char * name,
                              const char * cookie, const char * desc,
                              timeval * duration, uint8_t flags)
@@ -282,6 +294,7 @@ cdef extern from "rados/librados.h" nogil:
     void rados_write_op_create(rados_write_op_t write_op, int exclusive, const char *category)
     void rados_write_op_append(rados_write_op_t write_op, const char *buffer, size_t len)
     void rados_write_op_write_full(rados_write_op_t write_op, const char *buffer, size_t len)
+    void rados_write_op_assert_version(rados_write_op_t write_op, uint64_t ver)
     void rados_write_op_write(rados_write_op_t write_op, const char *buffer, size_t len, uint64_t offset)
     void rados_write_op_remove(rados_write_op_t write_op)
     void rados_write_op_truncate(rados_write_op_t write_op, uint64_t offset)
@@ -881,6 +894,15 @@ Rados object in state %s." % self.state)
         if ret != 0:
             raise make_ex(ret, "error connecting to the cluster")
         self.state = "connected"
+
+    def get_instance_id(self):
+        """
+        Get a global id for current instance
+        """
+        self.require_state("connected")
+        with nogil:
+            ret = rados_get_instance_id(self.cluster)
+        return ret;
 
     def get_cluster_stats(self):
         """
@@ -1998,6 +2020,19 @@ cdef class WriteOp(object):
 
         with nogil:
             rados_write_op_write(self.write_op, _to_write, length, _offset)
+
+    @requires(('version', int))
+    def assert_version(self, version):
+        """
+        Check if object's version is the expected one.
+        :param version: expected version of the object
+        :param type: int
+        """
+        cdef:
+            uint64_t _version = version
+
+        with nogil:
+            rados_write_op_assert_version(self.write_op, _version)
 
     @requires(('offset', int), ('length', int))
     def zero(self, offset, length):
@@ -3179,6 +3214,101 @@ returned %d, but should return zero on success." % (self.name, ret))
 
         with nogil:
             ret = rados_ioctx_snap_rollback(self.io, _oid, _snap_name)
+        if ret != 0:
+            raise make_ex(ret, "Failed to rollback %s" % oid)
+
+    def create_self_managed_snap(self):
+        """
+        Creates a self-managed snapshot
+
+        :returns: snap id on success
+
+        :raises: :class:`Error`
+        """
+        self.require_ioctx_open()
+        cdef:
+            rados_snap_t _snap_id
+        with nogil:
+            ret = rados_ioctx_selfmanaged_snap_create(self.io, &_snap_id)
+        if ret != 0:
+            raise make_ex(ret, "Failed to create self-managed snapshot")
+        return int(_snap_id)
+
+    @requires(('snap_id', int))
+    def remove_self_managed_snap(self, snap_id):
+        """
+        Removes a self-managed snapshot
+
+        :param snap_id: the name of the snapshot
+        :type snap_id: int
+
+        :raises: :class:`TypeError`
+        :raises: :class:`Error`
+        """
+        self.require_ioctx_open()
+        cdef:
+            rados_snap_t _snap_id = snap_id
+        with nogil:
+            ret = rados_ioctx_selfmanaged_snap_remove(self.io, _snap_id)
+        if ret != 0:
+            raise make_ex(ret, "Failed to remove self-managed snapshot")
+
+    def set_self_managed_snap_write(self, snaps):
+        """
+        Updates the write context to the specified self-managed
+        snapshot ids.
+
+        :param snaps: all associated self-managed snapshot ids
+        :type snaps: list
+
+        :raises: :class:`TypeError`
+        :raises: :class:`Error`
+        """
+        self.require_ioctx_open()
+        sorted_snaps = []
+        snap_seq = 0
+        if snaps:
+            sorted_snaps = sorted([int(x) for x in snaps], reverse=True)
+            snap_seq = sorted_snaps[0]
+
+        cdef:
+            rados_snap_t _snap_seq = snap_seq
+            rados_snap_t *_snaps = NULL
+            int _num_snaps = len(sorted_snaps)
+        try:
+            _snaps = <rados_snap_t *>malloc(_num_snaps * sizeof(rados_snap_t))
+            for i in range(len(sorted_snaps)):
+                _snaps[i] = sorted_snaps[i]
+            with nogil:
+                ret = rados_ioctx_selfmanaged_snap_set_write_ctx(self.io,
+                                                                 _snap_seq,
+                                                                 _snaps,
+                                                                 _num_snaps)
+            if ret != 0:
+                raise make_ex(ret, "Failed to update snapshot write context")
+        finally:
+            free(_snaps)
+
+    @requires(('oid', str_type), ('snap_id', int))
+    def rollback_self_managed_snap(self, oid, snap_id):
+        """
+        Rolls an specific object back to a self-managed snapshot revision
+
+        :param oid: the name of the object
+        :type oid: str
+        :param snap_id: the name of the snapshot
+        :type snap_id: int
+
+        :raises: :class:`TypeError`
+        :raises: :class:`Error`
+        """
+        self.require_ioctx_open()
+        oid = cstr(oid, 'oid')
+        cdef:
+            char *_oid = oid
+            rados_snap_t _snap_id = snap_id
+        with nogil:
+            ret = rados_ioctx_selfmanaged_snap_rollback(self.io, _oid, _snap_id)
         if ret != 0:
             raise make_ex(ret, "Failed to rollback %s" % oid)
 

@@ -43,6 +43,10 @@ Options
 
    Interact with the given pool. Required by most commands.
 
+.. option:: --namespace namespace-name
+
+   Use a pre-defined image namespace within a pool
+
 .. option:: --no-progress
 
    Do not output progress information (goes to standard error by
@@ -471,6 +475,15 @@ Commands
 :command:`mv` *src-image-spec* *dest-image-spec*
   Rename an image.  Note: rename across pools is not supported.
 
+:command:`namespace create` *pool-name* *namespace-name*
+  Create a new image namespace within the pool.
+
+:command:`namespace list` *pool-name*
+  List image namespaces defined within the pool.
+
+:command:`namespace remove` *pool-name* *namespace-name*
+  Remove an empty image namespace from the pool.
+
 :command:`object-map check` *image-spec* | *snap-spec*
   Verify the object map is correct.
 
@@ -559,19 +572,19 @@ Commands
 Image, snap, group and journal specs
 ====================================
 
-| *image-spec*      is [*pool-name*/]\ *image-name*
-| *snap-spec*       is [*pool-name*/]\ *image-name*\ @\ *snap-name*
-| *group-spec*      is [*pool-name*/]\ *group-name*
-| *group-snap-spec* is [*pool-name*/]\ *group-name*\ @\ *snap-name*
-| *journal-spec*    is [*pool-name*/]\ *journal-name*
+| *image-spec*      is [*pool-name*/[*namespace-name*/]]\ *image-name*
+| *snap-spec*       is [*pool-name*/[*namespace-name*/]]\ *image-name*\ @\ *snap-name*
+| *group-spec*      is [*pool-name*/[*namespace-name*/]]\ *group-name*
+| *group-snap-spec* is [*pool-name*/[*namespace-name*/]]\ *group-name*\ @\ *snap-name*
+| *journal-spec*    is [*pool-name*/[*namespace-name*/]]\ *journal-name*
 
-The default for *pool-name* is "rbd".  If an image name contains a slash
-character ('/'), *pool-name* is required.
+The default for *pool-name* is "rbd" and *namespace-name* is "". If an image
+name contains a slash character ('/'), *pool-name* is required.
 
 The *journal-name* is *image-id*.
 
-You may specify each name individually, using --pool, --image and --snap
-options, but this is discouraged in favor of the above spec syntax.
+You may specify each name individually, using --pool, --namespace, --image, and
+--snap options, but this is discouraged in favor of the above spec syntax.
 
 Striping
 ========

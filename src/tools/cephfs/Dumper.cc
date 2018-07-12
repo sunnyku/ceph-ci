@@ -25,6 +25,7 @@
 #include "mds/LogEvent.h"
 #include "mds/JournalPointer.h"
 #include "osdc/Journaler.h"
+#include "mon/MonClient.h"
 
 #include "Dumper.h"
 
@@ -106,15 +107,19 @@ int Dumper::dump(const char *dump_file)
   int fd = ::open(dump_file, O_WRONLY|O_CREAT|O_TRUNC, 0644);
   if (fd >= 0) {
     // include an informative header
+    uuid_d fsid = monc->get_fsid();
+    char fsid_str[40];
+    fsid.print(fsid_str);
     char buf[HEADER_LEN];
     memset(buf, 0, sizeof(buf));
-    snprintf(buf, HEADER_LEN, "Ceph mds%d journal dump\n start offset %llu (0x%llx)\n       length %llu (0x%llx)\n    write_pos %llu (0x%llx)\n    format %llu\n    trimmed_pos %llu (0x%llx)\n%c",
+    snprintf(buf, HEADER_LEN, "Ceph mds%d journal dump\n start offset %llu (0x%llx)\n       length %llu (0x%llx)\n    write_pos %llu (0x%llx)\n    format %llu\n    trimmed_pos %llu (0x%llx)\n    fsid %s\n%c",
 	    role.rank, 
 	    (unsigned long long)start, (unsigned long long)start,
 	    (unsigned long long)len, (unsigned long long)len,
 	    (unsigned long long)journaler.last_committed.write_pos, (unsigned long long)journaler.last_committed.write_pos,
 	    (unsigned long long)journaler.last_committed.stream_format,
 	    (unsigned long long)journaler.last_committed.trimmed_pos, (unsigned long long)journaler.last_committed.trimmed_pos,
+	    fsid_str,
 	    4);
     r = safe_write(fd, buf, sizeof(buf));
     if (r) {
@@ -185,7 +190,7 @@ int Dumper::dump(const char *dump_file)
   }
 }
 
-int Dumper::undump(const char *dump_file)
+int Dumper::undump(const char *dump_file, bool force)
 {
   cout << "undump " << dump_file << std::endl;
   
@@ -216,6 +221,33 @@ int Dumper::undump(const char *dump_file)
   sscanf(strstr(buf, "length"), "length %llu", &len);
   sscanf(strstr(buf, "write_pos"), "write_pos %llu", &write_pos);
   sscanf(strstr(buf, "format"), "format %llu", &format);
+
+  if (!force) {
+    // need to check if fsid match onlien cluster fsid
+    if (strstr(buf, "fsid")) {
+      uuid_d fsid;
+      char fsid_str[40];
+      sscanf(strstr(buf, "fsid"), "fsid %s", fsid_str);
+      r = fsid.parse(fsid_str);
+      if (!r) {
+	derr  << "Invalid fsid" << dendl;
+	::close(fd);
+	return -EINVAL;
+      }
+
+      if (fsid != monc->get_fsid()) {
+	derr << "Imported journal fsid does not match online cluster fsid" << dendl;
+	derr << "Use --force to skip fsid check" << dendl;
+	::close(fd);
+	return -EINVAL;
+      }
+    } else {
+      derr  << "Invalid header, no fsid embeded" << dendl;
+      ::close(fd);
+      return -EINVAL;
+    }
+  }
+
   if (strstr(buf, "trimmed_pos")) {
     sscanf(strstr(buf, "trimmed_pos"), "trimmed_pos %llu", &trimmed_pos);
   } else {
@@ -286,8 +318,15 @@ int Dumper::undump(const char *dump_file)
   {
     uint32_t const object_size = h.layout.object_size;
     assert(object_size > 0);
-    uint64_t const last_obj = h.write_pos / object_size;
-    uint64_t const purge_count = 2;
+    uint64_t last_obj = h.write_pos / object_size;
+    uint64_t purge_count = 2;
+    /* When the length is zero, the last_obj should be zeroed 
+     * from the offset determined by the new write_pos instead of being purged.
+     */
+    if (!len) {
+        purge_count = 1;
+        ++last_obj;
+    }
     C_SaferCond purge_cond;
     cout << "Purging " << purge_count << " objects from " << last_obj << std::endl;
     lock.Lock();
@@ -295,6 +334,20 @@ int Dumper::undump(const char *dump_file)
 		      ceph::real_clock::now(), 0, &purge_cond);
     lock.Unlock();
     purge_cond.wait();
+  }
+  /* When the length is zero, zero the last object 
+   * from the offset determined by the new write_pos.
+   */
+  if (!len) {
+    uint64_t offset_in_obj = h.write_pos % h.layout.object_size;
+    uint64_t len           = h.layout.object_size - offset_in_obj;
+    C_SaferCond zero_cond;
+    cout << "Zeroing " << len << " bytes in the last object." << std::endl;
+    
+    lock.Lock();
+    filer.zero(ino, &h.layout, snapc, h.write_pos, len, ceph::real_clock::now(), 0, &zero_cond);
+    lock.Unlock();
+    zero_cond.wait();
   }
 
   // Stream from `fd` to `filer`

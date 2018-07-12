@@ -220,8 +220,8 @@ OSDService::OSDService(OSD *osd) :
   recoverystate_perf(osd->recoverystate_perf),
   monc(osd->monc),
   class_handler(osd->class_handler),
-  osd_max_object_size(*cct->_conf, "osd_max_object_size"),
-  osd_skip_data_digest(*cct->_conf, "osd_skip_data_digest"),
+  osd_max_object_size(cct->_conf, "osd_max_object_size"),
+  osd_skip_data_digest(cct->_conf, "osd_skip_data_digest"),
   publish_lock("OSDService::publish_lock"),
   pre_publish_lock("OSDService::pre_publish_lock"),
   max_oldest_map(0),
@@ -1055,8 +1055,8 @@ bool OSDService::should_share_map(entity_name_t name, Connection *con,
   if (con->get_messenger() == osd->cluster_messenger &&
       con != osd->cluster_messenger->get_loopback_connection() &&
       osdmap->is_up(name.num()) &&
-      (osdmap->get_cluster_addr(name.num()) == con->get_peer_addr() ||
-       osdmap->get_hb_back_addr(name.num()) == con->get_peer_addr())) {
+      (osdmap->get_cluster_addrs(name.num()) == con->get_peer_addrs() ||
+       osdmap->get_hb_back_addrs(name.num()) == con->get_peer_addrs())) {
     // remember
     epoch_t has = std::max(get_peer_epoch(name.num()), epoch);
 
@@ -1102,9 +1102,9 @@ void OSDService::share_map(
       send_incremental_map(epoch, con, osdmap);
     } else if (con->get_messenger() == osd->cluster_messenger &&
         osdmap->is_up(name.num()) &&
-        (osdmap->get_cluster_addr(name.num()) == con->get_peer_addr() ||
-            osdmap->get_hb_back_addr(name.num()) == con->get_peer_addr())) {
-      dout(10) << name << " " << con->get_peer_addr()
+        (osdmap->get_cluster_addrs(name.num()) == con->get_peer_addrs() ||
+            osdmap->get_hb_back_addrs(name.num()) == con->get_peer_addrs())) {
+      dout(10) << name << " " << con->get_peer_addrs()
 	               << " has old map " << epoch << " < "
 	               << osdmap->get_epoch() << dendl;
       note_peer_epoch(name.num(), osdmap->get_epoch());
@@ -1786,13 +1786,13 @@ int OSD::write_meta(CephContext *cct, ObjectStore *store, uuid_d& cluster_fsid, 
   if (r < 0)
     return r;
 
-  string key = cct->_conf->get_val<string>("key");
+  string key = cct->_conf.get_val<string>("key");
   if (key.size()) {
     r = store->write_meta("osd_key", key);
     if (r < 0)
       return r;
   } else {
-    string keyfile = cct->_conf->get_val<string>("keyfile");
+    string keyfile = cct->_conf.get_val<string>("keyfile");
     if (!keyfile.empty()) {
       bufferlist keybl;
       string err;
@@ -1894,7 +1894,7 @@ OSD::OSD(CephContext *cct_, ObjectStore *store_,
   store_is_rotational(store->is_rotational()),
   trace_endpoint("0.0.0.0", 0, "osd"),
   asok_hook(NULL),
-  m_osd_pg_epoch_max_lag_factor(cct->_conf->get_val<double>(
+  m_osd_pg_epoch_max_lag_factor(cct->_conf.get_val<double>(
 				  "osd_pg_epoch_max_lag_factor")),
   osd_compat(get_osd_compat_set()),
   osd_op_tp(cct, "OSD::osd_op_tp", "tp_osd_tp",
@@ -1999,7 +1999,7 @@ int OSD::pre_init()
     return -EBUSY;
   }
 
-  cct->_conf->add_observer(this);
+  cct->_conf.add_observer(this);
   return 0;
 }
 
@@ -2243,7 +2243,9 @@ will start to track new ops received afterwards.";
     }
     f->close_section();
   } else if (admin_command == "smart") {
-    probe_smart(ss);
+    string devid;
+    cmd_getval(cct, cmdmap, "devid", devid);
+    probe_smart(devid, ss);
   } else if (admin_command == "list_devices") {
     set<string> devnames;
     store->get_devices(&devnames);
@@ -2367,7 +2369,7 @@ float OSD::get_osd_recovery_sleep()
   if (!store_is_rotational && !journal_is_rotational)
     return cct->_conf->osd_recovery_sleep_ssd;
   else if (store_is_rotational && !journal_is_rotational)
-    return cct->_conf->get_val<double>("osd_recovery_sleep_hybrid");
+    return cct->_conf.get_val<double>("osd_recovery_sleep_hybrid");
   else
     return cct->_conf->osd_recovery_sleep_hdd;
 }
@@ -2622,7 +2624,7 @@ int OSD::init()
   while (monc->wait_auth_rotating(30.0) < 0) {
     derr << "unable to obtain rotating service keys; retrying" << dendl;
     ++rotating_auth_attempts;
-    if (rotating_auth_attempts > g_conf->max_rotating_auth_attempts) {
+    if (rotating_auth_attempts > g_conf()->max_rotating_auth_attempts) {
         derr << __func__ << " wait_auth_rotating timed out" << dendl;
 	exit(1);
     }
@@ -2813,7 +2815,7 @@ void OSD::final_init()
 
   assert(r == 0);
 
-  r = admin_socket->register_command("smart", "smart",
+  r = admin_socket->register_command("smart", "smart name=devid,type=CephString,req=False",
                                      asok_hook,
                                      "probe OSD devices for SMART data.");
 
@@ -2955,11 +2957,11 @@ void OSD::create_logger()
   osd_plb.add_u64_counter(
     l_osd_op_inb,   "op_in_bytes",
     "Client operations total write size",
-    "wr", PerfCountersBuilder::PRIO_INTERESTING, unit_t(BYTES));
+    "wr", PerfCountersBuilder::PRIO_INTERESTING, unit_t(UNIT_BYTES));
   osd_plb.add_u64_counter(
     l_osd_op_outb,  "op_out_bytes",
     "Client operations total read size",
-    "rd", PerfCountersBuilder::PRIO_INTERESTING, unit_t(BYTES));
+    "rd", PerfCountersBuilder::PRIO_INTERESTING, unit_t(UNIT_BYTES));
   osd_plb.add_time_avg(
     l_osd_op_lat,   "op_latency",
     "Latency of client operations (including queue time)",
@@ -2974,7 +2976,7 @@ void OSD::create_logger()
   osd_plb.add_u64_counter(
     l_osd_op_r, "op_r", "Client read operations");
   osd_plb.add_u64_counter(
-    l_osd_op_r_outb, "op_r_out_bytes", "Client data read", NULL, PerfCountersBuilder::PRIO_USEFUL, unit_t(BYTES));
+    l_osd_op_r_outb, "op_r_out_bytes", "Client data read", NULL, PerfCountersBuilder::PRIO_USEFUL, unit_t(UNIT_BYTES));
   osd_plb.add_time_avg(
     l_osd_op_r_lat, "op_r_latency",
     "Latency of read operation (including queue time)");
@@ -3010,10 +3012,10 @@ void OSD::create_logger()
     "Client read-modify-write operations");
   osd_plb.add_u64_counter(
     l_osd_op_rw_inb, "op_rw_in_bytes",
-    "Client read-modify-write operations write in", NULL, PerfCountersBuilder::PRIO_USEFUL, unit_t(BYTES));
+    "Client read-modify-write operations write in", NULL, PerfCountersBuilder::PRIO_USEFUL, unit_t(UNIT_BYTES));
   osd_plb.add_u64_counter(
     l_osd_op_rw_outb,"op_rw_out_bytes",
-    "Client read-modify-write operations read out ", NULL, PerfCountersBuilder::PRIO_USEFUL, unit_t(BYTES));
+    "Client read-modify-write operations read out ", NULL, PerfCountersBuilder::PRIO_USEFUL, unit_t(UNIT_BYTES));
   osd_plb.add_time_avg(
     l_osd_op_rw_lat, "op_rw_latency",
     "Latency of read-modify-write operation (including queue time)");
@@ -3044,12 +3046,12 @@ void OSD::create_logger()
   osd_plb.add_u64_counter(
     l_osd_sop, "subop", "Suboperations");
   osd_plb.add_u64_counter(
-    l_osd_sop_inb, "subop_in_bytes", "Suboperations total size", NULL, 0, unit_t(BYTES));
+    l_osd_sop_inb, "subop_in_bytes", "Suboperations total size", NULL, 0, unit_t(UNIT_BYTES));
   osd_plb.add_time_avg(l_osd_sop_lat, "subop_latency", "Suboperations latency");
 
   osd_plb.add_u64_counter(l_osd_sop_w, "subop_w", "Replicated writes");
   osd_plb.add_u64_counter(
-    l_osd_sop_w_inb, "subop_w_in_bytes", "Replicated written data size", NULL, 0, unit_t(BYTES));
+    l_osd_sop_w_inb, "subop_w_in_bytes", "Replicated written data size", NULL, 0, unit_t(UNIT_BYTES));
   osd_plb.add_time_avg(
     l_osd_sop_w_lat, "subop_w_latency", "Replicated writes latency");
   osd_plb.add_u64_counter(
@@ -3059,13 +3061,13 @@ void OSD::create_logger()
   osd_plb.add_u64_counter(
     l_osd_sop_push, "subop_push", "Suboperations push messages");
   osd_plb.add_u64_counter(
-    l_osd_sop_push_inb, "subop_push_in_bytes", "Suboperations pushed size", NULL, 0, unit_t(BYTES));
+    l_osd_sop_push_inb, "subop_push_in_bytes", "Suboperations pushed size", NULL, 0, unit_t(UNIT_BYTES));
   osd_plb.add_time_avg(
     l_osd_sop_push_lat, "subop_push_latency", "Suboperations push latency");
 
   osd_plb.add_u64_counter(l_osd_pull, "pull", "Pull requests sent");
   osd_plb.add_u64_counter(l_osd_push, "push", "Push messages sent");
-  osd_plb.add_u64_counter(l_osd_push_outb, "push_out_bytes", "Pushed size", NULL, 0, unit_t(BYTES));
+  osd_plb.add_u64_counter(l_osd_push_outb, "push_out_bytes", "Pushed size", NULL, 0, unit_t(UNIT_BYTES));
 
   osd_plb.add_u64_counter(
     l_osd_rop, "recovery_ops",
@@ -3073,8 +3075,8 @@ void OSD::create_logger()
     "rop", PerfCountersBuilder::PRIO_INTERESTING);
 
   osd_plb.add_u64(l_osd_loadavg, "loadavg", "CPU load");
-  osd_plb.add_u64(l_osd_buf, "buffer_bytes", "Total allocated buffer size", NULL, 0, unit_t(BYTES));
-  osd_plb.add_u64(l_osd_history_alloc_bytes, "history_alloc_Mbytes", NULL, 0, unit_t(BYTES));
+  osd_plb.add_u64(l_osd_buf, "buffer_bytes", "Total allocated buffer size", NULL, 0, unit_t(UNIT_BYTES));
+  osd_plb.add_u64(l_osd_history_alloc_bytes, "history_alloc_Mbytes", NULL, 0, unit_t(UNIT_BYTES));
   osd_plb.add_u64(l_osd_history_alloc_num, "history_alloc_num");
   osd_plb.add_u64(
     l_osd_cached_crc, "cached_crc", "Total number getting crc from crc_cache");
@@ -3128,11 +3130,11 @@ void OSD::create_logger()
 
   osd_plb.add_u64(
     l_osd_stat_bytes, "stat_bytes", "OSD size", "size",
-    PerfCountersBuilder::PRIO_USEFUL, unit_t(BYTES));
+    PerfCountersBuilder::PRIO_USEFUL, unit_t(UNIT_BYTES));
   osd_plb.add_u64(
     l_osd_stat_bytes_used, "stat_bytes_used", "Used space", "used",
-    PerfCountersBuilder::PRIO_USEFUL, unit_t(BYTES));
-  osd_plb.add_u64(l_osd_stat_bytes_avail, "stat_bytes_avail", "Available space", NULL, 0, unit_t(BYTES));
+    PerfCountersBuilder::PRIO_USEFUL, unit_t(UNIT_BYTES));
+  osd_plb.add_u64(l_osd_stat_bytes_avail, "stat_bytes_avail", "Available space", NULL, 0, unit_t(UNIT_BYTES));
 
   osd_plb.add_u64_counter(
     l_osd_copyfrom, "copyfrom", "Rados \"copy-from\" operations");
@@ -3251,13 +3253,13 @@ int OSD::shutdown()
   set_state(STATE_STOPPING);
 
   // Debugging
-  if (cct->_conf->get_val<bool>("osd_debug_shutdown")) {
-    cct->_conf->set_val("debug_osd", "100");
-    cct->_conf->set_val("debug_journal", "100");
-    cct->_conf->set_val("debug_filestore", "100");
-    cct->_conf->set_val("debug_bluestore", "100");
-    cct->_conf->set_val("debug_ms", "100");
-    cct->_conf->apply_changes(NULL);
+  if (cct->_conf.get_val<bool>("osd_debug_shutdown")) {
+    cct->_conf.set_val("debug_osd", "100");
+    cct->_conf.set_val("debug_journal", "100");
+    cct->_conf.set_val("debug_filestore", "100");
+    cct->_conf.set_val("debug_bluestore", "100");
+    cct->_conf.set_val("debug_ms", "100");
+    cct->_conf.apply_changes(nullptr);
   }
 
   // stop MgrClient earlier as it's more like an internal consumer of OSD
@@ -3371,7 +3373,7 @@ int OSD::shutdown()
 #ifdef PG_DEBUG_REFS
   service.dump_live_pgids();
 #endif
-  cct->_conf->remove_observer(this);
+  cct->_conf.remove_observer(this);
 
   service.meta_ch.reset();
 
@@ -3960,8 +3962,8 @@ bool OSD::maybe_wait_for_max_pg(const OSDMapRef& osdmap,
 				bool is_mon_create)
 {
   const auto max_pgs_per_osd =
-    (cct->_conf->get_val<uint64_t>("mon_max_pg_per_osd") *
-     cct->_conf->get_val<double>("osd_max_pg_per_osd_hard_ratio"));
+    (cct->_conf.get_val<uint64_t>("mon_max_pg_per_osd") *
+     cct->_conf.get_val<double>("osd_max_pg_per_osd_hard_ratio"));
 
   if (num_pgs < max_pgs_per_osd) {
     return false;
@@ -3998,8 +4000,8 @@ void OSD::resume_creating_pg()
   bool have_pending_creates = false;
   {
     const auto max_pgs_per_osd =
-      (cct->_conf->get_val<uint64_t>("mon_max_pg_per_osd") *
-       cct->_conf->get_val<double>("osd_max_pg_per_osd_hard_ratio"));
+      (cct->_conf.get_val<uint64_t>("mon_max_pg_per_osd") *
+       cct->_conf.get_val<double>("osd_max_pg_per_osd_hard_ratio"));
     if (max_pgs_per_osd <= num_pgs) {
       // this could happen if admin decreases this setting before a PG is removed
       return;
@@ -4992,7 +4994,7 @@ void TestOpsSocketHook::test_ops(OSDService *service, ObjectStore *store,
     cmd_getval(service->cct, cmdmap, "utime", delay, (int64_t)0);
     ostringstream oss;
     oss << delay;
-    int r = service->cct->_conf->set_val("osd_recovery_delay_start",
+    int r = service->cct->_conf.set_val("osd_recovery_delay_start",
 					 oss.str().c_str());
     if (r != 0) {
       ss << "set_recovery_delay: error setting "
@@ -5000,7 +5002,7 @@ void TestOpsSocketHook::test_ops(OSDService *service, ObjectStore *store,
 	 << r;
       return;
     }
-    service->cct->_conf->apply_changes(NULL);
+    service->cct->_conf.apply_changes(nullptr);
     ss << "set_recovery_delay: set osd_recovery_delay_start "
        << "to " << service->cct->_conf->osd_recovery_delay_start;
     return;
@@ -5029,7 +5031,7 @@ void TestOpsSocketHook::test_ops(OSDService *service, ObjectStore *store,
       double pool_scrub_max_interval = 0;
       p->opts.get(pool_opts_t::SCRUB_MAX_INTERVAL, &pool_scrub_max_interval);
       double scrub_max_interval = pool_scrub_max_interval > 0 ?
-        pool_scrub_max_interval : g_conf->osd_scrub_max_interval;
+        pool_scrub_max_interval : g_conf()->osd_scrub_max_interval;
       // Instead of marking must_scrub force a schedule scrub
       utime_t stamp = ceph_clock_now();
       stamp -= scrub_max_interval;
@@ -5336,55 +5338,55 @@ bool OSD::_is_healthy()
 void OSD::_send_boot()
 {
   dout(10) << "_send_boot" << dendl;
-  entity_addr_t cluster_addr = cluster_messenger->get_myaddr();
-  Connection *local_connection = cluster_messenger->get_loopback_connection().get();
-  if (cluster_addr.is_blank_ip()) {
-    int port = cluster_addr.get_port();
-    cluster_addr = client_messenger->get_myaddr();
-    cluster_addr.set_port(port);
-    cluster_messenger->set_addr_unknowns(cluster_addr);
-    dout(10) << " assuming cluster_addr ip matches client_addr" << dendl;
-  } else {
-    if (auto session = local_connection->get_priv(); !session) {
-      cluster_messenger->ms_deliver_handle_fast_connect(local_connection);
-    }
+  Connection *local_connection =
+    cluster_messenger->get_loopback_connection().get();
+  entity_addrvec_t client_addrs = client_messenger->get_myaddrs();
+  entity_addrvec_t cluster_addrs = cluster_messenger->get_myaddrs();
+  entity_addrvec_t hb_back_addrs = hb_back_server_messenger->get_myaddrs();
+  entity_addrvec_t hb_front_addrs = hb_front_server_messenger->get_myaddrs();
+
+  dout(20) << " initial client_addrs " << client_addrs
+	   << ", cluster_addrs " << cluster_addrs
+	   << ", hb_back_addrs " << hb_back_addrs
+	   << ", hb_front_addrs " << hb_front_addrs
+	   << dendl;
+  if (cluster_messenger->set_addr_unknowns(client_addrs)) {
+    dout(10) << " assuming cluster_addrs match client_addrs "
+	     << client_addrs << dendl;
+    cluster_addrs = cluster_messenger->get_myaddrs();
+  }
+  if (auto session = local_connection->get_priv(); !session) {
+    cluster_messenger->ms_deliver_handle_fast_connect(local_connection);
   }
 
-  entity_addr_t hb_back_addr = hb_back_server_messenger->get_myaddr();
   local_connection = hb_back_server_messenger->get_loopback_connection().get();
-  if (hb_back_addr.is_blank_ip()) {
-    int port = hb_back_addr.get_port();
-    hb_back_addr = cluster_addr;
-    hb_back_addr.set_port(port);
-    hb_back_server_messenger->set_addr_unknowns(hb_back_addr);
-    dout(10) << " assuming hb_back_addr ip matches cluster_addr" << dendl;
-  } else {
-    if (auto session = local_connection->get_priv(); !session) {
-      hb_back_server_messenger->ms_deliver_handle_fast_connect(local_connection);
-    }
+  if (hb_back_server_messenger->set_addr_unknowns(cluster_addrs)) {
+    dout(10) << " assuming hb_back_addrs match cluster_addrs "
+	     << cluster_addrs << dendl;
+    hb_back_addrs = hb_back_server_messenger->get_myaddrs();
+  }
+  if (auto session = local_connection->get_priv(); !session) {
+    hb_back_server_messenger->ms_deliver_handle_fast_connect(local_connection);
   }
 
-  entity_addr_t hb_front_addr = hb_front_server_messenger->get_myaddr();
   local_connection = hb_front_server_messenger->get_loopback_connection().get();
-  if (hb_front_addr.is_blank_ip()) {
-    int port = hb_front_addr.get_port();
-    hb_front_addr = client_messenger->get_myaddr();
-    hb_front_addr.set_port(port);
-    hb_front_server_messenger->set_addr_unknowns(hb_front_addr);
-    dout(10) << " assuming hb_front_addr ip matches client_addr" << dendl;
-  } else {
-    if (auto session = local_connection->get_priv(); !session) {
-      hb_front_server_messenger->ms_deliver_handle_fast_connect(local_connection);
-    }
+  if (hb_front_server_messenger->set_addr_unknowns(client_addrs)) {
+    dout(10) << " assuming hb_front_addrs match client_addrs "
+	     << client_addrs << dendl;
+    hb_front_addrs = hb_front_server_messenger->get_myaddrs();
+  }
+  if (auto session = local_connection->get_priv(); !session) {
+    hb_front_server_messenger->ms_deliver_handle_fast_connect(local_connection);
   }
 
-  MOSDBoot *mboot = new MOSDBoot(superblock, get_osdmap_epoch(), service.get_boot_epoch(),
-                                 hb_back_addr, hb_front_addr, cluster_addr,
-				 CEPH_FEATURES_ALL);
-  dout(10) << " client_addr " << client_messenger->get_myaddr()
-	   << ", cluster_addr " << cluster_addr
-	   << ", hb_back_addr " << hb_back_addr
-	   << ", hb_front_addr " << hb_front_addr
+  MOSDBoot *mboot = new MOSDBoot(
+    superblock, get_osdmap_epoch(), service.get_boot_epoch(),
+    hb_back_addrs, hb_front_addrs, cluster_addrs,
+    CEPH_FEATURES_ALL);
+  dout(10) << " final client_addrs " << client_addrs
+	   << ", cluster_addrs " << cluster_addrs
+	   << ", hb_back_addrs " << hb_back_addrs
+	   << ", hb_front_addrs " << hb_front_addrs
 	   << dendl;
   _collect_metadata(&mboot->metadata);
   monc->send_mon_message(mboot);
@@ -5399,10 +5401,10 @@ void OSD::_collect_metadata(map<string,string> *pm)
     // not applicable for bluestore
     (*pm)["osd_journal"] = journal_path;
   }
-  (*pm)["front_addr"] = stringify(client_messenger->get_myaddr());
-  (*pm)["back_addr"] = stringify(cluster_messenger->get_myaddr());
-  (*pm)["hb_front_addr"] = stringify(hb_front_server_messenger->get_myaddr());
-  (*pm)["hb_back_addr"] = stringify(hb_back_server_messenger->get_myaddr());
+  (*pm)["front_addr"] = stringify(client_messenger->get_myaddrs());
+  (*pm)["back_addr"] = stringify(cluster_messenger->get_myaddrs());
+  (*pm)["hb_front_addr"] = stringify(hb_front_server_messenger->get_myaddrs());
+  (*pm)["hb_back_addr"] = stringify(hb_back_server_messenger->get_myaddrs());
 
   // backend
   (*pm)["osd_objectstore"] = store->get_type();
@@ -5413,10 +5415,12 @@ void OSD::_collect_metadata(map<string,string> *pm)
 
   collect_sys_info(pm, cct);
 
-  (*pm)["front_iface"] = pick_iface(cct,
-      client_messenger->get_myaddr().get_sockaddr_storage());
-  (*pm)["back_iface"] = pick_iface(cct,
-      cluster_messenger->get_myaddr().get_sockaddr_storage());
+  (*pm)["front_iface"] = pick_iface(
+    cct,
+    client_messenger->get_myaddrs().front().get_sockaddr_storage());
+  (*pm)["back_iface"] = pick_iface(
+    cct,
+    cluster_messenger->get_myaddrs().front().get_sockaddr_storage());
 
   set<string> devnames;
   store->get_devices(&devnames);
@@ -5733,7 +5737,7 @@ COMMAND("compact",
         "compact object store's omap. "
         "WARNING: Compaction probably slows your requests",
         "osd", "rw", "cli,rest")
-COMMAND("smart",
+COMMAND("smart name=devid,type=CephString,req=False",
         "runs smartctl on this osd devices.  ",
         "osd", "rw", "cli,rest")
 };
@@ -5812,7 +5816,7 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
     for (vector<string>::iterator a = ++argsvec.begin(); a != argsvec.end(); ++a)
       args += " " + *a;
     osd_lock.Unlock();
-    r = cct->_conf->injectargs(args, &ss);
+    r = cct->_conf.injectargs(args, &ss);
     osd_lock.Lock();
   }
   else if (prefix == "config set") {
@@ -5821,9 +5825,9 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
     cmd_getval(cct, cmdmap, "key", key);
     cmd_getval(cct, cmdmap, "value", val);
     osd_lock.Unlock();
-    r = cct->_conf->set_val(key, val, &ss);
+    r = cct->_conf.set_val(key, val, &ss);
     if (r == 0) {
-      cct->_conf->apply_changes(nullptr);
+      cct->_conf.apply_changes(nullptr);
     }
     osd_lock.Lock();
   }
@@ -5832,7 +5836,7 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
     cmd_getval(cct, cmdmap, "key", key);
     osd_lock.Unlock();
     std::string val;
-    r = cct->_conf->get_val(key, &val);
+    r = cct->_conf.get_val(key, &val);
     if (r == 0) {
       ds << val;
     }
@@ -5842,9 +5846,9 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
     std::string key;
     cmd_getval(cct, cmdmap, "key", key);
     osd_lock.Unlock();
-    r = cct->_conf->rm_val(key);
+    r = cct->_conf.rm_val(key);
     if (r == 0) {
-      cct->_conf->apply_changes(nullptr);
+      cct->_conf.apply_changes(nullptr);
     }
     if (r == -ENOENT) {
       r = 0;  // make command idempotent
@@ -6063,18 +6067,23 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
       }
     }
 
-    uint64_t rate = (double)count / (end - start);
+    double elapsed = end - start;
+    double rate = count / elapsed;
+    double iops = rate / bsize;
     if (f) {
       f->open_object_section("osd_bench_results");
       f->dump_int("bytes_written", count);
       f->dump_int("blocksize", bsize);
-      f->dump_unsigned("bytes_per_sec", rate);
+      f->dump_float("elapsed_sec", elapsed);
+      f->dump_float("bytes_per_sec", rate);
+      f->dump_float("iops", iops);
       f->close_section();
       f->flush(ds);
     } else {
       ds << "bench: wrote " << byte_u_t(count)
 	 << " in blocks of " << byte_u_t(bsize) << " in "
-	 << (end-start) << " sec at " << byte_u_t(rate) << "/sec";
+	 << elapsed << " sec at " << byte_u_t(rate) << "/sec "
+	 << si_u_t(iops) << " IOPS";
     }
   }
 
@@ -6110,14 +6119,14 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
     cmd_getval(cct, cmdmap, "delay", delay);
     ostringstream oss;
     oss << delay;
-    r = cct->_conf->set_val("osd_recovery_delay_start", oss.str().c_str());
+    r = cct->_conf.set_val("osd_recovery_delay_start", oss.str().c_str());
     if (r != 0) {
       ss << "kick_recovery_wq: error setting "
 	 << "osd_recovery_delay_start to '" << delay << "': error "
 	 << r;
       goto out;
     }
-    cct->_conf->apply_changes(NULL);
+    cct->_conf.apply_changes(nullptr);
     ss << "kicking recovery queue. set osd_recovery_delay_start "
        << "to " << cct->_conf->osd_recovery_delay_start;
   }
@@ -6171,7 +6180,9 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
   }
 
   else if (prefix == "smart") {
-    probe_smart(ds);
+    string devid;
+    cmd_getval(cct, cmdmap, "devid", devid);
+    probe_smart(devid, ds);
   }
 
   else {
@@ -6192,14 +6203,15 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
   }
 }
 
-void OSD::probe_smart(ostream& ss)
+void OSD::probe_smart(const string& only_devid, ostream& ss)
 {
   set<string> devnames;
   store->get_devices(&devnames);
-  uint64_t smart_timeout = cct->_conf->get_val<uint64_t>("osd_smart_report_timeout");
-  std::string result;
+  uint64_t smart_timeout = cct->_conf.get_val<uint64_t>(
+    "osd_smart_report_timeout");
 
-  json_spirit::mObject json_map; // == typedef std::map<std::string, mValue> mObject;
+  // == typedef std::map<std::string, mValue> mObject;
+  json_spirit::mObject json_map;
   json_spirit::mValue smart_json;
 
   for (auto dev : devnames) {
@@ -6208,16 +6220,28 @@ void OSD::probe_smart(ostream& ss)
       continue;
     }
 
+    string devid = get_device_id(dev);
+    if (devid.size() == 0) {
+      dout(10) << __func__ << " no unique id for dev " << dev << ", skipping"
+	       << dendl;
+      continue;
+    }
+    if (only_devid.size() && devid != only_devid) {
+      continue;
+    }
+
+    std::string result;
     if (probe_smart_device(("/dev/" + dev).c_str(), smart_timeout, &result)) {
       dout(10) << "probe_smart_device failed for /dev/" << dev << dendl;
-      continue;
+      //continue;
+      result = "{\"error\": \"smartctl failed\", \"dev\": \"" + dev + "\"}";
     }
 
     // TODO: change to read_or_throw?
     if (!json_spirit::read(result, smart_json)) {
       derr << "smartctl JSON output of /dev/" + dev + " is invalid" << dendl;
     } else { //json is valid, assigning
-      json_map[dev] = smart_json;
+      json_map[devid] = smart_json;
     }
     // no need to result.clear() or clear smart_json
   }
@@ -6227,8 +6251,9 @@ void OSD::probe_smart(ostream& ss)
 int OSD::probe_smart_device(const char *device, int timeout, std::string *result)
 {
   // when using --json, smartctl will report its errors in JSON format to stdout 
-  SubProcessTimed smartctl("sudo", SubProcess::CLOSE, SubProcess::PIPE, SubProcess::CLOSE,
-			   timeout);
+  SubProcessTimed smartctl(
+    "sudo", SubProcess::CLOSE, SubProcess::PIPE, SubProcess::CLOSE,
+    timeout);
   smartctl.add_cmd_args(
     "smartctl",
     "-a",
@@ -6512,9 +6537,11 @@ bool OSD::ms_get_authorizer(int dest_type, AuthAuthorizer **authorizer, bool for
 }
 
 
-bool OSD::ms_verify_authorizer(Connection *con, int peer_type,
-			       int protocol, bufferlist& authorizer_data, bufferlist& authorizer_reply,
-			       bool& isvalid, CryptoKey& session_key)
+bool OSD::ms_verify_authorizer(
+  Connection *con, int peer_type,
+  int protocol, bufferlist& authorizer_data, bufferlist& authorizer_reply,
+  bool& isvalid, CryptoKey& session_key,
+  std::unique_ptr<AuthAuthorizerChallenge> *challenge)
 {
   AuthAuthorizeHandler *authorize_handler = 0;
   switch (peer_type) {
@@ -6546,7 +6573,7 @@ bool OSD::ms_verify_authorizer(Connection *con, int peer_type,
     isvalid = authorize_handler->verify_authorizer(
       cct, keys,
       authorizer_data, authorizer_reply, name, global_id, caps_info, session_key,
-      &auid);
+      &auid, challenge);
   } else {
     dout(10) << __func__ << " no rotating_keys (yet), denied" << dendl;
     isvalid = false;
@@ -6948,7 +6975,7 @@ vector<DaemonHealthMetric> OSD::get_health_metrics()
     utime_t oldest_secs;
     const utime_t now = ceph_clock_now();
     auto too_old = now;
-    too_old -= cct->_conf->get_val<double>("osd_op_complaint_time");
+    too_old -= cct->_conf.get_val<double>("osd_op_complaint_time");
     int slow = 0;
     TrackedOpRef oldest_op;
     auto count_slow_ops = [&](TrackedOp& op) {
@@ -7011,7 +7038,7 @@ void OSD::wait_for_new_map(OpRequestRef op)
 void OSD::note_down_osd(int peer)
 {
   assert(osd_lock.is_locked());
-  cluster_messenger->mark_down(osdmap->get_cluster_addr(peer));
+  cluster_messenger->mark_down_addrs(osdmap->get_cluster_addrs(peer));
 
   heartbeat_lock.Lock();
   failure_queue.erase(peer);
@@ -7328,7 +7355,11 @@ void OSD::handle_osd_map(MOSDMap *m)
   OSDMapRef lastmap;
   for (auto& i : added_maps) {
     if (!lastmap) {
-      lastmap = get_map(i.first - 1);
+      if (!(lastmap = service.try_get_map(i.first - 1))) {
+        dout(10) << __func__ << " can't get previous map " << i.first - 1
+                 << " probably first start of this osd" << dendl;
+        continue;
+      }
     }
     assert(lastmap->get_epoch() + 1 == i.second->get_epoch());
     for (auto& j : lastmap->get_pools()) {
@@ -7959,11 +7990,12 @@ bool OSD::require_same_peer_instance(const Message *m, OSDMapRef& map,
   int from = m->get_source().num();
 
   if (map->is_down(from) ||
-      (map->get_cluster_addr(from) != m->get_source_inst().addr)) {
+      (map->get_cluster_addrs(from) != m->get_source_addrs())) {
     dout(5) << "from dead osd." << from << ", marking down, "
 	    << " msg was " << m->get_source_inst().addr
-	    << " expected " << (map->is_up(from) ?
-				map->get_cluster_addr(from) : entity_addr_t())
+	    << " expected "
+	    << (map->is_up(from) ?
+		map->get_cluster_addrs(from) : entity_addrvec_t())
 	    << dendl;
     ConnectionRef con = m->get_connection();
     con->mark_down();
@@ -8954,7 +8986,7 @@ const char** OSD::get_tracked_conf_keys() const
   return KEYS;
 }
 
-void OSD::handle_conf_change(const struct md_config_t *conf,
+void OSD::handle_conf_change(const ConfigProxy& conf,
 			     const std::set <std::string> &changed)
 {
   if (changed.count("osd_max_backfills")) {
@@ -9003,7 +9035,7 @@ void OSD::handle_conf_change(const struct md_config_t *conf,
     update_log_config();
   }
   if (changed.count("osd_pg_epoch_max_lag_factor")) {
-    m_osd_pg_epoch_max_lag_factor = conf->get_val<double>(
+    m_osd_pg_epoch_max_lag_factor = conf.get_val<double>(
       "osd_pg_epoch_max_lag_factor");
   }
 

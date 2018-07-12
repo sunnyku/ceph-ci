@@ -288,7 +288,7 @@ void AuthMonitor::increase_max_global_id()
 {
   assert(mon->is_leader());
 
-  max_global_id += g_conf->mon_globalid_prealloc;
+  max_global_id += g_conf()->mon_globalid_prealloc;
   dout(10) << "increasing max_global_id to " << max_global_id << dendl;
   Incremental inc;
   inc.inc_type = GLOBAL_ID;
@@ -350,7 +350,7 @@ void AuthMonitor::encode_full(MonitorDBStore::TransactionRef t)
 
 version_t AuthMonitor::get_trim_to() const
 {
-  unsigned max = g_conf->paxos_max_join_drift * 2;
+  unsigned max = g_conf()->paxos_max_join_drift * 2;
   version_t version = get_last_committed();
   if (mon->is_leader() && (version > max))
     return version - max;
@@ -419,8 +419,8 @@ uint64_t AuthMonitor::assign_global_id(MonOpRequestRef op, bool should_increase_
 
   // bump the max?
   while (mon->is_leader() &&
-	 (max_global_id < g_conf->mon_globalid_prealloc ||
-	  next_global_id >= max_global_id - g_conf->mon_globalid_prealloc / 2)) {
+	 (max_global_id < g_conf()->mon_globalid_prealloc ||
+	  next_global_id >= max_global_id - g_conf()->mon_globalid_prealloc / 2)) {
     increase_max_global_id();
   }
 
@@ -477,8 +477,8 @@ bool AuthMonitor::prep_auth(MonOpRequestRef op, bool paxos_writable)
 	  entity_name.get_type() == CEPH_ENTITY_TYPE_OSD ||
 	  entity_name.get_type() == CEPH_ENTITY_TYPE_MDS ||
 	  entity_name.get_type() == CEPH_ENTITY_TYPE_MGR) {
-	if (g_conf->cephx_cluster_require_signatures ||
-	    g_conf->cephx_require_signatures) {
+	if (g_conf()->cephx_cluster_require_signatures ||
+	    g_conf()->cephx_require_signatures) {
 	  dout(1) << m->get_source_inst()
                   << " supports cephx but not signatures and"
                   << " 'cephx [cluster] require signatures = true';"
@@ -486,11 +486,34 @@ bool AuthMonitor::prep_auth(MonOpRequestRef op, bool paxos_writable)
 	  supported.erase(CEPH_AUTH_CEPHX);
 	}
       } else {
-	if (g_conf->cephx_service_require_signatures ||
-	    g_conf->cephx_require_signatures) {
+	if (g_conf()->cephx_service_require_signatures ||
+	    g_conf()->cephx_require_signatures) {
 	  dout(1) << m->get_source_inst()
                   << " supports cephx but not signatures and"
                   << " 'cephx [service] require signatures = true';"
+                  << " disallowing cephx" << dendl;
+	  supported.erase(CEPH_AUTH_CEPHX);
+	}
+      }
+    } else if (!m->get_connection()->has_feature(CEPH_FEATURE_CEPHX_V2)) {
+      if (entity_name.get_type() == CEPH_ENTITY_TYPE_MON ||
+	  entity_name.get_type() == CEPH_ENTITY_TYPE_OSD ||
+	  entity_name.get_type() == CEPH_ENTITY_TYPE_MDS ||
+	  entity_name.get_type() == CEPH_ENTITY_TYPE_MGR) {
+	if (g_conf()->cephx_cluster_require_version >= 2 ||
+	    g_conf()->cephx_require_version >= 2) {
+	  dout(1) << m->get_source_inst()
+                  << " supports cephx but not v2 and"
+                  << " 'cephx [cluster] require version >= 2';"
+                  << " disallowing cephx" << dendl;
+	  supported.erase(CEPH_AUTH_CEPHX);
+	}
+      } else {
+	if (g_conf()->cephx_service_require_version >= 2 ||
+	    g_conf()->cephx_require_version >= 2) {
+	  dout(1) << m->get_source_inst()
+                  << " supports cephx but not v2 and"
+                  << " 'cephx [service] require version >= 2';"
                   << " disallowing cephx" << dendl;
 	  supported.erase(CEPH_AUTH_CEPHX);
 	}
@@ -1413,13 +1436,33 @@ bool AuthMonitor::prepare_command(MonOpRequestRef op)
 	 it += 2) {
       const string &path = *it;
       const string &cap = *(it+1);
-      if (cap != "r" && cap != "rw" && cap != "rwp") {
-	ss << "Only 'r', 'rw', and 'rwp' permissions are allowed for filesystems.";
+
+      if (cap != "r" && cap.compare(0, 2, "rw")) {
+	ss << "Permission flags must start with 'r' or 'rw'.";
 	err = -EINVAL;
 	goto done;
       }
-      if (cap.find('w') != string::npos) {
+      if (cap.compare(0, 2, "rw") == 0)
 	osd_cap_wanted = "rw";
+
+      char last='\0';
+      for (size_t i = 2; i < cap.size(); ++i) {
+	char c = cap.at(i);
+	if (last >= c) {
+	  ss << "Permission flags (except 'rw') must be specified in alphabetical order.";
+	  err = -EINVAL;
+	  goto done;
+	}
+	switch (c) {
+	case 'p':
+	  break;
+	case 's':
+	  break;
+	default:
+	  ss << "Unknown permission flag '" << c << "'.";
+	  err = -EINVAL;
+	  goto done;
+	}
       }
 
       mds_cap_string += mds_cap_string.empty() ? "" : ", ";

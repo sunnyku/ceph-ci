@@ -104,6 +104,7 @@ void ActivePyModule::notify_clog(const LogEntry &log_entry)
 
 int ActivePyModule::handle_command(
   const cmdmap_t &cmdmap,
+  const bufferlist &inbuf,
   std::stringstream *ds,
   std::stringstream *ss)
 {
@@ -122,15 +123,20 @@ int ActivePyModule::handle_command(
   PyFormatter f;
   cmdmap_dump(cmdmap, &f);
   PyObject *py_cmd = f.get();
+  string instr;
+  inbuf.copy(0, inbuf.length(), instr);
 
   auto pResult = PyObject_CallMethod(pClassInstance,
-      const_cast<char*>("handle_command"), const_cast<char*>("(O)"), py_cmd);
+      const_cast<char*>("handle_command"), const_cast<char*>("s#O"),
+      instr.c_str(), instr.length(), py_cmd);
 
   Py_DECREF(py_cmd);
 
   int r = 0;
   if (pResult != NULL) {
     if (PyTuple_Size(pResult) != 3) {
+      derr << "module '" << py_module->get_name() << "' command handler "
+              "returned wrong type!" << dendl;
       r = -EINVAL;
     } else {
       r = PyInt_AsLong(PyTuple_GetItem(pResult, 0));
@@ -140,6 +146,8 @@ int ActivePyModule::handle_command(
 
     Py_DECREF(pResult);
   } else {
+    derr << "module '" << py_module->get_name() << "' command handler "
+            "threw exception: " << peek_pyerror() << dendl;
     *ds << "";
     *ss << handle_pyerror();
     r = -EINVAL;

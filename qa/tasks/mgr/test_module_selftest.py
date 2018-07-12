@@ -51,12 +51,25 @@ class TestModuleSelftest(MgrTestCase):
     def test_iostat(self):
         self._selftest_plugin("iostat")
 
+    def test_devicehealth(self):
+        self._selftest_plugin("devicehealth")
+        # Clean up the pool that the module creates, because otherwise
+        # it's low PG count causes test failures.
+        pool_name = "device_health_metrics"
+        self.mgr_cluster.mon_manager.raw_cluster_cmd(
+                "osd", "pool", "delete", pool_name, pool_name,
+                "--yes-i-really-really-mean-it")
+
+
     def test_selftest_run(self):
         self._load_module("selftest")
         self.mgr_cluster.mon_manager.raw_cluster_cmd("mgr", "self-test", "run")
 
     def test_telemetry(self):
         self._selftest_plugin("telemetry")
+
+    def test_crash(self):
+        self._selftest_plugin("crash")
 
     def test_selftest_config_update(self):
         """

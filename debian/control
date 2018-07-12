@@ -9,7 +9,7 @@ Uploaders: Ken Dreyer <kdreyer@redhat.com>,
            Alfredo Deza <adeza@redhat.com>,
 Build-Depends: bc,
                btrfs-tools,
-               cmake,
+               cmake (>= 3.5),
                cpio,
                cryptsetup-bin | cryptsetup,
                cython,
@@ -35,6 +35,7 @@ Build-Depends: bc,
                libfuse-dev,
                libgoogle-perftools-dev [i386 amd64 arm64],
                libibverbs-dev,
+               librdmacm-dev,
                libkeyutils-dev,
                libldap2-dev,
                libleveldb-dev,
@@ -56,6 +57,7 @@ Build-Depends: bc,
                python-nose,
                python-pecan,
                python-bcrypt,
+               python-six,
                python-tox,
                python-coverage,
                python-prettytable,
@@ -214,7 +216,6 @@ Architecture: linux-any
 Depends: ceph-base (= ${binary:Version}),
          ${misc:Depends},
          ${shlibs:Depends},
-Recommends: ceph-common,
 Replaces: ceph (<< 10), ceph-test (<< 12.2.2-14)
 Breaks: ceph (<< 10), ceph-test (<< 12.2.2-14)
 Description: monitor server for the ceph storage system
@@ -244,10 +245,10 @@ Package: ceph-osd
 Architecture: linux-any
 Depends: ceph-base (= ${binary:Version}),
          lvm2,
+	 sudo,
          ${misc:Depends},
          ${python:Depends},
          ${shlibs:Depends},
-Recommends: ceph-common (= ${binary:Version}),
 Replaces: ceph (<< 10), ceph-test (<< 12.2.2-14)
 Breaks: ceph (<< 10), ceph-test (<< 12.2.2-14)
 Description: OSD server for the ceph storage system

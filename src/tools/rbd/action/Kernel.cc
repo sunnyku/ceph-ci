@@ -8,7 +8,7 @@
 #include "include/krbd.h"
 #include "include/stringify.h"
 #include "include/uuid.h"
-#include "common/config.h"
+#include "common/config_proxy.h"
 #include "common/errno.h"
 #include "common/safe_io.h"
 #include "common/strtol.h"
@@ -246,7 +246,7 @@ static void print_error_description(const char *poolname, const char *imgname,
   if (maperrno == -ENOENT)
     goto done;
 
-  r = utils::init_and_open_image(poolname, imgname, "", snapname,
+  r = utils::init_and_open_image(poolname, "", imgname, "", snapname,
 				 true, &rados, &ioctx, &image);
   if (r < 0)
     goto done;
@@ -414,8 +414,8 @@ int execute_map(const po::variables_map &vm,
   std::string image_name;
   std::string snap_name;
   int r = utils::get_pool_image_snapshot_names(
-    vm, at::ARGUMENT_MODIFIER_NONE, &arg_index, &pool_name, &image_name,
-    &snap_name, utils::SNAPSHOT_PRESENCE_PERMITTED,
+    vm, at::ARGUMENT_MODIFIER_NONE, &arg_index, &pool_name, nullptr,
+    &image_name, &snap_name, true, utils::SNAPSHOT_PRESENCE_PERMITTED,
     utils::SPEC_VALIDATION_NONE);
   if (r < 0) {
     return r;
@@ -430,7 +430,7 @@ int execute_map(const po::variables_map &vm,
 
   // parse default options first so they can be overwritten by cli options
   r = parse_map_options(
-      g_conf->get_val<std::string>("rbd_default_map_options"));
+      g_conf().get_val<std::string>("rbd_default_map_options"));
   if (r < 0) {
     std::cerr << "rbd: couldn't parse default map options" << std::endl;
     return r;
@@ -471,9 +471,9 @@ int execute_unmap(const po::variables_map &vm,
   int r;
   if (device_name.empty()) {
     r = utils::get_pool_image_snapshot_names(
-      vm, at::ARGUMENT_MODIFIER_NONE, &arg_index, &pool_name, &image_name,
-      &snap_name, utils::SNAPSHOT_PRESENCE_PERMITTED,
-      utils::SPEC_VALIDATION_NONE, false);
+      vm, at::ARGUMENT_MODIFIER_NONE, &arg_index, &pool_name, nullptr,
+      &image_name, &snap_name, false, utils::SNAPSHOT_PRESENCE_PERMITTED,
+      utils::SPEC_VALIDATION_NONE);
     if (r < 0) {
       return r;
     }

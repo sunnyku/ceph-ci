@@ -62,7 +62,7 @@ public:
     : ThreadPool(cct, "librbd::thread_pool", "tp_librbd", 1,
                  "rbd_op_threads"),
       op_work_queue(new ContextWQ("librbd::op_work_queue",
-                                  cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
+                                  cct->_conf.get_val<int64_t>("rbd_op_thread_timeout"),
                                   this)) {
     start();
   }
@@ -138,11 +138,11 @@ public:
     get_thread_pool_instance(cct, &thread_pool, &op_work_queue);
     io_work_queue = new io::ImageRequestWQ<>(
       this, "librbd::io_work_queue",
-      cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
+      cct->_conf.get_val<int64_t>("rbd_op_thread_timeout"),
       thread_pool);
     io_object_dispatcher = new io::ObjectDispatcher<>(this);
 
-    if (cct->_conf->get_val<bool>("rbd_auto_exclusive_lock_until_manual_request")) {
+    if (cct->_conf.get_val<bool>("rbd_auto_exclusive_lock_until_manual_request")) {
       exclusive_lock_policy = new exclusive_lock::AutomaticPolicy(this);
     } else {
       exclusive_lock_policy = new exclusive_lock::StandardPolicy(this);
@@ -250,24 +250,24 @@ public:
 
     plb.add_u64_counter(l_librbd_rd, "rd", "Reads", "r", perf_prio);
     plb.add_u64_counter(l_librbd_rd_bytes, "rd_bytes", "Data size in reads",
-                        "rb", perf_prio, unit_t(BYTES));
+                        "rb", perf_prio, unit_t(UNIT_BYTES));
     plb.add_time_avg(l_librbd_rd_latency, "rd_latency", "Latency of reads",
                      "rl", perf_prio);
     plb.add_u64_counter(l_librbd_wr, "wr", "Writes", "w", perf_prio);
     plb.add_u64_counter(l_librbd_wr_bytes, "wr_bytes", "Written data",
-                        "wb", perf_prio, unit_t(BYTES));
+                        "wb", perf_prio, unit_t(UNIT_BYTES));
     plb.add_time_avg(l_librbd_wr_latency, "wr_latency", "Write latency",
                      "wl", perf_prio);
     plb.add_u64_counter(l_librbd_discard, "discard", "Discards");
-    plb.add_u64_counter(l_librbd_discard_bytes, "discard_bytes", "Discarded data", NULL, 0, unit_t(BYTES));
+    plb.add_u64_counter(l_librbd_discard_bytes, "discard_bytes", "Discarded data", NULL, 0, unit_t(UNIT_BYTES));
     plb.add_time_avg(l_librbd_discard_latency, "discard_latency", "Discard latency");
     plb.add_u64_counter(l_librbd_flush, "flush", "Flushes");
     plb.add_time_avg(l_librbd_flush_latency, "flush_latency", "Latency of flushes");
     plb.add_u64_counter(l_librbd_ws, "ws", "WriteSames");
-    plb.add_u64_counter(l_librbd_ws_bytes, "ws_bytes", "WriteSame data", NULL, 0, unit_t(BYTES));
+    plb.add_u64_counter(l_librbd_ws_bytes, "ws_bytes", "WriteSame data", NULL, 0, unit_t(UNIT_BYTES));
     plb.add_time_avg(l_librbd_ws_latency, "ws_latency", "WriteSame latency");
     plb.add_u64_counter(l_librbd_cmp, "cmp", "CompareAndWrites");
-    plb.add_u64_counter(l_librbd_cmp_bytes, "cmp_bytes", "Data size in cmps", NULL, 0, unit_t(BYTES));
+    plb.add_u64_counter(l_librbd_cmp_bytes, "cmp_bytes", "Data size in cmps", NULL, 0, unit_t(UNIT_BYTES));
     plb.add_time_avg(l_librbd_cmp_latency, "cmp_latency", "Latency of cmps");
     plb.add_u64_counter(l_librbd_snap_create, "snap_create", "Snap creations");
     plb.add_u64_counter(l_librbd_snap_remove, "snap_remove", "Snap removals");
@@ -276,7 +276,7 @@ public:
     plb.add_u64_counter(l_librbd_notify, "notify", "Updated header notifications");
     plb.add_u64_counter(l_librbd_resize, "resize", "Resizes");
     plb.add_u64_counter(l_librbd_readahead, "readahead", "Read ahead");
-    plb.add_u64_counter(l_librbd_readahead_bytes, "readahead_bytes", "Data size in read ahead", NULL, 0, unit_t(BYTES));
+    plb.add_u64_counter(l_librbd_readahead_bytes, "readahead_bytes", "Data size in read ahead", NULL, 0, unit_t(UNIT_BYTES));
     plb.add_u64_counter(l_librbd_invalidate_cache, "invalidate_cache", "Cache invalidates");
 
     plb.add_time(l_librbd_opened_time, "opened_time", "Opened time",
@@ -771,9 +771,14 @@ public:
         "rbd_mirroring_delete_delay", false)(
         "rbd_mirroring_replay_delay", false)(
         "rbd_skip_partial_discard", false)(
-	"rbd_qos_iops_limit", false);
+	"rbd_qos_iops_limit", false)(
+	"rbd_qos_bps_limit", false)(
+	"rbd_qos_read_iops_limit", false)(
+	"rbd_qos_write_iops_limit", false)(
+	"rbd_qos_read_bps_limit", false)(
+	"rbd_qos_write_bps_limit", false);
 
-    md_config_t local_config_t;
+    ConfigProxy local_config_t{false};
     std::map<std::string, bufferlist> res;
 
     _filter_metadata_confs(METADATA_CONF_PREFIX, configs, meta, &res);
@@ -794,7 +799,7 @@ public:
       if (configs[key])                                                        \
         config = local_config_t.get_val<type>("rbd_"#config);                  \
       else                                                                     \
-        config = cct->_conf->get_val<type>("rbd_"#config);                     \
+        config = cct->_conf.get_val<type>("rbd_"#config);                      \
     } while (0);
 
     ASSIGN_OPTION(non_blocking_aio, bool);
@@ -834,6 +839,11 @@ public:
     ASSIGN_OPTION(skip_partial_discard, bool);
     ASSIGN_OPTION(blkin_trace_all, bool);
     ASSIGN_OPTION(qos_iops_limit, uint64_t);
+    ASSIGN_OPTION(qos_bps_limit, uint64_t);
+    ASSIGN_OPTION(qos_read_iops_limit, uint64_t);
+    ASSIGN_OPTION(qos_write_iops_limit, uint64_t);
+    ASSIGN_OPTION(qos_read_bps_limit, uint64_t);
+    ASSIGN_OPTION(qos_write_bps_limit, uint64_t);
 
     if (thread_safe) {
       ASSIGN_OPTION(journal_pool, std::string);
@@ -843,7 +853,12 @@ public:
       sparse_read_threshold_bytes = get_object_size();
     }
 
-    io_work_queue->apply_qos_iops_limit(qos_iops_limit);
+    io_work_queue->apply_qos_limit(qos_iops_limit, RBD_QOS_IOPS_THROTTLE);
+    io_work_queue->apply_qos_limit(qos_bps_limit, RBD_QOS_BPS_THROTTLE);
+    io_work_queue->apply_qos_limit(qos_read_iops_limit, RBD_QOS_READ_IOPS_THROTTLE);
+    io_work_queue->apply_qos_limit(qos_write_iops_limit, RBD_QOS_WRITE_IOPS_THROTTLE);
+    io_work_queue->apply_qos_limit(qos_read_bps_limit, RBD_QOS_READ_BPS_THROTTLE);
+    io_work_queue->apply_qos_limit(qos_write_bps_limit, RBD_QOS_WRITE_BPS_THROTTLE);
   }
 
   ExclusiveLock<ImageCtx> *ImageCtx::create_exclusive_lock() {

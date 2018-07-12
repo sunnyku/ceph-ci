@@ -15,8 +15,8 @@ The build process is based on `Node.js <https://nodejs.org/>`_ and requires the
 Prerequisites
 ~~~~~~~~~~~~~
 
- * Node 6.9.0 or higher
- * NPM 3 or higher
+ * Node 8.9.0 or higher
+ * NPM 5.5.1 or higher
 
 nodeenv:
   During Ceph's build we create a virtualenv with ``node`` and ``npm``
@@ -505,22 +505,22 @@ same applies to other request types:
 How to restrict access to a controller?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you require that only authenticated users can access you controller, just
-add the ``AuthRequired`` decorator to your controller class.
+All controllers require authentication by default.
+If you require that the controller can be accessed without authentication,
+then you can add the parameter ``secure=False`` to the controller decorator.
 
-Example::
+Example:
+
+.. code-block:: python
 
   import cherrypy
-  from ..tools import ApiController, AuthRequired, RESTController
+  from . import ApiController, RESTController
 
 
-  @ApiController('ping2')
-  @AuthRequired()
-  class Ping2(RESTController):
+  @ApiController('ping', secure=False)
+  class Ping(RESTController):
     def list(self):
       return {"msg": "Hello"}
-
-Now only authenticated users will be able to "ping" your controller.
 
 
 How to access the manager module instance from a controller?

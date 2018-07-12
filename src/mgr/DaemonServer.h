@@ -104,7 +104,7 @@ private:
   void maybe_ready(int32_t osd_id);
 
 public:
-  int init(uint64_t gid, entity_addr_t client_addr);
+  int init(uint64_t gid, entity_addrvec_t client_addrs);
   void shutdown();
 
   entity_addrvec_t get_myaddrs() const;
@@ -124,13 +124,15 @@ public:
   bool ms_handle_refused(Connection *con) override;
   bool ms_get_authorizer(int dest_type, AuthAuthorizer **authorizer,
                          bool force_new) override;
-  bool ms_verify_authorizer(Connection *con,
-      int peer_type,
-      int protocol,
-      ceph::bufferlist& authorizer,
-      ceph::bufferlist& authorizer_reply,
-      bool& isvalid,
-      CryptoKey& session_key) override;
+  bool ms_verify_authorizer(
+    Connection *con,
+    int peer_type,
+    int protocol,
+    ceph::bufferlist& authorizer,
+    ceph::bufferlist& authorizer_reply,
+    bool& isvalid,
+    CryptoKey& session_key,
+    std::unique_ptr<AuthAuthorizerChallenge> *challenge) override;
 
   bool handle_open(MMgrOpen *m);
   bool handle_close(MMgrClose *m);
@@ -143,7 +145,7 @@ public:
   void _send_configure(ConnectionRef c);
 
   virtual const char** get_tracked_conf_keys() const override;
-  virtual void handle_conf_change(const struct md_config_t *conf,
+  virtual void handle_conf_change(const ConfigProxy& conf,
                           const std::set <std::string> &changed) override;
 };
 

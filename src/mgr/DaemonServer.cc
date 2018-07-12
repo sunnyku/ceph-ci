@@ -34,6 +34,7 @@
 #include "messages/MOSDScrub2.h"
 #include "messages/MOSDForceRecovery.h"
 #include "common/errno.h"
+#include "common/pick_address.h"
 
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_mgr
@@ -51,21 +52,21 @@ DaemonServer::DaemonServer(MonClient *monc_,
 			   LogChannelRef audit_clog_)
     : Dispatcher(g_ceph_context),
       client_byte_throttler(new Throttle(g_ceph_context, "mgr_client_bytes",
-					 g_conf->get_val<Option::size_t>("mgr_client_bytes"))),
+					 g_conf().get_val<Option::size_t>("mgr_client_bytes"))),
       client_msg_throttler(new Throttle(g_ceph_context, "mgr_client_messages",
-					g_conf->get_val<uint64_t>("mgr_client_messages"))),
+					g_conf().get_val<uint64_t>("mgr_client_messages"))),
       osd_byte_throttler(new Throttle(g_ceph_context, "mgr_osd_bytes",
-				      g_conf->get_val<Option::size_t>("mgr_osd_bytes"))),
+				      g_conf().get_val<Option::size_t>("mgr_osd_bytes"))),
       osd_msg_throttler(new Throttle(g_ceph_context, "mgr_osd_messsages",
-				     g_conf->get_val<uint64_t>("mgr_osd_messages"))),
+				     g_conf().get_val<uint64_t>("mgr_osd_messages"))),
       mds_byte_throttler(new Throttle(g_ceph_context, "mgr_mds_bytes",
-				      g_conf->get_val<Option::size_t>("mgr_mds_bytes"))),
+				      g_conf().get_val<Option::size_t>("mgr_mds_bytes"))),
       mds_msg_throttler(new Throttle(g_ceph_context, "mgr_mds_messsages",
-				     g_conf->get_val<uint64_t>("mgr_mds_messages"))),
+				     g_conf().get_val<uint64_t>("mgr_mds_messages"))),
       mon_byte_throttler(new Throttle(g_ceph_context, "mgr_mon_bytes",
-				      g_conf->get_val<Option::size_t>("mgr_mon_bytes"))),
+				      g_conf().get_val<Option::size_t>("mgr_mon_bytes"))),
       mon_msg_throttler(new Throttle(g_ceph_context, "mgr_mon_messsages",
-				     g_conf->get_val<uint64_t>("mgr_mon_messages"))),
+				     g_conf().get_val<uint64_t>("mgr_mon_messages"))),
       msgr(nullptr),
       monc(monc_),
       finisher(finisher_),
@@ -75,29 +76,29 @@ DaemonServer::DaemonServer(MonClient *monc_,
       clog(clog_),
       audit_clog(audit_clog_),
       auth_cluster_registry(g_ceph_context,
-                    g_conf->auth_supported.empty() ?
-                      g_conf->auth_cluster_required :
-                      g_conf->auth_supported),
+                    g_conf()->auth_supported.empty() ?
+                      g_conf()->auth_cluster_required :
+                      g_conf()->auth_supported),
       auth_service_registry(g_ceph_context,
-                   g_conf->auth_supported.empty() ?
-                      g_conf->auth_service_required :
-                      g_conf->auth_supported),
+                   g_conf()->auth_supported.empty() ?
+                      g_conf()->auth_service_required :
+                      g_conf()->auth_supported),
       lock("DaemonServer"),
       pgmap_ready(false)
 {
-  g_conf->add_observer(this);
+  g_conf().add_observer(this);
 }
 
 DaemonServer::~DaemonServer() {
   delete msgr;
-  g_conf->remove_observer(this);
+  g_conf().remove_observer(this);
 }
 
-int DaemonServer::init(uint64_t gid, entity_addr_t client_addr)
+int DaemonServer::init(uint64_t gid, entity_addrvec_t client_addrs)
 {
   // Initialize Messenger
-  std::string public_msgr_type = g_conf->ms_public_type.empty() ?
-    g_conf->get_val<std::string>("ms_type") : g_conf->ms_public_type;
+  std::string public_msgr_type = g_conf()->ms_public_type.empty() ?
+    g_conf().get_val<std::string>("ms_type") : g_conf()->ms_public_type;
   msgr = Messenger::create(g_ceph_context, public_msgr_type,
 			   entity_name_t::MGR(gid),
 			   "mgr",
@@ -120,15 +121,20 @@ int DaemonServer::init(uint64_t gid, entity_addr_t client_addr)
 			      mon_byte_throttler.get(),
 			      mon_msg_throttler.get());
 
-  entity_addr_t paddr = g_conf->get_val<entity_addr_t>("public_addr");
-  int r = msgr->bind(paddr);
+  entity_addrvec_t addrs;
+  int r = pick_addresses(cct, CEPH_PICK_ADDRESS_PUBLIC, &addrs);
   if (r < 0) {
-    derr << "unable to bind mgr to " << paddr << dendl;
+    return r;
+  }
+  dout(20) << __func__ << " will bind to " << addrs << dendl;
+  r = msgr->bindv(addrs);
+  if (r < 0) {
+    derr << "unable to bind mgr to " << addrs << dendl;
     return r;
   }
 
   msgr->set_myname(entity_name_t::MGR(gid));
-  msgr->set_addr_unknowns(client_addr);
+  msgr->set_addr_unknowns(client_addrs);
 
   msgr->start();
   msgr->add_dispatcher_tail(this);
@@ -144,13 +150,15 @@ entity_addrvec_t DaemonServer::get_myaddrs() const
 }
 
 
-bool DaemonServer::ms_verify_authorizer(Connection *con,
-    int peer_type,
-    int protocol,
-    ceph::bufferlist& authorizer_data,
-    ceph::bufferlist& authorizer_reply,
-    bool& is_valid,
-    CryptoKey& session_key)
+bool DaemonServer::ms_verify_authorizer(
+  Connection *con,
+  int peer_type,
+  int protocol,
+  ceph::bufferlist& authorizer_data,
+  ceph::bufferlist& authorizer_reply,
+  bool& is_valid,
+  CryptoKey& session_key,
+  std::unique_ptr<AuthAuthorizerChallenge> *challenge)
 {
   AuthAuthorizeHandler *handler = nullptr;
   if (peer_type == CEPH_ENTITY_TYPE_OSD ||
@@ -178,7 +186,9 @@ bool DaemonServer::ms_verify_authorizer(Connection *con,
       authorizer_data,
       authorizer_reply, s->entity_name,
       s->global_id, caps_info,
-      session_key);
+      session_key,
+      nullptr,
+      challenge);
   } else {
     dout(10) << __func__ << " no rotating_keys (yet), denied" << dendl;
     is_valid = false;
@@ -702,7 +712,11 @@ bool DaemonServer::handle_command(MCommand *m)
         con->mark_disposable();
       }
 
-      dout(1) << "handle_command " << cpp_strerror(r) << " " << rs << dendl;
+      if (r == 0) {
+        dout(4) << __func__ << " success" << dendl;
+      } else {
+        derr << __func__ << " " << cpp_strerror(r) << " " << rs << dendl;
+      }
       if (con) {
         MCommandReply *reply = new MCommandReply(r, rs);
         reply->set_tid(m->get_tid());
@@ -873,9 +887,9 @@ bool DaemonServer::handle_command(MCommand *m)
     std::string val;
     cmd_getval(cct, cmdctx->cmdmap, "key", key);
     cmd_getval(cct, cmdctx->cmdmap, "value", val);
-    r = cct->_conf->set_val(key, val, &ss);
+    r = cct->_conf.set_val(key, val, &ss);
     if (r == 0) {
-      cct->_conf->apply_changes(nullptr);
+      cct->_conf.apply_changes(nullptr);
     }
     cmdctx->reply(0, ss);
     return true;
@@ -1059,14 +1073,14 @@ bool DaemonServer::handle_command(MCommand *m)
       return true;
     }
     
-    double max_change = g_conf->get_val<double>("mon_reweight_max_change");
+    double max_change = g_conf().get_val<double>("mon_reweight_max_change");
     cmd_getval(g_ceph_context, cmdctx->cmdmap, "max_change", max_change);
     if (max_change <= 0.0) {
       ss << "max_change " << max_change << " must be positive";
       cmdctx->reply(-EINVAL, ss);
       return true;
     }
-    int64_t max_osds = g_conf->get_val<int64_t>("mon_reweight_max_osds");
+    int64_t max_osds = g_conf().get_val<int64_t>("mon_reweight_max_osds");
     cmd_getval(g_ceph_context, cmdctx->cmdmap, "max_osds", max_osds);
     if (max_osds <= 0) {
       ss << "max_osds " << max_osds << " must be positive";
@@ -1237,8 +1251,7 @@ bool DaemonServer::handle_command(MCommand *m)
 		auto p = pg_map.osd_stat.find(osd);
 		if (p == pg_map.osd_stat.end()) {
 		  missing_stats.insert(osd);
-		}
-		if (p->second.num_pgs > 0) {
+		} else if (p->second.num_pgs > 0) {
 		  stored_pgs.insert(osd);
 		}
 	      }
@@ -1916,7 +1929,6 @@ bool DaemonServer::handle_command(MCommand *m)
   auto py_commands = py_modules.get_py_commands();
   for (const auto &pyc : py_commands) {
     auto pyc_prefix = cmddesc_get_prefix(pyc.cmdstring);
-    dout(1) << "pyc_prefix: '" << pyc_prefix << "'" << dendl;
     if (pyc_prefix == prefix) {
       handler_name = pyc.module_name;
       break;
@@ -1979,7 +1991,8 @@ bool DaemonServer::handle_command(MCommand *m)
     }
 
     std::stringstream ds;
-    int r = py_modules.handle_command(handler_name, cmdctx->cmdmap, &ds, &ss);
+    bufferlist inbl = cmdctx->m->get_data();
+    int r = py_modules.handle_command(handler_name, cmdctx->cmdmap, inbl, &ds, &ss);
     cmdctx->odata.append(ds);
     cmdctx->reply(r, ss);
   }));
@@ -1989,7 +2002,7 @@ bool DaemonServer::handle_command(MCommand *m)
 void DaemonServer::_prune_pending_service_map()
 {
   utime_t cutoff = ceph_clock_now();
-  cutoff -= g_conf->get_val<double>("mgr_service_beacon_grace");
+  cutoff -= g_conf().get_val<double>("mgr_service_beacon_grace");
   auto p = pending_service_map.services.begin();
   while (p != pending_service_map.services.end()) {
     auto q = p->second.daemons.begin();
@@ -2029,7 +2042,7 @@ void DaemonServer::_prune_pending_service_map()
 void DaemonServer::send_report()
 {
   if (!pgmap_ready) {
-    if (ceph_clock_now() - started_at > g_conf->get_val<int64_t>("mgr_stats_period") * 4.0) {
+    if (ceph_clock_now() - started_at > g_conf().get_val<int64_t>("mgr_stats_period") * 4.0) {
       pgmap_ready = true;
       reported_osds.clear();
       dout(1) << "Giving up on OSDs that haven't reported yet, sending "
@@ -2193,8 +2206,8 @@ const char** DaemonServer::get_tracked_conf_keys() const
   return KEYS;
 }
 
-void DaemonServer::handle_conf_change(const struct md_config_t *conf,
-                                              const std::set <std::string> &changed)
+void DaemonServer::handle_conf_change(const ConfigProxy& conf,
+				      const std::set <std::string> &changed)
 {
   // We may be called within lock (via MCommand `config set`) or outwith the
   // lock (via admin socket `config set`), so handle either case.
@@ -2219,8 +2232,8 @@ void DaemonServer::_send_configure(ConnectionRef c)
   assert(lock.is_locked_by_me());
 
   auto configure = new MMgrConfigure();
-  configure->stats_period = g_conf->get_val<int64_t>("mgr_stats_period");
-  configure->stats_threshold = g_conf->get_val<int64_t>("mgr_stats_threshold");
+  configure->stats_period = g_conf().get_val<int64_t>("mgr_stats_period");
+  configure->stats_threshold = g_conf().get_val<int64_t>("mgr_stats_threshold");
   c->send_message(configure);
 }
 

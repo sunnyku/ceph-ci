@@ -37,7 +37,7 @@ struct ImportDiffContext {
   ImportDiffContext(librbd::Image *image, int fd, size_t size, bool no_progress)
     : image(image), fd(fd), size(size), pc("Importing image diff", no_progress),
       throttle((fd == STDIN_FILENO) ? 1 :
-                  g_conf->get_val<int64_t>("rbd_concurrent_management_ops"),
+                  g_conf().get_val<int64_t>("rbd_concurrent_management_ops"),
                false),
       last_offset(0) {
   }
@@ -489,11 +489,13 @@ int execute_diff(const po::variables_map &vm,
   }
 
   std::string pool_name;
+  std::string namespace_name;
   std::string image_name;
   std::string snap_name;
   r = utils::get_pool_image_snapshot_names(
-    vm, at::ARGUMENT_MODIFIER_NONE, &arg_index, &pool_name, &image_name,
-    &snap_name, utils::SNAPSHOT_PRESENCE_NONE, utils::SPEC_VALIDATION_NONE);
+    vm, at::ARGUMENT_MODIFIER_NONE, &arg_index, &pool_name, &namespace_name,
+    &image_name, &snap_name, true, utils::SNAPSHOT_PRESENCE_NONE,
+    utils::SPEC_VALIDATION_NONE);
   if (r < 0) {
     return r;
   }
@@ -506,8 +508,8 @@ int execute_diff(const po::variables_map &vm,
   librados::Rados rados;
   librados::IoCtx io_ctx;
   librbd::Image image;
-  r = utils::init_and_open_image(pool_name, image_name, "", "", false,
-                                 &rados, &io_ctx, &image);
+  r = utils::init_and_open_image(pool_name, namespace_name, image_name, "", "",
+                                 false, &rados, &io_ctx, &image);
   if (r < 0) {
     return r;
   }
@@ -742,7 +744,7 @@ static int do_import_v1(int fd, librbd::Image &image, uint64_t size,
     throttle.reset(new SimpleThrottle(1, false));
   } else {
     throttle.reset(new SimpleThrottle(
-      g_conf->get_val<int64_t>("rbd_concurrent_management_ops"), false));
+      g_conf().get_val<int64_t>("rbd_concurrent_management_ops"), false));
   }
 
   reqlen = min<uint64_t>(reqlen, size);
@@ -836,7 +838,7 @@ static int do_import(librados::Rados &rados, librbd::RBD &rbd,
 
   uint64_t order;
   if (opts.get(RBD_IMAGE_OPTION_ORDER, &order) != 0) {
-    order = g_conf->get_val<int64_t>("rbd_default_order");
+    order = g_conf().get_val<int64_t>("rbd_default_order");
   }
 
   // try to fill whole imgblklen blocks for sparsification
@@ -978,8 +980,8 @@ int execute(const po::variables_map &vm,
 
   std::string deprecated_snap_name;
   r = utils::extract_spec(deprecated_image_name, &deprecated_pool_name,
-                          &deprecated_image_name, &deprecated_snap_name,
-                          utils::SPEC_VALIDATION_FULL);
+                          nullptr, &deprecated_image_name,
+                          &deprecated_snap_name, utils::SPEC_VALIDATION_FULL);
   if (r < 0) {
     return r;
   }
@@ -990,12 +992,13 @@ int execute(const po::variables_map &vm,
   }
 
   std::string pool_name = deprecated_pool_name;
+  std::string namespace_name;
   std::string image_name;
   std::string snap_name = deprecated_snap_name;
   r = utils::get_pool_image_snapshot_names(
-    vm, at::ARGUMENT_MODIFIER_DEST, &arg_index, &pool_name, &image_name,
-    &snap_name, utils::SNAPSHOT_PRESENCE_NONE, utils::SPEC_VALIDATION_FULL,
-    false);
+    vm, at::ARGUMENT_MODIFIER_DEST, &arg_index, &pool_name, &namespace_name,
+    &image_name, &snap_name, false, utils::SNAPSHOT_PRESENCE_NONE,
+    utils::SPEC_VALIDATION_FULL);
   if (r < 0) {
     return r;
   }
@@ -1012,7 +1015,7 @@ int execute(const po::variables_map &vm,
 
   librados::Rados rados;
   librados::IoCtx io_ctx;
-  r = utils::init(pool_name, &rados, &io_ctx);
+  r = utils::init(pool_name, namespace_name, &rados, &io_ctx);
   if (r < 0) {
     return r;
   }

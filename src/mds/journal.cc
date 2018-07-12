@@ -67,7 +67,7 @@ void LogSegment::try_to_expire(MDSRank *mds, MDSGatherBuilder &gather_bld, int o
 
   dout(6) << "LogSegment(" << seq << "/" << offset << ").try_to_expire" << dendl;
 
-  assert(g_conf->mds_kill_journal_expire_at != 1);
+  assert(g_conf()->mds_kill_journal_expire_at != 1);
 
   // commit dirs
   for (elist<CDir*>::iterator p = new_dirfrags.begin(); !p.end(); ++p) {
@@ -143,7 +143,7 @@ void LogSegment::try_to_expire(MDSRank *mds, MDSGatherBuilder &gather_bld, int o
     mds->locker->scatter_nudge(&in->nestlock, gather_bld.new_sub());
   }
 
-  assert(g_conf->mds_kill_journal_expire_at != 2);
+  assert(g_conf()->mds_kill_journal_expire_at != 2);
 
   // open files and snap inodes 
   if (!open_files.empty()) {
@@ -176,7 +176,7 @@ void LogSegment::try_to_expire(MDSRank *mds, MDSGatherBuilder &gather_bld, int o
     }
   }
 
-  assert(g_conf->mds_kill_journal_expire_at != 3);
+  assert(g_conf()->mds_kill_journal_expire_at != 3);
 
   // backtraces to be stored/updated
   for (elist<CInode*>::iterator p = dirty_parent_inodes.begin(); !p.end(); ++p) {
@@ -191,7 +191,7 @@ void LogSegment::try_to_expire(MDSRank *mds, MDSGatherBuilder &gather_bld, int o
     }
   }
 
-  assert(g_conf->mds_kill_journal_expire_at != 4);
+  assert(g_conf()->mds_kill_journal_expire_at != 4);
 
   // slave updates
   for (elist<MDSlaveUpdate*>::iterator p = slave_updates.begin(member_offset(MDSlaveUpdate,
@@ -266,7 +266,7 @@ void LogSegment::try_to_expire(MDSRank *mds, MDSGatherBuilder &gather_bld, int o
     dout(6) << "LogSegment(" << seq << "/" << offset << ").try_to_expire waiting" << dendl;
     mds->mdlog->flush();
   } else {
-    assert(g_conf->mds_kill_journal_expire_at != 5);
+    assert(g_conf()->mds_kill_journal_expire_at != 5);
     dout(6) << "LogSegment(" << seq << "/" << offset << ").try_to_expire success" << dendl;
   }
 }
@@ -731,7 +731,7 @@ void EMetaBlob::dirlump::dump(Formatter *f) const
   f->dump_int("nnull", nnull);
 
   f->open_array_section("full bits");
-  for (list<ceph::shared_ptr<fullbit> >::const_iterator
+  for (list<std::shared_ptr<fullbit> >::const_iterator
       iter = dfull.begin(); iter != dfull.end(); ++iter) {
     f->open_object_section("fullbit");
     (*iter)->dump(f);
@@ -806,7 +806,7 @@ void EMetaBlob::decode(bufferlist::const_iterator &bl)
     decode(rootbl, bl);
     if (rootbl.length()) {
       auto p = rootbl.cbegin();
-      roots.push_back(ceph::shared_ptr<fullbit>(new fullbit(p)));
+      roots.push_back(std::shared_ptr<fullbit>(new fullbit(p)));
     }
   }
   decode(table_tids, bl);
@@ -866,8 +866,8 @@ void EMetaBlob::get_inodes(
     dl._decode_bits();
 
     // Record inodes of fullbits
-    list<ceph::shared_ptr<fullbit> > const &fb_list = dl.get_dfull();
-    for (list<ceph::shared_ptr<fullbit> >::const_iterator
+    list<std::shared_ptr<fullbit> > const &fb_list = dl.get_dfull();
+    for (list<std::shared_ptr<fullbit> >::const_iterator
         iter = fb_list.begin(); iter != fb_list.end(); ++iter) {
       inodes.insert((*iter)->inode.ino);
     }
@@ -894,12 +894,12 @@ void EMetaBlob::get_dentries(std::map<dirfrag_t, std::set<std::string> > &dentri
 
     // Get all bits
     dl._decode_bits();
-    list<ceph::shared_ptr<fullbit> > const &fb_list = dl.get_dfull();
+    list<std::shared_ptr<fullbit> > const &fb_list = dl.get_dfull();
     list<nullbit> const &nb_list = dl.get_dnull();
     list<remotebit> const &rb_list = dl.get_dremote();
 
     // For all bits, store dentry
-    for (list<ceph::shared_ptr<fullbit> >::const_iterator
+    for (list<std::shared_ptr<fullbit> >::const_iterator
         iter = fb_list.begin(); iter != fb_list.end(); ++iter) {
       dentries[df].insert((*iter)->dn);
 
@@ -950,11 +950,11 @@ void EMetaBlob::get_paths(
     dirlump const &dl = i->second;
     dl._decode_bits();
 
-    list<ceph::shared_ptr<fullbit> > const &fb_list = dl.get_dfull();
+    list<std::shared_ptr<fullbit> > const &fb_list = dl.get_dfull();
     list<nullbit> const &nb_list = dl.get_dnull();
     list<remotebit> const &rb_list = dl.get_dremote();
 
-    for (list<ceph::shared_ptr<fullbit> >::const_iterator
+    for (list<std::shared_ptr<fullbit> >::const_iterator
         iter = fb_list.begin(); iter != fb_list.end(); ++iter) {
       std::string_view dentry = (*iter)->dn;
       children[dir_ino].emplace_back(dentry);
@@ -984,8 +984,8 @@ void EMetaBlob::get_paths(
     dirlump const &dl = i->second;
     dl._decode_bits();
 
-    list<ceph::shared_ptr<fullbit> > const &fb_list = dl.get_dfull();
-    for (list<ceph::shared_ptr<fullbit> >::const_iterator
+    list<std::shared_ptr<fullbit> > const &fb_list = dl.get_dfull();
+    for (list<std::shared_ptr<fullbit> >::const_iterator
         iter = fb_list.begin(); iter != fb_list.end(); ++iter) {
       std::string_view dentry = (*iter)->dn;
       if (children.find((*iter)->inode.ino) == children.end()) {
@@ -1046,7 +1046,7 @@ void EMetaBlob::dump(Formatter *f) const
   f->close_section(); // lumps
   
   f->open_array_section("roots");
-  for (list<ceph::shared_ptr<fullbit> >::const_iterator i = roots.begin();
+  for (list<std::shared_ptr<fullbit> >::const_iterator i = roots.begin();
        i != roots.end(); ++i) {
     f->open_object_section("root");
     (*i)->dump(f);
@@ -1129,9 +1129,9 @@ void EMetaBlob::replay(MDSRank *mds, LogSegment *logseg, MDSlaveUpdate *slaveup)
 
   assert(logseg);
 
-  assert(g_conf->mds_kill_journal_replay_at != 1);
+  assert(g_conf()->mds_kill_journal_replay_at != 1);
 
-  for (list<ceph::shared_ptr<fullbit> >::iterator p = roots.begin(); p != roots.end(); ++p) {
+  for (list<std::shared_ptr<fullbit> >::iterator p = roots.begin(); p != roots.end(); ++p) {
     CInode *in = mds->mdcache->get_inode((*p)->inode.ino);
     bool isnew = in ? false:true;
     if (!in)
@@ -1244,10 +1244,10 @@ void EMetaBlob::replay(MDSRank *mds, LogSegment *logseg, MDSlaveUpdate *slaveup)
     lump._decode_bits();
 
     // full dentry+inode pairs
-    for (list<ceph::shared_ptr<fullbit> >::const_iterator pp = lump.get_dfull().begin();
+    for (list<std::shared_ptr<fullbit> >::const_iterator pp = lump.get_dfull().begin();
 	 pp != lump.get_dfull().end();
 	 ++pp) {
-      ceph::shared_ptr<fullbit> p = *pp;
+      std::shared_ptr<fullbit> p = *pp;
       CDentry *dn = dir->lookup_exact_snap(p->dn, p->dnlast);
       if (!dn) {
 	dn = dir->add_null_dentry(p->dn, p->dnfirst, p->dnlast);
@@ -1324,7 +1324,7 @@ void EMetaBlob::replay(MDSRank *mds, LogSegment *logseg, MDSlaveUpdate *slaveup)
 	in->state_set(CInode::STATE_AUTH);
       else
 	in->state_clear(CInode::STATE_AUTH);
-      assert(g_conf->mds_kill_journal_replay_at != 2);
+      assert(g_conf()->mds_kill_journal_replay_at != 2);
     }
 
     // remote dentries
@@ -1398,7 +1398,7 @@ void EMetaBlob::replay(MDSRank *mds, LogSegment *logseg, MDSlaveUpdate *slaveup)
     }
   }
 
-  assert(g_conf->mds_kill_journal_replay_at != 3);
+  assert(g_conf()->mds_kill_journal_replay_at != 3);
 
   if (renamed_dirino) {
     if (renamed_diri) {
@@ -1569,7 +1569,7 @@ void EMetaBlob::replay(MDSRank *mds, LogSegment *logseg, MDSlaveUpdate *slaveup)
     } else {
       mds->clog->error() << "journal replay sessionmap v " << sessionmapv
 			<< " -(1|2) > table " << mds->sessionmap.get_version();
-      assert(g_conf->mds_wipe_sessions);
+      assert(g_conf()->mds_wipe_sessions);
       mds->sessionmap.wipe();
       mds->sessionmap.set_version(sessionmapv);
     }
@@ -1652,7 +1652,7 @@ void EMetaBlob::replay(MDSRank *mds, LogSegment *logseg, MDSlaveUpdate *slaveup)
   // update segment
   update_segment(logseg);
 
-  assert(g_conf->mds_kill_journal_replay_at != 4);
+  assert(g_conf()->mds_kill_journal_replay_at != 4);
 }
 
 // -----------------------
@@ -2674,7 +2674,7 @@ void ESubtreeMap::replay(MDSRank *mds)
       dout(0) << "journal subtrees: " << subtrees << dendl;
       dout(0) << "journal ambig_subtrees: " << ambiguous_subtrees << dendl;
       mds->mdcache->show_subtrees();
-      assert(!g_conf->mds_debug_subtrees || errors == 0);
+      assert(!g_conf()->mds_debug_subtrees || errors == 0);
     }
     return;
   }
@@ -2757,7 +2757,7 @@ void EFragment::replay(MDSRank *mds)
   }
 
   metablob.replay(mds, _segment);
-  if (in && g_conf->mds_debug_frag)
+  if (in && g_conf()->mds_debug_frag)
     in->verify_dirfrags();
 }
 
