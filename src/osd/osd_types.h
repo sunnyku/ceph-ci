@@ -1796,7 +1796,7 @@ struct object_stat_sum_t {
 
   void add(const object_stat_sum_t& o);
   void sub(const object_stat_sum_t& o);
-  bool negative() const {
+  bool is_negative() const {
     return
       num_rd < 0 ||
       num_rd_kb < 0 ||
@@ -1807,17 +1807,10 @@ struct object_stat_sum_t {
       num_keys_recovered < 0;
   }
 
-  bool over_threshold() const {
-    auto threshold = g_ceph_context->_conf->get_val<int64_t>(
-      "mgr_filter_out_stats_num_threshold");
-    return
-      num_rd > threshold ||
-      num_wr > threshold ||
-      num_objects_recovered > threshold;
-  }
-
-  bool invalid() const {
-    return negative() || over_threshold();
+  bool over_limit(int64_t max_kbs) const {
+    return (num_rd_kb > max_kbs && num_rd > max_kbs / 100) ||
+           (num_wr_kb > max_kbs && num_wr > max_kbs / 100) ||
+           (num_bytes_recovered > max_kbs && num_objects_recovered > max_kbs / 100);
   }
 
   void dump(Formatter *f) const;

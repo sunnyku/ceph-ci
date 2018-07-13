@@ -1268,7 +1268,12 @@ void PGMap::apply_incremental(CephContext *cct, const Incremental& inc)
     pool_stat_t d = pg_sum;
     d.stats.sub(pg_sum_old.stats);
     auto period = cct ? cct->_conf->get_val<int64_t>("mgr_tick_period") : 2;
-    if (!d.stats.sum.invalid() && (double)delta_t >= period) {
+    auto osd_max_kb = cct ? cct->_conf->get_val<int64_t>(
+      "mgr_osd_max_kilobytes_per_sec") : 500000;
+    auto sum_limit = osd_max_kb * num_osd * (double)delta_t * 0.4;
+    if ((double)delta_t >= period &&
+        !d.stats.sum.is_negative() &&
+        !d.stats.sum.over_limit((int64_t)sum_limit)) {
       pg_sum_deltas.push_back(make_pair(d, delta_t));
       stamp_delta += delta_t;
       pg_sum_delta.stats.add(d.stats);
@@ -1279,6 +1284,10 @@ void PGMap::apply_incremental(CephContext *cct, const Incremental& inc)
         stamp_delta -= pg_sum_deltas.front().second;
         pg_sum_deltas.pop_front();
       }
+    } else {
+      dout(10) << " cluster filter out: delta_t " << (double)delta_t
+               << ", sum_limit " << (int64_t)sum_limit
+               << "KB, num_osd " << num_osd << dendl;
     }
   }
   stamp = inc.stamp;
@@ -2354,7 +2363,16 @@ void PGMap::update_delta(
   d.stats.sub(old_pool_sum.stats);
   // filter non-negative delta value that updated by mgr tick
   auto period = cct ? cct->_conf->get_val<int64_t>("mgr_tick_period") : 2;
-  if (d.stats.sum.invalid() || (double)delta_t < period)
+  auto osd_max_kb = cct ? cct->_conf->get_val<int64_t>(
+    "mgr_osd_max_kilobytes_per_sec") : 500000;
+  auto sum_limit = osd_max_kb * num_osd * (double)delta_t * 0.4;
+
+  if ((double)delta_t < period ||
+      d.stats.sum.is_negative() ||
+      d.stats.sum.over_limit((int64_t)sum_limit))
+    dout(10) << " pool filter out: delta_t " << (double)delta_t
+             << ", sum_limit " << (int64_t)sum_limit
+             << "KB, num_osd " << num_osd << dendl;
     return;
 
   /* Aggregate current delta, and take out the last seen delta (if any) to
