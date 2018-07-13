@@ -1455,7 +1455,7 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
     librados::ObjectWriteOperation op;
     cls_client::status_update_state(&op, image_id, state, mask);
     r = io_ctx.operate(RBD_STATUS, &op);
-    if (r < 0) {
+    if (r < 0 && r != -EOPNOTSUPP && r != -ENOENT) {
       lderr(cct) << "error updating status image: " << image_id << ": "
                  << cpp_strerror(r) << dendl;
       int r2 = cls_client::trash_remove(&io_ctx, image_id);
@@ -1667,7 +1667,7 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
       librados::ObjectWriteOperation op1;
       cls_client::status_rename_image(&op1, image_id, image_name);
       r = io_ctx.operate(RBD_STATUS, &op1);
-      if (r < 0) {
+      if (r < 0 && r != -EOPNOTSUPP && r != -ENOENT) {
         lderr(cct) << "error updating status image: " << image_id << " name: "
                    << cpp_strerror(r) << dendl;
         return r;
@@ -1679,7 +1679,7 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
     librados::ObjectWriteOperation op2;
     cls_client::status_update_state(&op2, image_id, state, mask);
     r = io_ctx.operate(RBD_STATUS, &op2);
-    if (r < 0) {
+    if (r < 0 && r != -EOPNOTSUPP && r != -ENOENT) {
       lderr(cct) << "error updating status image :" << image_id << " state: "
                  << cpp_strerror(r) << dendl;
       return r;

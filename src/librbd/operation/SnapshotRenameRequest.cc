@@ -63,6 +63,13 @@ bool SnapshotRenameRequest<I>::should_complete(int r) {
   CephContext *cct = image_ctx.cct;
   ldout(cct, 5) << this << " " << __func__ << ": state=" << m_state << ", "
                 << "r=" << r << dendl;
+
+  if (m_state == STATE_STATUS_UPDATE) {
+    if (r == -EOPNOTSUPP || r == -ENOENT) {
+      r = 0;
+    }
+  }
+
   if (r < 0) {
     if (r == -EEXIST) {
       ldout(cct, 1) << "snapshot already exists" << dendl;

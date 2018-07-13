@@ -244,7 +244,7 @@ Context *SnapshotCreateRequest<I>::handle_status_add_snapshot(int *result) {
   CephContext *cct = image_ctx.cct;
   ldout(cct, 5) << this << " " << __func__ << ": r=" << *result << dendl;
 
-  if (*result < 0) {
+  if (*result < 0 && *result != -EOPNOTSUPP && *result != -ENOENT) {
     save_result(result);
     send_remove_snapshot();
     return nullptr;

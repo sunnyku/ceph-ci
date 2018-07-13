@@ -433,7 +433,7 @@ template<typename I>
 void RemoveRequest<I>::handle_status_remove_child(int r) {
   ldout(m_cct, 20) << "r=" << r << dendl;
 
-  if (r < 0 && r != -ENOENT) {
+  if (r < 0 && r != -EOPNOTSUPP && r != -ENOENT) {
     lderr(m_cct) << "error removing child from status: " << cpp_strerror(r)
                  << dendl;
     send_close_image(r);;
@@ -462,7 +462,7 @@ template<typename I>
 void RemoveRequest<I>::handle_status_remove_image(int r) {
   ldout(m_cct, 20) << "r=" << r << dendl;
 
-  if (r < 0 && r != -ENOENT) {
+  if (r < 0 && r != -EOPNOTSUPP && r != -ENOENT) {
     lderr(m_cct) << "error removing status image: " << cpp_strerror(r)
                  << dendl;
     send_close_image(r);

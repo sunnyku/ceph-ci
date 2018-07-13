@@ -66,6 +66,13 @@ bool SnapshotRemoveRequest<I>::should_complete(int r) {
   CephContext *cct = image_ctx.cct;
   ldout(cct, 5) << this << " " << __func__ << ": state=" << m_state << ", "
                 << "r=" << r << dendl;
+
+  if (m_state == STATE_STATUS_REMOVE_SNAPSHOT) {
+    if (r == -EOPNOTSUPP || r == -ENOENT) {
+      r = 0;
+    }
+  }
+
   r = filter_state_return_code(r);
   if (r < 0) {
     return true;

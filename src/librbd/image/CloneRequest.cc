@@ -268,7 +268,11 @@ template <typename I>
 void CloneRequest<I>::handle_status_add_child(int r) {
   ldout(m_cct, 20) << this << " " << __func__ << " r=" << r << dendl;
 
-  if (r < 0) {
+  // r == -EOPNOTSUPP -> server side has upgraded to a version w/o status feature
+  // r == -ENOENT -> server supports status feature but the RBD_STATUS object
+  // does not exist, one possible cause: in a cinder HA pair environment,
+  // the master and slave have different versions w/ or w/o status feature
+  if (r < 0 && r != -EOPNOTSUPP && r != -ENOENT ) {
     lderr(m_cct) << "error adding child to status: " << cpp_strerror(r) << dendl;
     m_r_saved = r;
     return send_close();

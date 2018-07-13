@@ -65,6 +65,14 @@ bool FlattenRequest<I>::should_complete(int r) {
   I &image_ctx = this->m_image_ctx;
   CephContext *cct = image_ctx.cct;
   ldout(cct, 5) << this << " should_complete: " << " r=" << r << dendl;
+
+  if (m_state == STATE_STATUS_REMOVE_PARENT ||
+      m_state == STATE_STATUS_REMOVE_CHILD) {
+    if (r == -EOPNOTSUPP || r == -ENOENT) {
+      r = 0;
+    }
+  }
+
   if (r == -ERESTART) {
     ldout(cct, 5) << "flatten operation interrupted" << dendl;
     return true;
