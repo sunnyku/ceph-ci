@@ -1058,6 +1058,7 @@ map<pg_shard_t, pg_info_t>::const_iterator PG::find_best_info(
       max_last_epoch_started_found = i->second.history.last_epoch_started;
     }
     if (!i->second.is_incomplete() &&
+        !i->second.is_not_fully_async_recovered() &&
 	max_last_epoch_started_found < i->second.last_epoch_started) {
       max_last_epoch_started_found = i->second.last_epoch_started;
     }
@@ -1125,6 +1126,20 @@ map<pg_shard_t, pg_info_t>::const_iterator PG::find_best_info(
       continue;
     }
 
+    auto best_is_complete =
+      best->second.last_update == best->second.last_complete;
+    auto p_is_complete = p->second.last_update == p->second.last_complete;
+    if (p_is_complete && !best_is_complete) {
+      dout(10) << "calc_acting prefer osd." << p->first
+               << " because it is complete" << dendl;
+      best = p;
+      continue;
+    } else if (!p_is_complete && best_is_complete) {
+      dout(10) << "skipping osd." << p->first
+               << " because it is not complete while best is" << dendl;
+      continue;
+    }
+    // both are complete or have missing
     // prefer current primary (usually the caller), all things being equal
     if (p->first == pg_whoami) {
       dout(10) << "calc_acting prefer osd." << p->first
@@ -1254,6 +1269,10 @@ void PG::calc_replicated_acting(
         auth_log_shard->second.last_update;
       bool up_primary_is_complete = up_primary_info.last_complete ==
         up_primary_info.last_update;
+      uint64_t min_entries = cct->_conf->get_val<uint64_t>(
+        "osd_force_auth_log_shard_primary_min_pg_log_entries");
+      bool force_auth_log_shard_primary = auth_log_shard_is_complete &&
+        min_entries == 0;
       if (up_primary_is_complete &&
           up_primary_info.last_update == auth_log_shard->second.last_update) {
         ss << " up_primary " << up_primary
@@ -1266,11 +1285,13 @@ void PG::calc_replicated_acting(
            << " selected as primary because restrict_to_up_acting is set true"
            << std::endl;
         primary = up_primary_it;
-      } else if (!auth_log_shard_is_complete) {
-        ss << " up_primary " << up_primary
-           << " selected as primary because auth_log_shard itself is not complete"
+      } else if (force_auth_log_shard_primary) {
+        ss << " up_primary "<< up_primary
+           << " is not complete or has missing log entries, "
+           << " will force auth log shard osd." << auth_log_shard_id
+           << " to be primary"
            << std::endl;
-        primary = up_primary_it;
+        primary = auth_log_shard;
       } else {
         // use the approximate magnitude of the difference in length of
         // logs as the cost of recovery
