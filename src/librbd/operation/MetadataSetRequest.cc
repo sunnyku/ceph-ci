@@ -32,6 +32,12 @@ bool MetadataSetRequest<I>::should_complete(int r) {
   CephContext *cct = image_ctx.cct;
   ldout(cct, 20) << this << " " << __func__ << "r=" << r << dendl;
 
+  if (m_state == STATE_STATUS_UPDATE) {
+    if (r == -EOPNOTSUPP || r == -ENOENT) {
+      r = 0;
+    }
+  }
+
   if (r < 0) {
     lderr(cct) << "encountered error: " << cpp_strerror(r) << dendl;
   }

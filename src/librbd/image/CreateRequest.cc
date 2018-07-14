@@ -543,7 +543,7 @@ template<typename I>
 void CreateRequest<I>::handle_status_add_image(int r) {
   ldout(m_cct, 20) << "r=" << r << dendl;
 
-  if (r < 0) {
+  if (r < 0 && r != -EOPNOTSUPP && r != -ENOENT) {
     lderr(m_cct) << "error send_status_add_image: "
                  << cpp_strerror(r) << dendl;
     m_r_saved = r;
@@ -923,7 +923,7 @@ template<typename I>
 void CreateRequest<I>::handle_remove_from_status(int r) {
   ldout(m_cct, 20) << "r=" << r << dendl;
 
-  if (r < 0) {
+  if (r < 0 && r != -EOPNOTSUPP && r != -ENOENT) {
     lderr(m_cct) << "error cleaning up image from rbd_status object "
                  << "after creation failed: " << cpp_strerror(r) << dendl;
   }

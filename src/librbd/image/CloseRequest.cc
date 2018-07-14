@@ -113,8 +113,10 @@ void CloseRequest<I>::handle_status_update_shutdown(int r) {
   CephContext *cct = m_image_ctx->cct;
   ldout(cct, 10) << this << " " << __func__ << ": r=" << r << dendl;
 
-  save_result(r);
-  if (r < 0) {
+  if (r != -EOPNOTSUPP && r != -ENOENT) {
+    save_result(r);
+  }
+  if (r < 0 && r != -EOPNOTSUPP && r != -ENOENT) {
     lderr(cct) << "failed to shut down status update: " << cpp_strerror(r)
                << dendl;
   }

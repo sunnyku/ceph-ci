@@ -562,7 +562,7 @@ struct C_InvalidateCache : public Context {
   }
 
   void ImageCtx::handle_status_update(int r) {
-    if (r < 0) {
+    if (r < 0 && r != -EOPNOTSUPP && r != -ENOENT) {
       lderr(cct) << "failed to update image_status: "
           << cpp_strerror(r) << dendl;
     }

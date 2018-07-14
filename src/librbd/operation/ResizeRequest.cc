@@ -396,7 +396,7 @@ Context *ResizeRequest<I>::handle_status_update_size(int *result) {
   CephContext *cct = image_ctx.cct;
   ldout(cct, 5) << this << " " << __func__ << ": r=" << *result << dendl;
 
-  if (*result < 0) {
+  if (*result < 0 && *result != -EOPNOTSUPP && *result != -ENOENT) {
     lderr(cct) << "failed to update status: " << cpp_strerror(*result)
                << dendl;
     image_ctx.io_work_queue->unblock_writes();
