@@ -1807,6 +1807,12 @@ struct object_stat_sum_t {
       num_keys_recovered < 0;
   }
 
+  bool over_limit(int64_t max_kbs) const {
+    return (num_rd_kb > max_kbs && num_rd > max_kbs / 100) ||
+           (num_wr_kb > max_kbs && num_wr > max_kbs / 100) ||
+           (num_bytes_recovered > max_kbs && num_objects_recovered > max_kbs / 100);
+  }
+
   void dump(Formatter *f) const;
   void padding_check() {
     static_assert(

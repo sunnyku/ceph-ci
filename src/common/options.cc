@@ -4444,6 +4444,11 @@ std::vector<Option> get_global_options() {
     .set_min(1)
     .set_description(""),
 
+    Option("mgr_osd_max_kilobytes_per_sec", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(500000)
+    .set_min(100000)
+    .set_description(""),
+
     Option("mgr_recovery_balancer_min_objects", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(500)
     .set_description("for single osd, enable adjustment unless there are at least these many objects to recover"),
