@@ -2369,11 +2369,12 @@ void PGMap::update_delta(
 
   if ((double)delta_t < period ||
       d.stats.sum.is_negative() ||
-      d.stats.sum.over_limit((int64_t)sum_limit))
+      d.stats.sum.over_limit((int64_t)sum_limit)) {
     dout(10) << " pool filter out: delta_t " << (double)delta_t
              << ", sum_limit " << (int64_t)sum_limit
              << "KB, num_osd " << num_osd << dendl;
     return;
+  }
 
   /* Aggregate current delta, and take out the last seen delta (if any) to
    * average it out.
