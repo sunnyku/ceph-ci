@@ -9973,8 +9973,12 @@ void OSDShard::prime_merges(const OSDMapRef& as_of_osdmap,
       // have been adjusted.
       pg_history_t history;
       history.same_interval_since = epoch - 1;
-      history.last_epoch_started = epoch - 1;
-      history.last_epoch_clean = epoch - 1;
+      // leave these zeroed since we do not know the precist
+      // last_epoch_started value that the real PG instances have.  If
+      // we are greater than they are, we will trigger an 'incomplete'
+      // state (see choose_acting).
+      history.last_epoch_started = 0;
+      history.last_epoch_clean = 0;
       PGCreateInfo cinfo(pgid, epoch - 1,
 			 history, PastIntervals(), false);
       PGRef pg = osd->handle_pg_create_info(shard_osdmap, &cinfo);
