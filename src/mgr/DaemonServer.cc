@@ -2127,7 +2127,7 @@ void DaemonServer::send_report()
 void DaemonServer::adjust_pgs()
 {
   dout(20) << dendl;
-  unsigned max = std::max<int64_t>(1, g_conf->mon_osd_max_creating_pgs);
+  unsigned max = std::max<int64_t>(1, g_conf()->mon_osd_max_creating_pgs);
 
   map<string,unsigned> pg_num_to_set;
   map<string,unsigned> pgp_num_to_set;
