@@ -3262,7 +3262,7 @@ bool OSDMonitor::prepare_pg_ready_to_merge(MonOpRequestRef op)
 
   pending_inc.new_pools[m->pgid.pool()] = p;
 
-  auto prob = g_conf->get_val<double>("mon_inject_pg_merge_bounce_probability");
+  auto prob = g_conf().get_val<double>("mon_inject_pg_merge_bounce_probability");
   if (prob > 0 && prob > (double)(rand() % 1000)/1000.0) {
     derr << __func__ << " injecting pg merge pg_num bounce" << dendl;
     auto n = new MMonCommand(mon->monmap->get_fsid());
