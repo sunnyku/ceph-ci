@@ -6940,11 +6940,11 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
       }
       int expected_osds = std::min(p.get_pg_num(), osdmap.get_num_osds());
       int64_t new_pgs = n - p.get_pg_num_target();
-      if (new_pgs > g_conf->mon_osd_max_split_count * expected_osds) {
+      if (new_pgs > g_conf()->mon_osd_max_split_count * expected_osds) {
 	ss << "specified pg_num " << n << " is too large (creating "
 	   << new_pgs << " new PGs on ~" << expected_osds
 	   << " OSDs exceeds per-OSD max with mon_osd_max_split_count of "
-	   << g_conf->mon_osd_max_split_count << ')';
+	   << g_conf()->mon_osd_max_split_count << ')';
 	return -E2BIG;
       }
     } else {
