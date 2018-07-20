@@ -2577,6 +2577,22 @@ int RGWUserAdminOp_Key::remove(RGWRados *store, RGWUserAdminOpState& op_state,
   if (ret < 0)
     return ret;
 
+  ret = user.info(info, NULL);
+  if (ret < 0)
+    return ret;
+
+  flusher.start(0);
+
+  int key_type = op_state.get_key_type();
+
+  if (key_type == KEY_TYPE_SWIFT)
+    dump_swift_keys_info(flusher.get_formatter(), info);
+
+  else if (key_type == KEY_TYPE_S3)
+    dump_access_keys_info(flusher.get_formatter(), info);
+
+  flusher.flush();
+
   return 0;
 }
 
