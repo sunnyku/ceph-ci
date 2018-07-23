@@ -5220,6 +5220,8 @@ int PrimaryLogPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
   const hobject_t& soid = oi.soid;
   bool skip_data_digest =
     osd->store->has_builtin_csum() && g_conf->osd_skip_data_digest;
+  double r = rand() / (double)RAND_MAX;
+  bool skip_read = r < g_conf->get_val<double>("osd_skip_read_ratio");
 
   PGTransaction* t = ctx->op_t.get();
 
@@ -5324,7 +5326,13 @@ int PrimaryLogPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	if (!ctx->data_off) {
 	  ctx->data_off = op.extent.offset;
 	}
-	result = do_read(ctx, osd_op);
+	if (skip_read) {
+	  ctx->delta_stats.num_rd_kb += SHIFT_ROUND_UP(op.extent.length, 10);
+	  ctx->delta_stats.num_rd++;
+	  result = 0;
+	} else {
+	  result = do_read(ctx, osd_op);
+	}
       } else {
 	result = op_finisher->execute();
       }

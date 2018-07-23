@@ -2030,6 +2030,10 @@ std::vector<Option> get_global_options() {
     .set_default(false)
     .set_description("Do not trust stored data_digest (due to previous bug or corruption)"),
 
+    Option("osd_skip_read_ratio", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(0)
+    .set_description(""),
+
     Option("osd_op_queue", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("dmc")
     .set_enum_allowed( { "wpq", "prioritized", "mclock_opclass", "mclock_client", "dmc", "debug_random" } )
