@@ -1975,6 +1975,10 @@ std::vector<Option> get_global_options() {
     .set_default(true)
     .set_description(""),
 
+    Option("osd_skip_read_ratio", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(0)
+    .set_description(""),
+
     Option("osd_op_queue", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("dmc")
     .set_enum_allowed( { "wpq", "prioritized", "mclock_opclass", "mclock_client", "dmc", "debug_random" } )
