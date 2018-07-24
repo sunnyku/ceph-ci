@@ -1930,6 +1930,10 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx, bufferlist *in, bufferlis
     if (ret < 0 && ret != -ENOENT)
       return -EINVAL;
 
+    if (ret == -ENOENT) {
+      continue;
+    }
+
     if (cur_disk_bl.length()) {
       bufferlist::iterator cur_disk_iter = cur_disk_bl.begin();
       try {
@@ -1970,9 +1974,9 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx, bufferlist *in, bufferlis
       switch(op) {
       case CEPH_RGW_REMOVE:
         CLS_LOG(10, "CEPH_RGW_REMOVE name=%s instance=%s\n", cur_change.key.name.c_str(), cur_change.key.instance.c_str());
-	ret = cls_cxx_map_remove_key(hctx, cur_change_key);
-	if (ret < 0)
-	  return ret;
+        ret = cls_cxx_map_remove_key(hctx, cur_change_key);
+        if (ret < 0)
+          return ret;
         if (log_op && cur_disk.exists) {
           ret = log_index_operation(hctx, cur_disk.key, CLS_RGW_OP_DEL, cur_disk.tag, cur_disk.meta.mtime,
                                     cur_disk.ver, CLS_RGW_STATE_COMPLETE, header.ver, header.max_marker, 0, NULL, NULL);
@@ -1983,18 +1987,18 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx, bufferlist *in, bufferlis
         }
         break;
       case CEPH_RGW_UPDATE:
-	if (!cur_disk.exists) {
-	  // this update would only have been sent by the rgw client
-	  // if the rgw_bucket_dir_entry existed, however between that
-	  // check and now the entry has diappeared, so we were likely
-	  // in the midst of a delete op, and we will not recreate the
-	  // entry
-	  CLS_LOG(10,
-		  "CEPH_RGW_UPDATE not applied because rgw_bucket_dir_entry"
-		  " no longer exists\n");
-	  break;
-	}
-
+        /*if (!cur_disk.exists) {
+          // this update would only have been sent by the rgw client
+          // if the rgw_bucket_dir_entry existed, however between that
+          // check and now the entry has diappeared, so we were likely
+          // in the midst of a delete op, and we will not recreate the
+          // entry
+          CLS_LOG(10,
+                  "CEPH_RGW_UPDATE not applied because rgw_bucket_dir_entry"
+                  " no longer exists\n");
+          break;
+        }
+        */
         CLS_LOG(10, "CEPH_RGW_UPDATE name=%s instance=%s total_entries: %" PRId64 " -> %" PRId64 "\n",
                 cur_change.key.name.c_str(), cur_change.key.instance.c_str(), stats.num_entries, stats.num_entries + 1);
         stats.num_entries++;
