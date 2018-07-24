@@ -2659,8 +2659,9 @@ void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
     // combine stats
     info.stats.add(source->info.stats);
 
-    // pull up last_update
+    // pull up last_update, history
     info.last_update = std::max(info.last_update, source->info.last_update);
+    info.history.merge(source->info.history);
   }
 
   // merge_collection does this, but maybe all of our sources were missing.
