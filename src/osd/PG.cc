@@ -2662,6 +2662,14 @@ void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
     // pull up last_update, history
     info.last_update = std::max(info.last_update, source->info.last_update);
     info.history.merge(source->info.history);
+
+    // adopt source's PastIntervals if target has none.  we can do this since
+    // pgp_num has been reduced prior to the merge, so the OSD mappings for
+    // the PGs are identical.
+    if (past_intervals.empty() && !source->past_intervals.empty()) {
+      dout(10) << __func__ << " taking source's past_intervals" << dendl;
+      past_intervals = source->past_intervals;
+    }
   }
 
   // merge_collection does this, but maybe all of our sources were missing.
