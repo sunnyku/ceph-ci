@@ -3497,7 +3497,10 @@ int OSD::shutdown()
 #ifdef PG_DEBUG_REFS
   service.dump_live_pgids();
 #endif
+
+  osd_lock.Unlock();
   cct->_conf->remove_observer(this);
+  osd_lock.Lock();
 
   dout(10) << "syncing store" << dendl;
   enable_disable_fuse(true);
@@ -9963,6 +9966,7 @@ const char** OSD::get_tracked_conf_keys() const
 void OSD::handle_conf_change(const struct md_config_t *conf,
 			     const std::set <std::string> &changed)
 {
+  Mutex::Locker l(osd_lock);
   if (changed.count("osd_max_backfills")) {
     service.local_reserver.set_max(cct->_conf->osd_max_backfills);
     service.remote_reserver.set_max(cct->_conf->osd_max_backfills);
