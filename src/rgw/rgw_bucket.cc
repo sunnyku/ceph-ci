@@ -1166,6 +1166,7 @@ int RGWBucket::check_object_index(RGWBucketAdminOpState& op_state,
   return 0;
 }
 
+static int bucket_stats(RGWRados *store, const std::string& tenant_name, std::string&  bucket_name, Formatter *formatter);
 
 int RGWBucket::check_index(RGWBucketAdminOpState& op_state,
 			   RGWFormatterFlusher& flusher,
@@ -1178,6 +1179,8 @@ int RGWBucket::check_index(RGWBucketAdminOpState& op_state,
       set_err_msg(err_msg, "failed to rebuild index err=" + cpp_strerror(-r));
       return r;
     }
+    bucket_stats(store, bucket_info.owner.tenant, bucket_info.bucket.name,
+		 flusher.get_formatter());
   } else {
     map<RGWObjCategory, RGWStorageStats> existing_stats;
     map<RGWObjCategory, RGWStorageStats> calculated_stats;
