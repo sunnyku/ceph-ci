@@ -2685,6 +2685,16 @@ void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
   // merge logs
   pg_log.merge_from(log_from, info.last_update);
 
+  // make sure we have a meaningful last_epoch_started/clean (if we were a
+  // placeholder)
+  if (info.last_epoch_started == 0) {
+    info.history.last_epoch_started =
+      info.history.last_epoch_clean = past_intervals.get_bounds().first;
+    dout(10) << __func__
+	     << " set last_epoch_started/clean based on past intervals"
+	     << dendl;
+  }
+
   dirty_info = true;
   dirty_big_info = true;
 }
