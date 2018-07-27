@@ -2659,9 +2659,8 @@ void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
     // combine stats
     info.stats.add(source->info.stats);
 
-    // pull up last_update, history
+    // pull up last_update
     info.last_update = std::max(info.last_update, source->info.last_update);
-    info.history.merge(source->info.history);
 
     // adopt source's PastIntervals if target has none.  we can do this since
     // pgp_num has been reduced prior to the merge, so the OSD mappings for
