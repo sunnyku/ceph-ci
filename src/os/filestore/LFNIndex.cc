@@ -270,6 +270,7 @@ int LFNIndex::remove_objects(const vector<string> &dir,
 int LFNIndex::move_objects(const vector<string> &from,
 			   const vector<string> &to)
 {
+  dout(20) << __func__ << " from " << from << " to " << to << dendl;
   map<string, ghobject_t> to_move;
   int r;
   r = list_objects(from, 0, NULL, &to_move);
@@ -337,6 +338,7 @@ int LFNIndex::move_subdir(
   string dir
   )
 {
+  lgeneric_dout(g_ceph_context,20) << __func__ << " path " << path << " dir " << dir << dendl;
   vector<string> sub_path(path.begin(), path.end());
   sub_path.push_back(dir);
   string from_path(from.get_full_path_subdir(sub_path));
