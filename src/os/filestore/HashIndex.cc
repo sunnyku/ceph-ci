@@ -538,11 +538,16 @@ int HashIndex::_lookup(const ghobject_t &oid,
   int exists;
   while (1) {
     int r = path_exists(*path, &exists);
-    if (r < 0)
+    if (r < 0) {
+      dout(20) << __func__ << " path_exists failed with " << cpp_strerror(r)
+	       << dendl;
       return r;
+    }
     if (!exists) {
-      if (path->empty())
-	return -ENOENT;
+      if (path->empty()) {
+	dout(20) << __func__ << " !exists and path->empty()" << dendl;
+      	return -ENOENT;
+      }
       path->pop_back();
       break;
     }
