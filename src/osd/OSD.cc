@@ -2735,6 +2735,31 @@ int OSD::init()
   service.publish_superblock(superblock);
   service.max_oldest_map = superblock.oldest_map;
 
+  for (auto& shard : shards) {
+    for (auto& i : shard->pg_slots) {
+      PGRef pg = i.second->pg;
+
+      pg->lock();
+      set<pair<spg_t,epoch_t>> new_children;
+      map<spg_t,epoch_t> merge_pgs;
+      service.identify_splits_and_merges(pg->get_osdmap(), osdmap, pg->pg_id,
+					 &new_children, &merge_pgs);
+      if (!new_children.empty()) {
+	for (auto shard : shards) {
+	  shard->prime_splits(osdmap, &new_children);
+	}
+	assert(new_children.empty());
+      }
+      if (!merge_pgs.empty()) {
+	for (auto shard : shards) {
+	  shard->prime_merges(osdmap, &merge_pgs);
+	}
+	assert(merge_pgs.empty());
+      }
+      pg->unlock();
+    }
+  }
+
   osd_op_tp.start();
   command_tp.start();
 
@@ -4019,23 +4044,6 @@ void OSD::load_pgs()
       pg->unlock();
       recursive_remove_collection(cct, store, pgid, *it);
       continue;
-    }
-
-    set<pair<spg_t,epoch_t>> new_children;
-    map<spg_t,epoch_t> merge_pgs;
-    service.identify_splits_and_merges(pg->get_osdmap(), osdmap, pg->pg_id,
-				       &new_children, &merge_pgs);
-    if (!new_children.empty()) {
-      for (auto shard : shards) {
-	shard->prime_splits(osdmap, &new_children);
-      }
-      assert(new_children.empty());
-    }
-    if (!merge_pgs.empty()) {
-      for (auto shard : shards) {
-	shard->prime_merges(osdmap, &merge_pgs);
-      }
-      assert(merge_pgs.empty());
     }
 
     pg->reg_next_scrub();
