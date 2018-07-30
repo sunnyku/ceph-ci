@@ -8451,6 +8451,15 @@ void OSD::split_pgs(
 
     child->finish_split_stats(*stat_iter, rctx->transaction);
     child->unlock();
+
+    // kick child
+    enqueue_peering_evt(
+      *i,
+      PGPeeringEventRef(
+	std::make_shared<PGPeeringEvent>(
+	  nextmap->get_epoch(),
+	  nextmap->get_epoch(),
+	  NullEvt())));
   }
   assert(stat_iter != updated_stats.end());
   parent->finish_split_stats(*stat_iter, rctx->transaction);
