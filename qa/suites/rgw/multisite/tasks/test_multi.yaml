@@ -14,6 +14,10 @@ tasks:
       valgrind: [--tool=memcheck]
     c2.client.1:
       valgrind: [--tool=memcheck]
+- netem:
+    clients: [c1.client.0]
+    dst_client: [c2.client.0]
+    delay_range: [10ms, 20ms]
 - rgw-multisite:
 - rgw-multisite-tests:
     config:
