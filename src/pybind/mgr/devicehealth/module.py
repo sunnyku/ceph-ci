@@ -286,8 +286,7 @@ class Module(MgrModule):
         ioctx = self.open_connection()
         res = {}
         with rados.ReadOpCtx() as op:
-            iter, ret = ioctx.get_omap_vals(op, "", sample or '', 500) # fixme
-            assert ret == 0
+            iter = ioctx.get_omap_vals(op, "", sample or '', 500) # fixme
             try:
                 ioctx.operate_read_op(op, devid)
                 for key, value in list(iter):
