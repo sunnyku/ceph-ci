@@ -5451,6 +5451,12 @@ void OSD::_preboot(epoch_t oldest, epoch_t newest)
     send_full_update();
   } else if (osdmap->get_epoch() >= oldest - 1 &&
 	     osdmap->get_epoch() + cct->_conf->osd_map_message_max > newest) {
+
+    dout(10) << __func__ << " not yet active; waiting for peering work to drain" << dendl;
+    for (auto shard : shards) {
+      shard->wait_min_pg_epoch(osdmap->get_epoch());
+    }
+
     _send_boot();
     return;
   }
@@ -7835,12 +7841,7 @@ void OSD::_committed_osd_maps(epoch_t first, epoch_t last, MOSDMap *m)
   if (is_active() || is_waiting_for_healthy())
     maybe_update_heartbeat_peers();
 
-  if (!is_active()) {
-    dout(10) << " not yet active; waiting for peering work to drain" << dendl;
-    for (auto shard : shards) {
-      shard->wait_min_pg_epoch(last);
-    }
-  } else {
+  if (is_active()) {
     activate_map();
   }
 
