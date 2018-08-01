@@ -1792,6 +1792,7 @@ protected:
     ThreadPool::TPHandle& handle);
 
   friend class PG;
+  friend class OSDShard;
   friend class PrimaryLogPG;
 
 

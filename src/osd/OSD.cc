@@ -8450,15 +8450,6 @@ void OSD::split_pgs(
 
     child->finish_split_stats(*stat_iter, rctx->transaction);
     child->unlock();
-
-    // kick child
-    enqueue_peering_evt(
-      *i,
-      PGPeeringEventRef(
-	std::make_shared<PGPeeringEvent>(
-	  nextmap->get_epoch(),
-	  nextmap->get_epoch(),
-	  NullEvt())));
   }
   assert(stat_iter != updated_stats.end());
   parent->finish_split_stats(*stat_iter, rctx->transaction);
@@ -10011,6 +10002,7 @@ void OSDShard::prime_merges(const OSDMapRef& as_of_osdmap,
 
 void OSDShard::register_and_wake_split_child(PG *pg)
 {
+  epoch_t epoch;
   {
     Mutex::Locker l(shard_lock);
     dout(10) << pg->pg_id << " " << pg << dendl;
@@ -10023,7 +10015,7 @@ void OSDShard::register_and_wake_split_child(PG *pg)
     assert(!slot->waiting_for_split.empty());
     _attach_pg(slot, pg);
 
-    epoch_t epoch = pg->get_osdmap_epoch();
+    epoch = pg->get_osdmap_epoch();
     assert(slot->waiting_for_split.count(epoch));
     slot->waiting_for_split.erase(epoch);
     if (slot->waiting_for_split.empty()) {
@@ -10033,6 +10025,16 @@ void OSDShard::register_and_wake_split_child(PG *pg)
 	       << slot->waiting_for_split << dendl;
     }
   }
+
+  // kick child to ensure it pulls up to the latest osdmap
+  osd->enqueue_peering_evt(
+    pg->pg_id,
+    PGPeeringEventRef(
+      std::make_shared<PGPeeringEvent>(
+	epoch,
+	epoch,
+	NullEvt())));
+
   sdata_wait_lock.Lock();
   sdata_cond.SignalOne();
   sdata_wait_lock.Unlock();
