@@ -139,6 +139,16 @@ BOOST_FUSION_ADAPT_STRUCT(StringConstraint,
 
 // </magic>
 
+void MonCapGrant::parse_network()
+{
+  sockaddr_storage ss;
+  network_valid = ::parse_network(network.c_str(), &ss, &network_mask);
+  if (network_valid) {
+    network_parsed.set_type(entity_addr_t::TYPE_LEGACY);
+    network_parsed.set_sockaddr((sockaddr *)&ss);
+  }
+}
+
 void MonCapGrant::expand_profile(int daemon_type, const EntityName& name) const
 {
   // only generate this list once
@@ -408,30 +418,26 @@ bool MonCap::is_capable(
 		     << dendl;
 
     if (p->network.size()) {
-      sockaddr_storage ss;
-      unsigned mask = 0;
-      if (!parse_network(p->network.c_str(), &ss, &mask)) {
+      if (!p->network_valid) {
 	continue;
       }
-      entity_addr_t n;
-      n.set_type(entity_addr_t::TYPE_LEGACY);
-      n.set_sockaddr((sockaddr *)&ss);
-      if (cct)
-	ldout(cct, 20) << __func__ << " network " << n << " mask " << mask
-		       << dendl;
-      if (addr.get_family() != n.get_family()) {
+      if (addr.get_family() != p->network_parsed.get_family()) {
 	continue;
       }
-      switch (n.get_family()) {
+      switch (p->network_parsed.get_family()) {
       case AF_INET:
         {
 	  struct in_addr a, b;
-	  netmask_ipv4(&((sockaddr_in*)n.get_sockaddr())->sin_addr, mask, &a);
-	  netmask_ipv4(&((sockaddr_in*)addr.get_sockaddr())->sin_addr, mask, &b);
+	  netmask_ipv4(
+	    &((sockaddr_in*)p->network_parsed.get_sockaddr())->sin_addr,
+	    p->network_mask, &a);
+	  netmask_ipv4(
+	    &((sockaddr_in*)addr.get_sockaddr())->sin_addr,
+	    p->network_mask, &b);
 	  if (memcmp(&a, &b, sizeof(a)) != 0) {
 	    if (cct)
 	      ldout(cct, 20) << __func__ << " addr " << addr
-			     << " not in network " << n << dendl;
+			     << " not in network " << p->network << dendl;
 	    continue;
 	  }
 	}
@@ -439,13 +445,16 @@ bool MonCap::is_capable(
       case AF_INET6:
         {
 	  struct in6_addr a, b;
-	  netmask_ipv6(&((sockaddr_in6*)n.get_sockaddr())->sin6_addr, mask, &a);
-	  netmask_ipv6(&((sockaddr_in6*)addr.get_sockaddr())->sin6_addr, mask,
-		       &b);
+	  netmask_ipv6(
+	    &((sockaddr_in6*)p->network_parsed.get_sockaddr())->sin6_addr,
+	    p->network_mask, &a);
+	  netmask_ipv6(
+	    &((sockaddr_in6*)addr.get_sockaddr())->sin6_addr,
+	    p->network_mask, &b);
 	  if (memcmp(&a, &b, sizeof(a)) != 0) {
 	    if (cct)
 	      ldout(cct, 20) << __func__ << " addr " << addr
-			     << " not in network " << n << dendl;
+			     << " not in network " << p->network << dendl;
 	    continue;
 	  }
 	}
@@ -453,7 +462,7 @@ bool MonCap::is_capable(
       default:
 	if (cct)
 	  ldout(cct, 20) << __func__ << " unrecognized family for network "
-			 << n << dendl;
+			 << p->network_parsed << dendl;
 	continue;
       }
     }
@@ -639,6 +648,9 @@ bool MonCap::parse(const string& str, ostream *err)
   //bool r = qi::phrase_parse(iter, end, g, ascii::space, foo);
   if (r && iter == end) {
     text = str;
+    for (auto& g : grants) {
+      g.parse_network();
+    }
     return true;
   }
 
