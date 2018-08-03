@@ -3129,6 +3129,17 @@ void FileStore::_do_transaction(
       }
       break;
 
+    case Transaction::OP_MERGE_COLLECTION:
+      {
+        coll_t cid = i.get_cid(op->cid);
+        uint32_t bits = op->split_bits;
+        coll_t dest = i.get_cid(op->dest_cid);
+        tracepoint(objectstore, merge_coll_enter, osr_name);
+        r = _merge_collection(cid, bits, dest, spos);
+        tracepoint(objectstore, merge_coll_exit, r);
+      }
+      break;
+
     case Transaction::OP_SETALLOCHINT:
       {
         const coll_t &_cid = i.get_cid(op->cid);
@@ -5714,6 +5725,78 @@ int FileStore::_omap_setheader(const coll_t& cid, const ghobject_t &hoid,
       return r;
   }
   return object_map->set_header(hoid, bl, &spos);
+}
+
+int FileStore::_merge_collection(const coll_t& cid,
+				 uint32_t bits,
+				 coll_t dest,
+				 const SequencerPosition &spos)
+{
+  dout(15) << __FUNC__ << ": " << cid << " " << dest
+	   << " bits " << bits << dendl;
+  int r = 0;
+
+  if (!collection_exists(cid)) {
+    dout(2) << __FUNC__ << ": " << cid << " DNE" << dendl;
+    assert(replaying);
+    return 0;
+  }
+  if (!collection_exists(dest)) {
+    dout(2) << __FUNC__ << ": " << dest << " DNE" << dendl;
+    assert(replaying);
+    return 0;
+  }
+
+  // set bits
+  if (_check_replay_guard(cid, spos) > 0)
+    _collection_set_bits(dest, bits);
+
+  // move everything
+  spg_t pgid;
+  bool is_pg = dest.is_pg(&pgid);
+  assert(is_pg);
+  r = _split_collection(cid, bits, pgid.pgid.ps(), dest, spos);
+  if (r < 0)
+    return r;
+
+  // temp too!
+  r = _split_collection(cid.get_temp(), bits, pgid.pgid.ps(), dest.get_temp(),
+			spos);
+  if (r < 0)
+    return r;
+
+  // remove source
+  if (_check_replay_guard(cid, spos) > 0)
+    r = _destroy_collection(cid);
+
+  if (!r && cct->_conf->filestore_debug_verify_split) {
+    vector<ghobject_t> objects;
+    ghobject_t next;
+    while (1) {
+      collection_list(
+	dest,
+	next, ghobject_t::get_max(),
+	get_ideal_list_max(),
+	&objects,
+	&next);
+      if (objects.empty())
+	break;
+      for (vector<ghobject_t>::iterator i = objects.begin();
+	   i != objects.end();
+	   ++i) {
+	if (!i->match(bits, pgid.pgid.ps())) {
+	  dout(20) << __FUNC__ << ": " << *i << " does not belong in "
+		   << cid << dendl;
+	  assert(i->match(bits, pgid.pgid.ps()));
+	}
+      }
+      objects.clear();
+    }
+  }
+
+  dout(15) << __FUNC__ << ": " << cid << " " << dest << " bits " << bits
+	   << " = " << r << dendl;
+  return r;
 }
 
 int FileStore::_split_collection(const coll_t& cid,
