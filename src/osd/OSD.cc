@@ -7460,6 +7460,9 @@ void OSD::handle_osd_map(MOSDMap *m)
     assert(max_lag > 0);
     if (osdmap->get_epoch() > max_lag) {
       epoch_t need = osdmap->get_epoch() - max_lag;
+      // NOTE: we are dropping osd_lock here.  we are relying on a single
+      // thread feeding handle_osd_map for this to not cause weird issues.
+      osd_lock.Unlock();
       for (auto shard : shards) {
 	epoch_t min = shard->get_min_pg_epoch();
 	if (need > min) {
@@ -7471,6 +7474,7 @@ void OSD::handle_osd_map(MOSDMap *m)
 	  shard->wait_min_pg_epoch(need);
 	}
       }
+      osd_lock.Lock();
     }
   }
 
