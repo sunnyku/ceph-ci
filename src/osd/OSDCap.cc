@@ -21,6 +21,7 @@
 #include "OSDCap.h"
 #include "common/config.h"
 #include "common/debug.h"
+#include "include/ipaddr.h"
 
 using std::ostream;
 using std::vector;
@@ -258,6 +259,46 @@ bool OSDCapGrant::is_capable(
   std::vector<bool>* class_allowed) const
 {
   osd_rwxa_t allow = 0;
+
+  if (network.size()) {
+    sockaddr_storage ss;
+    unsigned mask = 0;
+    if (!parse_network(network.c_str(), &ss, &mask)) {
+      return false;
+    }
+    entity_addr_t n;
+    n.set_type(entity_addr_t::TYPE_LEGACY);
+    n.set_sockaddr((sockaddr *)&ss);
+    if (addr.get_family() != n.get_family()) {
+      return false;
+    }
+    switch (n.get_family()) {
+    case AF_INET:
+    {
+      struct in_addr a, b;
+      netmask_ipv4(&((sockaddr_in*)n.get_sockaddr())->sin_addr, mask, &a);
+      netmask_ipv4(&((sockaddr_in*)addr.get_sockaddr())->sin_addr, mask, &b);
+      if (memcmp(&a, &b, sizeof(a)) != 0) {
+	return false;
+      }
+    }
+    break;
+    case AF_INET6:
+    {
+      struct in6_addr a, b;
+      netmask_ipv6(&((sockaddr_in6*)n.get_sockaddr())->sin6_addr, mask, &a);
+      netmask_ipv6(&((sockaddr_in6*)addr.get_sockaddr())->sin6_addr, mask,
+		   &b);
+      if (memcmp(&a, &b, sizeof(a)) != 0) {
+	return false;
+      }
+    }
+    break;
+    default:
+      return false;
+    }
+  }
+
   if (profile.is_valid()) {
     return std::any_of(profile_grants.cbegin(), profile_grants.cend(),
                        [&](const OSDCapGrant& grant) {
