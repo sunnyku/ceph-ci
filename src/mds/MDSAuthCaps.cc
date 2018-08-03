@@ -23,6 +23,7 @@
 
 #include "common/debug.h"
 #include "MDSAuthCaps.h"
+#include "include/ipaddr.h"
 
 #define dout_subsys ceph_subsys_mds
 
@@ -58,6 +59,7 @@ struct MDSCapParser : qi::grammar<Iterator, MDSAuthCaps()>
       lexeme[lit("\"") >> *(char_ - '"') >> '"'] | 
       lexeme[lit("'") >> *(char_ - '\'') >> '\''];
     unquoted_path %= +char_("a-zA-Z0-9_./-");
+    network_str %= +char_("/.:a-fA-F0-9][");
 
     // match := [path=<path>] [uid=<uid> [gids=<gid>[,<gid>...]]
     path %= (spaces >> lit("path") >> lit('=') >> (quoted_path | unquoted_path));
@@ -86,12 +88,14 @@ struct MDSCapParser : qi::grammar<Iterator, MDSAuthCaps()>
         (lit("r"))[_val = MDSCapSpec(MDSCapSpec::READ)]
         );
 
-    grant = lit("allow") >> (capspec >> match)[_val = phoenix::construct<MDSCapGrant>(_1, _2)];
+    grant = lit("allow") >> (capspec >> match >>
+			     -(spaces >> lit("network") >> spaces >> network_str))
+      [_val = phoenix::construct<MDSCapGrant>(_1, _2, _3)];
     grants %= (grant % (*lit(' ') >> (lit(';') | lit(',')) >> *lit(' ')));
     mdscaps = grants  [_val = phoenix::construct<MDSAuthCaps>(_1)]; 
   }
   qi::rule<Iterator> spaces;
-  qi::rule<Iterator, string()> quoted_path, unquoted_path;
+  qi::rule<Iterator, string()> quoted_path, unquoted_path, network_str;
   qi::rule<Iterator, MDSCapSpec()> capspec;
   qi::rule<Iterator, string()> path;
   qi::rule<Iterator, uint32_t()> uid;
@@ -163,6 +167,16 @@ bool MDSCapMatch::match_path(std::string_view target_path) const
   return true;
 }
 
+void MDSCapGrant::parse_network()
+{
+  sockaddr_storage ss;
+  network_valid = ::parse_network(network.c_str(), &ss, &network_mask);
+  if (network_valid) {
+    network_parsed.set_type(entity_addr_t::TYPE_LEGACY);
+    network_parsed.set_sockaddr((sockaddr *)&ss);
+  }
+}
+
 /**
  * Is the client *potentially* able to access this path?  Actual
  * permission will depend on uids/modes in the full is_capable.
@@ -208,6 +222,47 @@ bool MDSAuthCaps::is_capable(std::string_view inode_path,
        i != grants.end();
        ++i) {
 
+    if (i->network.size()) {
+      if (!i->network_valid) {
+	continue;
+      }
+      if (addr.get_family() != i->network_parsed.get_family()) {
+	continue;
+      }
+      switch (i->network_parsed.get_family()) {
+      case AF_INET:
+      {
+	struct in_addr a, b;
+	netmask_ipv4(
+	  &((sockaddr_in*)i->network_parsed.get_sockaddr())->sin_addr,
+	  i->network_mask, &a);
+	netmask_ipv4(
+	  &((sockaddr_in*)addr.get_sockaddr())->sin_addr,
+	  i->network_mask, &b);
+	if (memcmp(&a, &b, sizeof(a)) != 0) {
+	  continue;
+	}
+      }
+      break;
+      case AF_INET6:
+      {
+	struct in6_addr a, b;
+	netmask_ipv6(
+	  &((sockaddr_in6*)i->network_parsed.get_sockaddr())->sin6_addr,
+	  i->network_mask, &a);
+	netmask_ipv6(
+	  &((sockaddr_in6*)addr.get_sockaddr())->sin6_addr,
+	  i->network_mask, &b);
+	if (memcmp(&a, &b, sizeof(a)) != 0) {
+	  continue;
+	}
+      }
+      break;
+      default:
+	continue;
+      }
+    }
+    
     if (i->match.match(inode_path, caller_uid, caller_gid, caller_gid_list) &&
 	i->spec.allows(mask & (MAY_READ|MAY_EXECUTE), mask & MAY_WRITE)) {
       // we have a match; narrow down GIDs to those specifically allowed here
@@ -287,7 +342,8 @@ bool MDSAuthCaps::is_capable(std::string_view inode_path,
 void MDSAuthCaps::set_allow_all()
 {
     grants.clear();
-    grants.push_back(MDSCapGrant(MDSCapSpec(MDSCapSpec::ALL), MDSCapMatch()));
+    grants.push_back(MDSCapGrant(MDSCapSpec(MDSCapSpec::ALL), MDSCapMatch(),
+				 {}));
 }
 
 bool MDSAuthCaps::parse(CephContext *c, std::string_view str, ostream *err)
@@ -295,7 +351,8 @@ bool MDSAuthCaps::parse(CephContext *c, std::string_view str, ostream *err)
   // Special case for legacy caps
   if (str == "allow") {
     grants.clear();
-    grants.push_back(MDSCapGrant(MDSCapSpec(MDSCapSpec::RWPS), MDSCapMatch()));
+    grants.push_back(MDSCapGrant(MDSCapSpec(MDSCapSpec::RWPS), MDSCapMatch(),
+				 {}));
     return true;
   }
 
@@ -308,6 +365,7 @@ bool MDSAuthCaps::parse(CephContext *c, std::string_view str, ostream *err)
   if (r && iter == end) {
     for (auto& grant : grants) {
       std::sort(grant.match.gids.begin(), grant.match.gids.end());
+      grant.parse_network();
     }
     return true;
   } else {
@@ -390,7 +448,9 @@ ostream &operator<<(ostream &out, const MDSCapGrant &grant)
   if (!grant.match.is_match_all()) {
     out << " " << grant.match;
   }
-
+  if (grant.network.size()) {
+    out << " network " << grant.network;
+  }
   return out;
 }
 
