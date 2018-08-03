@@ -234,6 +234,17 @@ ostream& operator<<(ostream& out, const OSDCapGrant& g)
   return out;
 }
 
+void OSDCapGrant::set_network(const string& n)
+{
+  network = n;
+  sockaddr_storage ss;
+  network_valid = parse_network(n.c_str(), &ss, &network_mask);
+  if (network_valid) {
+    network_parsed.set_type(entity_addr_t::TYPE_LEGACY);
+    network_parsed.set_sockaddr((sockaddr *)&ss);
+  }
+}
+
 bool OSDCapGrant::allow_all() const
 {
   if (profile.is_valid()) {
@@ -261,23 +272,20 @@ bool OSDCapGrant::is_capable(
   osd_rwxa_t allow = 0;
 
   if (network.size()) {
-    sockaddr_storage ss;
-    unsigned mask = 0;
-    if (!parse_network(network.c_str(), &ss, &mask)) {
+    if (!network_valid) {
       return false;
     }
-    entity_addr_t n;
-    n.set_type(entity_addr_t::TYPE_LEGACY);
-    n.set_sockaddr((sockaddr *)&ss);
-    if (addr.get_family() != n.get_family()) {
+    if (addr.get_family() != network_parsed.get_family()) {
       return false;
     }
-    switch (n.get_family()) {
+    switch (network_parsed.get_family()) {
     case AF_INET:
     {
       struct in_addr a, b;
-      netmask_ipv4(&((sockaddr_in*)n.get_sockaddr())->sin_addr, mask, &a);
-      netmask_ipv4(&((sockaddr_in*)addr.get_sockaddr())->sin_addr, mask, &b);
+      netmask_ipv4(&((sockaddr_in*)network_parsed.get_sockaddr())->sin_addr,
+		   network_mask, &a);
+      netmask_ipv4(&((sockaddr_in*)addr.get_sockaddr())->sin_addr,
+		   network_mask, &b);
       if (memcmp(&a, &b, sizeof(a)) != 0) {
 	return false;
       }
@@ -286,9 +294,10 @@ bool OSDCapGrant::is_capable(
     case AF_INET6:
     {
       struct in6_addr a, b;
-      netmask_ipv6(&((sockaddr_in6*)n.get_sockaddr())->sin6_addr, mask, &a);
-      netmask_ipv6(&((sockaddr_in6*)addr.get_sockaddr())->sin6_addr, mask,
-		   &b);
+      netmask_ipv6(&((sockaddr_in6*)network_parsed.get_sockaddr())->sin6_addr,
+		   network_mask, &a);
+      netmask_ipv6(&((sockaddr_in6*)addr.get_sockaddr())->sin6_addr,
+		   network_mask, &b);
       if (memcmp(&a, &b, sizeof(a)) != 0) {
 	return false;
       }
