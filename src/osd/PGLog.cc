@@ -51,7 +51,8 @@ void PGLog::IndexedLog::trim(
   eversion_t *write_from_dups)
 {
   assert(s <= can_rollback_to);
-  lgeneric_subdout(cct, osd, 20) << " complete_to " << complete_to->version << dendl;
+  if (complete_to != log.end())
+    lgeneric_subdout(cct, osd, 20) << " complete_to " << complete_to->version << dendl;
 
   auto earliest_dup_version =
     log.rbegin()->version.version < cct->_conf->osd_pg_log_dups_tracked
@@ -87,7 +88,7 @@ void PGLog::IndexedLog::trim(
 
     bool reset_complete_to = false;
     // we are trimming past complete_to, so reset complete_to
-    if (e.version >= complete_to->version)
+    if (complete_to != log.end() && e.version >= complete_to->version)
       reset_complete_to = true;
     if (rollback_info_trimmed_to_riter == log.rend() ||
 	e.version == rollback_info_trimmed_to_riter->version) {
