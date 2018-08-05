@@ -161,18 +161,32 @@ int HashIndex::col_split_level(
   uint32_t match,
   unsigned *mkdirred)
 {
+  lgeneric_subdout(g_ceph_context,filestore,20) << __func__ << " path " << path << " inbits " << inbits
+	   << " match " << match << dendl;
   /* For each subdir, move, recurse, or ignore based on comparing the low order
    * bits of the hash represented by the subdir path with inbits, match passed
    * in.
    */
   vector<string> subdirs;
   int r = from.list_subdirs(path, &subdirs);
-  if (r < 0)
+  if (r < 0) {
+    lgeneric_subdout(g_ceph_context,filestore,20) << __func__
+						  << " r " << r << " from "
+						  << "from.list_subdirs"
+						  << dendl;
     return r;
+  }
   map<string, ghobject_t> objects;
   r = from.list_objects(path, 0, 0, &objects);
-  if (r < 0)
+  if (r < 0) {
+    lgeneric_subdout(g_ceph_context,filestore,20) << __func__
+						  << " r " << r << " from "
+						  << "from.list_objects"
+						  << dendl;
     return r;
+  }
+  lgeneric_subdout(g_ceph_context,filestore,20) << " subdirs " << subdirs
+	   << ", objects.size() " << objects.size() << dendl;
 
   set<string> to_move;
   for (vector<string>::iterator i = subdirs.begin();
@@ -192,8 +206,13 @@ int HashIndex::col_split_level(
 	  inbits,
 	  match,
 	  mkdirred);
-	if (r < 0)
+	if (r < 0) {
+	  lgeneric_subdout(g_ceph_context,filestore,20) << __func__
+							<< " r " << r << " from "
+							<< "rec col_split_level"
+							<< dendl;
 	  return r;
+	}
 	if (*mkdirred > path.size())
 	  *mkdirred = path.size();
       } // else, skip, doesn't need to be moved or recursed into
@@ -217,14 +236,23 @@ int HashIndex::col_split_level(
   if (objs_to_move.empty() && to_move.empty())
     return 0;
 
+  lgeneric_subdout(g_ceph_context,filestore,20) << " objs_to_move " << objs_to_move << dendl;
+  lgeneric_subdout(g_ceph_context,filestore,20) << " to_move " << to_move << dendl;
+
   // Make parent directories as needed
   while (*mkdirred < path.size()) {
     ++*mkdirred;
     int exists = 0;
     vector<string> creating_path(path.begin(), path.begin()+*mkdirred);
     r = to.path_exists(creating_path, &exists);
-    if (r < 0)
+    if (r < 0) {
+      lgeneric_subdout(g_ceph_context,filestore,20) << __func__
+						    << " r " << r << " from "
+						    << "to.path_exists("
+						    << creating_path << ")"
+						    << dendl;
       return r;
+    }
     if (exists)
       continue;
     subdir_info_s info;
@@ -234,17 +262,41 @@ int HashIndex::col_split_level(
     if (*mkdirred < path.size() - 1)
       info.subdirs = 1;
     r = to.start_col_split(creating_path);
-    if (r < 0)
+    if (r < 0) {
+      lgeneric_subdout(g_ceph_context,filestore,20) << __func__
+						    << " r " << r << " from "
+						    << "to.start_col_split("
+						    << creating_path << ")"
+						    << dendl;
       return r;
+    }
     r = to.create_path(creating_path);
-    if (r < 0)
+    if (r < 0) {
+      lgeneric_subdout(g_ceph_context,filestore,20) << __func__
+						    << " r " << r << " from "
+						    << "to.crate_path("
+						    << creating_path << ")"
+						    << dendl;
       return r;
+    }
     r = to.set_info(creating_path, info);
-    if (r < 0)
+    if (r < 0) {
+      lgeneric_subdout(g_ceph_context,filestore,20) << __func__
+						    << " r " << r << " from "
+						    << "to.set_info("
+						    << creating_path << ")"
+						    << dendl;
       return r;
+    }
     r = to.end_split_or_merge(creating_path);
-    if (r < 0)
+    if (r < 0) {
+      lgeneric_subdout(g_ceph_context,filestore,20) << __func__
+						    << " r " << r << " from "
+						    << "to.end_split_or_merge("
+						    << creating_path << ")"
+						    << dendl;
       return r;
+    }
   }
 
   subdir_info_s from_info;
@@ -266,8 +318,14 @@ int HashIndex::col_split_level(
     from_info.subdirs--;
     to_info.subdirs++;
     r = move_subdir(from, to, path, *i);
-    if (r < 0)
+    if (r < 0) {
+      lgeneric_subdout(g_ceph_context,filestore,20) << __func__
+						    << " r " << r << " from "
+						    << "move_subdir(...,"
+						    << path << "," << *i << ")"
+						    << dendl;
       return r;
+    }
   }
 
   for (map<string, ghobject_t>::iterator i = objs_to_move.begin();
@@ -276,8 +334,14 @@ int HashIndex::col_split_level(
     from_info.objs--;
     to_info.objs++;
     r = move_object(from, to, path, *i);
-    if (r < 0)
+    if (r < 0) {
+      lgeneric_subdout(g_ceph_context,filestore,20) << __func__
+						    << " r " << r << " from "
+						    << "move_object(...,"
+						    << path << "," << *i << ")"
+						    << dendl;
       return r;
+    }
   }
 
 
@@ -296,6 +360,7 @@ int HashIndex::_split(
   uint32_t match,
   uint32_t bits,
   CollectionIndex* dest) {
+  dout(20) << __func__ << " match " << match << " bits " << bits << dendl;
   assert(collection_version() == dest->collection_version());
   unsigned mkdirred = 0;
   return col_split_level(
@@ -473,11 +538,16 @@ int HashIndex::_lookup(const ghobject_t &oid,
   int exists;
   while (1) {
     int r = path_exists(*path, &exists);
-    if (r < 0)
+    if (r < 0) {
+      dout(20) << __func__ << " path_exists failed with " << cpp_strerror(r)
+	       << dendl;
       return r;
+    }
     if (!exists) {
-      if (path->empty())
-	return -ENOENT;
+      if (path->empty()) {
+	dout(20) << __func__ << " !exists and path->empty()" << dendl;
+      	return -ENOENT;
+      }
       path->pop_back();
       break;
     }
