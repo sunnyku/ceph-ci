@@ -2198,9 +2198,11 @@ void FileStore::_finish_op(OpSequencer *osr)
     o->onreadable_sync->complete(0);
   }
   if (o->onreadable) {
+    dout(20) << __func__ << " onreadable " << o->onreadable << dendl;
     apply_finishers[osr->id % m_apply_finisher_num]->queue(o->onreadable);
   }
   if (!to_queue.empty()) {
+    dout(20) << __func__ << " to_queue " << to_queue << dendl;
     apply_finishers[osr->id % m_apply_finisher_num]->queue(to_queue);
   }
   delete o;
