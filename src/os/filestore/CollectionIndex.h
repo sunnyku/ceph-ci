@@ -162,11 +162,6 @@ protected:
     CollectionIndex* dest  //< [in] destination index
     ) { ceph_abort(); return 0; }
 
-  virtual int merge(
-    uint32_t bits,                              //< [in] common (target) bits
-    CollectionIndex* dest  //< [in] destination index
-    ) { ceph_abort(); return 0; }
-
 
   /// List contents of collection by hash
   virtual int collection_list_partial(
