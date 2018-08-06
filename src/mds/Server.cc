@@ -174,6 +174,10 @@ void Server::create_logger()
       "Request type remove snapshot");
   plb.add_u64_counter(l_mdss_req_renamesnap, "req_renamesnap",
       "Request type rename snapshot");
+
+  plb.add_u64_counter(l_mdss_cap_revoke_eviction, "cap_revoke_eviction",
+                      "Cap Revoke Client Eviction", "cre", PerfCountersBuilder::PRIO_INTERESTING);
+
   logger = plb.create_perf_counters();
   g_ceph_context->get_perfcounters_collection()->add(logger);
 }
@@ -807,8 +811,12 @@ void Server::evict_cap_revoke_non_responders() {
             << client << dendl;
 
     std::stringstream ss;
-    mds->evict_client(client.v, false, g_conf->mds_session_blacklist_on_evict,
-                      ss, nullptr);
+    bool evicted = mds->evict_client(client.v, false,
+                                     g_conf->mds_session_blacklist_on_evict,
+                                     ss, nullptr);
+    if (evicted && logger) {
+      logger->inc(l_mdss_cap_revoke_eviction);
+    }
   }
 }
 

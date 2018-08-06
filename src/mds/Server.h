@@ -66,6 +66,7 @@ enum {
   l_mdss_req_setxattr,
   l_mdss_req_symlink,
   l_mdss_req_unlink,
+  l_mdss_cap_revoke_eviction,
   l_mdss_last,
 };
 
