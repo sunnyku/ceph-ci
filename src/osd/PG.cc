@@ -5958,7 +5958,9 @@ void PG::start_peering_interval(
 
   unreg_next_scrub();
 
-  osd->clear_ready_to_merge(this);
+  if (is_primary()) {
+    osd->clear_ready_to_merge(this);
+  }
 
   pg_shard_t old_acting_primary = get_primary();
   pg_shard_t old_up_primary = up_primary;
