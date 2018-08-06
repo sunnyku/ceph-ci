@@ -6493,6 +6493,9 @@ std::vector<Option> get_mds_options() {
     .set_default(0)
     .set_description(""),
 
+    Option("mds_cap_revoke_eviction_timeout", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+     .set_default(0)
+     .set_description("number of seconds after which clients which have not responded to cap revoke messages by the MDS are evicted."),
   });
 }
 
