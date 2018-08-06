@@ -228,8 +228,9 @@ private:
       int32_t *row = &table[row_size() * ps];
       row[0] = acting_primary;
       row[1] = up_primary;
-      row[2] = acting.size();
-      row[3] = up.size();
+      // HACK: we might get a vector larger than size
+      row[2] = std::min<int32_t>(acting.size(), size);
+      row[3] = std::min<int32_t>(up.size(), size);
       for (int i = 0; i < row[2]; ++i) {
 	row[4 + i] = acting[i];
       }
