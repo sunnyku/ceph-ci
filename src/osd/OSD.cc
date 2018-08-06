@@ -5468,9 +5468,13 @@ void OSD::_preboot(epoch_t oldest, epoch_t newest)
 	  if (is_preboot()) {
 	    dout(10) << __func__ << " waiting for peering work to drain"
 		     << dendl;
+	    osd_lock.Unlock();
 	    for (auto shard : shards) {
 	      shard->wait_min_pg_epoch(osdmap->get_epoch());
 	    }
+	    osd_lock.Lock();
+	  }
+	  if (is_preboot()) {
 	    _send_boot();
 	  }
 	}));
