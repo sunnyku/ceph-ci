@@ -58,6 +58,7 @@ void OSDMapMapping::update(const OSDMap& osdmap, pg_t pgid)
 
 void OSDMapMapping::_build_rmap(const OSDMap& osdmap)
 {
+  cout << __func__ << " size " << osdmap.get_max_osd() << std::endl;
   acting_rmap.resize(osdmap.get_max_osd());
   //up_rmap.resize(osdmap.get_max_osd());
   for (auto& v : acting_rmap) {
@@ -72,8 +73,12 @@ void OSDMapMapping::_build_rmap(const OSDMap& osdmap)
       pgid.set_ps(ps);
       int32_t *row = &p.second.table[p.second.row_size() * ps];
       for (int i = 0; i < row[2]; ++i) {
+	int osd = row[4+i];
 	if (row[4 + i] != CRUSH_ITEM_NONE) {
+	  cout << " " << pgid << " osd." << osd << std::endl;
 	  acting_rmap[row[4 + i]].push_back(pgid);
+	  assert(osd >= 0);
+	  assert(osd < acting_rmap.size());
 	}
       }
       //for (int i = 0; i < row[3]; ++i) {
