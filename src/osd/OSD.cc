@@ -7997,10 +7997,10 @@ struct C_FinishSplits : public Context {
   C_FinishSplits(CephContext *cct, OSD *osd, const set<PGRef> &in)
     : cct(cct), osd(osd), pgs(in) {}
   ~C_FinishSplits() {
-    ldout(cct) << "~C_FinishSplits " << this << dendl;
+    lgeneric_derr(cct) << "~C_FinishSplits " << this << dendl;
   }
   void finish(int r) override {
-    ldout(cct) << "C_FinishSplits " << this << dendl;
+    lgeneric_derr(cct) << "C_FinishSplits " << this << dendl;
     osd->_finish_splits(pgs);
   }
 };
@@ -8199,7 +8199,7 @@ bool OSD::advance_pg(
   pg->handle_activate_map(rctx);
 
   if (!new_pgs.empty()) {
-    auto c = new C_FinishSplits(this, new_pgs);
+    auto c = new C_FinishSplits(cct, this, new_pgs);
     dout(20) << __func__ << " new_pgs " << new_pgs << " registering finish_splits context " << c << dendl;
     rctx->transaction->register_on_applied(c);
   }
