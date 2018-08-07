@@ -14498,9 +14498,9 @@ mds_rank_t Client::_get_random_up_mds() const
 }
 
 
-StandaloneClient::StandaloneClient(Messenger *m, MonClient *mc)
-  : ceph::io_context_pool(m->cct, ceph::construct_suspended),
-    Client(m, mc, new Objecter(m->cct, m, mc, get_io_context(), 0, 0))
+StandaloneClient::StandaloneClient(Messenger *m, MonClient *mc,
+				   boost::asio::io_context& ictx)
+  : Client(m, mc, new Objecter(m->cct, m, mc, ictx, 0, 0))
 {
   monclient->set_messenger(m);
   objecter->set_client_incarnation(0);
@@ -14514,7 +14514,6 @@ StandaloneClient::~StandaloneClient()
 
 int StandaloneClient::init()
 {
-  ceph::io_context_pool::start();
   timer.init();
   objectcacher->start();
   objecter->init();
@@ -14549,5 +14548,4 @@ void StandaloneClient::shutdown()
   Client::shutdown();
   objecter->shutdown();
   monclient->shutdown();
-  ceph::io_context_pool::finish();
 }
