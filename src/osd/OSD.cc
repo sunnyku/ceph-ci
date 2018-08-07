@@ -8056,6 +8056,7 @@ bool OSD::advance_pg(
   OSDMapRef lastmap = pg->get_osdmap();
   assert(lastmap->get_epoch() < osd_epoch);
   set<PGRef> new_pgs;  // any split children
+  bool ret = true;
 
   unsigned old_pg_num = lastmap->have_pg_pool(pg->pg_id.pool()) ?
     lastmap->get_pg_num(pg->pg_id.pool()) : 0;
@@ -8117,7 +8118,8 @@ bool OSD::advance_pg(
 		  nextmap->get_epoch(),
 		  NullEvt())));
 	  }
-	  return false;
+	  ret = false;
+	  goto out;
 	} else if (pg->pg_id.is_split(
 		     new_pg_num,
 		     old_pg_num,
@@ -8163,7 +8165,8 @@ bool OSD::advance_pg(
 		    nextmap->get_epoch(),
 		    NullEvt())));
 	    }
-	    return false;
+	    ret = false;
+	    goto out;
 	  }
 	}
       }
@@ -8198,13 +8201,14 @@ bool OSD::advance_pg(
   }
   pg->handle_activate_map(rctx);
 
+  ret = true;
+ out:
   if (!new_pgs.empty()) {
     auto c = new C_FinishSplits(cct, this, new_pgs);
     dout(20) << __func__ << " new_pgs " << new_pgs << " registering finish_splits context " << c << dendl;
     rctx->transaction->register_on_applied(c);
   }
-
-  return true;
+  return ret;
 }
 
 void OSD::consume_map()
