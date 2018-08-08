@@ -21,6 +21,7 @@
 #include "OSDCap.h"
 #include "common/config.h"
 #include "common/debug.h"
+#include "include/ipaddr.h"
 
 using std::ostream;
 using std::vector;
@@ -226,8 +227,22 @@ ostream& operator<<(ostream& out, const OSDCapGrant& g)
   } else {
     out << g.match << g.spec;
   }
+  if (g.network.size()) {
+    out << " network " << g.network;
+  }
   out << ")";
   return out;
+}
+
+void OSDCapGrant::set_network(const string& n)
+{
+  network = n;
+  sockaddr_storage ss;
+  network_valid = parse_network(n.c_str(), &ss, &network_mask);
+  if (network_valid) {
+    network_parsed.set_type(entity_addr_t::TYPE_LEGACY);
+    network_parsed.set_sockaddr((sockaddr *)&ss);
+  }
 }
 
 bool OSDCapGrant::allow_all() const
@@ -242,22 +257,64 @@ bool OSDCapGrant::allow_all() const
   return (match.is_match_all() && spec.allow_all());
 }
 
-bool OSDCapGrant::is_capable(const string& pool_name, const string& ns,
-                             int64_t pool_auid,
-			     const OSDCapPoolTag::app_map_t& application_metadata,
-			     const string& object,
-                             bool op_may_read, bool op_may_write,
-                             const std::vector<OpRequest::ClassInfo>& classes,
-                             std::vector<bool>* class_allowed) const
+bool OSDCapGrant::is_capable(
+  const string& pool_name,
+  const string& ns,
+  int64_t pool_auid,
+  const OSDCapPoolTag::app_map_t& application_metadata,
+  const string& object,
+  bool op_may_read,
+  bool op_may_write,
+  const std::vector<OpRequest::ClassInfo>& classes,
+  const entity_addr_t& addr,
+  std::vector<bool>* class_allowed) const
 {
   osd_rwxa_t allow = 0;
+
+  if (network.size()) {
+    if (!network_valid) {
+      return false;
+    }
+    if (addr.get_family() != network_parsed.get_family()) {
+      return false;
+    }
+    switch (network_parsed.get_family()) {
+    case AF_INET:
+    {
+      struct in_addr a, b;
+      netmask_ipv4(&((sockaddr_in*)network_parsed.get_sockaddr())->sin_addr,
+		   network_mask, &a);
+      netmask_ipv4(&((sockaddr_in*)addr.get_sockaddr())->sin_addr,
+		   network_mask, &b);
+      if (memcmp(&a, &b, sizeof(a)) != 0) {
+	return false;
+      }
+    }
+    break;
+    case AF_INET6:
+    {
+      struct in6_addr a, b;
+      netmask_ipv6(&((sockaddr_in6*)network_parsed.get_sockaddr())->sin6_addr,
+		   network_mask, &a);
+      netmask_ipv6(&((sockaddr_in6*)addr.get_sockaddr())->sin6_addr,
+		   network_mask, &b);
+      if (memcmp(&a, &b, sizeof(a)) != 0) {
+	return false;
+      }
+    }
+    break;
+    default:
+      return false;
+    }
+  }
+
   if (profile.is_valid()) {
     return std::any_of(profile_grants.cbegin(), profile_grants.cend(),
                        [&](const OSDCapGrant& grant) {
 			   return grant.is_capable(pool_name, ns, pool_auid,
 						   application_metadata,
 						   object, op_may_read,
-						   op_may_write, classes,
+						   op_may_write, classes, addr,
 						   class_allowed);
 		       });
   } else {
@@ -364,12 +421,13 @@ bool OSDCap::is_capable(const string& pool_name, const string& ns,
 			const OSDCapPoolTag::app_map_t& application_metadata,
 			const string& object,
                         bool op_may_read, bool op_may_write,
-			const std::vector<OpRequest::ClassInfo>& classes) const
+			const std::vector<OpRequest::ClassInfo>& classes,
+			const entity_addr_t& addr) const
 {
   std::vector<bool> class_allowed(classes.size(), false);
   for (auto &grant : grants) {
     if (grant.is_capable(pool_name, ns, pool_auid, application_metadata,
-			 object, op_may_read, op_may_write, classes,
+			 object, op_may_read, op_may_write, classes, addr,
 			 &class_allowed)) {
       return true;
     }
@@ -405,9 +463,10 @@ struct OSDCapParser : qi::grammar<Iterator, OSDCap()>
     equoted_string %=
       lexeme['"' >> *(char_ - '"') >> '"'] |
       lexeme['\'' >> *(char_ - '\'') >> '\''];
-    unquoted_word %= +char_("a-zA-Z0-9_.-");
+    unquoted_word %= +char_("a-zA-Z0-9_./-");
     str %= quoted_string | unquoted_word;
     estr %= equoted_string | unquoted_word;
+    network_str %= +char_("/.:a-fA-F0-9][");
 
     spaces = +ascii::space;
 
@@ -461,9 +520,14 @@ struct OSDCapParser : qi::grammar<Iterator, OSDCap()>
 
     // grant := allow match capspec
     grant = (*ascii::blank >>
-	     ((lit("allow") >> capspec >> match)  [_val = phoenix::construct<OSDCapGrant>(_2, _1)] |
-	      (lit("allow") >> match >> capspec)  [_val = phoenix::construct<OSDCapGrant>(_1, _2)] |
-              (profile)                           [_val = phoenix::construct<OSDCapGrant>(_1)]
+	     ((lit("allow") >> capspec >> match >>
+	       -(spaces >> lit("network") >> spaces >> network_str))
+	       [_val = phoenix::construct<OSDCapGrant>(_2, _1, _3)] |
+	      (lit("allow") >> match >> capspec >>
+	       -(spaces >> lit("network") >> spaces >> network_str))
+	       [_val = phoenix::construct<OSDCapGrant>(_1, _2, _3)] |
+              (profile >> -(spaces >> lit("network") >> spaces >> network_str))
+	       [_val = phoenix::construct<OSDCapGrant>(_1, _2)]
              ) >> *ascii::blank);
     // osdcap := grant [grant ...]
     grants %= (grant % (lit(';') | lit(',')));
@@ -473,7 +537,7 @@ struct OSDCapParser : qi::grammar<Iterator, OSDCap()>
   qi::rule<Iterator, unsigned()> rwxa;
   qi::rule<Iterator, string()> quoted_string, equoted_string;
   qi::rule<Iterator, string()> unquoted_word;
-  qi::rule<Iterator, string()> str, estr;
+  qi::rule<Iterator, string()> str, estr, network_str;
   qi::rule<Iterator, string()> wildcard;
   qi::rule<Iterator, int()> auid;
   qi::rule<Iterator, string()> class_name;

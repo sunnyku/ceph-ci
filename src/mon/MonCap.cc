@@ -22,6 +22,7 @@
 
 #include "MonCap.h"
 #include "include/stringify.h"
+#include "include/ipaddr.h"
 #include "common/debug.h"
 #include "common/Formatter.h"
 
@@ -113,6 +114,8 @@ ostream& operator<<(ostream& out, const MonCapGrant& m)
   }
   if (m.allow != 0)
     out << " " << m.allow;
+  if (m.network.size())
+    out << " network " << m.network;
   return out;
 }
 
@@ -127,13 +130,24 @@ BOOST_FUSION_ADAPT_STRUCT(MonCapGrant,
 			  (std::string, profile)
 			  (std::string, command)
 			  (kvmap, command_args)
-			  (mon_rwxa_t, allow))
+			  (mon_rwxa_t, allow)
+			  (std::string, network))
 
 BOOST_FUSION_ADAPT_STRUCT(StringConstraint,
                           (StringConstraint::MatchType, match_type)
 			  (std::string, value))
 
 // </magic>
+
+void MonCapGrant::parse_network()
+{
+  sockaddr_storage ss;
+  network_valid = ::parse_network(network.c_str(), &ss, &network_mask);
+  if (network_valid) {
+    network_parsed.set_type(entity_addr_t::TYPE_LEGACY);
+    network_parsed.set_sockaddr((sockaddr *)&ss);
+  }
+}
 
 void MonCapGrant::expand_profile(int daemon_type, const EntityName& name) const
 {
@@ -378,25 +392,80 @@ void MonCap::set_allow_all()
   text = "allow *";
 }
 
-bool MonCap::is_capable(CephContext *cct,
-			int daemon_type,
-			EntityName name,
-			const string& service,
-			const string& command, const map<string,string>& command_args,
-			bool op_may_read, bool op_may_write, bool op_may_exec) const
+bool MonCap::is_capable(
+  CephContext *cct,
+  int daemon_type,
+  EntityName name,
+  const string& service,
+  const string& command, const map<string,string>& command_args,
+  bool op_may_read, bool op_may_write, bool op_may_exec,
+  const entity_addr_t& addr) const
 {
   if (cct)
     ldout(cct, 20) << "is_capable service=" << service << " command=" << command
 		   << (op_may_read ? " read":"")
 		   << (op_may_write ? " write":"")
 		   << (op_may_exec ? " exec":"")
+		   << " addr " << addr
 		   << " on cap " << *this
 		   << dendl;
+
   mon_rwxa_t allow = 0;
   for (vector<MonCapGrant>::const_iterator p = grants.begin();
        p != grants.end(); ++p) {
     if (cct)
-      ldout(cct, 20) << " allow so far " << allow << ", doing grant " << *p << dendl;
+      ldout(cct, 20) << " allow so far " << allow << ", doing grant " << *p
+		     << dendl;
+
+    if (p->network.size()) {
+      if (!p->network_valid) {
+	continue;
+      }
+      if (addr.get_family() != p->network_parsed.get_family()) {
+	continue;
+      }
+      switch (p->network_parsed.get_family()) {
+      case AF_INET:
+        {
+	  struct in_addr a, b;
+	  netmask_ipv4(
+	    &((sockaddr_in*)p->network_parsed.get_sockaddr())->sin_addr,
+	    p->network_mask, &a);
+	  netmask_ipv4(
+	    &((sockaddr_in*)addr.get_sockaddr())->sin_addr,
+	    p->network_mask, &b);
+	  if (memcmp(&a, &b, sizeof(a)) != 0) {
+	    if (cct)
+	      ldout(cct, 20) << __func__ << " addr " << addr
+			     << " not in network " << p->network << dendl;
+	    continue;
+	  }
+	}
+	break;
+      case AF_INET6:
+        {
+	  struct in6_addr a, b;
+	  netmask_ipv6(
+	    &((sockaddr_in6*)p->network_parsed.get_sockaddr())->sin6_addr,
+	    p->network_mask, &a);
+	  netmask_ipv6(
+	    &((sockaddr_in6*)addr.get_sockaddr())->sin6_addr,
+	    p->network_mask, &b);
+	  if (memcmp(&a, &b, sizeof(a)) != 0) {
+	    if (cct)
+	      ldout(cct, 20) << __func__ << " addr " << addr
+			     << " not in network " << p->network << dendl;
+	    continue;
+	  }
+	}
+	break;
+      default:
+	if (cct)
+	  ldout(cct, 20) << __func__ << " unrecognized family for network "
+			 << p->network_parsed << dendl;
+	continue;
+      }
+    }
 
     if (p->is_allow_all()) {
       if (cct)
@@ -484,8 +553,9 @@ struct MonCapParser : qi::grammar<Iterator, MonCap()>
     quoted_string %=
       lexeme['"' >> +(char_ - '"') >> '"'] | 
       lexeme['\'' >> +(char_ - '\'') >> '\''];
-    unquoted_word %= +char_("a-zA-Z0-9_.-");
+    unquoted_word %= +char_("a-zA-Z0-9_./-");
     str %= quoted_string | unquoted_word;
+    network_str %= +char_("/.:a-fA-F0-9][");
 
     spaces = +(lit(' ') | lit('\n') | lit('\t'));
 
@@ -501,13 +571,15 @@ struct MonCapParser : qi::grammar<Iterator, MonCap()>
 			    >> qi::attr(string()) >> qi::attr(string())
 			    >> str
 			    >> -(spaces >> lit("with") >> spaces >> kv_map)
-			    >> qi::attr(0);
+			    >> qi::attr(0)
+			    >> -(spaces >> lit("network") >> spaces >> network_str);
 
     // service foo rwxa
     service_match %= -spaces >> lit("allow") >> spaces >> lit("service") >> (lit('=') | spaces)
 			     >> str >> qi::attr(string()) >> qi::attr(string())
 			     >> qi::attr(map<string,StringConstraint>())
-                             >> spaces >> rwxa;
+                             >> spaces >> rwxa
+			     >> -(spaces >> lit("network") >> spaces >> network_str);
 
     // profile foo
     profile_match %= -spaces >> -(lit("allow") >> spaces)
@@ -516,13 +588,15 @@ struct MonCapParser : qi::grammar<Iterator, MonCap()>
 			     >> str
 			     >> qi::attr(string())
 			     >> qi::attr(map<string,StringConstraint>())
-			     >> qi::attr(0);
+			     >> qi::attr(0)
+			     >> -(spaces >> lit("network") >> spaces >> network_str);
 
     // rwxa
     rwxa_match %= -spaces >> lit("allow") >> spaces
 			  >> qi::attr(string()) >> qi::attr(string()) >> qi::attr(string())
 			  >> qi::attr(map<string,StringConstraint>())
-			  >> rwxa;
+			  >> rwxa
+			  >> -(spaces >> lit("network") >> spaces >> network_str);
 
     // rwxa := * | [r][w][x]
     rwxa =
@@ -547,7 +621,7 @@ struct MonCapParser : qi::grammar<Iterator, MonCap()>
   qi::rule<Iterator, unsigned()> rwxa;
   qi::rule<Iterator, string()> quoted_string;
   qi::rule<Iterator, string()> unquoted_word;
-  qi::rule<Iterator, string()> str;
+  qi::rule<Iterator, string()> str, network_str;
 
   qi::rule<Iterator, StringConstraint()> str_match, str_prefix, str_regex;
   qi::rule<Iterator, pair<string, StringConstraint>()> kv_pair;
@@ -574,6 +648,9 @@ bool MonCap::parse(const string& str, ostream *err)
   //bool r = qi::phrase_parse(iter, end, g, ascii::space, foo);
   if (r && iter == end) {
     text = str;
+    for (auto& g : grants) {
+      g.parse_network();
+    }
     return true;
   }
 
