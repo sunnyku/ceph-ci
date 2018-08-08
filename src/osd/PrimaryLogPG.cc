@@ -1654,6 +1654,9 @@ void PrimaryLogPG::calc_trim_to()
     }
     dout(10) << "calc_trim_to " << pg_trim_to << " -> " << new_trim_to << dendl;
     pg_trim_to = new_trim_to;
+    if (pg_trim_to >= pg_log.get_can_rollback_to())
+      dout(10) << "trim_to going past can_rollback_to: "
+              << pg_log.get_can_rollback_to() << dendl;
     assert(pg_trim_to <= pg_log.get_head());
   }
 }
