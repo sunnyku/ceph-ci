@@ -6040,6 +6040,8 @@ int BlueStore::_fsck(bool deep, bool repair)
   statfs(&actual_statfs);
   expected_statfs.total = actual_statfs.total;
   expected_statfs.available = actual_statfs.available;
+  expected_statfs.internal_metadata = actual_statfs.internal_metadata;
+  expected_statfs.omap_allocated = actual_statfs.omap_allocated;
 
   // walk PREFIX_OBJ
   dout(1) << __func__ << " walking object keyspace" << dendl;
@@ -6618,8 +6620,6 @@ int BlueStore::_fsck(bool deep, bool repair)
   }
   sb_info.clear();
 
-  actual_statfs.internal_metadata = 0;
-  actual_statfs.omap_allocated = 0;
   if (!(actual_statfs == expected_statfs)) {
     derr << "fsck error: actual " << actual_statfs
 	 << " != expected " << expected_statfs << dendl;
