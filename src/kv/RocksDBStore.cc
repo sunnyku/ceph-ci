@@ -672,7 +672,7 @@ int64_t RocksDBStore::estimate_prefix_size(const string& prefix)
   auto cf = get_cf_handle(prefix);
   uint64_t size = 0;
   uint8_t flags =
-    //rocksdb::DB::INCLUDE_MEMTABLES |
+    //rocksdb::DB::INCLUDE_MEMTABLES |  // do not include memtables...
     rocksdb::DB::INCLUDE_FILES;
   if (cf) {
     string start(1, '\x00');
