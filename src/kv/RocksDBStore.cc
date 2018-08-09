@@ -675,10 +675,13 @@ int64_t RocksDBStore::estimate_prefix_size(const string& prefix)
     //rocksdb::DB::INCLUDE_MEMTABLES |
     rocksdb::DB::INCLUDE_FILES;
   if (cf) {
-    rocksdb::Range r(string(1, '\x00'), string("\xff\xff\xff\xff"));
+    string start(1, '\x00');
+    string limit("\xff\xff\xff\xff");
+    rocksdb::Range r(start, limit);
     db->GetApproximateSizes(cf, &r, 1, &size, flags);
   } else {
-    rocksdb::Range r(prefix, prefix + "\xff\xff\xff\xff");
+    string limit = prefix + "\xff\xff\xff\xff";
+    rocksdb::Range r(prefix, limit);
     db->GetApproximateSizes(default_cf,
 			    &r, 1, &size, flags);
   }
