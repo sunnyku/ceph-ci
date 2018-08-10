@@ -5466,6 +5466,14 @@ struct pool_pg_num_history_t {
       pg_nums.erase(i->second);
       i = deleted_pools.erase(i);
     }
+    for (auto& j : pg_nums) {
+      auto k = j.second.lower_bound(oldest_epoch);
+      // keep this and the entry before it (just to be paranoid)
+      if (k != j.second.begin()) {
+	--k;
+	j.second.erase(j.second.begin(), k);
+      }
+    }
   }
 
   void encode(bufferlist& bl) const {
