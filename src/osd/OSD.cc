@@ -8131,10 +8131,7 @@ bool OSD::advance_pg(
 	  }
 	  ret = false;
 	  goto out;
-	} else if (pg->pg_id.is_split(
-		     new_pg_num,
-		     old_pg_num,
-		     &children)) {
+	} else if (pg->pg_id.is_merge_target(old_pg_num, new_pg_num)) {
 	  // we are merge target
 	  dout(20) << __func__ << " " << pg->pg_id
 		   << " is merge target, sources are " << children
