@@ -723,6 +723,25 @@ TEST_P(MessengerTest, AuthTest) {
   ASSERT_TRUE(conn->is_connected());
   ASSERT_EQ(1U, static_cast<Session*>(conn->get_priv().get())->get_count());
 
+  // 3. krb / mix auth 
+  g_ceph_context->_conf.set_val("auth_cluster_required", "krb");
+  g_ceph_context->_conf.set_val("auth_service_required", "krb");
+  g_ceph_context->_conf.set_val("auth_client_required", "krb");
+  conn->mark_down();
+  ASSERT_FALSE(conn->is_connected());
+  conn = client_msgr->connect_to(server_msgr->get_mytype(), 
+                                 server_msgr->get_myaddrs());
+  {
+    MPing *m = new MPing();
+    ASSERT_EQ(conn->send_message(m), 0);
+    Mutex::Locker l(cli_dispatcher.lock);
+    while (!cli_dispatcher.got_new)
+      cli_dispatcher.cond.Wait(cli_dispatcher.lock);
+    cli_dispatcher.got_new = false;
+  }
+  ASSERT_TRUE(conn->is_connected());
+  ASSERT_EQ(1U, static_cast<Session*>(conn->get_priv().get())->get_count());
+
   server_msgr->shutdown();
   client_msgr->shutdown();
   server_msgr->wait();

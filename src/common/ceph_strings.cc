@@ -413,3 +413,17 @@ const char *ceph_osd_backoff_op_name(int op)
 	}
 	return "???";
 }
+
+const char* ceph_authentication_name(int auth_type)
+{
+  switch (auth_type) {
+    case CEPH_AUTH_UNKNOWN: return "auth:unknown";
+    case CEPH_AUTH_NONE: return "auth:none";
+    case CEPH_AUTH_CEPHX: return "auth:cephx";
+    case CEPH_AUTH_LDAP: return "auth:ldap";
+    case CEPH_AUTH_KRB5: return "auth:krb5";
+    case CEPH_AUTH_LDAP_KRB5: return "auth:ldap,krb5";
+    default: return "auth:not_supported";
+  }
+}
+
