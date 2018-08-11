@@ -3208,9 +3208,11 @@ int CInode::get_caps_allowed_for_client(Session *session, mempool_inode *file_i)
 
   if (!is_dir()) {
     if ((file_i->inline_data.version != CEPH_INLINE_NONE &&
-	 !session->connection->has_feature(CEPH_FEATURE_MDS_INLINE_DATA)) ||
+	 !session->get_connection()->has_feature(
+	   CEPH_FEATURE_MDS_INLINE_DATA)) ||
 	(!file_i->layout.pool_ns.empty() &&
-	 !session->connection->has_feature(CEPH_FEATURE_FS_FILE_LAYOUT_V2)))
+	 !session->get_connection()->has_feature(
+	   CEPH_FEATURE_FS_FILE_LAYOUT_V2)))
       allowed &= ~(CEPH_CAP_FILE_RD | CEPH_CAP_FILE_WR);
   }
   return allowed;
@@ -3317,7 +3319,7 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
 {
   client_t client = session->get_client();
   assert(snapid);
-  assert(session->connection);
+  assert(session->get_connection());
   
   bool valid = true;
 
@@ -3615,22 +3617,22 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
   dirfragtree.encode(bl);
 
   encode(symlink, bl);
-  if (session->connection->has_feature(CEPH_FEATURE_DIRLAYOUTHASH)) {
+  if (session->get_connection()->has_feature(CEPH_FEATURE_DIRLAYOUTHASH)) {
     encode(file_i->dir_layout, bl);
   }
   encode(xbl, bl);
-  if (session->connection->has_feature(CEPH_FEATURE_MDS_INLINE_DATA)) {
+  if (session->get_connection()->has_feature(CEPH_FEATURE_MDS_INLINE_DATA)) {
     encode(inline_version, bl);
     encode(inline_data, bl);
   }
-  if (session->connection->has_feature(CEPH_FEATURE_MDS_QUOTA)) {
+  if (session->get_connection()->has_feature(CEPH_FEATURE_MDS_QUOTA)) {
     mempool_inode *policy_i = ppolicy ? pi : oi;
     encode(policy_i->quota, bl);
   }
-  if (session->connection->has_feature(CEPH_FEATURE_FS_FILE_LAYOUT_V2)) {
+  if (session->get_connection()->has_feature(CEPH_FEATURE_FS_FILE_LAYOUT_V2)) {
     encode(layout.pool_ns, bl);
   }
-  if (session->connection->has_feature(CEPH_FEATURE_FS_BTIME)) {
+  if (session->get_connection()->has_feature(CEPH_FEATURE_FS_BTIME)) {
     encode(any_i->btime, bl);
     encode(any_i->change_attr, bl);
   }
