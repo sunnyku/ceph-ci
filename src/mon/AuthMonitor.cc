@@ -365,8 +365,7 @@ bool AuthMonitor::preprocess_query(MonOpRequestRef op)
   case MSG_MON_COMMAND:
     try {
       return preprocess_command(op);
-    }
-    catch (const bad_cmd_get& e) {
+    } catch (const bad_cmd_get& e) {
       bufferlist bl;
       mon->reply_command(op, -EINVAL, e.what(), bl, get_last_committed());
       return true;
@@ -392,8 +391,7 @@ bool AuthMonitor::prepare_update(MonOpRequestRef op)
   case MSG_MON_COMMAND:
     try {
       return prepare_command(op);
-    }
-    catch (const bad_cmd_get& e) {
+    } catch (const bad_cmd_get& e) {
       bufferlist bl;
       mon->reply_command(op, -EINVAL, e.what(), bl, get_last_committed());
       return true;
