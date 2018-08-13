@@ -51,6 +51,9 @@ void PGLog::IndexedLog::trim(
   eversion_t *write_from_dups)
 {
   //assert(s <= can_rollback_to);
+  if (s <= can_rollback_to)
+    lgeneric_subdout(cct, osd, 20) << " trim_to =" << s << " beyond can_rollback_to "
+                                   << can_rollback_to << dendl;
   if (complete_to != log.end())
     lgeneric_subdout(cct, osd, 20) << " complete_to " << complete_to->version << dendl;
 

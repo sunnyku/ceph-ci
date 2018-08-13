@@ -3615,7 +3615,7 @@ void PG::append_log(
     info.history.last_interval_started = info.last_interval_started;
   }
   dout(10) << "append_log " << pg_log.get_log() << " " << logv << dendl;
-
+  dout(10) << __func__ << " crt before " << pg_log.get_can_rollback_to() << dendl;
   PGLogEntryHandler handler{this, &t};
   if (!transaction_applied) {
      /* We must be a backfill peer, so it's ok if we apply
@@ -3650,6 +3650,8 @@ void PG::append_log(
       &handler);
     last_rollback_info_trimmed_to_applied = roll_forward_to;
   }
+
+  dout(10) << __func__ << " crt after " << pg_log.get_can_rollback_to() << dendl;
 
   dout(10) << __func__ << " approx pg log length =  "
            << pg_log.get_log().approx_size() << dendl;

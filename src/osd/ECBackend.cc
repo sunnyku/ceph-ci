@@ -1451,7 +1451,10 @@ void ECBackend::submit_transaction(
   op->delta_stats = delta_stats;
   op->version = at_version;
   op->trim_to = trim_to;
+  dout(10) << __func__ << " roll_forward_to " << roll_forward_to << dendl;
+  dout(10) << __func__ << " committed_to " << committed_to << dendl;
   op->roll_forward_to = std::max(roll_forward_to, committed_to);
+  dout(10) << __func__ << " op->roll_forward_to " << op->roll_forward_to << dendl;
   op->log_entries = log_entries;
   std::swap(op->updated_hit_set_history, hset_history);
   op->on_all_commit = on_all_commit;
