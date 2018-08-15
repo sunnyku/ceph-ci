@@ -6701,8 +6701,7 @@ void PG::_delete_some(ObjectStore::Transaction *t)
 
     if (!osd->try_finish_pg_delete(this, pool.info.get_pg_num())) {
       dout(1) << __func__ << " raced with merge, reinstantiating" << dendl;
-      ObjectStore::Transaction t;
-      _create(t,
+      _create(*t,
 	      info.pgid,
 	      info.pgid.get_split_bits(get_osdmap()->get_pg_num(
 					 info.pgid.pgid.pool())));
