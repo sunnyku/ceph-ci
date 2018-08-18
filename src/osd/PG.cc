@@ -6706,6 +6706,7 @@ void PG::_delete_some(ObjectStore::Transaction *t)
 	      info.pgid,
 	      info.pgid.get_split_bits(get_osdmap()->get_pg_num(
 					 info.pgid.pgid.pool())));
+      _init(*t, info.pgid, &pool.info);
       dirty_info = true;
       dirty_big_info = true;
 
