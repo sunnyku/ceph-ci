@@ -8087,7 +8087,6 @@ bool OSD::advance_pg(
       nextmap->get_pg_num(pg->pg_id.pool()) : 0;
     if (old_pg_num && new_pg_num && old_pg_num != new_pg_num) {
       // check for merge
-      set<spg_t> children;
       if (nextmap->have_pg_pool(pg->pg_id.pool())) {
 	spg_t parent;
 	if (pg->pg_id.is_merge_source(
@@ -8135,6 +8134,8 @@ bool OSD::advance_pg(
 	  goto out;
 	} else if (pg->pg_id.is_merge_target(old_pg_num, new_pg_num)) {
 	  // we are merge target
+	  set<spg_t> children;
+	  pg->pg_id.is_split(new_pg_num, old_pg_num, &children);
 	  dout(20) << __func__ << " " << pg->pg_id
 		   << " is merge target, sources are " << children
 		   << dendl;
@@ -8142,8 +8143,6 @@ bool OSD::advance_pg(
 	  {
 	    Mutex::Locker l(merge_lock);
 	    auto& s = merge_waiters[nextmap->get_epoch()][pg->pg_id];
-	    set<spg_t> children;
-	    pg->pg_id.is_split(new_pg_num, old_pg_num, &children);
 	    unsigned need = children.size();
 	    dout(20) << __func__ << " have " << s.size() << "/"
 		     << need << dendl;
