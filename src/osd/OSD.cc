@@ -353,7 +353,7 @@ void OSDService::identify_splits_and_merges(
   deque<spg_t> queue;
   queue.push_back(pgid);
   while (!queue.empty()) {
-    auto pg = queue.front();
+    auto cur = queue.front();
     queue.pop_front();
     unsigned pgnum = old_pgnum;
     for (auto q = p->second.lower_bound(old_map->get_epoch());
@@ -364,10 +364,10 @@ void OSDService::identify_splits_and_merges(
 	   << " pgnum " << pgnum << " -> " << q->second << dendl;
       if (pgnum < q->second) {
 	// split?
-	if (pg.ps() < pgnum) {
+	if (cur.ps() < pgnum) {
 	  set<spg_t> children;
-	  if (pg.is_split(pgnum, q->second, &children)) {
-	    dout(20) << __func__ << " " << pg << " e" << q->first
+	  if (cur.is_split(pgnum, q->second, &children)) {
+	    dout(20) << __func__ << " " << cur << " e" << q->first
 		     << " pg_num " << pgnum << " -> " << q->second
 		     << " children " << children << dendl;
 	    for (auto i : children) {
@@ -375,53 +375,53 @@ void OSDService::identify_splits_and_merges(
 	      queue.push_back(i);
 	    }
 	  }
-	} else if (pg.ps() < q->second) {
-	  dout(20) << __func__ << " " << pg << " e" << q->first
+	} else if (cur.ps() < q->second) {
+	  dout(20) << __func__ << " " << cur << " e" << q->first
 		   << " pg_num " << pgnum << " -> " << q->second
 		   << " is a child" << dendl;
 	  // normally we'd capture this from the parent, but it's
 	  // possible the parent doesn't exist yet (it will be
 	  // fabricated to allow an intervening merge).  note this PG
 	  // as a split child here to be sure we catch it.
-	  split_children->insert(make_pair(pg, q->first));
+	  split_children->insert(make_pair(cur, q->first));
 	} else {
-	  dout(20) << __func__ << " " << pg << " e" << q->first
+	  dout(20) << __func__ << " " << cur << " e" << q->first
 		   << " pg_num " << pgnum << " -> " << q->second
 		   << " is post-split, skipping" << dendl;
 	}
       } else if (merge_pgs) {
 	// merge?
-	if (pgid.ps() >= q->second) {
-	  if (pgid.ps() < pgnum) {
+	if (cur.ps() >= q->second) {
+	  if (cur.ps() < pgnum) {
 	    spg_t parent;
-	    if (pgid.is_merge_source(pgnum, q->second, &parent)) {
+	    if (cur.is_merge_source(pgnum, q->second, &parent)) {
 	      set<spg_t> children;
 	      parent.is_split(q->second, pgnum, &children);
-	      dout(20) << __func__ << " " << pg << " e" << q->first
+	      dout(20) << __func__ << " " << cur << " e" << q->first
 		       << " pg_num " << pgnum << " -> " << q->second
 		       << " is merge source, target " << parent
 		       << ", source(s) " << children << dendl;
-	      merge_pgs->insert(make_pair(pgid, q->first));
+	      merge_pgs->insert(make_pair(cur, q->first));
 	      merge_pgs->insert(make_pair(parent, q->first));
 	      for (auto c : children) {
 		merge_pgs->insert(make_pair(c, q->first));
 	      }
 	    }
 	  } else {
-	    dout(20) << __func__ << " " << pg << " e" << q->first
+	    dout(20) << __func__ << " " << cur << " e" << q->first
 		     << " pg_num " << pgnum << " -> " << q->second
 		     << " is beyond old pgnum, skipping" << dendl;
 	  }
 	} else {
 	  set<spg_t> children;
-	  if (pgid.is_split(q->second, pgnum, &children)) {
-	    dout(20) << __func__ << " " << pg << " e" << q->first
+	  if (cur.is_split(q->second, pgnum, &children)) {
+	    dout(20) << __func__ << " " << cur << " e" << q->first
 		     << " pg_num " << pgnum << " -> " << q->second
 		     << " is merge target, source " << children << dendl;
 	    for (auto c : children) {
 	      merge_pgs->insert(make_pair(c, q->first));
 	    }
-	    merge_pgs->insert(make_pair(pgid, q->first));
+	    merge_pgs->insert(make_pair(cur, q->first));
 	  }
 	}
       }
