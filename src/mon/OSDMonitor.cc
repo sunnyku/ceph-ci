@@ -3222,17 +3222,17 @@ bool OSDMonitor::preprocess_pg_ready_to_merge(MonOpRequestRef op)
   op->mark_osdmon_event(__func__);
   auto m = static_cast<MOSDPGReadyToMerge*>(op->get_req());
   dout(10) << __func__ << " " << *m << dendl;
+  const pg_pool_t *pi;
   auto session = m->get_session();
   if (!session) {
     dout(10) << __func__ << ": no monitor session!" << dendl;
-    return true;
+    goto ignore;
   }
   if (!session->is_capable("osd", MON_CAP_X)) {
     derr << __func__ << " received from entity "
          << "with insufficient privileges " << session->caps << dendl;
-    return true;
+    goto ignore;
   }
-  const pg_pool_t *pi;
   if (pending_inc.new_pools.count(m->pgid.pool())) {
     pi = &pending_inc.new_pools[m->pgid.pool()];
   } else {
@@ -3240,21 +3240,25 @@ bool OSDMonitor::preprocess_pg_ready_to_merge(MonOpRequestRef op)
   }
   if (!pi) {
     derr << __func__ << " pool for " << m->pgid << " dne" << dendl;
-    return true;
+    goto ignore;
   }
   if (pi->get_pg_num() <= m->pgid.ps()) {
     dout(20) << " pg_num " << pi->get_pg_num() << " already < " << m->pgid << dendl;
-    return true;
+    goto ignore;
   }
   if (pi->get_pg_num() != m->pgid.ps() + 1) {
     derr << " OSD trying to merge wrong pgid " << m->pgid << dendl;
-    return true;
+    goto ignore;
   }
   if (pi->get_pg_num_pending() > m->pgid.ps()) {
     dout(20) << " pg_num_pending " << pi->get_pg_num_pending() << " > " << m->pgid << dendl;
-    return true;
+    goto ignore;
   }
   return false;
+
+ ignore:
+  mon->no_reply(op);
+  return true;
 }
 
 bool OSDMonitor::prepare_pg_ready_to_merge(MonOpRequestRef op)
