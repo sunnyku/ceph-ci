@@ -10045,7 +10045,7 @@ void OSDShard::prime_merges(const OSDMapRef& as_of_osdmap,
       dout(20) << __func__ << "  have merge target pg " << pgid
 	       << " " << slot->pg << dendl;
     } else if (!slot->waiting_for_split.empty() &&
-	       slot->waiting_for_split.begin()->first < epoch) {
+	       *slot->waiting_for_split.begin() < epoch) {
       dout(20) << __func__ << "  pending split on merge target pg " << pgid
 	       << " " << slot->waiting_for_split << dendl;
     } else {
