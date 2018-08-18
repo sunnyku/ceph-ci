@@ -881,7 +881,7 @@ public:
     OSDMapRef new_map,
     spg_t pgid,
     set<pair<spg_t,epoch_t>> *new_children,
-    map<spg_t,epoch_t> *merge_pgs);
+    set<pair<spg_t,epoch_t>> *merge_pgs);
 
   void need_heartbeat_peer_update();
 
@@ -1200,12 +1200,12 @@ struct OSDShard {
   void identify_splits_and_merges(
     const OSDMapRef& as_of_osdmap,
     set<pair<spg_t,epoch_t>> *split_children,
-    map<spg_t,epoch_t> *merge_pgs);
+    set<pair<spg_t,epoch_t>> *merge_pgs);
   void _prime_splits(set<pair<spg_t,epoch_t>> *pgids);
   void prime_splits(const OSDMapRef& as_of_osdmap,
 		    set<pair<spg_t,epoch_t>> *pgids);
   void prime_merges(const OSDMapRef& as_of_osdmap,
-		    map<spg_t,epoch_t> *merge_pgs);
+		    set<pair<spg_t,epoch_t>> *merge_pgs);
   void register_and_wake_split_child(PG *pg);
   void unprime_split_children(spg_t parent, unsigned old_pg_num);
 

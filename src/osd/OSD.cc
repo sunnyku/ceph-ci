@@ -337,7 +337,7 @@ void OSDService::identify_splits_and_merges(
   OSDMapRef new_map,
   spg_t pgid,
   set<pair<spg_t,epoch_t>> *split_children,
-  map<spg_t,epoch_t> *merge_pgs)
+  set<pair<spg_t,epoch_t>> *merge_pgs)
 {
   if (!old_map->have_pg_pool(pgid.pool())) {
     return;
@@ -2740,7 +2740,7 @@ int OSD::init()
 
       pg->lock();
       set<pair<spg_t,epoch_t>> new_children;
-      map<spg_t,epoch_t> merge_pgs;
+      set<pair<spg_t,epoch_t>> merge_pgs;
       service.identify_splits_and_merges(pg->get_osdmap(), osdmap, pg->pg_id,
 					 &new_children, &merge_pgs);
       if (!new_children.empty()) {
@@ -8239,7 +8239,7 @@ void OSD::consume_map()
 
   // prime splits and merges
   set<pair<spg_t,epoch_t>> newly_split;  // splits, and when
-  map<spg_t,epoch_t> merge_pgs;          // merge participants, and first epoch
+  set<pair<spg_t,epoch_t>> merge_pgs;    // merge participants, and when
   for (auto& shard : shards) {
     shard->identify_splits_and_merges(osdmap, &newly_split, &merge_pgs);
   }
@@ -9941,7 +9941,7 @@ void OSDShard::_wake_pg_slot(
 void OSDShard::identify_splits_and_merges(
   const OSDMapRef& as_of_osdmap,
   set<pair<spg_t,epoch_t>> *split_pgs,
-  map<spg_t,epoch_t> *merge_pgs)
+  set<pair<spg_t,epoch_t>> *merge_pgs)
 {
   Mutex::Locker l(shard_lock);
   if (shard_osdmap) {
@@ -10020,7 +10020,7 @@ void OSDShard::_prime_splits(set<pair<spg_t,epoch_t>> *pgids)
 }
 
 void OSDShard::prime_merges(const OSDMapRef& as_of_osdmap,
-			    map<spg_t,epoch_t> *merge_pgs)
+			    set<pair<spg_t,epoch_t>> *merge_pgs)
 {
   Mutex::Locker l(shard_lock);
   dout(20) << __func__ << " checking shard " << shard_id
@@ -10044,12 +10044,13 @@ void OSDShard::prime_merges(const OSDMapRef& as_of_osdmap,
       // already have pg
       dout(20) << __func__ << "  have merge target pg " << pgid
 	       << " " << slot->pg << dendl;
-    } else if (!slot->waiting_for_split.empty()) {
+    } else if (!slot->waiting_for_split.empty() &&
+	       slot->waiting_for_split.begin()->first < epoch) {
       dout(20) << __func__ << "  pending split on merge target pg " << pgid
 	       << " " << slot->waiting_for_split << dendl;
     } else {
       dout(20) << __func__ << "  creating empty merge participant " << pgid
-	       << dendl;
+	       << " for merge in " << epoch << dendl;
       // Construct a history with a single previous interval,
       // going back to the epoch *before* pg_num_pending was
       // adjusted (since we are creating the PG as it would have
