@@ -14,7 +14,7 @@ from six import iteritems
 TIME_FORMAT = '%Y%m%d-%H%M%S'
 
 DEFAULTS = {
-    'enable_monitoring': str(True),
+    'enable_monitoring': str(False),
     'scrape_frequency': str(86400),
     'retention_period': str(86400 * 14),
     'pool_name': 'device_health_metrics',
@@ -160,8 +160,6 @@ class Module(MgrModule):
             assert before != after
 
     def refresh_config(self):
-        self.enable_monitoring = self.get_config('enable_monitoring',
-                                                 '') is not '' or 'false'
         for opt, value in iteritems(DEFAULTS):
             setattr(self, opt, self.get_config(opt) or value)
 
