@@ -6704,8 +6704,7 @@ void PG::_delete_some(ObjectStore::Transaction *t)
       ch = osd->store->create_new_collection(coll);
       _create(*t,
 	      info.pgid,
-	      info.pgid.get_split_bits(get_osdmap()->get_pg_num(
-					 info.pgid.pgid.pool())));
+	      info.pgid.get_split_bits(pool.info.get_pg_num()));
       _init(*t, info.pgid, &pool.info);
       dirty_info = true;
       dirty_big_info = true;
