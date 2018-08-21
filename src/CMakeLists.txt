@@ -481,6 +481,9 @@ endif()
 
 add_subdirectory(pybind)
 add_subdirectory(ceph-volume)
+if(FREEBSD)
+  add_subdirectory(ceph-volume-zfs)
+endif()
 
 # Monitor
 add_subdirectory(mon)
