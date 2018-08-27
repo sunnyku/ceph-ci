@@ -632,11 +632,11 @@ int RGWRemoteDataLog::read_log_info(rgw_datalog_info *log_info)
 
   int ret = sync_env.conn->get_json_resource("/admin/log", pairs, *log_info);
   if (ret < 0) {
-    ldout(store->ctx(), 0) << "ERROR: failed to fetch datalog info" << dendl;
+    ldpp_dout(dpp, 0) << "ERROR: failed to fetch datalog info" << dendl;
     return ret;
   }
 
-  ldout(store->ctx(), 20) << "remote datalog, num_shards=" << log_info->num_shards << dendl;
+  ldpp_dout(dpp, 20) << "remote datalog, num_shards=" << log_info->num_shards << dendl;
 
   return 0;
 }
@@ -673,7 +673,7 @@ int RGWRemoteDataLog::init(const string& _source_zone, RGWRESTConn *_conn, RGWSy
 
   int ret = http_manager.start();
   if (ret < 0) {
-    ldout(store->ctx(), 0) << "failed in http_manager.start() ret=" << ret << dendl;
+    ldpp_dout(dpp, 0) << "failed in http_manager.start() ret=" << ret << dendl;
     return ret;
   }
 
@@ -700,7 +700,7 @@ int RGWRemoteDataLog::read_sync_status(rgw_data_sync_status *sync_status)
   RGWHTTPManager http_manager(store->ctx(), crs.get_completion_mgr());
   int ret = http_manager.start();
   if (ret < 0) {
-    ldout(store->ctx(), 0) << "failed in http_manager.start() ret=" << ret << dendl;
+    ldpp_dout(dpp, 0) << "failed in http_manager.start() ret=" << ret << dendl;
     return ret;
   }
   RGWDataSyncEnv sync_env_local = sync_env;
@@ -717,7 +717,7 @@ int RGWRemoteDataLog::read_recovering_shards(const int num_shards, set<int>& rec
   RGWHTTPManager http_manager(store->ctx(), crs.get_completion_mgr());
   int ret = http_manager.start();
   if (ret < 0) {
-    ldout(store->ctx(), 0) << "failed in http_manager.start() ret=" << ret << dendl;
+    ldpp_dout(dpp, 0) << "failed in http_manager.start() ret=" << ret << dendl;
     return ret;
   }
   RGWDataSyncEnv sync_env_local = sync_env;
@@ -747,7 +747,7 @@ int RGWRemoteDataLog::init_sync_status(int num_shards)
   RGWHTTPManager http_manager(store->ctx(), crs.get_completion_mgr());
   int ret = http_manager.start();
   if (ret < 0) {
-    ldout(store->ctx(), 0) << "failed in http_manager.start() ret=" << ret << dendl;
+    ldpp_dout(dpp, 0) << "failed in http_manager.start() ret=" << ret << dendl;
     return ret;
   }
   RGWDataSyncEnv sync_env_local = sync_env;
@@ -1802,7 +1802,7 @@ int RGWRemoteDataLog::run_sync(int num_shards)
   lock.unlock();
 
   if (r < 0) {
-    ldout(store->ctx(), 0) << "ERROR: failed to run sync" << dendl;
+    ldpp_dout(dpp, 0) << "ERROR: failed to run sync" << dendl;
     return r;
   }
   return 0;
@@ -1812,7 +1812,7 @@ int RGWDataSyncStatusManager::init()
 {
   auto zone_def_iter = store->zone_by_id.find(source_zone);
   if (zone_def_iter == store->zone_by_id.end()) {
-    ldout(store->ctx(), 0) << "ERROR: failed to find zone config info for zone=" << source_zone << dendl;
+    ldpp_dout(this, 0) << "ERROR: failed to find zone config info for zone=" << source_zone << dendl;
     return -EIO;
   }
 
@@ -1830,7 +1830,7 @@ int RGWDataSyncStatusManager::init()
 
   conn = store->get_zone_conn_by_id(source_zone);
   if (!conn) {
-    ldout(store->ctx(), 0) << "connection object to zone " << source_zone << " does not exist" << dendl;
+    ldpp_dout(this, 0) << "connection object to zone " << source_zone << " does not exist" << dendl;
     return -EINVAL;
   }
 
@@ -1838,7 +1838,7 @@ int RGWDataSyncStatusManager::init()
 
   int r = source_log.init(source_zone, conn, error_logger, store->get_sync_tracer(), sync_module);
   if (r < 0) {
-    lderr(store->ctx()) << "ERROR: failed to init remote log, r=" << r << dendl;
+    ldpp_dout(this, 0) << "ERROR: failed to init remote log, r=" << r << dendl;
     finalize();
     return r;
   }
@@ -1846,7 +1846,7 @@ int RGWDataSyncStatusManager::init()
   rgw_datalog_info datalog_info;
   r = source_log.read_log_info(&datalog_info);
   if (r < 0) {
-    ldout(store->ctx(), 5) << "ERROR: master.read_log_info() returned r=" << r << dendl;
+    ldpp_dout(this, 5) << "ERROR: master.read_log_info() returned r=" << r << dendl;
     finalize();
     return r;
   }
@@ -1864,6 +1864,17 @@ void RGWDataSyncStatusManager::finalize()
 {
   delete error_logger;
   error_logger = nullptr;
+}
+
+unsigned RGWDataSyncStatusManager::get_subsys() const
+{
+  return dout_subsys;
+}
+
+std::ostream& RGWDataSyncStatusManager::gen_prefix(std::ostream& out) const
+{
+  auto zone = std::string_view{source_zone};
+  return out << "data sync zone:" << zone.substr(0, 8) << ' ';
 }
 
 string RGWDataSyncStatusManager::sync_status_oid(const string& source_zone)
@@ -2224,7 +2235,7 @@ int RGWRemoteDataLog::read_shard_status(int shard_id, set<string>& pending_bucke
   RGWHTTPManager http_manager(store->ctx(), crs.get_completion_mgr());
   int ret = http_manager.start();
   if (ret < 0) {
-    ldout(store->ctx(), 0) << "failed in http_manager.start() ret=" << ret << dendl;
+    ldpp_dout(dpp, 0) << "failed in http_manager.start() ret=" << ret << dendl;
     return ret;
   }
   RGWDataSyncEnv sync_env_local = sync_env;
