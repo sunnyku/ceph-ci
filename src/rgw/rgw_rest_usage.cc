@@ -26,11 +26,13 @@ void RGWOp_Usage_Get::execute() {
   map<std::string, bool> categories;
 
   string uid_str;
+  string bucket_name;
   uint64_t start, end;
   bool show_entries;
   bool show_summary;
 
   RESTArgs::get_string(s, "uid", uid_str, &uid_str);
+  RESTArgs::get_string(s, "bucket", bucket_name, &bucket_name);
   rgw_user uid(uid_str);
 
   RESTArgs::get_epoch(s, "start", 0, &start);
@@ -50,7 +52,7 @@ void RGWOp_Usage_Get::execute() {
     }
   }
 
-  http_ret = RGWUsage::show(store, uid, start, end, show_entries, show_summary, &categories, flusher);
+  http_ret = RGWUsage::show(store, uid, bucket_name, start, end, show_entries, show_summary, &categories, flusher);
 }
 
 class RGWOp_Usage_Delete : public RGWRESTOp {
@@ -68,9 +70,11 @@ public:
 
 void RGWOp_Usage_Delete::execute() {
   string uid_str;
+  string bucket_name;
   uint64_t start, end;
 
   RESTArgs::get_string(s, "uid", uid_str, &uid_str);
+  RESTArgs::get_string(s, "bucket", bucket_name, &bucket_name);
   rgw_user uid(uid_str);
 
   RESTArgs::get_epoch(s, "start", 0, &start);
@@ -87,7 +91,7 @@ void RGWOp_Usage_Delete::execute() {
     }
   }
 
-  http_ret = RGWUsage::trim(store, uid, start, end);
+  http_ret = RGWUsage::trim(store, uid, bucket_name, start, end);
 }
 
 RGWOp *RGWHandler_Usage::op_get()
