@@ -1405,10 +1405,6 @@ public:
           yield wait_for_child();
           int ret;
           while (collect(&ret, lease_stack.get())) {
-            if (ret < 0) {
-              ldout(sync_env->cct, 0) << "ERROR: a sync operation returned error" << dendl;
-              /* we have reported this error */
-            }
             /* not waiting for child here */
           }
         }
@@ -2708,7 +2704,6 @@ int RGWBucketShardFullSyncCR::operate()
           while (again) {
             again = collect(&ret, nullptr);
             if (ret < 0) {
-              tn->log(0, SSTR("ERROR: a sync operation returned error"));
               sync_status = ret;
               /* we have reported this error */
             }
