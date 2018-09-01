@@ -4,6 +4,9 @@ add_library(common_buffer_obj OBJECT
 add_library(common_texttable_obj OBJECT
   TextTable.cc)
 
+add_library(common_prioritycache_obj OBJECT
+  PriorityCache.cc)
+
 set(common_srcs
   AsyncOpTracker.cc
   BackTrace.cc
@@ -22,7 +25,6 @@ set(common_srcs
   OutputDataSocket.cc
   PluginRegistry.cc
   PrebufferedStreambuf.cc
-  PriorityCache.cc
   Readahead.cc
   RefCountedObj.cc
   SloppyCRCMap.cc
