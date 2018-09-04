@@ -164,6 +164,7 @@ private:
 
   bool initialized;
   bool no_keyring_disabled_cephx;
+  bool no_ktfile_disabled_krb;
 
   LogClient *log_client;
   bool more_log_pending;
@@ -454,5 +455,7 @@ private:
 
   md_config_t::config_callback config_cb;
 };
+
+extern const char* ceph_authentication_name(int);
 
 #endif

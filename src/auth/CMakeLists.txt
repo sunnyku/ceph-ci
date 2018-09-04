@@ -10,6 +10,9 @@ set(auth_srcs
   cephx/CephxClientHandler.cc
   cephx/CephxProtocol.cc
   cephx/CephxSessionHandler.cc
+  ldap_krb/KrbAuthorizeHandler.cpp
+  ldap_krb/KrbClientHandler.cpp
+  ldap_krb/KrbProtocol.cpp
   none/AuthNoneAuthorizeHandler.cc
   unknown/AuthUnknownAuthorizeHandler.cc)
 
