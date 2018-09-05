@@ -18,6 +18,8 @@
 
 #include "MOSDFastDispatchOp.h"
 
+#include "os/ObjectStore.h"
+
 /*
  * OSD Client Subop reply
  *

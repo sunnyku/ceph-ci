@@ -16,11 +16,10 @@
 #include "FSMap.h"
 
 #include <sstream>
-#include "common/config_proxy.h"
-#include "global/global_context.h"
+using std::stringstream;
+
 #include "mon/health_check.h"
 
-using std::stringstream;
 
 void Filesystem::dump(Formatter *f) const
 {

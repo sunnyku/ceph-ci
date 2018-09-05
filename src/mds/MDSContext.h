@@ -21,7 +21,6 @@
 
 #include "include/Context.h"
 #include "include/elist.h"
-#include "include/spinlock.h"
 #include "common/ceph_time.h"
 
 class MDSRank;

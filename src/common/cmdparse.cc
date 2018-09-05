@@ -12,11 +12,9 @@
  *
  */
 
-#include "common/cmdparse.h"
-#include "common/Formatter.h"
-#include "common/debug.h"
-#include "common/strtol.h"
 #include "json_spirit/json_spirit.h"
+#include "common/debug.h"
+
 
 /**
  * Given a cmddesc like "foo baz name=bar,type=CephString",
