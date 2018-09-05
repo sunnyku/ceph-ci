@@ -218,6 +218,8 @@ ssize_t AsyncConnection::_try_send(bool more)
   }
 
   ceph_assert(center->in_thread());
+  ldout(async_msgr->cct, 25) << __func__ << " cs.send " << outcoming_bl.length()
+                             << " bytes" << dendl;
   ssize_t r = cs.send(outcoming_bl, more);
   if (r < 0) {
     ldout(async_msgr->cct, 1) << __func__ << " send error: " << cpp_strerror(r) << dendl;
@@ -261,6 +263,9 @@ void AsyncConnection::read(unsigned len, char *buffer,
 
 void AsyncConnection::continue_read() {
   std::lock_guard<std::mutex> l(lock);
+  if (state == STATE_CLOSED || state == STATE_NONE) {
+    return;
+  }
   if (pendingReadLen) {
     read(*pendingReadLen, read_buffer, readCallback);
   }
@@ -370,6 +375,10 @@ void AsyncConnection::process() {
       ldout(async_msgr->cct, 20) << __func__ << " enter none state" << dendl;
       break;
 
+    case STATE_CLOSED:
+      ldout(async_msgr->cct, 20) << __func__ << " socket closed" << dendl;
+      break;
+
     case STATE_CONNECTING: {
       if (policy.server) {
         ldout(async_msgr->cct, 1) << "BIG ERROR!" << dendl;
@@ -442,6 +451,9 @@ void AsyncConnection::_connect()
   state = STATE_CONNECTING;
   if (!protocol) {
     protocol = std::unique_ptr<Protocol>(new ClientProtocolV1(this));
+  } else {
+    ProtocolV1 *proto = dynamic_cast<ProtocolV1 *>(protocol.get());
+    protocol = std::unique_ptr<Protocol>(new ClientProtocolV1(proto));
   }
   // rescheduler connection in order to avoid lock dep
   // may called by external thread(send_message)
@@ -511,8 +523,6 @@ int AsyncConnection::send_message(Message *m)
 
 void AsyncConnection::fault()
 {
-  //write_lock.lock();
-
   shutdown_socket();
   open_write = false;
 
@@ -524,45 +534,6 @@ void AsyncConnection::fault()
   state_offset = 0;
   outcoming_bl.clear();
   reset_recv_state();
-
-  // if (policy.standby && !is_queued() && state != STATE_WAIT) {
-  //   ldout(async_msgr->cct, 10) << __func__ << " with nothing to send, going to standby" << dendl;
-  //   state = STATE_STANDBY;
-  //   write_lock.unlock();
-  //   return;
-  // }
-
-  // write_lock.unlock();
-  // if (!(state >= STATE_CONNECTING && state < STATE_CONNECTING_READY) &&
-  //     state != STATE_WAIT) { // STATE_WAIT is coming from STATE_CONNECTING_*
-  //   // policy maybe empty when state is in accept
-  //   if (policy.server) {
-  //     ldout(async_msgr->cct, 0) << __func__ << " server, going to standby" << dendl;
-  //     state = STATE_STANDBY;
-  //   } else {
-  //     ldout(async_msgr->cct, 0) << __func__ << " initiating reconnect" << dendl;
-  //     protocol->reconnect();
-  //     state = STATE_CONNECTING;
-  //   }
-  //   backoff = utime_t();
-  //   center->dispatch_event_external(connection_handler);
-  // } else {
-  //   if (state == STATE_WAIT) {
-  //     backoff.set_from_double(async_msgr->cct->_conf->ms_max_backoff);
-  //   } else if (backoff == utime_t()) {
-  //     backoff.set_from_double(async_msgr->cct->_conf->ms_initial_backoff);
-  //   } else {
-  //     backoff += backoff;
-  //     if (backoff > async_msgr->cct->_conf->ms_max_backoff)
-  //       backoff.set_from_double(async_msgr->cct->_conf->ms_max_backoff);
-  //   }
-
-  //   state = STATE_CONNECTING;
-  //   ldout(async_msgr->cct, 10) << __func__ << " waiting " << backoff << dendl;
-  //   // woke up again;
-  //   register_time_events.insert(center->create_time_event(
-  //           backoff.to_nsec()/1000, wakeup_handler));
-  // }
 }
 
 void AsyncConnection::_stop()
@@ -618,6 +589,7 @@ bool AsyncConnection::is_queued() const {
 }
 
 void AsyncConnection::shutdown_socket() {
+  // ldout(async_msgr->cct, 4) << __func__ << dendl;
   for (auto &&t : register_time_events) center->delete_time_event(t);
   register_time_events.clear();
   if (last_tick_id) {
@@ -765,6 +737,7 @@ void AsyncConnection::_append_keepalive_or_ack(bool ack, utime_t *tp)
 
 void AsyncConnection::handle_write()
 {
+  ldout(async_msgr->cct, 4) << __func__ << dendl;
   protocol->write_event();
 }
 
@@ -789,7 +762,22 @@ void AsyncConnection::stop(bool queue_reset) {
   if (need_queue_reset) dispatch_queue->queue_reset(this);
 }
 
+void AsyncConnection::cleanup() {
+  shutdown_socket();
+  delete read_handler;
+  delete write_handler;
+  delete write_callback_handler;
+  delete wakeup_handler;
+  delete tick_handler;
+  delete connection_handler;
+  if (delay_state) {
+    delete delay_state;
+    delay_state = NULL;
+  }
+}
+
 void AsyncConnection::init_loopback_protocol() {
+  ldout(async_msgr->cct, 20) << __func__ << dendl;
   protocol = std::unique_ptr<Protocol>(new LoopbackProtocolV1(this));
 }
 

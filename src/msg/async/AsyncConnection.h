@@ -294,19 +294,7 @@ class AsyncConnection : public Connection {
   void tick(uint64_t id);
   void local_deliver();
   void stop(bool queue_reset);
-  void cleanup() {
-    shutdown_socket();
-    delete read_handler;
-    delete write_handler;
-    delete write_callback_handler;
-    delete wakeup_handler;
-    delete tick_handler;
-    delete connection_handler;
-    if (delay_state) {
-      delete delay_state;
-      delay_state = NULL;
-    }
-  }
+  void cleanup();
   void init_loopback_protocol();
   PerfCounters *get_perf_counter() {
     return logger;

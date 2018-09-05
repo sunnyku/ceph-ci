@@ -11,7 +11,7 @@
 #undef dout_prefix
 #define dout_prefix _conn_prefix(_dout)
 ostream &ProtocolV1::_conn_prefix(std::ostream *_dout) {
-  return *_dout << "-- " << messenger->get_myaddr() << " >> "
+  return *_dout << "-- " << messenger->get_myaddrs().legacy_addr() << " >> "
                 << connection->peer_addrs.legacy_addr() << " conn(" << connection << " :"
                 << connection->port << " s=" << state
                 << " pgs=" << peer_global_seq << " cs=" << connect_seq
@@ -60,6 +60,11 @@ Protocol::Protocol(AsyncConnection *connection)
       messenger(connection->async_msgr),
       cct(connection->async_msgr->cct) {}
 
+Protocol::Protocol(Protocol *protocol)
+    : connection(protocol->connection),
+      messenger(protocol->messenger),
+      cct(protocol->cct) {}
+
 Protocol::~Protocol() {}
 
 /**
@@ -83,14 +88,48 @@ ProtocolV1::ProtocolV1(AsyncConnection *connection)
   temp_buffer = new char[4096];
 }
 
+ProtocolV1::ProtocolV1(ProtocolV1 *protocol)
+    : Protocol(protocol),
+      temp_buffer(nullptr),
+      can_write(protocol->can_write.load()),
+      sent(std::move(protocol->sent)),
+      out_q(std::move(protocol->out_q)),
+      keepalive(protocol->keepalive),
+      connect_seq(protocol->connect_seq),
+      peer_global_seq(protocol->peer_global_seq),
+      in_seq(protocol->in_seq.load()),
+      out_seq(protocol->out_seq.load()),
+      ack_left(protocol->ack_left.load()),
+      connect_msg(std::move(protocol->connect_msg)),
+      connect_reply(std::move(protocol->connect_reply)),
+      authorizer_buf(std::move(protocol->authorizer_buf)),
+      recv_stamp(protocol->recv_stamp),
+      throttle_stamp(protocol->throttle_stamp),
+      msg_left(protocol->msg_left),
+      cur_msg_size(protocol->cur_msg_size),
+      current_header(std::move(protocol->current_header)),
+      data_buf(std::move(protocol->data_buf)),
+      data_blp(std::move(protocol->data_blp)),
+      front(std::move(protocol->front)),
+      middle(std::move(protocol->middle)),
+      data(std::move(protocol->data)),
+      replacing(protocol->replacing),
+      is_reset_from_peer(protocol->is_reset_from_peer),
+      once_ready(protocol->once_ready),
+      state(protocol->state),
+      _abort(protocol->_abort) {
+  temp_buffer = new char[4096];
+}
+
 ProtocolV1::~ProtocolV1() {
-  ceph_assert(out_q.empty());
-  ceph_assert(sent.empty());
+  //ceph_assert(out_q.empty());
+  //ceph_assert(sent.empty());
   delete[] temp_buffer;
 }
 
 void ProtocolV1::handle_failure(int r) {
-  if (state == NOT_INITIATED || state == CLOSED) {
+  if (connection->state == AsyncConnection::STATE_CLOSED
+        || connection->state == AsyncConnection::STATE_NONE) {
     ldout(cct, 10) << __func__ << " connection is already closed" << dendl;
     return;
   }
@@ -131,20 +170,24 @@ void ProtocolV1::handle_failure(int r) {
     }
   }
 
-  if (!(state == INITIATING && !connection->policy.server) &&
+  if (!(connection->state == AsyncConnection::STATE_CONNECTING) &&
       connection->state != AsyncConnection::STATE_WAIT) {
     // policy maybe empty when state is in accept
     if (connection->policy.server) {
       ldout(cct, 0) << __func__ << " server, going to standby" << dendl;
       connection->state = AsyncConnection::STATE_STANDBY;
+      connection->backoff = utime_t();
+      connection->center->dispatch_event_external(connection->connection_handler);
     } else {
       ldout(cct, 0) << __func__ << " initiating reconnect" << dendl;
       connect_seq++;
-      state = NOT_INITIATED;
+      state = INITIATING;
       connection->state = AsyncConnection::STATE_CONNECTING;
+      connection->backoff = utime_t();
+      connection->center->dispatch_event_external(connection->connection_handler);
+      connection->protocol =
+          std::unique_ptr<Protocol>(new ClientProtocolV1(this));
     }
-    connection->backoff = utime_t();
-    connection->center->dispatch_event_external(connection->connection_handler);
   } else {
     if (connection->state == AsyncConnection::STATE_WAIT) {
       connection->backoff.set_from_double(cct->_conf->ms_max_backoff);
@@ -158,6 +201,8 @@ void ProtocolV1::handle_failure(int r) {
 
     state = NOT_INITIATED;
     connection->state = AsyncConnection::STATE_CONNECTING;
+    connection->protocol =
+          std::unique_ptr<Protocol>(new ClientProtocolV1(this));
     ldout(cct, 10) << __func__ << " waiting " << connection->backoff << dendl;
     // woke up again;
     connection->register_time_events.insert(
@@ -167,10 +212,12 @@ void ProtocolV1::handle_failure(int r) {
 }
 
 void ProtocolV1::abort() {
+  ldout(cct, 20) << __func__ << " BEGIN" << dendl;
   _abort = true;
   discard_out_queue();
   can_write = WriteStatus::CLOSED;
   state = CLOSED;
+  ldout(cct, 20) << __func__ << " END" << dendl;
 }
 
 void ProtocolV1::reconnect() {
@@ -181,9 +228,10 @@ void ProtocolV1::reconnect() {
 void ProtocolV1::notify() {
   ldout(cct, 20) << __func__ << " BEGIN" << dendl;
   ldout(cct, 20) << __func__ << " state=" << state << dendl;
-  ldout(cct, 20) << __func__ << " BEGIN" << dendl;
+  ldout(cct, 20) << __func__ << " END" << dendl;
   switch (state) {
     case NOT_INITIATED:
+    case INITIATING:
       init();
       break;
     case OPENED:
@@ -473,6 +521,7 @@ void ProtocolV1::handle_message_front(char *buffer, int r) {
   if (r < 0) {
     ldout(cct, 1) << __func__ << " read message front failed" << dendl;
     handle_failure(r);
+    return;
   }
 
   ldout(cct, 20) << __func__ << " got front " << front.length() << dendl;
@@ -503,6 +552,7 @@ void ProtocolV1::handle_message_middle(char *buffer, int r) {
   if (r < 0) {
     ldout(cct, 1) << __func__ << " read message middle failed" << dendl;
     handle_failure(r);
+    return;
   }
 
   ldout(cct, 20) << __func__ << " got middle " << middle.length() << dendl;
@@ -1027,6 +1077,7 @@ void ProtocolV1::write_event() {
   ssize_t r = 0;
 
   connection->write_lock.lock();
+  // ldout(cct, 25) << __func__ << " can_write=" << can_write.load() << dendl;
   if (can_write == WriteStatus::CANWRITE) {
     if (keepalive) {
       connection->_append_keepalive_or_ack();
@@ -1107,9 +1158,8 @@ void ProtocolV1::write_event() {
       state = NOT_INITIATED;
       connection->_connect();
     } else if (connection->cs &&
+               state != NOT_INITIATED && state != CLOSED &&
                connection->state != AsyncConnection::STATE_NONE &&
-               connection->state != AsyncConnection::STATE_CONNECTING &&
-               connection->state != AsyncConnection::STATE_CONNECTING_RE &&
                connection->state != AsyncConnection::STATE_CLOSED) {
       r = connection->_try_send();
       if (r < 0) {
@@ -1152,6 +1202,12 @@ void ProtocolV1::send_keepalive() {
 
 ClientProtocolV1::ClientProtocolV1(AsyncConnection *connection)
     : ProtocolV1(connection),
+      global_seq(0),
+      got_bad_auth(false),
+      authorizer(nullptr) {}
+
+ClientProtocolV1::ClientProtocolV1(ProtocolV1 *protocol)
+    : ProtocolV1(protocol),
       global_seq(0),
       got_bad_auth(false),
       authorizer(nullptr) {}
@@ -1313,8 +1369,7 @@ void ClientProtocolV1::handle_my_addr_write(int r) {
 void ClientProtocolV1::send_connect_message() {
   ldout(cct, 20) << __func__ << " BEGIN" << dendl;
 
-  if (!got_bad_auth) {
-    delete authorizer;
+  if (!authorizer) {
     authorizer = messenger->get_authorizer(connection->peer_type, false);
   }
 
@@ -1688,8 +1743,10 @@ void ClientProtocolV1::ready() {
  **/
 ServerProtocolV1::ServerProtocolV1(AsyncConnection *connection)
     : ProtocolV1(connection),
-      existing(nullptr),
-      is_reset_from_peer(false),
+      wait_for_seq(false) {}
+
+ServerProtocolV1::ServerProtocolV1(ProtocolV1 *protocol)
+    : ProtocolV1(protocol),
       wait_for_seq(false) {}
 
 void ServerProtocolV1::init() {
@@ -1784,6 +1841,7 @@ void ServerProtocolV1::handle_client_banner(char *buffer, int r) {
                   << " (socket is " << connection->socket_addr << ")" << dendl;
   }
   connection->set_peer_addr(peer_addr);  // so that connection_state gets set up
+  connection->target_addr = peer_addr;
 
   ldout(cct, 20) << __func__ << " END" << dendl;
 
@@ -1824,6 +1882,7 @@ void ServerProtocolV1::handle_connect_message_1(char *buffer, int r) {
 void ServerProtocolV1::wait_connect_message_auth() {
   ldout(cct, 20) << __func__ << " BEGIN" << dendl;
 
+  authorizer_buf.clear();
   READ(connect_msg.authorizer_len,
        &ServerProtocolV1::handle_connect_message_auth);
 
@@ -1934,7 +1993,8 @@ void ServerProtocolV1::handle_connect_message_2() {
       return;
     }
     else {
-      ldout(cct, 0) << __func__ << ": got bad authorizer" << dendl;
+      ldout(cct, 0) << __func__ << ": got bad authorizer, auth_reply_len="
+                    << authorizer_reply.length() << dendl;
       connection->session_security.reset();
       send_connect_message_reply(CEPH_MSGR_TAG_BADAUTHORIZER);
       ldout(cct, 20) << __func__ << " END" << dendl;
@@ -1947,7 +2007,7 @@ void ServerProtocolV1::handle_connect_message_2() {
   ldout(cct, 10) << __func__ << " accept setting up session_security." << dendl;
 
   // existing?
-  existing = messenger->lookup_conn(connection->peer_addrs);
+  AsyncConnectionRef existing = messenger->lookup_conn(connection->peer_addrs);
 
   connection->inject_delay();
 
@@ -1972,8 +2032,13 @@ void ServerProtocolV1::handle_connect_message_2() {
     existing->lock.lock();  // skip lockdep check (we are locking a second
                             // AsyncConnection here)
 
-    ServerProtocolV1 *exproto =
-        dynamic_cast<ServerProtocolV1 *>(existing->protocol.get());
+    ProtocolV1 *exproto =
+        dynamic_cast<ProtocolV1 *>(existing->protocol.get());
+
+    if (!exproto) {
+      ldout(cct, 1) << __func__ << " existing=" << existing << dendl;
+      ceph_assert(false);
+    }
 
     if (exproto->state == CLOSED) {
       ldout(cct, 1) << __func__ << " existing already closed." << dendl;
@@ -2021,7 +2086,7 @@ void ServerProtocolV1::handle_connect_message_2() {
           << connection->policy.lossy << ")" << dendl;
       exproto->session_reset();
       ldout(cct, 20) << __func__ << " END" << dendl;
-      replace();
+      replace(existing);
       return;
     }
 
@@ -2043,7 +2108,7 @@ void ServerProtocolV1::handle_connect_message_2() {
                                    // connect_seq #'s
       }
       ldout(cct, 20) << __func__ << " END" << dendl;
-      replace();
+      replace(existing);
       return;
     }
 
@@ -2074,7 +2139,7 @@ void ServerProtocolV1::handle_connect_message_2() {
         // replace
         if (connection->policy.resetcheck && exproto->connect_seq == 0) {
           ldout(cct, 20) << __func__ << " END" << dendl;
-          replace();
+          replace(existing);
           return;
         }
 
@@ -2094,7 +2159,7 @@ void ServerProtocolV1::handle_connect_message_2() {
                        << " == " << connect_msg.connect_seq
                        << ", or we are server, replacing my attempt" << dendl;
         ldout(cct, 20) << __func__ << " END" << dendl;
-        replace();
+        replace(existing);
         return;
       } else {
         // our existing outgoing wins
@@ -2130,7 +2195,7 @@ void ServerProtocolV1::handle_connect_message_2() {
                    << connect_msg.connect_seq << " > " << exproto->connect_seq
                    << dendl;
     ldout(cct, 20) << __func__ << " END" << dendl;
-    replace();
+    replace(existing);
     return;
   }  // existing
   else if (!replacing && connect_msg.connect_seq > 0) {
@@ -2165,6 +2230,7 @@ void ServerProtocolV1::send_connect_message_reply(char tag) {
 
   if (connect_reply.authorizer_len) {
     reply_bl.append(authorizer_reply.c_str(), authorizer_reply.length());
+    authorizer_reply.clear();
   }
 
   WRITE(reply_bl, &ServerProtocolV1::handle_connect_message_reply_write);
@@ -2186,7 +2252,7 @@ void ServerProtocolV1::handle_connect_message_reply_write(int r) {
   wait_connect_message();
 }
 
-void ServerProtocolV1::replace() {
+void ServerProtocolV1::replace(AsyncConnectionRef existing) {
   ldout(messenger->cct, 20) << __func__ << " BEGIN" << dendl;
 
   ldout(messenger->cct, 10)
@@ -2203,10 +2269,21 @@ void ServerProtocolV1::replace() {
     ceph_assert(can_write == WriteStatus::NOWRITE);
     existing->write_lock.lock();
 
+    ProtocolV1 *oldexproto =
+        dynamic_cast<ProtocolV1 *>(existing->protocol.get());
+    oldexproto->can_write = WriteStatus::REPLACING;
+    oldexproto->replacing = true;
+
+    ServerProtocolV1 *exproto = new ServerProtocolV1(oldexproto);
+
+    exproto->connect_msg = connect_msg;
+    exproto->connect_reply = connect_reply;
+    exproto->authorizer_reply = authorizer_reply;
+
+    existing->protocol = std::unique_ptr<Protocol>(exproto);
+
     // reset the in_seq if this is a hard reset from peer,
     // otherwise we respect our original connection's value
-    ServerProtocolV1 *exproto =
-        dynamic_cast<ServerProtocolV1 *>(existing->protocol.get());
     if (is_reset_from_peer) {
       exproto->is_reset_from_peer = true;
     }
@@ -2238,15 +2315,20 @@ void ServerProtocolV1::replace() {
     // Discard existing prefetch buffer in `recv_buf`
     existing->recv_start = existing->recv_end = 0;
     // there shouldn't exist any buffer
+    ldout(cct, 20) << __func__ << " assert failure recv_start="
+                   << connection->recv_start
+                   << " recv_end=" << connection->recv_end << dendl;
     ceph_assert(connection->recv_start == connection->recv_end);
 
     existing->authorizer_challenge.reset();
 
     auto deactivate_existing = std::bind(
-        [this, new_worker, new_center, exproto](ConnectedSocket &cs) mutable {
+        [this, existing, new_worker, new_center](
+            ConnectedSocket &cs, ServerProtocolV1 *exproto) mutable {
           // we need to delete time event in original thread
           {
             std::lock_guard<std::mutex> l(existing->lock);
+            //existing->protocol = std::unique_ptr<Protocol>(exproto);
             existing->write_lock.lock();
             exproto->requeue_sent();
             existing->outcoming_bl.clear();
@@ -2270,6 +2352,8 @@ void ServerProtocolV1::replace() {
                                     std::move(back_to_close), true);
               return;
             } else {
+              ldout(cct, 25) << __func__ << " existing=" << existing
+                             << " exstate=" << existing->state << dendl;
               ceph_abort();
             }
           }
@@ -2278,7 +2362,7 @@ void ServerProtocolV1::replace() {
           // events in existing->center's queue. Then if we mark down
           // `existing`, it will execute in another thread and clean up
           // connection. Previous event will result in segment fault
-          auto transfer_existing = [this, exproto]() mutable {
+          auto transfer_existing = [existing, exproto]() mutable {
             std::lock_guard<std::mutex> l(existing->lock);
             if (existing->state == AsyncConnection::STATE_CLOSED) return;
             ceph_assert(existing->state == AsyncConnection::STATE_NONE);
@@ -2289,7 +2373,7 @@ void ServerProtocolV1::replace() {
             // exproto->wait_connect_message();
             existing->center->create_file_event(
                 existing->cs.fd(), EVENT_READABLE, existing->read_handler);
-            connect_reply.global_seq = exproto->peer_global_seq;
+            exproto->connect_reply.global_seq = exproto->peer_global_seq;
             exproto->send_connect_message_reply(CEPH_MSGR_TAG_RETRY_GLOBAL);
           };
           if (existing->center->in_thread())
@@ -2298,12 +2382,13 @@ void ServerProtocolV1::replace() {
             existing->center->submit_to(existing->center->get_id(),
                                         std::move(transfer_existing), true);
         },
-        std::move(temp_cs));
+        std::move(temp_cs), exproto);
 
     existing->center->submit_to(existing->center->get_id(),
                                 std::move(deactivate_existing), true);
     existing->write_lock.unlock();
     existing->lock.unlock();
+    ldout(messenger->cct, 20) << __func__ << " END" << dendl;
     return;
   }
   existing->lock.unlock();
@@ -2373,6 +2458,7 @@ void ServerProtocolV1::open() {
   connection->inject_delay();
 
   connection->lock.lock();
+  replacing = false;
   if (r < 0) {
     ldout(cct, 1) << __func__ << " existing race replacing process for addr = "
                   << connection->peer_addrs.legacy_addr() << " just fail later one(this)"

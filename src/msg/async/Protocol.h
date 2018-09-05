@@ -18,6 +18,8 @@ protected:
 
 public:
   Protocol(AsyncConnection *connection);
+  Protocol(Protocol *protocol);
+
   virtual ~Protocol();
   virtual void init() = 0;
   virtual void abort() = 0;
@@ -115,6 +117,8 @@ protected:
 
 public:
   ProtocolV1(AsyncConnection *connection);
+  ProtocolV1(ProtocolV1 *protocol);
+
   virtual ~ProtocolV1();
 
   virtual void init() = 0;
@@ -129,6 +133,8 @@ public:
   virtual bool is_connected();
   virtual bool writes_allowed();
   virtual void send_keepalive();
+
+  friend class ServerProtocolV1;
 };
 
 class LoopbackProtocolV1 : public ProtocolV1 {
@@ -171,6 +177,7 @@ private:
 
 public:
   ClientProtocolV1(AsyncConnection *connection);
+  ClientProtocolV1(ProtocolV1 *protocol);
 
   virtual void init();
 };
@@ -178,8 +185,6 @@ public:
 class ServerProtocolV1 : public ProtocolV1 {
 private:
   bufferlist authorizer_reply;
-  AsyncConnectionRef existing;
-  bool is_reset_from_peer;
   bool wait_for_seq;
 
   void accept();
@@ -197,7 +202,7 @@ private:
   void send_connect_message_reply(char tag);
   void handle_connect_message_reply_write(int r);
 
-  void replace();
+  void replace(AsyncConnectionRef existing);
   void open();
   void handle_ready_connect_message_reply_write(int r);
 
@@ -208,6 +213,8 @@ private:
 
 public:
   ServerProtocolV1(AsyncConnection *connection);
+  ServerProtocolV1(ProtocolV1 *protocol);
+
   virtual void init();
 };
 
