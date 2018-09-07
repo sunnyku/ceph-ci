@@ -455,6 +455,7 @@ void AsyncConnection::_connect()
     ProtocolV1 *proto = dynamic_cast<ProtocolV1 *>(protocol.get());
     protocol = std::unique_ptr<Protocol>(new ClientProtocolV1(proto));
   }
+  protocol->connect();
   // rescheduler connection in order to avoid lock dep
   // may called by external thread(send_message)
   center->dispatch_event_external(connection_handler);
@@ -472,6 +473,7 @@ void AsyncConnection::accept(ConnectedSocket socket, entity_addr_t &addr)
   target_addr = addr; // until we know better
   state = STATE_ACCEPTING;
   protocol = std::unique_ptr<Protocol>(new ServerProtocolV1(this));
+  protocol->accept();
   // rescheduler connection in order to avoid lock dep
   center->dispatch_event_external(connection_handler);
 }

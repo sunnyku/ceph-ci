@@ -21,10 +21,11 @@ public:
   Protocol(Protocol *protocol);
 
   virtual ~Protocol();
+  virtual void connect() = 0;
+  virtual void accept() = 0;
   virtual void init() = 0;
   virtual void abort() = 0;
   virtual void notify() = 0;
-  virtual void reconnect() = 0;
 
   virtual void send_message(Message *m) = 0;
   virtual void write_event() = 0;
@@ -37,7 +38,15 @@ public:
 
 class ProtocolV1 : public Protocol {
 protected:
-  enum State { NOT_INITIATED, INITIATING, OPENED, CLOSED };
+  enum State {
+    NOT_INITIATED,
+    START_CONNECT,
+    CONNECTING,
+    START_ACCEPT,
+    ACCEPTING,
+    OPENED,
+    CLOSED
+  };
 
   char *temp_buffer;
 
@@ -121,10 +130,11 @@ public:
 
   virtual ~ProtocolV1();
 
+  virtual void connect();
+  virtual void accept();
   virtual void init() = 0;
   virtual void abort();
   virtual void notify();
-  virtual void reconnect();
 
   virtual void send_message(Message *m);
   virtual void write_event();
@@ -187,7 +197,7 @@ private:
   bufferlist authorizer_reply;
   bool wait_for_seq;
 
-  void accept();
+  void send_server_banner();
   void handle_banner_write(int r);
   void wait_client_banner();
   void handle_client_banner(char *buffer, int r);

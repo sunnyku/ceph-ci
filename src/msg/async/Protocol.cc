@@ -127,6 +127,14 @@ ProtocolV1::~ProtocolV1() {
   delete[] temp_buffer;
 }
 
+void ProtocolV1::connect() {
+  this->state = START_CONNECT;
+}
+
+void ProtocolV1::accept() {
+  this->state = START_ACCEPT;
+}
+
 void ProtocolV1::handle_failure(int r) {
   if (connection->state == AsyncConnection::STATE_CLOSED
         || connection->state == AsyncConnection::STATE_NONE) {
@@ -134,7 +142,7 @@ void ProtocolV1::handle_failure(int r) {
     return;
   }
 
-  if (connection->policy.lossy && state != INITIATING) {
+  if (connection->policy.lossy && !(state >= START_CONNECT && state <= CONNECTING) ) {
     ldout(cct, 1) << __func__ << " on lossy channel, failing" << dendl;
     connection->_stop();
     connection->dispatch_queue->queue_reset(connection);
@@ -149,7 +157,7 @@ void ProtocolV1::handle_failure(int r) {
     // requeue sent items
     requeue_sent();
 
-    if (!once_ready && out_q.empty() && state == INITIATING && !replacing) {
+    if (!once_ready && out_q.empty() && state >= START_ACCEPT && state <= ACCEPTING && !replacing) {
       ldout(cct, 10) << __func__ << " with nothing to send and in the half "
                      << " accept state just closed" << dendl;
       connection->write_lock.unlock();
@@ -181,7 +189,7 @@ void ProtocolV1::handle_failure(int r) {
     } else {
       ldout(cct, 0) << __func__ << " initiating reconnect" << dendl;
       connect_seq++;
-      state = INITIATING;
+      state = START_CONNECT;
       connection->state = AsyncConnection::STATE_CONNECTING;
       connection->backoff = utime_t();
       connection->center->dispatch_event_external(connection->connection_handler);
@@ -199,7 +207,7 @@ void ProtocolV1::handle_failure(int r) {
         connection->backoff.set_from_double(cct->_conf->ms_max_backoff);
     }
 
-    state = NOT_INITIATED;
+    state = START_CONNECT;
     connection->state = AsyncConnection::STATE_CONNECTING;
     connection->protocol =
           std::unique_ptr<Protocol>(new ClientProtocolV1(this));
@@ -220,18 +228,13 @@ void ProtocolV1::abort() {
   ldout(cct, 20) << __func__ << " END" << dendl;
 }
 
-void ProtocolV1::reconnect() {
-  state = NOT_INITIATED;
-  connect_seq++;
-}
-
 void ProtocolV1::notify() {
   ldout(cct, 20) << __func__ << " BEGIN" << dendl;
   ldout(cct, 20) << __func__ << " state=" << state << dendl;
   ldout(cct, 20) << __func__ << " END" << dendl;
   switch (state) {
-    case NOT_INITIATED:
-    case INITIATING:
+    case START_CONNECT:
+    case START_ACCEPT:
       init();
       break;
     case OPENED:
@@ -1213,8 +1216,7 @@ ClientProtocolV1::ClientProtocolV1(ProtocolV1 *protocol)
       authorizer(nullptr) {}
 
 void ClientProtocolV1::init() {
-  state = INITIATING;
-
+  state = CONNECTING;
   _abort = false;
   authorizer_buf.clear();
   memset(&connect_msg, 0, sizeof(connect_msg));
@@ -1750,12 +1752,12 @@ ServerProtocolV1::ServerProtocolV1(ProtocolV1 *protocol)
       wait_for_seq(false) {}
 
 void ServerProtocolV1::init() {
+  state = ACCEPTING;
   _abort = false;
-  state = INITIATING;
-  accept();
+  send_server_banner();
 }
 
-void ServerProtocolV1::accept() {
+void ServerProtocolV1::send_server_banner() {
   ldout(cct, 20) << __func__ << " BEGIN" << dendl;
   bufferlist bl;
 
@@ -2368,7 +2370,7 @@ void ServerProtocolV1::replace(AsyncConnectionRef existing) {
             ceph_assert(existing->state == AsyncConnection::STATE_NONE);
 
             existing->state = AsyncConnection::STATE_ACCEPTING;
-            exproto->state = INITIATING;
+            exproto->state = ACCEPTING;
 
             // exproto->wait_connect_message();
             existing->center->create_file_event(
@@ -2468,7 +2470,7 @@ void ServerProtocolV1::open() {
     handle_failure();
     return;
   }
-  if (state != INITIATING) {
+  if (state != ACCEPTING) {
     ldout(cct, 1) << __func__
                   << " state changed while accept_conn, it must be mark_down"
                   << dendl;
