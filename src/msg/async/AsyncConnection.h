@@ -70,13 +70,10 @@ class AsyncConnection : public Connection {
   void _connect();
   void _stop();
   void fault();
-  void _append_keepalive_or_ack(bool ack=false, utime_t *t=NULL);
   void inject_delay();
 
   bool is_queued() const;
   void shutdown_socket();
-
-  void reset_recv_state();
 
    /**
    * The DelayedDelivery is for injecting delays into Message delivery off
@@ -258,24 +255,15 @@ class AsyncConnection : public Connection {
 
   // Tis section are temp variables used by state transition
 
-  // Open state
-  utime_t recv_stamp;
-  utime_t throttle_stamp;
-  unsigned msg_left;
-  uint64_t cur_msg_size;
-  ceph_msg_header current_header;
   // Accepting state
   bool msgr2 = false;
   entity_addr_t socket_addr;
   entity_addr_t target_addr;  // which of the peer_addrs we're using
-  CryptoKey session_key;
 
   // used only by "read_until"
   uint64_t state_offset;
   Worker *worker;
   EventCenter *center;
-  std::shared_ptr<AuthSessionHandler> session_security;
-  std::unique_ptr<AuthAuthorizerChallenge> authorizer_challenge; // accept side
 
   std::unique_ptr<Protocol> protocol;
 
@@ -302,8 +290,6 @@ class AsyncConnection : public Connection {
 
   friend class Protocol;
   friend class ProtocolV1;
-  friend class ClientProtocolV1;
-  friend class ServerProtocolV1;
 }; /* AsyncConnection */
 
 typedef boost::intrusive_ptr<AsyncConnection> AsyncConnectionRef;

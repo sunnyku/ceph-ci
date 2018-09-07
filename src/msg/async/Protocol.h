@@ -18,34 +18,48 @@ protected:
 
 public:
   Protocol(AsyncConnection *connection);
-  Protocol(Protocol *protocol);
-
   virtual ~Protocol();
-  virtual void connect() = 0;
-  virtual void accept() = 0;
-  virtual void init() = 0;
-  virtual void abort() = 0;
-  virtual void notify() = 0;
 
-  virtual void send_message(Message *m) = 0;
-  virtual void write_event() = 0;
-  virtual void fault() = 0;
-  virtual bool has_queued_writes() = 0;
+  // prepare protocol for connecting to peer
+  virtual void connect() = 0;
+  // prepare protocol for accepting peer connections
+  virtual void accept() = 0;
+  // true -> protocol is ready for sending messages
   virtual bool is_connected() = 0;
-  virtual bool writes_allowed() = 0;
+  // stop connection
+  virtual void stop() = 0;
+  // signal and handle connection failure
+  virtual void fault() = 0;
+  // send message
+  virtual void send_message(Message *m) = 0;
+  // send keepalive
   virtual void send_keepalive() = 0;
+
+  virtual void connection_event() = 0;
+  virtual void write_event() = 0;
+  virtual bool is_queued() = 0;
 };
 
 class ProtocolV1 : public Protocol {
 protected:
   enum State {
-    NOT_INITIATED,
+    NONE,
     START_CONNECT,
     CONNECTING,
     START_ACCEPT,
     ACCEPTING,
     OPENED,
-    CLOSED
+    CLOSED,
+    WAIT,
+    STANDBY
+  };
+
+  enum ThrottleState {
+    THROTTLE_NONE,
+    THROTTLE_MESSAGE,
+    THROTTLE_BYTES,
+    THROTTLE_DISPATCH_QUEUE,
+    READ_FOOTER_AND_DISPATCH
   };
 
   char *temp_buffer;
@@ -61,6 +75,10 @@ protected:
   std::atomic<uint64_t> in_seq{0};
   std::atomic<uint64_t> out_seq{0};
   std::atomic<uint64_t> ack_left{0};
+
+  CryptoKey session_key;
+  std::shared_ptr<AuthSessionHandler> session_security;
+  std::unique_ptr<AuthAuthorizerChallenge> authorizer_challenge; // accept side
 
   // Open state
   ceph_msg_connect connect_msg;
@@ -86,14 +104,15 @@ protected:
   bool once_ready;
 
   State state;
+  ThrottleState throttleState;
 
-  void handle_failure(int r = 0);
   bool _abort;
 
   void wait_message();
   void handle_message(char *buffer, int r);
 
   void handle_keepalive2(char *buffer, int r);
+  void append_keepalive_or_ack(bool ack=false, utime_t *t=nullptr);
   void handle_keepalive2_ack(char *buffer, int r);
   void handle_tag_ack(char *buffer, int r);
 
@@ -122,50 +141,35 @@ protected:
   uint64_t discard_requeued_up_to(uint64_t out_seq, uint64_t seq);
   void discard_out_queue();
 
+  void reset_recv_state();
+
   ostream &_conn_prefix(std::ostream *_dout);
 
 public:
   ProtocolV1(AsyncConnection *connection);
-  ProtocolV1(ProtocolV1 *protocol);
 
   virtual ~ProtocolV1();
 
   virtual void connect();
   virtual void accept();
-  virtual void init() = 0;
-  virtual void abort();
-  virtual void notify();
-
-  virtual void send_message(Message *m);
-  virtual void write_event();
-  virtual void fault();
-  virtual bool has_queued_writes();
   virtual bool is_connected();
-  virtual bool writes_allowed();
+  virtual void stop();
+  virtual void fault();
+  virtual void send_message(Message *m);
   virtual void send_keepalive();
 
-  friend class ServerProtocolV1;
-};
+  virtual void connection_event();
+  virtual void write_event();
+  virtual bool is_queued();
 
-class LoopbackProtocolV1 : public ProtocolV1 {
-public:
-  LoopbackProtocolV1(AsyncConnection *connection) : ProtocolV1(connection) {
-    this->can_write = WriteStatus::CANWRITE;
-  }
-
-  void init() override {}
-};
-
-class ClientProtocolV1 : public ProtocolV1 {
+// Client Protocol
 private:
   int global_seq;
-
-  // Connecting state
   bool got_bad_auth;
   AuthAuthorizer *authorizer;
 
-  void send_banner();
-  void handle_banner_write(int r);
+  void send_client_banner();
+  void handle_client_banner_write(int r);
   void wait_server_banner();
   void handle_server_banner(char *buffer, int r);
   void handle_my_addr_write(int r);
@@ -173,59 +177,43 @@ private:
   void handle_connect_message_write(int r);
   void wait_connect_reply();
   void handle_connect_reply_1(char *buffer, int r);
-
   void wait_connect_reply_auth();
   void handle_connect_reply_auth(char *buffer, int r);
-
   void handle_connect_reply_2();
-
   void wait_ack_seq();
   void handle_ack_seq(char *buffer, int r);
   void handle_in_seq_write(int r);
+  void client_ready();
 
-  void ready();
-
-public:
-  ClientProtocolV1(AsyncConnection *connection);
-  ClientProtocolV1(ProtocolV1 *protocol);
-
-  virtual void init();
-};
-
-class ServerProtocolV1 : public ProtocolV1 {
+// Server Protocol
 private:
   bufferlist authorizer_reply;
   bool wait_for_seq;
 
   void send_server_banner();
-  void handle_banner_write(int r);
+  void handle_server_banner_write(int r);
   void wait_client_banner();
   void handle_client_banner(char *buffer, int r);
   void wait_connect_message();
   void handle_connect_message_1(char *buffer, int r);
-
   void wait_connect_message_auth();
   void handle_connect_message_auth(char *buffer, int r);
-
   void handle_connect_message_2();
-
   void send_connect_message_reply(char tag);
   void handle_connect_message_reply_write(int r);
-
   void replace(AsyncConnectionRef existing);
   void open();
   void handle_ready_connect_message_reply_write(int r);
-
   void wait_seq();
   void handle_seq(char *buffer, int r);
+  void server_ready();
+};
 
-  void ready();
-
+class LoopbackProtocolV1 : public ProtocolV1 {
 public:
-  ServerProtocolV1(AsyncConnection *connection);
-  ServerProtocolV1(ProtocolV1 *protocol);
-
-  virtual void init();
+  LoopbackProtocolV1(AsyncConnection *connection) : ProtocolV1(connection) {
+    this->can_write = WriteStatus::CANWRITE;
+  }
 };
 
 #endif /* _MSG_ASYNC_PROTOCOL_V1_ */
