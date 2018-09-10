@@ -43,7 +43,7 @@ public:
 class ProtocolV1 : public Protocol {
 protected:
   enum State {
-    NONE,
+    NONE = 0,
     START_CONNECT,
     CONNECTING,
     START_ACCEPT,
@@ -53,6 +53,19 @@ protected:
     WAIT,
     STANDBY
   };
+
+  static const char *get_state_name(int state) {
+      const char* const statenames[] = {"NONE",
+                                        "START_CONNECT",
+                                        "CONNECTING",
+                                        "START_ACCEPT",
+                                        "ACCEPTING",
+                                        "OPENED",
+                                        "CLOSED",
+                                        "WAIT",
+                                        "STANDBY"};
+      return statenames[state];
+  }
 
   enum ThrottleState {
     THROTTLE_NONE,
@@ -85,6 +98,7 @@ protected:
   ceph_msg_connect_reply connect_reply;
   bufferlist authorizer_buf;
 
+  utime_t backoff;         // backoff time
   utime_t recv_stamp;
   utime_t throttle_stamp;
   unsigned msg_left;
@@ -108,6 +122,7 @@ protected:
 
   bool _abort;
 
+  void ready();
   void wait_message();
   void handle_message(char *buffer, int r);
 
@@ -132,7 +147,6 @@ protected:
   void randomize_out_seq();
 
   Message *_get_next_outgoing(bufferlist *bl);
-  bool _has_next_outgoing() const;
 
   void prepare_send_message(uint64_t features, Message *m, bufferlist &bl);
   ssize_t write_message(Message *m, bufferlist &bl, bool more);
@@ -171,7 +185,7 @@ private:
   void send_client_banner();
   void handle_client_banner_write(int r);
   void wait_server_banner();
-  void handle_server_banner(char *buffer, int r);
+  void handle_server_banner_and_identify(char *buffer, int r);
   void handle_my_addr_write(int r);
   void send_connect_message();
   void handle_connect_message_write(int r);

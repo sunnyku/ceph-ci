@@ -48,7 +48,6 @@ ostream& AsyncConnection::_conn_prefix(std::ostream *_dout) {
 // 1. Don't dispatch any event when closed! It may cause AsyncConnection alive even if AsyncMessenger dead
 
 const uint32_t AsyncConnection::TCP_PREFETCH_MIN_SIZE = 512;
-const int ASYNC_COALESCE_THRESHOLD = 256;
 
 class C_time_wakeup : public EventCallback {
   AsyncConnectionRef conn;
@@ -139,8 +138,8 @@ AsyncConnection::AsyncConnection(CephContext *cct, AsyncMessenger *m, DispatchQu
   connection_handler = new C_handle_connection(this);
   // double recv_max_prefetch see "read_until"
   recv_buf = new char[2*recv_max_prefetch];
-  logger->inc(l_msgr_created_connections);
   protocol = std::unique_ptr<Protocol>(new ProtocolV1(this));
+  logger->inc(l_msgr_created_connections);
 }
 
 AsyncConnection::~AsyncConnection()
@@ -264,12 +263,14 @@ void AsyncConnection::read(unsigned len, char *buffer,
 
 void AsyncConnection::continue_read() {
   std::lock_guard<std::mutex> l(lock);
-  if (state == STATE_CLOSED || state == STATE_NONE) {
-    return;
+  recv_start_time = ceph::mono_clock::now();
+  if (state != STATE_CLOSED && state != STATE_NONE) {
+    if (pendingReadLen) {
+      read(*pendingReadLen, read_buffer, readCallback);
+    }
   }
-  if (pendingReadLen) {
-    read(*pendingReadLen, read_buffer, readCallback);
-  }
+  logger->tinc(l_msgr_running_recv_time,
+               ceph::mono_clock::now() - recv_start_time);
 }
 
 // Because this func will be called multi times to populate
@@ -366,10 +367,13 @@ void AsyncConnection::inject_delay() {
 void AsyncConnection::process() {
   std::lock_guard<std::mutex> l(lock);
   last_active = ceph::coarse_mono_clock::now();
+  recv_start_time = ceph::mono_clock::now();
+
+  ldout(async_msgr->cct, 20) << __func__ << dendl;
 
   switch (state) {
     case STATE_CONNECTING: {
-      assert(!policy.server);
+      ceph_assert(!policy.server);
 
       if (cs) {
         center->delete_file_event(cs.fd(), EVENT_READABLE | EVENT_WRITABLE);
@@ -412,14 +416,14 @@ void AsyncConnection::process() {
       center->delete_file_event(cs.fd(), EVENT_WRITABLE);
       ldout(async_msgr->cct, 10)
           << __func__ << " connect successfully, ready to send banner" << dendl;
-      state = STATE_CONNECTING_WAIT_BANNER_AND_IDENTIFY;
+      state = STATE_CONNECTION_ESTABLISHED;
       break;
     }
 
     case STATE_ACCEPTING: {
-      bufferlist bl;
       center->create_file_event(cs.fd(), EVENT_READABLE, read_handler);
-      state = STATE_ACCEPTING_WAIT_BANNER_ADDR;
+      state = STATE_CONNECTION_ESTABLISHED;
+
       break;
     }
 
@@ -428,10 +432,24 @@ void AsyncConnection::process() {
   }
 
   protocol->connection_event();
+
+  logger->tinc(l_msgr_running_recv_time,
+               ceph::mono_clock::now() - recv_start_time);
 }
 
 bool AsyncConnection::is_connected() {
   return protocol->is_connected();
+}
+
+void AsyncConnection::connect(const entity_addrvec_t &addrs, int type,
+                              entity_addr_t &target) {
+
+  std::lock_guard<std::mutex> l(lock);
+  set_peer_type(type);
+  set_peer_addrs(addrs);
+  policy = msgr->get_policy(type);
+  target_addr = target;
+  _connect();
 }
 
 void AsyncConnection::_connect()
@@ -653,9 +671,11 @@ void AsyncConnection::handle_write()
 
 void AsyncConnection::handle_write_callback() {
   std::lock_guard<std::mutex> l(lock);
+  recv_start_time = ceph::mono_clock::now();
   write_lock.lock();
   if (writeCallback) {
     auto callback = *writeCallback;
+    writeCallback.reset();
     write_lock.unlock();
     last_active = ceph::coarse_mono_clock::now();
     callback(0);

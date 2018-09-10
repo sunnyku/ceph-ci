@@ -123,13 +123,8 @@ class AsyncConnection : public Connection {
   bool is_connected() override;
 
   // Only call when AsyncConnection first construct
-  void connect(const entity_addrvec_t& addrs, int type, entity_addr_t& target) {
-    set_peer_type(type);
-    set_peer_addrs(addrs);
-    policy = msgr->get_policy(type);
-    target_addr = target;
-    _connect();
-  }
+  void connect(const entity_addrvec_t& addrs, int type, entity_addr_t& target);
+
   // Only call when AsyncConnection first construct
   void accept(ConnectedSocket socket, entity_addr_t &addr);
   int send_message(Message *m) override;
@@ -148,75 +143,21 @@ class AsyncConnection : public Connection {
  private:
   enum {
     STATE_NONE,
-    STATE_OPEN,
-    STATE_OPEN_KEEPALIVE2,
-    STATE_OPEN_KEEPALIVE2_ACK,
-    STATE_OPEN_TAG_ACK,
-    STATE_OPEN_MESSAGE_HEADER,
-    STATE_OPEN_MESSAGE_THROTTLE_MESSAGE,
-    STATE_OPEN_MESSAGE_THROTTLE_BYTES,
-    STATE_OPEN_MESSAGE_THROTTLE_DISPATCH_QUEUE,
-    STATE_OPEN_MESSAGE_READ_FRONT,
-    STATE_OPEN_MESSAGE_READ_MIDDLE,
-    STATE_OPEN_MESSAGE_READ_DATA_PREPARE,
-    STATE_OPEN_MESSAGE_READ_DATA,
-    STATE_OPEN_MESSAGE_READ_FOOTER_AND_DISPATCH,
-    STATE_OPEN_TAG_CLOSE,
-    STATE_WAIT_SEND,
     STATE_CONNECTING,
     STATE_CONNECTING_RE,
-    STATE_CONNECTING_WAIT_BANNER_AND_IDENTIFY,
-    STATE_CONNECTING_SEND_CONNECT_MSG,
-    STATE_CONNECTING_WAIT_CONNECT_REPLY,
-    STATE_CONNECTING_WAIT_CONNECT_REPLY_AUTH,
-    STATE_CONNECTING_WAIT_ACK_SEQ,
-    STATE_CONNECTING_READY,
     STATE_ACCEPTING,
-    STATE_ACCEPTING_WAIT_BANNER_ADDR,
-    STATE_ACCEPTING_WAIT_CONNECT_MSG,
-    STATE_ACCEPTING_WAIT_CONNECT_MSG_AUTH,
-    STATE_ACCEPTING_WAIT_SEQ,
-    STATE_ACCEPTING_READY,
-    STATE_STANDBY,
-    STATE_CLOSED,
-    STATE_WAIT,       // just wait for racing connection
+    STATE_CONNECTION_ESTABLISHED,
+    STATE_CLOSED
   };
 
   static const uint32_t TCP_PREFETCH_MIN_SIZE;
   static const char *get_state_name(int state) {
       const char* const statenames[] = {"STATE_NONE",
-                                        "STATE_OPEN",
-                                        "STATE_OPEN_KEEPALIVE2",
-                                        "STATE_OPEN_KEEPALIVE2_ACK",
-                                        "STATE_OPEN_TAG_ACK",
-                                        "STATE_OPEN_MESSAGE_HEADER",
-                                        "STATE_OPEN_MESSAGE_THROTTLE_MESSAGE",
-                                        "STATE_OPEN_MESSAGE_THROTTLE_BYTES",
-                                        "STATE_OPEN_MESSAGE_THROTTLE_DISPATCH_QUEUE",
-                                        "STATE_OPEN_MESSAGE_READ_FRONT",
-                                        "STATE_OPEN_MESSAGE_READ_MIDDLE",
-                                        "STATE_OPEN_MESSAGE_READ_DATA_PREPARE",
-                                        "STATE_OPEN_MESSAGE_READ_DATA",
-                                        "STATE_OPEN_MESSAGE_READ_FOOTER_AND_DISPATCH",
-                                        "STATE_OPEN_TAG_CLOSE",
-                                        "STATE_WAIT_SEND",
                                         "STATE_CONNECTING",
                                         "STATE_CONNECTING_RE",
-                                        "STATE_CONNECTING_WAIT_BANNER_AND_IDENTIFY",
-                                        "STATE_CONNECTING_SEND_CONNECT_MSG",
-                                        "STATE_CONNECTING_WAIT_CONNECT_REPLY",
-                                        "STATE_CONNECTING_WAIT_CONNECT_REPLY_AUTH",
-                                        "STATE_CONNECTING_WAIT_ACK_SEQ",
-                                        "STATE_CONNECTING_READY",
                                         "STATE_ACCEPTING",
-                                        "STATE_ACCEPTING_WAIT_BANNER_ADDR",
-                                        "STATE_ACCEPTING_WAIT_CONNECT_MSG",
-                                        "STATE_ACCEPTING_WAIT_CONNECT_MSG_AUTH",
-                                        "STATE_ACCEPTING_WAIT_SEQ",
-                                        "STATE_ACCEPTING_READY",
-                                        "STATE_STANDBY",
-                                        "STATE_CLOSED",
-                                        "STATE_WAIT"};
+                                        "STATE_CONNECTION_ESTABLISHED",
+                                        "STATE_CLOSED"};
       return statenames[state];
   }
 
@@ -237,7 +178,6 @@ class AsyncConnection : public Connection {
   std::mutex write_lock;
 
   std::mutex lock;
-  utime_t backoff;         // backoff time
   EventCallbackRef read_handler;
   EventCallbackRef write_handler;
   EventCallbackRef write_callback_handler;
@@ -250,6 +190,7 @@ class AsyncConnection : public Connection {
   uint32_t recv_end;
   set<uint64_t> register_time_events; // need to delete it if stop
   ceph::coarse_mono_clock::time_point last_active;
+  ceph::mono_clock::time_point recv_start_time;
   uint64_t last_tick_id = 0;
   const uint64_t inactive_timeout_us;
 
