@@ -2743,6 +2743,9 @@ int OSD::init()
   for (auto& shard : shards) {
     for (auto& i : shard->pg_slots) {
       PGRef pg = i.second->pg;
+      if (!pg) {
+	continue;
+      }
 
       pg->lock();
       set<pair<spg_t,epoch_t>> new_children;
