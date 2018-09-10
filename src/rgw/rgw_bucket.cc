@@ -26,6 +26,9 @@
 // until everything is moved from rgw_common
 #include "rgw_common.h"
 
+// stolen from src/cls/version/cls_version.cc
+#define VERSION_ATTR "ceph.objclass.version"
+
 #include "cls/user/cls_user_types.h"
 
 #define dout_context g_ceph_context
@@ -182,7 +185,8 @@ int rgw_link_bucket(RGWRados* const store,
                     const rgw_user& user_id,
                     rgw_bucket& bucket,
                     ceph::real_time creation_time,
-                    bool update_entrypoint)
+                    bool update_entrypoint,
+                    rgw_ep_info *pinfo)
 {
   int ret;
   string& tenant_name = bucket.tenant;
@@ -200,14 +204,22 @@ int rgw_link_bucket(RGWRados* const store,
   else
     new_bucket.creation_time = creation_time;
 
-  map<string, bufferlist> attrs;
-  RGWObjectCtx obj_ctx(store);
+  map<string, bufferlist> attrs, *pattrs;
 
   if (update_entrypoint) {
-    ret = store->get_bucket_entrypoint_info(obj_ctx, tenant_name, bucket_name, ep, &ot, NULL, &attrs);
-    if (ret < 0 && ret != -ENOENT) {
-      ldout(store->ctx(), 0) << "ERROR: store->get_bucket_entrypoint_info() returned: "
-                             << cpp_strerror(-ret) << dendl;
+    if (pinfo) {
+      ep = pinfo->ep;
+      pattrs = &pinfo->attrs;
+    } else {
+      RGWObjectCtx obj_ctx(store);
+
+      ret = store->get_bucket_entrypoint_info(obj_ctx,
+		tenant_name, bucket_name, ep, &ot, NULL, &attrs);
+      if (ret < 0 && ret != -ENOENT) {
+	ldout(store->ctx(), 0) << "ERROR: store->get_bucket_entrypoint_info() returned: "
+			       << cpp_strerror(-ret) << dendl;
+      }
+      pattrs = &attrs;
     }
   }
 
@@ -228,7 +240,7 @@ int rgw_link_bucket(RGWRados* const store,
   ep.linked = true;
   ep.owner = user_id;
   ep.bucket = bucket;
-  ret = store->put_bucket_entrypoint_info(tenant_name, bucket_name, ep, false, ot, real_time(), &attrs);
+  ret = store->put_bucket_entrypoint_info(tenant_name, bucket_name, ep, false, ot, real_time(), pattrs);
   if (ret < 0)
     goto done_err;
 
@@ -764,15 +776,20 @@ static void set_err_msg(std::string *sink, std::string msg)
     *sink = msg;
 }
 
-int RGWBucket::init(RGWRados *storage, RGWBucketAdminOpState& op_state)
+int RGWBucket::init(RGWRados *storage, RGWBucketAdminOpState& op_state,
+	std::string *err_msg, map<string, bufferlist> *pattrs)
 {
-  if (!storage)
+  std::string bucket_tenant;
+  if (!storage) {
+    set_err_msg(err_msg, "no storage!");
     return -EINVAL;
+  }
 
   store = storage;
 
   rgw_user user_id = op_state.get_user_id();
   tenant = user_id.tenant;
+  bucket_tenant = tenant;
   bucket_name = op_state.get_bucket_name();
   RGWUserBuckets user_buckets;
   RGWObjectCtx obj_ctx(store);
@@ -780,9 +797,19 @@ int RGWBucket::init(RGWRados *storage, RGWBucketAdminOpState& op_state)
   if (bucket_name.empty() && user_id.empty())
     return -EINVAL;
 
+  // split possible tenant/name
+  auto pos = bucket_name.find('/');
+  if (pos != boost::string_ref::npos) {
+    bucket_tenant = bucket_name.substr(0, pos);
+    bucket_name = bucket_name.substr(pos + 1);
+  }
+
   if (!bucket_name.empty()) {
-    int r = store->get_bucket_info(obj_ctx, tenant, bucket_name, bucket_info, NULL);
+    ceph::real_time mtime;
+    int r = store->get_bucket_info(obj_ctx, bucket_tenant, bucket_name,
+	bucket_info, &mtime, pattrs);
     if (r < 0) {
+      set_err_msg(err_msg, "failed to fetch bucket info for bucket=" + bucket_name);
       ldout(store->ctx(), 0) << "could not get bucket info for bucket=" << bucket_name << dendl;
       return r;
     }
@@ -792,8 +819,10 @@ int RGWBucket::init(RGWRados *storage, RGWBucketAdminOpState& op_state)
 
   if (!user_id.empty()) {
     int r = rgw_get_user_info_by_uid(store, user_id, user_info);
-    if (r < 0)
+    if (r < 0) {
+      set_err_msg(err_msg, "failed to fetch user info");
       return r;
+    }
 
     op_state.display_name = user_info.display_name;
   }
@@ -802,7 +831,8 @@ int RGWBucket::init(RGWRados *storage, RGWBucketAdminOpState& op_state)
   return 0;
 }
 
-int RGWBucket::link(RGWBucketAdminOpState& op_state, std::string *err_msg)
+int RGWBucket::link(RGWBucketAdminOpState& op_state,
+	map<string, bufferlist>& attrs, std::string *err_msg)
 {
   if (!op_state.is_user_op()) {
     set_err_msg(err_msg, "empty user id");
@@ -810,88 +840,130 @@ int RGWBucket::link(RGWBucketAdminOpState& op_state, std::string *err_msg)
   }
 
   string bucket_id = op_state.get_bucket_id();
-  if (bucket_id.empty()) {
-    set_err_msg(err_msg, "empty bucket instance id");
+
+  std::string display_name = op_state.get_user_display_name();
+  rgw_bucket& bucket = op_state.get_bucket();
+  if (!bucket_id.empty() && bucket_id != bucket.bucket_id) {
+    set_err_msg(err_msg,
+	"specified bucket id does not match " + bucket.bucket_id);
     return -EINVAL;
   }
 
-  std::string display_name = op_state.get_user_display_name();
-  rgw_bucket bucket = op_state.get_bucket();
+  rgw_bucket old_bucket = bucket;
+  bucket.tenant = tenant;
+  if (!op_state.new_bucket_name.empty()) {
+    auto pos = op_state.new_bucket_name.find('/');
+    if (pos != boost::string_ref::npos) {
+      bucket.tenant = op_state.new_bucket_name.substr(0, pos);
+      bucket.name = op_state.new_bucket_name.substr(pos + 1);
+    } else {
+      bucket.name = op_state.new_bucket_name;
+    }
+  }
 
-  const rgw_pool& root_pool = store->get_zone_params().domain_root;
-  std::string bucket_entry;
-  rgw_make_bucket_entry_name(tenant, bucket_name, bucket_entry);
-  rgw_raw_obj obj(root_pool, bucket_entry);
   RGWObjVersionTracker objv_tracker;
+  RGWObjVersionTracker old_version = bucket_info.objv_tracker;
 
-  map<string, bufferlist> attrs;
-  RGWBucketInfo bucket_info;
+  map<string, bufferlist>::iterator aiter = attrs.find(RGW_ATTR_ACL);
+  if (aiter == attrs.end()) {
+    // XXX why isn't this an error?  mdw 20180825
+    ldout(store->ctx(), 0) << "WARNING: bucket link will do nothing because no acl on bucket=" << old_bucket.name << dendl;
+    return 0;
+  }
+  bufferlist aclbl = aiter->second;
+  RGWAccessControlPolicy policy;
+  ACLOwner owner;
+  try {
+   auto iter = aclbl.cbegin();
+   decode(policy, iter);
+   owner = policy.get_owner();
+  } catch (buffer::error& err) {
+    set_err_msg(err_msg, "couldn't decode policy");
+    return -EIO;
+  }
 
-  RGWObjectCtx obj_ctx(store);
-  int r = store->get_bucket_instance_info(obj_ctx, bucket, bucket_info, NULL, &attrs);
+  int r = rgw_unlink_bucket(store, owner.get_id(),
+	old_bucket.tenant, old_bucket.name, false);
   if (r < 0) {
+    set_err_msg(err_msg, "could not unlink policy from user " + owner.get_id().to_str());
     return r;
   }
 
-  map<string, bufferlist>::iterator aiter = attrs.find(RGW_ATTR_ACL);
-  if (aiter != attrs.end()) {
-    bufferlist aclbl = aiter->second;
-    RGWAccessControlPolicy policy;
-    ACLOwner owner;
-    try {
-     auto iter = aclbl.cbegin();
-     decode(policy, iter);
-     owner = policy.get_owner();
-    } catch (buffer::error& err) {
-      set_err_msg(err_msg, "couldn't decode policy");
-      return -EIO;
-    }
+  // now update the user for the bucket...
+  if (display_name.empty()) {
+    ldout(store->ctx(), 0) << "WARNING: user " << user_info.user_id << " has no display name set" << dendl;
+  }
 
-    r = rgw_unlink_bucket(store, owner.get_id(), bucket.tenant, bucket.name, false);
-    if (r < 0) {
-      set_err_msg(err_msg, "could not unlink policy from user " + owner.get_id().to_str());
-      return r;
-    }
+  RGWAccessControlPolicy policy_instance;
+  policy_instance.create_default(user_info.user_id, display_name);
+  owner = policy_instance.get_owner();
 
-    // now update the user for the bucket...
-    if (display_name.empty()) {
-      ldout(store->ctx(), 0) << "WARNING: user " << user_info.user_id << " has no display name set" << dendl;
-    }
-    policy.create_default(user_info.user_id, display_name);
+  aclbl.clear();
+  policy_instance.encode(aclbl);
 
-    owner = policy.get_owner();
+  if (bucket == old_bucket) {
     r = store->set_bucket_owner(bucket_info.bucket, owner);
     if (r < 0) {
       set_err_msg(err_msg, "failed to set bucket owner: " + cpp_strerror(-r));
       return r;
     }
 
-    // ...and encode the acl
-    aclbl.clear();
-    policy.encode(aclbl);
-
-    r = store->system_obj_set_attr(NULL, obj, RGW_ATTR_ACL, aclbl, &objv_tracker);
-    if (r < 0) {
-      return r;
-    }
-
-    RGWAccessControlPolicy policy_instance;
-    policy_instance.create_default(user_info.user_id, display_name);
-    aclbl.clear();
-    policy_instance.encode(aclbl);
-
     rgw_raw_obj obj_bucket_instance;
     store->get_bucket_instance_obj(bucket, obj_bucket_instance);
     r = store->system_obj_set_attr(NULL, obj_bucket_instance, RGW_ATTR_ACL, aclbl, &objv_tracker);
     if (r < 0) {
+      set_err_msg(err_msg, "failed to set new acl");
+      return r;
+    }
+  } else {
+    attrs[RGW_ATTR_ACL] = aclbl;
+    bucket_info.bucket = bucket;
+    bucket_info.owner = user_info.user_id;
+    bucket_info.objv_tracker.version_for_read()->ver = 0;
+    r = store->put_bucket_instance_info(bucket_info, true, real_time(), &attrs);
+    if (r < 0) {
+      set_err_msg(err_msg, "ERROR: failed writing bucket instance info: " + cpp_strerror(-r));
+      return r;
+    }
+  }
+
+  RGWBucketEntryPoint ep;
+  ep.bucket = bucket_info.bucket;
+  ep.owner = user_info.user_id;
+  ep.creation_time = bucket_info.creation_time;
+  ep.linked = true;
+  map<string, bufferlist> ep_attrs;
+  // XXX I am not convinced this is at all necessary; but previous
+  //	versions would have found and copied VERSION_ATTR so I will
+  //	do likewise for now...  mdw 20180825
+  auto version_iter = attrs.find(VERSION_ATTR);
+  if (version_iter != attrs.end())
+    ep_attrs[VERSION_ATTR] = version_iter->second;
+  rgw_ep_info ep_data{ep, ep_attrs};
+
+  r = rgw_link_bucket(store, user_info.user_id, bucket_info.bucket,
+		      ceph::real_time(), true, &ep_data);
+  if (r < 0) {
+    set_err_msg(err_msg, "failed to relink bucket");
+    return r;
+  }
+  if (bucket != old_bucket) {
+    RGWObjVersionTracker ep_version;
+    *ep_version.version_for_read() = bucket_info.ep_objv;
+    // like RGWRados::delete_bucket -- excepting no bucket_index work.
+    r = rgw_bucket_delete_bucket_obj(store,
+	old_bucket.tenant, old_bucket.name, ep_version);
+    if (r < 0) {
+      set_err_msg(err_msg, "failed to unlink old bucket endpoint " + old_bucket.tenant + "/" + old_bucket.name);
+      return r;
+    }
+    string entry = old_bucket.get_key();
+    r = rgw_bucket_instance_remove_entry(store, entry, &old_version);
+    if (r < 0) {
+      set_err_msg(err_msg, "failed to unlink old bucket info " + entry);
       return r;
     }
 
-    r = rgw_link_bucket(store, user_info.user_id, bucket_info.bucket,
-                        ceph::real_time());
-    if (r < 0) {
-      return r;
-    }
   }
 
   return 0;
@@ -1323,12 +1395,13 @@ int RGWBucketAdminOp::unlink(RGWRados *store, RGWBucketAdminOpState& op_state)
 int RGWBucketAdminOp::link(RGWRados *store, RGWBucketAdminOpState& op_state, string *err)
 {
   RGWBucket bucket;
+  map<string, bufferlist> attrs;
 
-  int ret = bucket.init(store, op_state);
+  int ret = bucket.init(store, op_state, err, &attrs);
   if (ret < 0)
     return ret;
 
-  return bucket.link(op_state, err);
+  return bucket.link(op_state, attrs, err);
 
 }
 
