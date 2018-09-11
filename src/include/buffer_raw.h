@@ -86,9 +86,6 @@ public:
       memcpy(c->data, data, len);
       return c;
     }
-    virtual bool can_zero_copy() const {
-      return false;
-    }
     virtual bool is_page_aligned() {
       return ((long)data & ~CEPH_PAGE_MASK) == 0;
     }
