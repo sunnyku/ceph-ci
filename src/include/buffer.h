@@ -149,7 +149,6 @@ namespace buffer CEPH_BUFFER_API {
   class raw_hack_aligned;
   class raw_char;
   class raw_claimed_char;
-  class raw_pipe;
   class raw_unshareable; // diagnostic, unshareable char buffer
   class raw_combined;
   class raw_claim_buffer;
@@ -172,7 +171,6 @@ namespace buffer CEPH_BUFFER_API {
   raw* create_aligned_in_mempool(unsigned len, unsigned align, int mempool);
   raw* create_page_aligned(unsigned len);
   raw* create_small_page_aligned(unsigned len);
-  raw* create_zero_copy(unsigned len, int fd, int64_t *offset);
   raw* create_unshareable(unsigned len);
   raw* create_static(unsigned len, char *buf);
   raw* claim_buffer(unsigned len, char *buf, deleter del);
