@@ -89,9 +89,6 @@ public:
     virtual bool can_zero_copy() const {
       return false;
     }
-    virtual int zero_copy_to_fd(int fd, loff_t *offset) {
-      return -ENOTSUP;
-    }
     virtual bool is_page_aligned() {
       return ((long)data & ~CEPH_PAGE_MASK) == 0;
     }
