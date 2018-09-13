@@ -7635,16 +7635,13 @@ public:
     lofs = ofs - extra_data_len;
 
     data_len += bl.length();
-    bool again = false;
 
-    do {
-      uint64_t size = bl.length();
-      int ret = filter->handle_data(bl, lofs);
-      if (ret < 0)
-        return ret;
+    uint64_t size = bl.length();
+    int ret = filter->handle_data(bl, lofs);
+    if (ret < 0)
+      return ret;
 
-      ofs += size;
-    } while (again);
+    ofs += size;
 
     return 0;
   }
@@ -8540,14 +8537,11 @@ int RGWRados::copy_obj_data(RGWObjectCtx& obj_ctx,
     }
 
     uint64_t read_len = ret;
-    bool again = false;
 
-    do {
-      ret = processor.handle_data(bl, ofs);
-      if (ret < 0) {
-        return ret;
-      }
-    } while (again);
+    ret = processor.handle_data(bl, ofs);
+    if (ret < 0) {
+      return ret;
+    }
 
     ofs += read_len;
   } while (ofs <= end);
