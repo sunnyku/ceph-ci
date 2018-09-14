@@ -199,6 +199,8 @@ namespace librbd {
                          const std::string &key);
     int metadata_remove(librados::IoCtx *ioctx, const std::string &oid,
                         const std::string &key);
+    void metadata_remove_qos(librados::ObjectWriteOperation *op,
+                                 const set<string> &keys);
     int metadata_get(librados::IoCtx *ioctx, const std::string &oid,
                      const std::string &key, string *v);
 

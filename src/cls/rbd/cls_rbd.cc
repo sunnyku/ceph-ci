@@ -2760,6 +2760,37 @@ int metadata_remove(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
 
 /**
  * Input:
+ * @param set<> keys
+ *
+ * Output:
+ * @returns 0 on success, negative error code on failure
+ */
+int metadata_remove_qos(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
+{
+  set<string> keys;
+
+  bufferlist::iterator iter = in->begin();
+  try {
+    ::decode(keys, iter);
+  } catch (const buffer::error &err) {
+    return -EINVAL;
+  }
+
+  for (auto it = keys.begin(); it != keys.end(); ++it) {
+    CLS_LOG(20, "metadata_remove_qos key=%s", it->c_str());
+
+    int r = cls_cxx_map_remove_key(hctx, metadata_key_for_name(*it));
+    if (r < 0) {
+      CLS_ERR("error remove metadata qos: %s", cpp_strerror(r).c_str());
+      return r;
+    }
+  }
+
+  return 0;
+}
+
+/**
+ * Input:
  * @param key
  *
  * Output:
@@ -5180,6 +5211,7 @@ CLS_INIT(rbd)
   cls_method_handle_t h_object_map_snap_remove;
   cls_method_handle_t h_metadata_set;
   cls_method_handle_t h_metadata_remove;
+  cls_method_handle_t h_metadata_remove_qos;
   cls_method_handle_t h_metadata_list;
   cls_method_handle_t h_metadata_get;
   cls_method_handle_t h_snapshot_get_limit;
@@ -5313,6 +5345,9 @@ CLS_INIT(rbd)
   cls_register_cxx_method(h_class, "metadata_remove",
                           CLS_METHOD_RD | CLS_METHOD_WR,
 			  metadata_remove, &h_metadata_remove);
+  cls_register_cxx_method(h_class, "metadata_remove_qos",
+                          CLS_METHOD_RD | CLS_METHOD_WR,
+			  metadata_remove_qos, &h_metadata_remove_qos);
   cls_register_cxx_method(h_class, "metadata_get",
                           CLS_METHOD_RD,
 			  metadata_get, &h_metadata_get);

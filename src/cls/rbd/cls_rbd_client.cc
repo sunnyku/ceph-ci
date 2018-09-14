@@ -1262,6 +1262,15 @@ namespace librbd {
       return ioctx->operate(oid, &op);
     }
 
+    void metadata_remove_qos(librados::ObjectWriteOperation *op,
+                             const set<string> &keys)
+    {
+      bufferlist bl;
+      ::encode(keys, bl);
+
+      op->exec("rbd", "metadata_remove_qos", bl);
+    }
+
     int metadata_list(librados::IoCtx *ioctx, const std::string &oid,
                       const std::string &start, uint64_t max_return,
                       map<string, bufferlist> *pairs)
