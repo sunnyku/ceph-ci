@@ -3295,17 +3295,24 @@ bool OSDMonitor::prepare_pg_ready_to_merge(MonOpRequestRef op)
     return true;
   }
 
-  p.dec_pg_num(m->last_epoch_clean);
-  p.last_change = pending_inc.epoch;
+  if (m->ready) {
+    p.dec_pg_num(m->last_epoch_clean);
+    p.last_change = pending_inc.epoch;
 
-  // force pre-nautilus clients to resend their ops, since they
-  // don't understand pg_num_pending changes form a new interval
-  p.last_force_op_resend_prenautilus = pending_inc.epoch;
+    // force pre-nautilus clients to resend their ops, since they
+    // don't understand pg_num_pending changes form a new interval
+    p.last_force_op_resend_prenautilus = pending_inc.epoch;
+  } else {
+    // back off the merge attempt!
+    p.set_pg_num_pending(p.get_pg_num());
+  }
 
   pending_inc.new_pools[m->pgid.pool()] = p;
 
   auto prob = g_conf().get_val<double>("mon_inject_pg_merge_bounce_probability");
-  if (prob > 0 && prob > (double)(rand() % 1000)/1000.0) {
+  if (m->ready &&
+      prob > 0 &&
+      prob > (double)(rand() % 1000)/1000.0) {
     derr << __func__ << " injecting pg merge pg_num bounce" << dendl;
     auto n = new MMonCommand(mon->monmap->get_fsid());
     n->set_connection(m->get_connection());
