@@ -35,13 +35,11 @@ TEST(lockdep, recursive)
   EXPECT_DEATH(a.lock(), "");
   a.unlock();
 
-/*
   ceph::recursive_mutex b("b");
   b.lock();
   b.lock();
   b.unlock();
   b.unlock();
-*/
 }
 
 int main(int argc, char **argv) {
