@@ -841,9 +841,9 @@ void MDBalancer::try_rebalance(balance_state_t& state)
     mds_rank_t target = it.first;
     double amount = it.second;
 
-    if (amount / target_load < .2)
-      continue;
     if (amount < MIN_OFFLOAD)
+      continue;
+    if (amount * 10 * state.targets.size() < target_load)
       continue;
 
     dout(5) << "want to send " << amount << " to mds." << target
@@ -1115,8 +1115,9 @@ void MDBalancer::maybe_fragment(CDir *dir, bool hot)
 {
   // split/merge
   if (g_conf->mds_bal_frag && g_conf->mds_bal_fragment_interval > 0 &&
-      !dir->inode->is_base() &&        // not root/base (for now at least)
-      dir->is_auth()) {
+      dir->is_auth() &&
+      !dir->inode->is_base() &&  // not root/base (for now at least)
+      !dir->inode->is_stray()) { // not straydir
 
     // split
     if (g_conf->mds_bal_split_size > 0 &&
