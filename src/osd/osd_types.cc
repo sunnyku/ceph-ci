@@ -1996,9 +1996,9 @@ ostream& operator<<(ostream& out, const pg_pool_t& p)
   }
   if (p.get_pg_num_pending() != p.get_pg_num()) {
     out << " pg_num_pending " << p.get_pg_num_pending();
+    if (p.get_pg_num_dec_last_epoch_clean())
+      out << " dlec " << p.get_pg_num_dec_last_epoch_clean();
   }
-  if (p.get_pg_num_dec_last_epoch_clean())
-    out << " dlec " << p.get_pg_num_dec_last_epoch_clean() << ")";
   out << " last_change " << p.get_last_change();
   if (p.get_last_force_op_resend() ||
       p.get_last_force_op_resend_prenautilus() ||
