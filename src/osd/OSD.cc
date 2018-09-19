@@ -1759,6 +1759,7 @@ void OSDService::clear_ready_to_merge(PG *pg)
   dout(10) << __func__ << " " << pg->pg_id << dendl;
   ready_to_merge_source.erase(pg->pg_id.pgid);
   ready_to_merge_target.erase(pg->pg_id.pgid);
+  not_ready_to_merge_source.erase(pg->pg_id.pgid);
 }
 
 void OSDService::clear_sent_ready_to_merge()
