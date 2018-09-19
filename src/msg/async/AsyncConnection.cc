@@ -1019,7 +1019,7 @@ ssize_t AsyncConnection::_process_connection()
     case STATE_CONNECTING_SEND_CONNECT_MSG:
       {
         if (!authorizer) {
-          authorizer = async_msgr->get_authorizer(peer_type, false);
+          authorizer = async_msgr->ms_deliver_get_authorizer(peer_type, false);
         }
         bufferlist bl;
 
@@ -1418,7 +1418,8 @@ int AsyncConnection::handle_connect_reply(ceph_msg_connect &connect, ceph_msg_co
       goto fail;
     got_bad_auth = true;
     delete authorizer;
-    authorizer = async_msgr->get_authorizer(peer_type, true);  // try harder
+    // try harder
+    authorizer = async_msgr->ms_deliver_get_authorizer(peer_type, true);
     state = STATE_CONNECTING_SEND_CONNECT_MSG;
   }
   if (reply.tag == CEPH_MSGR_TAG_RESETSESSION) {
@@ -1527,7 +1528,7 @@ ssize_t AsyncConnection::handle_connect_msg(ceph_msg_connect &connect, bufferlis
   bool authorizer_valid;
   bool need_challenge = HAVE_FEATURE(connect.features, CEPHX_V2);
   bool had_challenge = (bool)authorizer_challenge;
-  if (!async_msgr->verify_authorizer(
+  if (!async_msgr->ms_deliver_verify_authorizer(
 	this, peer_type, connect.authorizer_protocol, authorizer_bl,
 	authorizer_reply, authorizer_valid, session_key,
 	need_challenge ? &authorizer_challenge : nullptr) ||
