@@ -1733,6 +1733,7 @@ void OSDService::_send_ready_to_merge()
 			       0,
 			       false,
 			       osdmap->get_epoch()));
+      sent_ready_to_merge_source.insert(src);
     }
   }
   for (auto src : ready_to_merge_source) {
