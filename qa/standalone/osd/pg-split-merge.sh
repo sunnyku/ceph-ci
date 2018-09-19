@@ -35,7 +35,7 @@ function TEST_import_after_merge_and_gap() {
 
     bin/ceph osd pool set foo pg_num 1
     sleep 5
-    while bin/ceph pg ls | grep ^1.1 ; do sleep 1 ; done
+    while bin/ceph daemon osd.0 perf dump | jq '.osd.numpg' | grep 2 ; do sleep 1 ; done
     wait_for_clean || return 1
 
     #
@@ -91,7 +91,7 @@ function TEST_import_after_split() {
 
     bin/ceph osd pool set foo pg_num 2
     sleep 5
-    while ! ceph pg ls | grep ^1.1 ; do sleep 1 ; done
+    while bin/ceph daemon osd.0 perf dump | jq '.osd.numpg' | grep 1 ; do sleep 1 ; done
     wait_for_clean || return 1
 
     kill_daemons $dir TERM osd.0
