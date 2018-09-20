@@ -50,6 +50,8 @@ namespace ceph {
     // mutex_debug-style ctor for compat with the CEPH_DEBUG_MUTEX
     mutex(const std::string &n,
 	  bool bt=false) noexcept {}
+    mutex(const char *n,
+	  bool bt=false) noexcept {}
 
     // enable silent conversion to std::mutex, e.g. for unique_lock<>
     // (see deduction guide below)
@@ -90,6 +92,8 @@ namespace ceph {
 
     // recursive_mutex_debug-style ctor for compat with the CEPH_DEBUG_MUTEX
     recursive_mutex(const std::string &n,
+		    bool backtraces=false) noexcept {}
+    recursive_mutex(const char *n,
 		    bool backtraces=false) noexcept {}
 
     // enable silent conversion to std::recursive_mutex, e.g. for
