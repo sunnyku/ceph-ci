@@ -129,10 +129,22 @@ namespace std {
   // deduction guides for unique_lock<>.  this is important for
   // std::condition_variable, which needs a
   // std::unique_lock<std::mutex>, not std::unique_lock<ceph::mutex>.
+  //
+  // WARNING:  http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/n4659.pdf#paragraph.20.5.4.2.1
+  // says:
+  //
+  //   The behavior of a C++ program is undefined if it declares ... a
+  //   deduction guide for any standard library class template.
+  //
+  // We don't think this is likely in practice to cause problems, so we're
+  // doing it anyway.  If it *does* turn out to be problematic, we can work
+  // around it with a typedev std::unique_lock<std::mutex> unique_lock in the
+  // ceph namespace and update all of the users to ceph::unique_lock instead of
+  // std::unique_lock.
   unique_lock(ceph::mutex&) -> unique_lock<std::mutex>;
 
   // let's do the same for recursive_mutex too (even though it is not
-  // useful for std::condition_variable)
+  // useful for std::condition_variable).
   unique_lock(ceph::recursive_mutex&) -> unique_lock<std::recursive_mutex>;
 }
 
