@@ -1401,7 +1401,8 @@ void ProtocolV1::send_connect_message() {
   ldout(cct, 20) << __func__ << dendl;
 
   if (!authorizer) {
-    authorizer = messenger->get_authorizer(connection->peer_type, false);
+    authorizer = messenger->ms_deliver_get_authorizer(connection->peer_type,
+						      false);
   }
 
   ceph_msg_connect connect;
@@ -1561,8 +1562,8 @@ void ProtocolV1::handle_connect_reply_2() {
     }
     got_bad_auth = true;
     delete authorizer;
-    authorizer =
-        messenger->get_authorizer(connection->peer_type, true);  // try harder
+    authorizer = messenger->ms_deliver_get_authorizer(connection->peer_type,
+						      true);  // try harder
     send_connect_message();
     return;
   }
@@ -1923,7 +1924,7 @@ void ProtocolV1::handle_connect_message_2() {
   bool authorizer_valid;
   bool need_challenge = HAVE_FEATURE(connect_msg.features, CEPHX_V2);
   bool had_challenge = (bool)authorizer_challenge;
-  if (!messenger->verify_authorizer(
+  if (!messenger->ms_deliver_verify_authorizer(
           connection, connection->peer_type, connect_msg.authorizer_protocol,
           authorizer_buf, authorizer_reply, authorizer_valid, session_key,
           need_challenge ? &authorizer_challenge : nullptr) ||

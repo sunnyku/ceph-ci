@@ -522,7 +522,7 @@ int Pipe::accept()
     need_challenge = HAVE_FEATURE(connect.features, CEPHX_V2);
     had_challenge = (bool)authorizer_challenge;
     authorizer_reply.clear();
-    if (!msgr->verify_authorizer(
+    if (!msgr->ms_deliver_verify_authorizer(
 	  connection_state.get(), peer_type, connect.authorizer_protocol, authorizer,
 	  authorizer_reply, authorizer_valid, session_key,
 	  need_challenge ? &authorizer_challenge : nullptr) ||
@@ -1146,7 +1146,7 @@ int Pipe::connect()
 
   while (1) {
     if (!authorizer) {
-      authorizer = msgr->get_authorizer(peer_type, false);
+      authorizer = msgr->ms_deliver_get_authorizer(peer_type, false);
     }
     bufferlist authorizer_reply;
 
@@ -1263,7 +1263,7 @@ int Pipe::connect()
       got_bad_auth = true;
       pipe_lock.Unlock();
       delete authorizer;
-      authorizer = msgr->get_authorizer(peer_type, true);  // try harder
+      authorizer = msgr->ms_deliver_get_authorizer(peer_type, true);
       continue;
     }
     if (reply.tag == CEPH_MSGR_TAG_RESETSESSION) {
