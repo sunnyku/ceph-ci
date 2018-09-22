@@ -1710,11 +1710,19 @@ void OSDService::set_ready_to_merge_target(PG *pg, epoch_t last_epoch_clean)
   _send_ready_to_merge();
 }
 
-void OSDService::set_not_ready_to_merge_source(pg_t pgid)
+void OSDService::set_not_ready_to_merge_source(pg_t source)
 {
   Mutex::Locker l(merge_lock);
-  dout(10) << __func__ << " " << pgid << dendl;
-  not_ready_to_merge_source.insert(pgid);
+  dout(10) << __func__ << " " << source << dendl;
+  not_ready_to_merge_source.insert(source);
+  _send_ready_to_merge();
+}
+
+void OSDService::set_not_ready_to_merge_target(pg_t target, pg_t source)
+{
+  Mutex::Locker l(merge_lock);
+  dout(10) << __func__ << " " << target << " source " << source << dendl;
+  not_ready_to_merge_target[target] = source;
   _send_ready_to_merge();
 }
 
@@ -1736,8 +1744,19 @@ void OSDService::_send_ready_to_merge()
       sent_ready_to_merge_source.insert(src);
     }
   }
+  for (auto p : not_ready_to_merge_target) {
+    if (sent_ready_to_merge_source.count(p.second) == 0) {
+      monc->send_mon_message(new MOSDPGReadyToMerge(
+			       p.second,
+			       0,
+			       false,
+			       osdmap->get_epoch()));
+      sent_ready_to_merge_source.insert(p.second);
+    }
+  }
   for (auto src : ready_to_merge_source) {
-    if (not_ready_to_merge_source.count(src)) {
+    if (not_ready_to_merge_source.count(src) ||
+	not_ready_to_merge_target.count(src.get_parent())) {
       continue;
     }
     auto p = ready_to_merge_target.find(src.get_parent());
@@ -1760,6 +1779,7 @@ void OSDService::clear_ready_to_merge(PG *pg)
   ready_to_merge_source.erase(pg->pg_id.pgid);
   ready_to_merge_target.erase(pg->pg_id.pgid);
   not_ready_to_merge_source.erase(pg->pg_id.pgid);
+  not_ready_to_merge_target.erase(pg->pg_id.pgid);
 }
 
 void OSDService::clear_sent_ready_to_merge()
