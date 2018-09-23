@@ -1699,6 +1699,7 @@ void OSDService::set_ready_to_merge_source(PG *pg)
   Mutex::Locker l(merge_lock);
   dout(10) << __func__ << " " << pg->pg_id << dendl;
   ready_to_merge_source.insert(pg->pg_id.pgid);
+  assert(not_ready_to_merge_source.count(pg->pg_id.pgid) == 0);
   _send_ready_to_merge();
 }
 
@@ -1707,6 +1708,7 @@ void OSDService::set_ready_to_merge_target(PG *pg, epoch_t last_epoch_clean)
   Mutex::Locker l(merge_lock);
   dout(10) << __func__ << " " << pg->pg_id << dendl;
   ready_to_merge_target.insert(make_pair(pg->pg_id.pgid, last_epoch_clean));
+  assert(not_ready_to_merge_target.count(pg->pg_id.pgid) == 0);
   _send_ready_to_merge();
 }
 
@@ -1715,6 +1717,7 @@ void OSDService::set_not_ready_to_merge_source(pg_t source)
   Mutex::Locker l(merge_lock);
   dout(10) << __func__ << " " << source << dendl;
   not_ready_to_merge_source.insert(source);
+  assert(ready_to_merge_source.count(source) == 0);
   _send_ready_to_merge();
 }
 
@@ -1723,6 +1726,7 @@ void OSDService::set_not_ready_to_merge_target(pg_t target, pg_t source)
   Mutex::Locker l(merge_lock);
   dout(10) << __func__ << " " << target << " source " << source << dendl;
   not_ready_to_merge_target[target] = source;
+  assert(ready_to_merge_target.count(target) == 0);
   _send_ready_to_merge();
 }
 
@@ -1734,6 +1738,13 @@ void OSDService::send_ready_to_merge()
 
 void OSDService::_send_ready_to_merge()
 {
+  dout(20) << __func__
+	   << " ready_to_merge_source " << ready_to_merge_source
+    	   << " not_ready_to_merge_source " << not_ready_to_merge_source
+	   << " ready_to_merge_target " << ready_to_merge_target
+    	   << " not_ready_to_merge_target " << not_ready_to_merge_target
+	   << " sent_ready_to_merge_source " << sent_ready_to_merge_source
+	   << dendl;
   for (auto src : not_ready_to_merge_source) {
     if (sent_ready_to_merge_source.count(src) == 0) {
       monc->send_mon_message(new MOSDPGReadyToMerge(
