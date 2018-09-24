@@ -1791,6 +1791,7 @@ void OSDService::clear_ready_to_merge(PG *pg)
   ready_to_merge_target.erase(pg->pg_id.pgid);
   not_ready_to_merge_source.erase(pg->pg_id.pgid);
   not_ready_to_merge_target.erase(pg->pg_id.pgid);
+  sent_ready_to_merge_source.erase(pg->pg_id.pgid);
 }
 
 void OSDService::clear_sent_ready_to_merge()
