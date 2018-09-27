@@ -81,9 +81,12 @@
 
     ceph auth caps client.bad osd 'allow rwx pool foo'
 
-
-
-
+* The ``mgr/balancer/max_misplaced`` option has been replaced by a new
+  global ``target_max_misplaced_ratio`` option that throttles both
+  balancer activity and automated adjustments to ``pgp_num`` (normally as a
+  result of ``pg_num`` changes).  If you have customized the balancer module
+  option, you will need to adjust your config to set the new global option
+  or revert to the default of .05 (5%).
 
 
 Upgrading from Luminous
