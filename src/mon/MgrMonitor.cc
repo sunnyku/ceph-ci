@@ -722,7 +722,7 @@ bool MgrMonitor::preprocess_command(MonOpRequestRef op)
     return true;
   }
 
-  MonSession *session = m->get_session();
+  MonSession *session = op->get_session();
   if (!session) {
     mon->reply_command(op, -EACCES, "access denied", rdata,
 		       get_last_committed());
@@ -862,7 +862,7 @@ bool MgrMonitor::prepare_command(MonOpRequestRef op)
     return true;
   }
 
-  MonSession *session = m->get_session();
+  MonSession *session = op->get_session();
   if (!session) {
     mon->reply_command(op, -EACCES, "access denied", rdata, get_last_committed());
     return true;
