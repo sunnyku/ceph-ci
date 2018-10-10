@@ -5774,7 +5774,9 @@ int Monitor::ms_handle_authentication(Connection *con)
       con->get_peer_addrs(),
       con);
     assert(s);
-    con->set_priv(s->get());
+    dout(10) << __func__ << " adding session " << s << " to con " << con
+	     << dendl;
+    con->set_priv(s);
     logger->set(l_mon_num_sessions, session_map.get_size());
     logger->inc(l_mon_session_add);
   }
