@@ -1984,7 +1984,8 @@ void ProtocolV1::handle_connect_message_2() {
     }
 
     if (exproto->state == CLOSED) {
-      ldout(cct, 1) << __func__ << " existing already closed." << dendl;
+      ldout(cct, 1) << __func__ << " existing " << existing
+		    << " already closed." << dendl;
       existing->lock.unlock();
       existing = nullptr;
 
