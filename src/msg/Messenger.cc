@@ -152,10 +152,7 @@ bool Messenger::ms_deliver_verify_authorizer(
     // check this after we identify dispatcher that doesn't need any
     // authorizer (e.g., OSD ping)
     if (!ah) {
-      lderr(cct) << __func__ << " no AuthAuthorizeHandler found for protocol "
-		 << protocol << dendl;
-      isvalid = false;
-      return false;
+      continue;
     }
     KeyStore *ks = dis->ms_get_auth1_authorizer_keystore();
     if (ks) {
@@ -174,6 +171,12 @@ bool Messenger::ms_deliver_verify_authorizer(
       }
       return true;
     }
+  }
+  if (!ah) {
+    lderr(cct) << __func__ << " no AuthAuthorizeHandler found for protocol "
+	       << protocol << dendl;
+    isvalid = false;
+    return false;
   }
   return false;
 }
