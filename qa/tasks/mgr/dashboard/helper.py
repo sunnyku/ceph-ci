@@ -144,7 +144,12 @@ class DashboardTestCase(MgrTestCase):
     def setUp(self):
         if not self._loggedin and self.AUTO_AUTHENTICATE:
             self.login('admin', 'admin')
+
         self.wait_for_health_clear(20)
+        self.wait_until_equal(
+            lambda: self.ceph_cluster.mon_manager.get_mon_health()['status'],
+            'HEALTH_OK',
+            20)
 
     @classmethod
     def tearDownClass(cls):
