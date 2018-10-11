@@ -8030,8 +8030,8 @@ void OSD::check_osdmap_features()
     }
   }
 
-  if (osdmap->require_osd_release >= CEPH_RELEASE_NAUTILUS) {
-    heartbeat_dispatcher.ms_set_require_authorizer(true);
+  if (osdmap->require_osd_release < CEPH_RELEASE_NAUTILUS) {
+    heartbeat_dispatcher.ms_set_require_authorizer(false);
   }
 }
 
