@@ -1365,6 +1365,8 @@ void RGWRados::finalize()
   }
   delete reshard;
   delete index_completion_manager;
+
+  svc.shutdown();
 }
 
 /** 
