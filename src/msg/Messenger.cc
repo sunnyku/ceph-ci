@@ -128,6 +128,15 @@ bool Messenger::ms_deliver_verify_authorizer(
   CryptoKey& session_key,
   std::unique_ptr<AuthAuthorizerChallenge> *challenge)
 {
+  if (authorizer.length() == 0) {
+    for (auto dis : dispatchers) {
+      if (!dis->require_authorizer) {
+	//ldout(cct,10) << __func__ << " tolerating missing authorizer" << dendl;
+	isvalid = true;
+	return true;
+      }
+    }
+  }
   AuthAuthorizeHandler *ah = 0;
   switch (peer_type) {
   case CEPH_ENTITY_TYPE_MDS:
@@ -141,19 +150,19 @@ bool Messenger::ms_deliver_verify_authorizer(
   if (get_mytype() == CEPH_ENTITY_TYPE_MON &&
       peer_type != CEPH_ENTITY_TYPE_MON) {
     // the monitor doesn't do authenticators for msgr1.
+    lderr(cct) << __func__ << " no authenticators for mon msgr1 "
+	       << protocol << dendl;
     isvalid = true;
     return true;
   }
+  if (!ah) {
+    lderr(cct) << __func__ << " no AuthAuthorizeHandler found for protocol "
+	       << protocol << dendl;
+    isvalid = false;
+    return false;
+  }
+
   for (auto dis : dispatchers) {
-    if (!dis->require_authorizer) {
-      isvalid = true;
-      return true;
-    }
-    // check this after we identify dispatcher that doesn't need any
-    // authorizer (e.g., OSD ping)
-    if (!ah) {
-      continue;
-    }
     KeyStore *ks = dis->ms_get_auth1_authorizer_keystore();
     if (ks) {
       isvalid = ah->verify_authorizer(
@@ -171,12 +180,6 @@ bool Messenger::ms_deliver_verify_authorizer(
       }
       return true;
     }
-  }
-  if (!ah) {
-    lderr(cct) << __func__ << " no AuthAuthorizeHandler found for protocol "
-	       << protocol << dendl;
-    isvalid = false;
-    return false;
   }
   return false;
 }
