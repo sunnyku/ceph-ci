@@ -1351,6 +1351,9 @@ void RGWRados::finalize()
   if (cr_registry) {
     cr_registry->put();
   }
+
+  svc.shutdown();
+
   delete meta_mgr;
   delete binfo_cache;
   delete obj_tombstone_cache;
@@ -1365,8 +1368,6 @@ void RGWRados::finalize()
   }
   delete reshard;
   delete index_completion_manager;
-
-  svc.shutdown();
 }
 
 /** 
