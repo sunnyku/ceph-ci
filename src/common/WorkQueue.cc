@@ -263,7 +263,7 @@ void ThreadPool::drain(WorkQueue_* wq)
 
 void ThreadPool::set_ioprio(int cls, int priority)
 {
-  std::lock_guard<Mutex> l(_lock);
+  std::lock_guard l(_lock);
   ioprio_class = cls;
   ioprio_priority = priority;
   for (set<WorkThread*>::iterator p = _threads.begin();
