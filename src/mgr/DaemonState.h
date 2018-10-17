@@ -182,6 +182,7 @@ class DaemonState
   }
 
   const std::map<std::string,std::string>& get_config_defaults() {
+    std::lock_guard l(lock);
     if (config_defaults.empty() &&
 	config_defaults_bl.length()) {
       auto p = config_defaults_bl.cbegin();
