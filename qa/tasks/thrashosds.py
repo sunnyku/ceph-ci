@@ -155,7 +155,7 @@ def task(ctx, config):
     config['noscrub_toggle_delay'] = config.get('noscrub_toggle_delay', 2.0)
     # add default value for random_eio
     config['random_eio'] = config.get('random_eio', 0.0)
-    aggro = config.get('aggressive_pg_num_changes', true)
+    aggro = config.get('aggressive_pg_num_changes', True)
 
     log.info("config is {config}".format(config=str(config)))
 
