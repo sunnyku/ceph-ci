@@ -40,3 +40,4 @@ sensible.
     Telegraf plugin <telegraf>
     Iostat plugin <iostat>
     Devicehealth plugin <devicehealth>
+    Crash plugin <crash>

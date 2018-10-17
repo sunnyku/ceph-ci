@@ -292,13 +292,6 @@ size_t RGWHTTPClient::receive_http_data(void * const ptr,
 
   bool pause = false;
 
-  size_t& skip_bytes = req_data->client->receive_pause_skip;
-
-  if (skip_bytes >= len) {
-    skip_bytes -= len;
-    return len;
-  }
-
   RGWHTTPClient *client;
 
   {
@@ -308,6 +301,13 @@ size_t RGWHTTPClient::receive_http_data(void * const ptr,
     }
 
     client = req_data->client;
+  }
+
+  size_t& skip_bytes = client->receive_pause_skip;
+
+  if (skip_bytes >= len) {
+    skip_bytes -= len;
+    return len;
   }
 
   int ret = client->receive_data((char *)ptr + skip_bytes, len - skip_bytes, &pause);
@@ -1165,14 +1165,14 @@ void *RGWHTTPManager::reqs_thread_entry()
 
   RWLock::WLocker rl(reqs_lock);
   for (auto r : unregistered_reqs) {
-    _finish_request(r, -ECANCELED);
+    _unlink_request(r);
   }
 
   unregistered_reqs.clear();
 
   auto all_reqs = std::move(reqs);
   for (auto iter : all_reqs) {
-    _finish_request(iter.second, -ECANCELED);
+    _unlink_request(iter.second);
   }
 
   reqs.clear();
