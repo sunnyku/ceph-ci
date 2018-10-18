@@ -4512,21 +4512,25 @@ int RGWRados::init_complete()
 
   zone_short_id = current_period.get_map().get_zone_short_id(zone_params.get_id());
 
-  if (run_sync_thread) {
-    ret = sync_modules_manager->create_instance(cct, zone_public_config.tier_type, zone_params.tier_config, &sync_module);
-    if (ret < 0) {
-      lderr(cct) << "ERROR: failed to init sync module instance, ret=" << ret << dendl;
-      if (ret == -ENOENT) {
-        lderr(cct) << "ERROR: " << zone_public_config.tier_type 
-                   << " sync module does not exist. valid sync modules: " 
-                   << sync_modules_manager->get_registered_module_names()
-                   << dendl;
-      }
-      return ret;
-    }
-  }
+  bool tier_writes = false;
 
-  writeable_zone = (zone_public_config.tier_type.empty() || zone_public_config.tier_type == "rgw");
+  /* 
+   * create sync module instance even if we don't run sync thread, might need it for radosgw-admin
+   */
+  ret = sync_modules_manager->create_instance(cct, zone_public_config.tier_type, zone_params.tier_config, &sync_module);
+  if (ret < 0) {
+    lderr(cct) << "ERROR: failed to init sync module instance, ret=" << ret << dendl;
+    if (ret == -ENOENT) {
+      lderr(cct) << "ERROR: " << zone_public_config.tier_type 
+        << " sync module does not exist. valid sync modules: " 
+        << sync_modules_manager->get_registered_module_names()
+        << dendl;
+    }
+    return ret;
+  }
+  tier_writes = sync_module->supports_user_writes();
+
+  writeable_zone = zone_public_config.tier_type.empty() || tier_writes;
 
   init_unique_trans_id_deps();
 
@@ -6047,7 +6051,7 @@ void RGWRados::create_bucket_id(string *bucket_id)
   *bucket_id = buf;
 }
 
-int RGWRados::create_bucket(RGWUserInfo& owner, rgw_bucket& bucket,
+int RGWRados::create_bucket(const RGWUserInfo& owner, rgw_bucket& bucket,
                             const string& zonegroup_id,
                             const string& placement_rule,
                             const string& swift_ver_location,
@@ -6161,7 +6165,7 @@ int RGWRados::create_bucket(RGWUserInfo& owner, rgw_bucket& bucket,
   return -ENOENT;
 }
 
-int RGWRados::select_new_bucket_location(RGWUserInfo& user_info, const string& zonegroup_id, const string& request_rule,
+int RGWRados::select_new_bucket_location(const RGWUserInfo& user_info, const string& zonegroup_id, const string& request_rule,
                                          string *pselected_rule_name, RGWZonePlacementInfo *rule_info)
 
 {
@@ -6259,7 +6263,7 @@ int RGWRados::select_bucket_location_by_rule(const string& location_rule, RGWZon
   return 0;
 }
 
-int RGWRados::select_bucket_placement(RGWUserInfo& user_info, const string& zonegroup_id, const string& placement_rule,
+int RGWRados::select_bucket_placement(const RGWUserInfo& user_info, const string& zonegroup_id, const string& placement_rule,
                                       string *pselected_rule_name, RGWZonePlacementInfo *rule_info)
 {
   if (!get_zone_params().placement_pools.empty()) {

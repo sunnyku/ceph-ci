@@ -355,6 +355,7 @@ class RGWHTTPArgs {
   int get_bool(const string& name, bool *val, bool *exists);
   int get_bool(const char *name, bool *val, bool *exists);
   void get_bool(const char *name, bool *val, bool def_val);
+  int get_int(const char *name, int *val, int def_val);
 
   /** Get the value for specific system argument parameter */
   std::string sys_get(const string& name, bool *exists = nullptr) const;
@@ -524,6 +525,18 @@ enum RGWOpType {
   /* sts specific*/
   RGW_STS_ASSUME_ROLE,
   RGW_STS_GET_SESSION_TOKEN,
+  RGW_OP_PUBSUB_TOPIC_CREATE,
+  RGW_OP_PUBSUB_TOPICS_LIST,
+  RGW_OP_PUBSUB_TOPIC_GET,
+  RGW_OP_PUBSUB_TOPIC_DELETE,
+  RGW_OP_PUBSUB_SUB_CREATE,
+  RGW_OP_PUBSUB_SUB_GET,
+  RGW_OP_PUBSUB_SUB_DELETE,
+  RGW_OP_PUBSUB_SUB_PULL,
+  RGW_OP_PUBSUB_SUB_ACK,
+  RGW_OP_PUBSUB_NOTIF_CREATE,
+  RGW_OP_PUBSUB_NOTIF_DELETE,
+  RGW_OP_PUBSUB_NOTIF_LIST,
 };
 
 class RGWAccessControlPolicy;
@@ -1375,9 +1388,9 @@ struct RGWBucketInfo {
   void decode_json(JSONObj *obj);
 
   bool versioned() const { return (flags & BUCKET_VERSIONED) != 0; }
-  int versioning_status() { return flags & (BUCKET_VERSIONED | BUCKET_VERSIONS_SUSPENDED | BUCKET_MFA_ENABLED); }
-  bool versioning_enabled() { return (versioning_status() & (BUCKET_VERSIONED | BUCKET_VERSIONS_SUSPENDED)) == BUCKET_VERSIONED; }
-  bool mfa_enabled() { return (versioning_status() & BUCKET_MFA_ENABLED) != 0; }
+  int versioning_status() const { return flags & (BUCKET_VERSIONED | BUCKET_VERSIONS_SUSPENDED | BUCKET_MFA_ENABLED); }
+  bool versioning_enabled() const { return (versioning_status() & (BUCKET_VERSIONED | BUCKET_VERSIONS_SUSPENDED)) == BUCKET_VERSIONED; }
+  bool mfa_enabled() const { return (versioning_status() & BUCKET_MFA_ENABLED) != 0; }
   bool datasync_flag_enabled() const { return (flags & BUCKET_DATASYNC_DISABLED) == 0; }
 
   bool has_swift_versioning() const {
@@ -1764,15 +1777,20 @@ struct rgw_obj_key {
   }
   void dump(Formatter *f) const;
   void decode_json(JSONObj *obj);
+
+  string to_str() const {
+    if (instance.empty()) {
+      return name;
+    }
+    char buf[name.size() + instance.size() + 16];
+    snprintf(buf, sizeof(buf), "%s[%s]", name.c_str(), instance.c_str());
+    return buf;
+  }
 };
 WRITE_CLASS_ENCODER(rgw_obj_key)
 
 inline ostream& operator<<(ostream& out, const rgw_obj_key &o) {
-  if (o.instance.empty()) {
-    return out << o.name;
-  } else {
-    return out << o.name << "[" << o.instance << "]";
-  }
+  return out << o.to_str();
 }
 
 inline ostream& operator<<(ostream& out, const rgw_obj_index_key &o) {

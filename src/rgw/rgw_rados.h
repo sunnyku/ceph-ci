@@ -1444,7 +1444,7 @@ struct RGWZoneGroupPlacementTarget {
   string name;
   set<string> tags;
 
-  bool user_permitted(list<string>& user_tags) const {
+  bool user_permitted(const list<string>& user_tags) const {
     if (tags.empty()) {
       return true;
     }
@@ -2317,6 +2317,10 @@ public:
     cct = _cct;
   }
 
+  RGWLC *get_lc() {
+    return lc;
+  }
+
   /**
    * AmazonS3 errors contain a HostId string, but is an opaque base64 blob; we
    * try to be more transparent. This has a wrapper so we can update it when zonegroup/zone are changed.
@@ -2542,10 +2546,10 @@ public:
   int create_pool(const rgw_pool& pool);
 
   int init_bucket_index(RGWBucketInfo& bucket_info, int num_shards);
-  int select_bucket_placement(RGWUserInfo& user_info, const string& zonegroup_id, const string& rule,
+  int select_bucket_placement(const RGWUserInfo& user_info, const string& zonegroup_id, const string& rule,
                               string *pselected_rule_name, RGWZonePlacementInfo *rule_info);
   int select_legacy_bucket_placement(RGWZonePlacementInfo *rule_info);
-  int select_new_bucket_location(RGWUserInfo& user_info, const string& zonegroup_id, const string& rule,
+  int select_new_bucket_location(const RGWUserInfo& user_info, const string& zonegroup_id, const string& rule,
                                  string *pselected_rule_name, RGWZonePlacementInfo *rule_info);
   int select_bucket_location_by_rule(const string& location_rule, RGWZonePlacementInfo *rule_info);
   void create_bucket_id(string *bucket_id);
@@ -2553,7 +2557,7 @@ public:
   bool get_obj_data_pool(const string& placement_rule, const rgw_obj& obj, rgw_pool *pool);
   bool obj_to_raw(const string& placement_rule, const rgw_obj& obj, rgw_raw_obj *raw_obj);
 
-  int create_bucket(RGWUserInfo& owner, rgw_bucket& bucket,
+  int create_bucket(const RGWUserInfo& owner, rgw_bucket& bucket,
                             const string& zonegroup_id,
                             const string& placement_rule,
                             const string& swift_ver_location,
@@ -3866,7 +3870,7 @@ protected:
                           rgw_zone_set* zones_trace = nullptr) = 0;
 
 public:
-  RGWPutObjProcessor(RGWObjectCtx& _obj_ctx, RGWBucketInfo& _bi) : store(NULL), 
+  RGWPutObjProcessor(RGWObjectCtx& _obj_ctx, const RGWBucketInfo& _bi) : store(NULL), 
                                                                    obj_ctx(_obj_ctx), 
                                                                    is_complete(false), 
                                                                    bucket_info(_bi), 
@@ -3925,7 +3929,7 @@ public:
   int prepare(RGWRados *store, string *oid_rand) override;
   int throttle_data(void *handle, const rgw_raw_obj& obj, uint64_t size, bool need_to_wait) override;
 
-  RGWPutObjProcessor_Aio(RGWObjectCtx& obj_ctx, RGWBucketInfo& bucket_info) : RGWPutObjProcessor(obj_ctx, bucket_info) {}
+  RGWPutObjProcessor_Aio(RGWObjectCtx& obj_ctx, const RGWBucketInfo& bucket_info) : RGWPutObjProcessor(obj_ctx, bucket_info) {}
   ~RGWPutObjProcessor_Aio() override;
 }; /* RGWPutObjProcessor_Aio */
 
@@ -3969,8 +3973,8 @@ protected:
 
 public:
   ~RGWPutObjProcessor_Atomic() override {}
-  RGWPutObjProcessor_Atomic(RGWObjectCtx& obj_ctx, RGWBucketInfo& bucket_info,
-                            rgw_bucket& _b, const string& _o, uint64_t _p, const string& _t, bool versioned) :
+  RGWPutObjProcessor_Atomic(RGWObjectCtx& obj_ctx, const RGWBucketInfo& bucket_info,
+                            const rgw_bucket& _b, const string& _o, uint64_t _p, const string& _t, bool versioned) :
                                 RGWPutObjProcessor_Aio(obj_ctx, bucket_info),
                                 part_size(_p),
                                 cur_part_ofs(0),
@@ -4081,7 +4085,7 @@ protected:
                   rgw_zone_set *zones_trace) override;
 public:
   bool immutable_head() override { return true; }
-  RGWPutObjProcessor_Multipart(RGWObjectCtx& obj_ctx, RGWBucketInfo& bucket_info, uint64_t _p, req_state *_s) :
+  RGWPutObjProcessor_Multipart(RGWObjectCtx& obj_ctx, const RGWBucketInfo& bucket_info, uint64_t _p, req_state *_s) :
                    RGWPutObjProcessor_Atomic(obj_ctx, bucket_info, _s->bucket, _s->object.name, _p, _s->req_id, false), s(_s) {}
   void get_mp(RGWMPObj** _mp);
 }; /* RGWPutObjProcessor_Multipart */
