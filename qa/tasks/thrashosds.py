@@ -194,10 +194,10 @@ def task(ctx, config):
             cluster_manager.config[f] = config.get(f)
 
     if aggro:
-        cluster_manager.raw_cluster_cmd([
+        cluster_manager.raw_cluster_cmd(
             'config', 'set', 'mgr',
             'mgr_debug_aggressive_pg_num_changes',
-            'true'])
+            'true')
 
     log.info('Beginning thrashosds...')
     thrash_proc = ceph_manager.Thrasher(
@@ -214,6 +214,6 @@ def task(ctx, config):
         cluster_manager.flush_all_pg_stats()
         cluster_manager.wait_for_recovery(config.get('timeout', 360))
         if aggro:
-            cluster_manager.raw_cluster_cmd([
+            cluster_manager.raw_cluster_cmd(
                 'config', 'rm', 'mgr',
-                'mgr_debug_aggressive_pg_num_changes'])
+                'mgr_debug_aggressive_pg_num_changes')
