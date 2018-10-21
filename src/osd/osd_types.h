@@ -1710,7 +1710,7 @@ public:
   bool is_unmanaged_snaps_mode() const;
   bool is_removed_snap(snapid_t s) const;
 
-  snapid_t snap_exists(const char *s) const;
+  snapid_t snap_exists(std::string_view s) const;
   void add_snap(const char *n, utime_t stamp);
   uint64_t add_unmanaged_snap(bool preoctopus_compat);
   void remove_snap(snapid_t s);
