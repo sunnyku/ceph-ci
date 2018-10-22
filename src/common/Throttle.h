@@ -6,12 +6,11 @@
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <iostream>
 #include <list>
 #include <map>
-#include <mutex>
 
+#include "common/ceph_mutex.h"
 #include "include/Context.h"
 #include "common/ThrottleInterface.h"
 #include "common/Timer.h"
@@ -31,7 +30,7 @@ class Throttle final : public ThrottleInterface {
   const std::string name;
   PerfCountersRef logger;
   std::atomic<int64_t> count = { 0 }, max = { 0 };
-  std::mutex lock;
+  ceph::mutex lock;
   std::list<std::condition_variable> conds;
   const bool use_perf;
 
@@ -50,7 +49,7 @@ private:
        (c >= m && cur > m));     // except for large c
   }
 
-  bool _wait(int64_t c, UNIQUE_LOCK_T(lock)& l);
+  bool _wait(int64_t c, std::unique_lock<ceph::mutex>& l);
 
 public:
   /**
@@ -122,7 +121,7 @@ public:
     return _should_wait(c);
   }
   void reset_max(int64_t m) {
-    auto l = ceph::uniquely_lock(lock);
+    std::lock_guard l(lock);
     _reset_max(m);
   }
 };
@@ -158,8 +157,8 @@ class BackoffThrottle {
   const std::string name;
   PerfCountersRef logger;
 
-  std::mutex lock;
-  using locker = std::unique_lock<std::mutex>;
+  ceph::mutex lock;
+  using locker = std::unique_lock<ceph::mutex>;
 
   unsigned next_cond = 0;
 
@@ -254,7 +253,7 @@ public:
   bool pending_error() const;
   int wait_for_ret();
 private:
-  mutable std::mutex m_lock;
+  mutable ceph::mutex m_lock;
   std::condition_variable m_cond;
   uint64_t m_max;
   uint64_t m_current = 0;
@@ -316,7 +315,7 @@ private:
 
   typedef std::map<uint64_t, Result> TidResult;
 
-  mutable std::mutex m_lock;
+  mutable ceph::mutex m_lock;
   std::condition_variable m_cond;
   uint64_t m_max;
   uint64_t m_current = 0;
@@ -328,7 +327,7 @@ private:
 
   TidResult m_tid_result;
 
-  void complete_pending_ops(UNIQUE_LOCK_T(m_lock)& l);
+  void complete_pending_ops(std::unique_lock<ceph::mutex>& l);
   uint32_t waiters = 0;
 };
 
@@ -389,7 +388,7 @@ public:
   
     bool wait = false;
     uint64_t got = 0;
-    std::lock_guard<Mutex> lock(m_lock);
+    std::lock_guard lock(m_lock);
     if (!m_blockers.empty()) {
       // Keep the order of requests, add item after previous blocked requests.
       wait = true;
