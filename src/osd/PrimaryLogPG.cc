@@ -13894,6 +13894,7 @@ void PrimaryLogPG::hit_set_persist()
       ctx->mtime,
       0)
     );
+  ctx->log.back().clean_regions = ctx->clean_regions;
 
   hit_set_trim(ctx, max);
 
