@@ -4487,7 +4487,6 @@ void pg_log_entry_t::decode(ceph::buffer::list::const_iterator &bl)
     ::decode(clean_regions, bl);
   else
     clean_regions.mark_fully_dirty();
->>>>>>> osd: partial recovery strategy based on PGLog
   DECODE_FINISH(bl);
 }
 
