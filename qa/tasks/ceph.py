@@ -68,6 +68,26 @@ def generate_caps(type_):
 
 
 @contextlib.contextmanager
+def ceph_crash(ctx, config):
+    """
+    Gather crash dumps from /var/lib/crash
+    """
+    try:
+        yield
+
+    finally:
+        if ctx.archive is not None:
+            log.info('Archiving crash dumps...')
+            path = os.path.join(ctx.archive, 'remote')
+            os.makedirs(path)
+            for remote in ctx.cluster.remotes.iterkeys():
+                sub = os.path.join(path, remote.shortname)
+                os.makedirs(sub)
+                teuthology.pull_directory(remote, '/var/lib/ceph/crash',
+                                          os.path.join(sub, 'crash'))
+
+
+@contextlib.contextmanager
 def ceph_log(ctx, config):
     """
     Create /var/log/ceph log directory that is open to everyone.
@@ -1691,6 +1711,7 @@ def task(ctx, config):
         # so they should only be run once
         subtasks = [
             lambda: ceph_log(ctx=ctx, config=None),
+            lambda: ceph_crash(ctx=ctx, config=None),
             lambda: valgrind_post(ctx=ctx, config=config),
         ]
 
