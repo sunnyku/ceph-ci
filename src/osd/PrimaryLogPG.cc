@@ -13366,7 +13366,6 @@ void PrimaryLogPG::scan_range(
   bi->clear_objects();
 
   vector<hobject_t> ls;
-  ls.reserve(max);
   int r = pgbackend->objects_list_partial(bi->begin, min, max, &ls, &bi->end);
   ceph_assert(r >= 0);
   dout(10) << " got " << ls.size() << " items, next " << bi->end << dendl;
