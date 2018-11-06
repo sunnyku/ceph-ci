@@ -364,9 +364,14 @@ void MonMap::_add_ambiguous_addr(const string& name,
     if (!contains(addr)) {
       add(name + "-legacy", entity_addrvec_t(addr));
     }
-  } else {
+  } else if (addr.get_type() == entity_addr_t::TYPE_V1ORV2) {
     // assume msgr2
     addr.set_type(entity_addr_t::TYPE_MSGR2);
+    if (!contains(addr)) {
+      add(name, entity_addrvec_t(addr), priority);
+    }
+  } else {
+    // looks like it was explicitly specified
     if (!contains(addr)) {
       add(name, entity_addrvec_t(addr), priority);
     }
@@ -377,7 +382,7 @@ int MonMap::init_with_ips(const std::string& ips,
 			  const std::string &prefix)
 {
   vector<entity_addr_t> addrs;
-  if (!parse_ip_port_vec(ips.c_str(), addrs)) {
+  if (!parse_ip_port_vec(ips.c_str(), addrs, entity_addr_t::TYPE_V1ORV2)) {
     return -EINVAL;
   }
   if (addrs.empty())
@@ -402,7 +407,7 @@ int MonMap::init_with_hosts(const std::string& hostlist,
     return -EINVAL;
 
   vector<entity_addr_t> addrs;
-  bool success = parse_ip_port_vec(hosts, addrs);
+  bool success = parse_ip_port_vec(hosts, addrs, entity_addr_t::TYPE_V1ORV2);
   free(hosts);
   if (!success)
     return -EINVAL;
