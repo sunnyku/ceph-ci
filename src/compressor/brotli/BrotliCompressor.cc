@@ -89,7 +89,7 @@ int BrotliCompressor::decompress(bufferlist::const_iterator &p,
 }
 
 int BrotliCompressor::decompress(const bufferlist &in, bufferlist &out) 
-{  
-  bufferlist::iterator i = const_cast<bufferlist&>(in).begin();
+{ 
+  auto i = in.cbegin();
   return decompress(i, in.length(), out);
 }
