@@ -163,6 +163,7 @@ private:
   Finisher finisher;
 
   bool initialized;
+  bool stopping = false;
   bool no_keyring_disabled_cephx;
 
   LogClient *log_client;
@@ -200,7 +201,7 @@ private:
   int authenticate_err = 0;
   bool authenticated = false;
 
-  list<Message*> waiting_for_session;
+  list<MessageRef> waiting_for_session;
   utime_t last_rotating_renew_sent;
   std::unique_ptr<Context> session_established_context;
   bool had_a_connection;
