@@ -2,6 +2,7 @@
 // vim: ts=8 sw=2 smarttab
 
 #include <limits>
+#include <sstream>
 
 #include "rgw_rados.h"
 #include "rgw_bucket.h"
@@ -22,10 +23,6 @@ const string bucket_instance_lock_name = "bucket_instance_lock";
 
 using namespace std;
 
-#define RESHARD_SHARD_WINDOW 64
-#define RESHARD_MAX_AIO 128
-
-
 class BucketReshardShard {
   RGWRados *store;
   const RGWBucketInfo& bucket_info;
@@ -34,6 +31,8 @@ class BucketReshardShard {
   vector<rgw_cls_bi_entry> entries;
   map<uint8_t, rgw_bucket_category_stats> stats;
   deque<librados::AioCompletion *>& aio_completions;
+  uint64_t max_aio_completions;
+  uint64_t reshard_shard_batch_size;
 
   int wait_next_completion() {
     librados::AioCompletion *c = aio_completions.front();
@@ -53,7 +52,7 @@ class BucketReshardShard {
   }
 
   int get_completion(librados::AioCompletion **c) {
-    if (aio_completions.size() >= RESHARD_MAX_AIO) {
+    if (aio_completions.size() >= max_aio_completions) {
       int ret = wait_next_completion();
       if (ret < 0) {
         return ret;
@@ -75,6 +74,11 @@ public:
   {
     num_shard = (bucket_info.num_shards > 0 ? _num_shard : -1);
     bs.init(bucket_info.bucket, num_shard, nullptr /* no RGWBucketInfo */);
+
+    max_aio_completions =
+      store->ctx()->_conf.get_val<uint64_t>("rgw_reshard_max_aio");
+    reshard_shard_batch_size =
+      store->ctx()->_conf.get_val<uint64_t>("rgw_reshard_batch_size");
   }
 
   int get_num_shard() {
@@ -91,7 +95,7 @@ public:
       target.total_size_rounded += entry_stats.total_size_rounded;
       target.actual_size += entry_stats.actual_size;
     }
-    if (entries.size() >= RESHARD_SHARD_WINDOW) {
+    if (entries.size() >= reshard_shard_batch_size) {
       int ret = flush();
       if (ret < 0) {
         return ret;
@@ -407,7 +411,8 @@ RGWBucketReshardLock::RGWBucketReshardLock(RGWRados* _store,
   ephemeral(_ephemeral),
   internal_lock(reshard_lock_name)
 {
-  const int lock_dur_secs = store->ctx()->_conf->rgw_reshard_bucket_lock_duration;
+  const int lock_dur_secs = store->ctx()->_conf.get_val<uint64_t>(
+    "rgw_reshard_bucket_lock_duration");
   duration = std::chrono::seconds(lock_dur_secs);
 
 #define COOKIE_LEN 16
@@ -456,8 +461,14 @@ int RGWBucketReshardLock::renew(const Clock::time_point& now) {
     ret = internal_lock.lock_exclusive(&store->reshard_pool_ctx, lock_oid);
   }
   if (ret < 0) { /* expired or already locked by another processor */
+    std::stringstream error_s;
+    if (-ENOENT == ret) {
+      error_s << "ENOENT (lock expired or never initially locked)";
+    } else {
+      error_s << ret << " (" << cpp_strerror(-ret) << ")";
+    }
     ldout(store->ctx(), 5) << __func__ << "(): failed to renew lock on " <<
-      lock_oid << " with " << cpp_strerror(-ret) << dendl;
+      lock_oid << " with error " << error_s.str() << dendl;
     return ret;
   }
   internal_lock.set_must_renew(false);
@@ -1147,7 +1158,7 @@ void *RGWReshard::ReshardWorker::entry() {
 
     utime_t end = ceph_clock_now();
     end -= start;
-    int secs = cct->_conf->rgw_reshard_thread_interval;
+    int secs = cct->_conf.get_val<uint64_t>("rgw_reshard_thread_interval");
 
     if (secs <= end.sec())
       continue; // next round
