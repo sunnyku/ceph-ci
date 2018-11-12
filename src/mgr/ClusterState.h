@@ -127,11 +127,15 @@ public:
     return objecter->with_osdmap(std::forward<Args>(args)...);
   }
 
-  auto with_pgmap_and_osdmap(std::function<void(const PGMap& pg_map, const OSDMap &osdmap)> f) {
+  template<typename... Args>
+  auto with_pgmap_and_osdmap(std::function<void(const PGMap& pg_map, const OSDMap &osdmap,
+			       Args &&... args)> f) const ->
+    decltype(objecter->with_osdmap(std::forward<Args>(args)...))
+  {
     ceph_assert(objecter != nullptr);
-    return with_pgmap([&](const PGMap& pg_map) {
-	return objecter->with_osdmap([&](const OSDMap& osdmap) {
-	    f(pg_map, osdmap);
+    return with_pgmap([&](const PGMap& pg_map, args) {
+	return objecter->with_osdmap([&](const OSDMap& osdmap, args) {
+	    f(pg_map, osdmap, args);
 	  });
       });
   }
