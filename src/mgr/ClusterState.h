@@ -132,9 +132,9 @@ public:
     decltype(objecter->with_osdmap(std::forward<Args>(args)...))
   {
     ceph_assert(objecter != nullptr);
-    return with_pgmap([&](const PGMap& pg_map)) {
+    return with_pgmap([&](const PGMap& pg_map) {
       return objecter->with_osdmap(pg_map, std::forward<Args>(args)...);
-    })
+      });
   }
 
 };
