@@ -419,6 +419,7 @@ void Mgr::handle_osd_map()
    * see if they have changed (service restart), and if so
    * reload the metadata.
    */
+  cluster_state.with_pgmap([&](const PGMap& pg_map) {
   objecter->with_osdmap([this, &names_exist](const OSDMap &osd_map) {
     for (int osd_id = 0; osd_id < osd_map.get_max_osd(); ++osd_id) {
       if (!osd_map.exists(osd_id)) {
@@ -473,6 +474,7 @@ void Mgr::handle_osd_map()
 
     cluster_state.notify_osdmap(osd_map);
   });
+    });
 
   // TODO: same culling for MonMap
   daemon_state.cull("osd", names_exist);
