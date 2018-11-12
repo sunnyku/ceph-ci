@@ -128,16 +128,12 @@ public:
   }
 
   template<typename... Args>
-  auto with_pgmap_and_osdmap(std::function<void(const PGMap& pg_map, const OSDMap &osdmap,
-			       Args &&... args)> f) const ->
-    decltype(objecter->with_osdmap(std::forward<Args>(args)...))
+  auto with_pgmap_and_osdmap(Args &&... args) const ->
+    decltype(objecter->with_osdmap(const PGMap& pg_map, std::forward<Args>(args)...))
   {
     ceph_assert(objecter != nullptr);
-    return with_pgmap([&](const PGMap& pg_map, Args &&... args) {
-	return objecter->with_osdmap([&](const OSDMap& osdmap, Args &&... args) {
-	    f(pg_map, osdmap, args);
-	  });
-      });
+    std::lock_guard l(lock);
+    return objecter->with_osdmap(pg_map, std::forward<Args>(args)...);
   }
 
 };
