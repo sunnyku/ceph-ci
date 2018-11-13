@@ -428,7 +428,6 @@ int EventCenter::process_events(unsigned timeout_microseconds,  ceph::timespan *
   if (external_num_events.load()) {
     external_lock.lock();
     deque<EventCallbackRef> cur_process;
-    EventCallbackRef prev_call_back = NULL;
     cur_process.swap(external_events);
     external_num_events.store(0);
     external_lock.unlock();
@@ -436,11 +435,6 @@ int EventCenter::process_events(unsigned timeout_microseconds,  ceph::timespan *
     while (!cur_process.empty()) {
       EventCallbackRef e = cur_process.front();
       ldout(cct, 30) << __func__ << " do " << e << dendl;
-      if (prev_call_back == e){
-        cur_process.pop_front();
-        continue;
-      }
-      prev_call_back = e;
       e->do_request(0);
       cur_process.pop_front();
     }
@@ -458,12 +452,16 @@ int EventCenter::process_events(unsigned timeout_microseconds,  ceph::timespan *
 
 void EventCenter::dispatch_event_external(EventCallbackRef e)
 {
-  external_lock.lock();
-  external_events.push_back(e);
-  bool wake = !external_num_events.load();
-  uint64_t num = ++external_num_events;
-  external_lock.unlock();
-  if (!in_thread() && wake)
+  uint64_t num = 0;
+  {
+    std::lock_guard lock{external_lock};
+    if (external_num_events > 0 && *external_events.rbegin() == e) {
+      return;
+    }
+    external_events.push_back(e);
+    num = ++external_num_events;
+  }
+  if (!in_thread() && 1 == num)
     wakeup();
 
   ldout(cct, 30) << __func__ << " " << e << " pending " << num << dendl;
