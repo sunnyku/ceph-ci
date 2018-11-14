@@ -4395,16 +4395,14 @@ public:
       if (is_missing_divergent_item) {  // use iterator
 	      rmissing.erase((missing_it->second).need.version);
         // .have = nil
-        (missing_it->second).need = e.version;
-        (missing_it->second).have = eversion_t();
-        (missing_it->second).set_delete(e.is_delete());
-        (missing_it->second).clean_regions.mark_object_new();
+	missing_it->second = item(e.version, eversion_t(), e.is_delete());
+	missing_it->second.clean_regions.mark_fully_dirty();
       } else {
          // create new element in missing map
          // .have = nil
         missing[e.soid] = item(e.version, eversion_t(), e.is_delete());
         missing[e.soid].clean_regions = e.clean_regions;
-        missing[e.soid].clean_regions.mark_object_new();
+        missing[e.soid].clean_regions.mark_fully_dirty();
       }
     } else if (is_missing_divergent_item) {
       // already missing (prior).
@@ -4431,6 +4429,7 @@ public:
       (p->second).clean_regions.mark_fully_dirty();
     } else {
       missing[oid] = item(need, eversion_t(), is_delete);
+      missing[oid].clean_regions.mark_fully_dirty();
     }
     rmissing[need.version] = oid;
 
@@ -4442,7 +4441,6 @@ public:
     if (p != missing.end()) {
       tracker.changed(oid);
       (p->second).have = have;
-      (p->second).clean_regions.mark_fully_dirty();
     }
   }
 
