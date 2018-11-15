@@ -461,9 +461,8 @@ void EventCenter::dispatch_event_external(EventCallbackRef e)
     external_events.push_back(e);
     num = ++external_num_events;
   }
-  if (num == 1 && !in_thread()) {
+  if (num == 1 && !in_thread())
     wakeup();
-  }
 
   ldout(cct, 30) << __func__ << " " << e << " pending " << num << dendl;
 }
