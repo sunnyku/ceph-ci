@@ -2773,6 +2773,7 @@ public:
   void handle_query_state(Formatter *f);
 
   virtual void on_removal(ObjectStore::Transaction *t) = 0;
+  virtual void clear_eio_objects() = 0;
 
 
   // abstract bits

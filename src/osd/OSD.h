@@ -840,6 +840,22 @@ public:
   AsyncReserver<spg_t> local_reserver;
   AsyncReserver<spg_t> remote_reserver;
 
+  // -- eio objects --
+  Mutex eio_lock = {"OSD::eio_lock"};
+  set<hobject_t> eio_objects;
+  size_t count_eio_objects() {
+    Mutex::Locker l(eio_lock);
+    return eio_objects.size();
+  }
+  void add_eio_object(const hobject_t& o) {
+    Mutex::Locker l(eio_lock);
+    eio_objects.insert(o);
+  }
+  void rm_eio_object(const hobject_t& o) {
+    Mutex::Locker l(eio_lock);
+    eio_objects.erase(o);
+  }
+
   // -- pg_temp --
 private:
   Mutex pg_temp_lock;

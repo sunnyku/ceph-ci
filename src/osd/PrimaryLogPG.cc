@@ -11130,6 +11130,8 @@ void PrimaryLogPG::on_removal(ObjectStore::Transaction *t)
 {
   dout(10) << "on_removal" << dendl;
 
+  clear_eio_objects(); // if any
+
   // adjust info to backfill
   info.set_last_backfill(hobject_t());
   pg_log.reset_backfill();
@@ -14444,6 +14446,7 @@ int PrimaryLogPG::rep_repair_primary_object(const hobject_t& soid, OpRequestRef 
   // Only supports replicated pools
   assert(!pool.info.require_rollback());
   assert(is_primary());
+  add_eio_object(soid);
 
   dout(10) << __func__ << " " << soid
 	   << " peers osd.{" << actingbackfill << "}" << dendl;

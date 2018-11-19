@@ -1380,6 +1380,23 @@ protected:
 
   friend struct C_ProxyWrite_Commit;
 
+  // -- eio objects --
+  set<hobject_t> eio_objects;
+  void add_eio_object(const hobject_t& o) {
+    eio_objects.insert(o);
+    osd->add_eio_object(o);
+  }
+  void rm_eio_object(const hobject_t& o) {
+    eio_objects.erase(o);
+    osd->rm_eio_object(o);
+  }
+
+public:
+  void clear_eio_objects() {
+    for (auto &o: eio_objects)
+      rm_eio_object(o);
+  }
+
 public:
   PrimaryLogPG(OSDService *o, OSDMapRef curmap,
 	       const PGPool &_pool, spg_t p);

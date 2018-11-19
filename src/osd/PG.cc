@@ -1081,6 +1081,7 @@ void PG::clear_primary_state()
   scrub_after_recovery = false;
 
   agent_clear();
+  clear_eio_objects();
 }
 
 PG::Scrubber::Scrubber()
@@ -7571,6 +7572,7 @@ PG::RecoveryState::Clean::Clean(my_context ctx)
   pg->share_pg_info();
   pg->publish_stats_to_osd();
   pg->requeue_ops(pg->waiting_for_clean_to_primary_repair);
+  pg->clear_eio_objects();
 }
 
 void PG::RecoveryState::Clean::exit()
