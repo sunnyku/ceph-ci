@@ -193,8 +193,8 @@ class AsyncConnection : public Connection {
 
   // Accepting state
   bool msgr2 = false;
-  entity_addr_t socket_addr;
-  entity_addr_t target_addr;  // which of the peer_addrs we're using
+  entity_addr_t socket_addr;  ///< local socket addr
+  entity_addr_t target_addr;  ///< which of the peer_addrs we're using
 
   // used only by "read_until"
   uint64_t state_offset;

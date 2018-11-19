@@ -1725,7 +1725,7 @@ CtPtr ProtocolV1::send_server_banner() {
   auto legacy = messenger->get_myaddrs().legacy_addr();
   encode(legacy, bl, 0);  // legacy
   connection->port = legacy.get_port();
-  encode(connection->socket_addr, bl, 0);  // legacy
+  encode(connection->target_addr, bl, 0);  // legacy
 
   ldout(cct, 1) << __func__ << " sd=" << connection->cs.fd() << " "
                 << connection->socket_addr << dendl;
