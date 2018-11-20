@@ -9,6 +9,7 @@
 enum class osd_metric : uint8_t {
   SLOW_OPS,
   PENDING_CREATING_PGS,
+  EIO_OBJECTS,
   NONE,
 };
 

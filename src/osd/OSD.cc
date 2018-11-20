@@ -7780,6 +7780,12 @@ vector<OSDHealthMetric> OSD::get_health_metrics()
     }
   }
   metrics.emplace_back(osd_metric::PENDING_CREATING_PGS, n_primaries);
+  auto num_eio_objects = service.count_eio_objects();
+  if (num_eio_objects) {
+    metrics.emplace_back(osd_metric::EIO_OBJECTS, num_eio_objects);
+    dout(1) << __func__ << " reporting " << num_eio_objects << " eio object(s)"
+            << dendl;
+  }
   return metrics;
 }
 
