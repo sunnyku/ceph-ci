@@ -1135,7 +1135,8 @@ Effect eval_user_policies(const vector<Policy>& user_policies,
                           const ARN& arn) {
   auto usr_policy_res = Effect::Pass, prev_res = Effect::Pass;
   for (auto& user_policy : user_policies) {
-    if (usr_policy_res = eval_or_pass(user_policy, env, id, op, arn); usr_policy_res == Effect::Deny)
+    usr_policy_res = eval_or_pass(user_policy, env, id, op, arn);
+    if (usr_policy_res == Effect::Deny)
       return usr_policy_res;
     else if (usr_policy_res == Effect::Allow)
       prev_res = Effect::Allow;

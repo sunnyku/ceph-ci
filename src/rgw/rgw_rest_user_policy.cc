@@ -41,7 +41,8 @@ int RGWRestUserPolicy::verify_permission()
     return -EACCES;
   }
 
-  if(int ret = check_caps(s->user->caps); ret == 0) {
+  int ret = check_caps(s->user->caps);
+  if(ret == 0) {
     return ret;
   }
 
@@ -133,7 +134,8 @@ void RGWPutUserPolicy::execute()
   try {
     const Policy p(s->cct, s->user->user_id.tenant, bl);
     map<string, string> policies;
-    if (auto it = uattrs.find(RGW_ATTR_USER_POLICY); it != uattrs.end()) {
+    auto it = uattrs.find(RGW_ATTR_USER_POLICY);
+    if (it != uattrs.end()) {
       bufferlist out_bl = uattrs[RGW_ATTR_USER_POLICY];
       decode(policies, out_bl);
     }
@@ -190,10 +192,12 @@ void RGWGetUserPolicy::execute()
 
   if (op_ret == 0) {
     map<string, string> policies;
-    if (auto it = uattrs.find(RGW_ATTR_USER_POLICY); it != uattrs.end()) {
+    auto it = uattrs.find(RGW_ATTR_USER_POLICY);
+    if (it != uattrs.end()) {
       bufferlist bl = uattrs[RGW_ATTR_USER_POLICY];
       decode(policies, bl);
-      if (auto it = policies.find(policy_name); it != policies.end()) {
+      auto it = policies.find(policy_name);
+      if (it != policies.end()) {
         policy = policies[policy_name];
         s->formatter->open_object_section("userpolicy");
         dump(s->formatter);
@@ -249,7 +253,8 @@ void RGWListUserPolicies::execute()
 
   if (op_ret == 0) {
     map<string, string> policies;
-    if (auto it = uattrs.find(RGW_ATTR_USER_POLICY); it != uattrs.end()) {
+    auto it = uattrs.find(RGW_ATTR_USER_POLICY);
+    if (it != uattrs.end()) {
       bufferlist bl = uattrs[RGW_ATTR_USER_POLICY];
       decode(policies, bl);
       for (const auto& p : policies) {
@@ -309,11 +314,13 @@ void RGWDeleteUserPolicy::execute()
   }
 
   map<string, string> policies;
-  if (auto it = uattrs.find(RGW_ATTR_USER_POLICY); it != uattrs.end()) {
+  auto it = uattrs.find(RGW_ATTR_USER_POLICY);
+  if (it != uattrs.end()) {
     bufferlist out_bl = uattrs[RGW_ATTR_USER_POLICY];
     decode(policies, out_bl);
 
-    if (auto p = policies.find(policy_name); p != policies.end()) {
+    auto p = policies.find(policy_name);
+    if (p != policies.end()) {
       bufferlist in_bl;
       policies.erase(p);
       encode(policies, in_bl);

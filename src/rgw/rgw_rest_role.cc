@@ -25,14 +25,16 @@ int RGWRestRole::verify_permission()
 
   string role_name = s->info.args.get("RoleName");
   RGWRole role(s->cct, store, role_name, s->user->user_id.tenant);
-  if (op_ret = role.get(); op_ret < 0) {
+  op_ret = role.get();
+  if (op_ret < 0) {
     if (op_ret == -ENOENT) {
       op_ret = -ERR_NO_ROLE_FOUND;
     }
     return op_ret;
   }
 
-  if (int ret = check_caps(s->user->caps); ret == 0) {
+  int ret = check_caps(s->user->caps);
+  if (ret == 0) {
     _role = std::move(role);
     return ret;
   }
@@ -77,7 +79,8 @@ int RGWCreateRole::verify_permission()
     return -EACCES;
   }
 
-  if (int ret = check_caps(s->user->caps); ret == 0) {
+  int ret = check_caps(s->user->caps);
+  if (ret == 0) {
     return ret;
   }
 
@@ -178,7 +181,8 @@ int RGWGetRole::_verify_permission(const RGWRole& role)
     return -EACCES;
   }
 
-  if (int ret = check_caps(s->user->caps); ret == 0) {
+  int ret = check_caps(s->user->caps);
+  if (ret == 0) {
     return ret;
   }
 
@@ -264,7 +268,8 @@ int RGWListRoles::verify_permission()
     return -EACCES;
   }
 
-  if (int ret = check_caps(s->user->caps); ret == 0) {
+  int ret = check_caps(s->user->caps);
+  if (ret == 0) {
     return ret;
   }
 

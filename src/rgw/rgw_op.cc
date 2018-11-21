@@ -277,7 +277,8 @@ vector<Policy> get_iam_user_policy_from_attr(CephContext* cct,
                         map<string, bufferlist>& attrs,
                         const string& tenant) {
   vector<Policy> policies;
-  if (auto it = attrs.find(RGW_ATTR_USER_POLICY); it != attrs.end()) {
+  auto it = attrs.find(RGW_ATTR_USER_POLICY);
+  if (it != attrs.end()) {
    bufferlist out_bl = attrs[RGW_ATTR_USER_POLICY];
    map<string, string> policy_map;
    decode(policy_map, out_bl);
@@ -566,7 +567,8 @@ int rgw_build_bucket_policies(RGWRados* store, struct req_state* s)
   if (! s->user->user_id.empty() && s->user->type != TYPE_NONE) {
     try {
       map<string, bufferlist> uattrs;
-      if (ret = rgw_get_user_attrs_by_uid(store, s->user->user_id, uattrs); ! ret) {
+      ret = rgw_get_user_attrs_by_uid(store, s->user->user_id, uattrs);
+      if (! ret) {
         if (s->iam_user_policies.empty()) {
           s->iam_user_policies = get_iam_user_policy_from_attr(s->cct, store, uattrs, s->user->user_id.tenant);
         } else {
@@ -3049,11 +3051,12 @@ int RGWPutObj::verify_permission()
       if (policy || ! s->iam_user_policies.empty()) {
         auto usr_policy_res = Effect::Pass;
         for (auto& user_policy : s->iam_user_policies) {
-          if (usr_policy_res = user_policy.eval(s->env, *s->auth.identity,
+	  usr_policy_res = user_policy.eval(s->env, *s->auth.identity,
 			      cs_object.instance.empty() ?
 			      rgw::IAM::s3GetObject :
 			      rgw::IAM::s3GetObjectVersion,
-			      rgw::IAM::ARN(obj)); usr_policy_res == Effect::Deny)
+			      rgw::IAM::ARN(obj));
+          if (usr_policy_res == Effect::Deny)
             return -EACCES;
           else if (usr_policy_res == Effect::Allow)
             break;
