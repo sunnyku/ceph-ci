@@ -194,6 +194,9 @@ class AsyncConnection : public Connection {
   bool is_connected() override {
     return can_write.load() == WriteStatus::CANWRITE;
   }
+  bool is_closed() {
+    return state == STATE_CLOSED;
+  }
 
   // Only call when AsyncConnection first construct
   void connect(const entity_addr_t& addr, int type) {

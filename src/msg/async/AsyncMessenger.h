@@ -358,6 +358,19 @@ public:
         existing->get_perf_counter()->dec(l_msgr_active_connections);
         conns.erase(it);
       } else if (conn != existing) {
+        lsubdout(cct, ms, 0) << "this conn: " << conn
+                             << ", existing: " << existing << dendl;
+        if (existing->is_closed()) {
+          for(auto c = conns.begin();
+              c != conns.end(); c++) {
+            lsubdout(cct, ms, 0) << "register conn: " << c->second << dendl;
+          }
+          for(auto dc = deleted_conns.begin();
+              dc != deleted_conns.end(); dc++) {
+            lsubdout(cct, ms, 0) << "deleted conn: " << *dc << dendl;
+          }
+          assert(0 == "### bug: closed connection error ###"); 
+        }
         return -1;
       }
     }
