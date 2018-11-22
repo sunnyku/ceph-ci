@@ -1574,6 +1574,7 @@ ssize_t AsyncConnection::handle_connect_msg(ceph_msg_connect &connect, bufferlis
 
     if (existing->state == STATE_CLOSED) {
       ldout(async_msgr->cct, 1) << __func__ << " existing already closed." << dendl;
+      ldout(async_msgr->cct, 1) << __func__ << " existing:" << existing << dendl;
       existing->lock.unlock();
       existing = NULL;
       goto open;
@@ -1864,6 +1865,7 @@ ssize_t AsyncConnection::handle_connect_msg(ceph_msg_connect &connect, bufferlis
   if (r < 0) {
     ldout(async_msgr->cct, 1) << __func__ << " existing race replacing process for addr=" << peer_addr
                               << " just fail later one(this)" << dendl;
+    assert(0 == "### bug: closed connection error ###");
     goto fail_registered;
   }
   if (state != STATE_ACCEPTING_WAIT_CONNECT_MSG_AUTH) {
