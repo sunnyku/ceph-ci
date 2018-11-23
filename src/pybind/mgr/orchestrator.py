@@ -151,6 +151,7 @@ class Orchestrator(object):
 
         :param node_filter:
         :return: list of InventoryNode
+        :rtype: InventoryNode
         """
         raise NotImplementedError()
 
