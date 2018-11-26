@@ -1,5 +1,6 @@
 overrides:
   ceph:
+    mon bind msgr2: false
     conf:
       global:
         ms type: simple
