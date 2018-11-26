@@ -480,7 +480,11 @@ def cluster(ctx, config):
     roles = [role_list for (remote, role_list) in remotes_and_roles]
     ips = [host for (host, port) in
            (remote.ssh.get_transport().getpeername() for (remote, role_list) in remotes_and_roles)]
-    conf = teuthology.skeleton_config(ctx, roles=roles, ips=ips, cluster=cluster_name)
+    conf = teuthology.skeleton_config(
+        ctx, roles=roles, ips=ips, cluster=cluster_name,
+        mon_bind_msgr2=config.get('mon bind msgr2', True),
+        mon_bind_addrvec=config.get('mon bind addrvec', True),
+    )
     for remote, roles_to_journals in remote_to_roles_to_journals.iteritems():
         for role, journal in roles_to_journals.iteritems():
             name = teuthology.ceph_role(role)
@@ -549,6 +553,7 @@ def cluster(ctx, config):
         remote=mon0_remote,
         conf=conf,
         path=monmap_path,
+        mon_bind_addrvec=config.get('mon bind addrvec', True),
     )
     if not 'global' in conf:
         conf['global'] = {}
