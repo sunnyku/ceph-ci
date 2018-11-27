@@ -2827,11 +2827,11 @@ bool OSDMonitor::preprocess_boot(MonOpRequestRef op)
 
   // already booted?
   if (osdmap.is_up(from) &&
-      osdmap.get_addrs(from) == m->get_orig_source_addrs() &&
+      osdmap.get_addrs(from) == m->get_client_addrs() &&
       osdmap.get_cluster_addrs(from) == m->cluster_addrs) {
     // yup.
     dout(7) << "preprocess_boot dup from " << m->get_orig_source()
-	    << " " << m->get_orig_source_addrs()
+	    << " " << m->get_client_addrs()
 	    << " == " << osdmap.get_addrs(from) << dendl;
     _booted(op, false);
     return true;
@@ -2849,7 +2849,7 @@ bool OSDMonitor::preprocess_boot(MonOpRequestRef op)
 
   if (osdmap.exists(from) &&
       osdmap.get_info(from).up_from > m->version &&
-      osdmap.get_most_recent_addrs(from) == m->get_orig_source_addrs()) {
+      osdmap.get_most_recent_addrs(from) == m->get_client_addrs()) {
     dout(7) << "prepare_boot msg from before last up_from, ignoring" << dendl;
     send_latest(op, m->sb.current_epoch+1);
     return true;
@@ -2900,7 +2900,7 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
     dout(7) << __func__ << " was up, first marking down osd." << from << " "
 	    << osdmap.get_addrs(from) << dendl;
     // preprocess should have caught these;  if not, assert.
-    ceph_assert(osdmap.get_addrs(from) != m->get_orig_source_addrs() ||
+    ceph_assert(osdmap.get_addrs(from) != m->get_client_addrs() ||
            osdmap.get_cluster_addrs(from) != m->cluster_addrs);
     ceph_assert(osdmap.get_uuid(from) == m->sb.osd_fsid);
 
@@ -2917,7 +2917,7 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
     wait_for_finished_proposal(op, new C_RetryMessage(this, op));
   } else {
     // mark new guy up.
-    pending_inc.new_up_client[from] = m->get_orig_source_addrs();
+    pending_inc.new_up_client[from] = m->get_client_addrs();
     pending_inc.new_up_cluster[from] = m->cluster_addrs;
     pending_inc.new_hb_back_up[from] = m->hb_back_addrs;
     pending_inc.new_hb_front_up[from] = m->hb_front_addrs;

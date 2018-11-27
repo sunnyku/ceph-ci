@@ -5713,7 +5713,7 @@ void OSD::_send_boot()
 
   MOSDBoot *mboot = new MOSDBoot(
     superblock, get_osdmap_epoch(), service.get_boot_epoch(),
-    hb_back_addrs, hb_front_addrs, cluster_addrs,
+    hb_back_addrs, hb_front_addrs, cluster_addrs, client_addrs,
     CEPH_FEATURES_ALL);
   dout(10) << " final client_addrs " << client_addrs
 	   << ", cluster_addrs " << cluster_addrs
