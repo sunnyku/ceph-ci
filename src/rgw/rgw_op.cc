@@ -4339,7 +4339,7 @@ int RGWDeleteObj::verify_permission()
                                               rgw::IAM::s3DeleteObjectVersion,
                                               ARN(s->bucket, s->object.name));
     if (usr_policy_res == Effect::Deny) {
-      return false;
+      return -EACCES;
     }
 
     rgw::IAM::Effect r = Effect::Pass;
@@ -4351,11 +4351,11 @@ int RGWDeleteObj::verify_permission()
 				 ARN(s->bucket, s->object.name));
     }
     if (r == Effect::Allow)
-      return true;
+      return 0;
     else if (r == Effect::Deny)
       return false;
     else if (usr_policy_res == Effect::Allow)
-      return true;
+      return 0;
   }
 
   if (!verify_bucket_permission_no_policy(s, RGW_PERM_WRITE)) {
