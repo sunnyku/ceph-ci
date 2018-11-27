@@ -1179,7 +1179,7 @@ bool verify_user_permission_no_policy(struct req_state * const s,
                             const int perm)
 {
   /* S3 doesn't support account ACLs. */
-  if (s->user->type != TYPE_NONE && !user_acl)
+  if (!user_acl)
     return true;
 
   if ((perm & (int)s->perm_mask) != perm)
