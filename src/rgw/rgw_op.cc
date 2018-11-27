@@ -4353,7 +4353,7 @@ int RGWDeleteObj::verify_permission()
     if (r == Effect::Allow)
       return 0;
     else if (r == Effect::Deny)
-      return false;
+      return -EACCES;
     else if (usr_policy_res == Effect::Allow)
       return 0;
   }
