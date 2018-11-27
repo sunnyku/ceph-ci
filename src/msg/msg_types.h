@@ -415,7 +415,13 @@ struct entity_addr_t {
 
   std::string ip_only_to_str() const;
 
-  bool parse(const char *s, const char **end = 0, int type=0);
+  bool parse(const string& s) {
+    const char *start = s.c_str();
+    const char *end;
+    bool got = parse(start, &end);
+    return got && end == start + s.length();
+  }
+  bool parse(const char *s, const char **end, int type=0);
 
   void decode_legacy_addr_after_marker(bufferlist::const_iterator& bl)
   {
