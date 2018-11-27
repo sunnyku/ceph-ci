@@ -93,6 +93,20 @@ public:
   void decode_payload() override {
     auto p = payload.cbegin();
     paxos_decode(p);
+    if (header.version < 7) {
+      entity_addr_t a;
+      decode(sb, p);
+      decode(a, p);
+      hb_back_addrs = entity_addrvec_t(a);
+      decode(a, p);
+      cluster_addrs = entity_addrvec_t(a);
+      decode(boot_epoch, p);
+      decode(a, p);
+      hb_front_addrs = entity_addrvec_t(a);
+      decode(metadata, p);
+      decode(osd_features, p);
+      return;
+    }
     decode(sb, p);
     decode(hb_back_addrs, p);
     decode(cluster_addrs, p);
