@@ -1349,10 +1349,6 @@ std::vector<Option> get_global_options() {
     .set_default(128)
     .set_description(""),
 
-    Option("mon_osd_max_split_count", Option::TYPE_INT, Option::LEVEL_ADVANCED)
-    .set_default(32)
-    .set_description(""),
-
     Option("mon_osd_prime_pg_temp", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(true)
     .set_description(""),
