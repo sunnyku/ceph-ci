@@ -1118,7 +1118,7 @@ public:
     }
   };
 
-  typedef boost::variant<std::string,int,double> value_t;
+  typedef boost::variant<std::string,int64_t,double> value_t;
 
   static bool is_opt_name(const std::string& name);
   static opt_desc_t get_opt_desc(const std::string& name);
