@@ -5954,7 +5954,8 @@ next:
       max_entries = 1000;
     }
 
-    int num_logshards = store->ctx()->_conf->rgw_reshard_num_logs;
+    int num_logshards =
+      store->ctx()->_conf->get_val<uint64_t>("rgw_reshard_num_logs");
 
     RGWReshard reshard(store);
 
@@ -6045,11 +6046,13 @@ next:
     int ret = br.cancel();
     if (ret < 0) {
       if (ret == -EBUSY) {
-	cerr << "There is ongoing resharding, please retry after " << g_conf->rgw_reshard_bucket_lock_duration <<
-	     " seconds " << std::endl;
+	cerr << "There is ongoing resharding, please retry after " <<
+	  store->ctx()->_conf->get_val<uint64_t>(
+	    "rgw_reshard_bucket_lock_duration") <<
+	  " seconds " << std::endl;
       } else {
-	cerr << "Error canceling bucket " << bucket_name << " resharding: " << cpp_strerror(-ret) <<
-	  std::endl;
+	cerr << "Error canceling bucket " << bucket_name <<
+	  " resharding: " << cpp_strerror(-ret) << std::endl;
       }
       return ret;
     }

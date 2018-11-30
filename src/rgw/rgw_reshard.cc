@@ -76,9 +76,9 @@ public:
     bs.init(bucket_info.bucket, num_shard, nullptr /* no RGWBucketInfo */);
 
     max_aio_completions =
-      store->ctx()->_conf.get_val<uint64_t>("rgw_reshard_max_aio");
+      store->ctx()->_conf->get_val<uint64_t>("rgw_reshard_max_aio");
     reshard_shard_batch_size =
-      store->ctx()->_conf.get_val<uint64_t>("rgw_reshard_batch_size");
+      store->ctx()->_conf->get_val<uint64_t>("rgw_reshard_batch_size");
   }
 
   int get_num_shard() {
@@ -411,7 +411,7 @@ RGWBucketReshardLock::RGWBucketReshardLock(RGWRados* _store,
   ephemeral(_ephemeral),
   internal_lock(reshard_lock_name)
 {
-  const int lock_dur_secs = store->ctx()->_conf.get_val<uint64_t>(
+  const int lock_dur_secs = store->ctx()->_conf->get_val<uint64_t>(
     "rgw_reshard_bucket_lock_duration");
   duration = std::chrono::seconds(lock_dur_secs);
 
@@ -774,7 +774,7 @@ RGWReshard::RGWReshard(RGWRados* _store, bool _verbose, ostream *_out,
   store(_store), instance_lock(bucket_instance_lock_name),
   verbose(_verbose), out(_out), formatter(_formatter)
 {
-  num_logshards = store->ctx()->_conf->rgw_reshard_num_logs;
+  num_logshards = store->ctx()->_conf->get_val<uint64_t>("rgw_reshard_num_logs");
 }
 
 string RGWReshard::get_logshard_key(const string& tenant,
@@ -1158,7 +1158,7 @@ void *RGWReshard::ReshardWorker::entry() {
 
     utime_t end = ceph_clock_now();
     end -= start;
-    int secs = cct->_conf.get_val<uint64_t>("rgw_reshard_thread_interval");
+    int secs = cct->_conf->get_val<uint64_t>("rgw_reshard_thread_interval");
 
     if (secs <= end.sec())
       continue; // next round
