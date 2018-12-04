@@ -62,6 +62,13 @@ class PgAutoscaler(MgrModule):
         'mon_max_pg_per_osd',
     ]
 
+    OPTIONS = [
+        {
+            'name': 'sleep_interval',
+            'default': str(60),
+        },
+    ]
+
     def __init__(self, *args, **kwargs):
         super(PgAutoscaler, self).__init__(*args, **kwargs)
         self._shutdown = threading.Event()
@@ -75,7 +82,14 @@ class PgAutoscaler(MgrModule):
             setattr(self,
                     opt,
                     self.get_option(opt))
-            self.log.debug(' %s = %s', opt, getattr(self, opt))
+            self.log.debug(' native option %s = %s', opt, getattr(self, opt))
+        for opt in self.OPTIONS:
+            setattr(self,
+                    opt['name'],
+                    self.get_config(opt['name']) or opt['default'])
+            self.log.debug(' mgr option %s = %s',
+                           opt['name'], getattr(self, opt['name']))
+
 
     def handle_command(self, inbuf, cmd):
         if cmd['prefix'] == "osd pool autoscale-status":
@@ -142,7 +156,7 @@ class PgAutoscaler(MgrModule):
         self.config_notify()
         while not self._shutdown.is_set():
             self._maybe_adjust()
-            self._shutdown.wait(timeout=INTERVAL)
+            self._shutdown.wait(timeout=int(self.sleep_interval))
 
     def get_subtree_resource_status(self, osdmap, crush):
         """
