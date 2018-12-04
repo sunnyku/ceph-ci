@@ -491,7 +491,7 @@ int AsyncConnection::send_message(Message *m)
 		   1) << "-- " << async_msgr->get_myaddrs() << " --> "
 		      << get_peer_addrs() << " -- "
 		      << *m << " -- " << m << " con "
-		      << m->get_connection().get()
+		      << this
 		      << dendl;
 
   // optimistic think it's ok to encode(actually may broken now)
