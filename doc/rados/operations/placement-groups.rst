@@ -2,7 +2,7 @@
  Placement Groups
 ==================
 
-.. _choosing-number-of-placement-groups:
+.. _pg-autoscaler:
 
 Autoscaling placement groups
 ============================
