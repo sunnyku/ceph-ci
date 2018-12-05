@@ -2782,7 +2782,11 @@ int metadata_get(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
 
   int r = cls_cxx_map_get_val(hctx, metadata_key_for_name(key), &value);
   if (r < 0) {
-    CLS_ERR("error get metadata: %s", cpp_strerror(r).c_str());
+    if (key.find("qos") != string::npos) {
+      CLS_LOG(10, "error get metadata: %s", cpp_strerror(r).c_str());
+    } else {
+      CLS_ERR("error get metadata: %s", cpp_strerror(r).c_str());
+    }
     return r;
   }
 
