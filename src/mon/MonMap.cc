@@ -346,34 +346,52 @@ void MonMap::_add_ambiguous_addr(const string& name,
 				 entity_addr_t addr,
 				 int priority)
 {
-  if (addr.get_port() == 0) {
-    // no port; try both msgr2 and legacy
-    addr.set_type(entity_addr_t::TYPE_MSGR2);
-    addr.set_port(CEPH_MON_PORT_IANA);
-    if (!contains(addr)) {
-      add(name, entity_addrvec_t(addr));
-    }
-    addr.set_type(entity_addr_t::TYPE_LEGACY);
-    addr.set_port(CEPH_MON_PORT_LEGACY);
-    if (!contains(addr)) {
-      add(name + "-legacy", entity_addrvec_t(addr));
-    }
-  } else if (addr.get_port() == CEPH_MON_PORT_LEGACY) {
-    // legacy port implies legacy addr
-    addr.set_type(entity_addr_t::TYPE_LEGACY);
-    if (!contains(addr)) {
-      add(name + "-legacy", entity_addrvec_t(addr));
-    }
-  } else if (addr.get_type() == entity_addr_t::TYPE_V1ORV2) {
-    // assume msgr2
-    addr.set_type(entity_addr_t::TYPE_MSGR2);
-    if (!contains(addr)) {
-      add(name, entity_addrvec_t(addr), priority);
+  if (addr.get_type() != entity_addr_t::TYPE_V1ORV2) {
+    // a v1: or v2: prefix was specified
+    if (addr.get_port() == 0) {
+      // use default port
+      if (addr.get_type() == entity_addr_t::TYPE_MSGR2) {
+	addr.set_port(CEPH_MON_PORT_IANA);
+      } else if (addr.get_type() == entity_addr_t::TYPE_LEGACY) {
+	addr.set_port(CEPH_MON_PORT_LEGACY);
+      } else {
+	// wth
+	return;
+      }
+      if (!contains(addr)) {
+	add(name, entity_addrvec_t(addr));
+      }
+    } else {
+      if (!contains(addr)) {
+	add(name, entity_addrvec_t(addr), priority);
+      }
     }
   } else {
-    // looks like it was explicitly specified
-    if (!contains(addr)) {
-      add(name, entity_addrvec_t(addr), priority);
+    // no v1: or v2: prefix specified
+    if (addr.get_port() == 0) {
+      // no port; try both msgr2 and legacy
+      addr.set_type(entity_addr_t::TYPE_MSGR2);
+      addr.set_port(CEPH_MON_PORT_IANA);
+      if (!contains(addr)) {
+	add(name, entity_addrvec_t(addr));
+      }
+      addr.set_type(entity_addr_t::TYPE_LEGACY);
+      addr.set_port(CEPH_MON_PORT_LEGACY);
+      if (!contains(addr)) {
+	add(name + "-legacy", entity_addrvec_t(addr));
+      }
+    } else if (addr.get_port() == CEPH_MON_PORT_LEGACY) {
+      // legacy port implies legacy addr
+      addr.set_type(entity_addr_t::TYPE_LEGACY);
+      if (!contains(addr)) {
+	add(name + "-legacy", entity_addrvec_t(addr));
+      }
+    } else {
+      // assume msgr2
+      addr.set_type(entity_addr_t::TYPE_MSGR2);
+      if (!contains(addr)) {
+	add(name, entity_addrvec_t(addr), priority);
+      }
     }
   }
 }
