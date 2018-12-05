@@ -127,13 +127,31 @@ space.  Alternatively,::
 will tell the system that `mypool` is expected to consume 90% of the
 total cluster capacity.
 
+You can also set the target size of a pool at creation time with the optional ``--target-size-bytes <bytes>`` or ``--target-size-ratio <ratio>`` arguments to the ``ceph osd pool create`` command.
+
 Note that if impossible target size values are specified (for example,
 a capacity larger than the total cluster, or ratio(s) that sum to more
 than 1.0) then a health warning
 (``POOL_TARET_SIZE_RATIO_OVERCOMMITTED`` or
 ``POOL_TARGET_SIZE_BYTES_OVERCOMMITTED``) will be raised.
 
-  
+Specifying bounds on a pool's PGs
+---------------------------------
+
+It is also possible to specify a minimum number of PGs for a pool.
+This is useful for establishing a lower bound on the amount of
+parallelism client will see when doing IO, even when a pool is mostly
+empty.  Setting the lower bound prevents Ceph from reducing (or
+recommending you reduce) the PG number below the configured number.
+
+You can set the minimum number of PGs for a pool with::
+
+  ceph osd pool set <pool-name> pg_num_min <num>
+
+You can also specify the minimum PG count at pool creation time with
+the optional ``--pg-num-min <num>`` argument to the ``ceph osd pool
+create`` command.
+
 .. _preselection:
 
 A preselection of pg_num
