@@ -11372,6 +11372,9 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       goto reply;
     }
     else {
+      // always blacklist type ANY
+      addr.set_type(entity_addr_t::TYPE_ANY);
+
       string blacklistop;
       cmd_getval(cct, cmdmap, "blacklistop", blacklistop);
       if (blacklistop == "add") {
