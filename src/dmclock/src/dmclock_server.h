@@ -109,7 +109,6 @@ namespace crimson {
 
       bool valid() const {
         bool invalid = (reservation < 0 || weight < 0 || limit < 0 || bandwidth < 0) ||
-                       (limit > 0 && limit < reservation) ||
                        (reservation == 0 && weight == 0);
         return !invalid;
       }

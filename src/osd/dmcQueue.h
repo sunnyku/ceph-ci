@@ -190,7 +190,6 @@ public:
 
     static dmc::ClientInfo client_info_func(const dmcClient& client) {
       // global client info obtainer, DO NOT USE
-      assert(0 == "implement me");
       return dmc::ClientInfo();
     }
 
