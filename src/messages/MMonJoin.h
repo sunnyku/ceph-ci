@@ -24,8 +24,8 @@ class MMonJoin : public MessageInstance<MMonJoin, PaxosServiceMessage> {
 public:
   friend factory;
 
-  const static int HEAD_VERSION = 2;
-  const static int COMPAT_VERSION = 2;
+  static constexpr int HEAD_VERSION = 2;
+  static constexpr int COMPAT_VERSION = 2;
 
   uuid_d fsid;
   string name;
