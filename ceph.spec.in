@@ -189,6 +189,8 @@ BuildRequires:	which
 BuildRequires:	xfsprogs
 BuildRequires:	xfsprogs-devel
 BuildRequires:	xmlstarlet
+# for dashboard
+BuildRequires:  xmlsec1
 BuildRequires:	yasm
 %if 0%{with make_check}
 BuildRequires:	python%{_python_buildid}-coverage
