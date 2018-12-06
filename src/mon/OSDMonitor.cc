@@ -6467,11 +6467,11 @@ int OSDMonitor::prepare_pool_size(const unsigned pool_type,
   int err = 0;
   switch (pool_type) {
   case pg_pool_t::TYPE_REPLICATED:
-    *size = (repl_size == 0 ?
-      g_conf().get_val<uint64_t>("osd_pool_default_size")
-      : repl_size);
+    if (repl_size == 0) {
+      repl_size = g_conf().get_val<uint64_t>("osd_pool_default_size");
+    }
+    *size = repl_size;
     *min_size = g_conf().get_osd_pool_default_min_size(repl_size);
-
     break;
   case pg_pool_t::TYPE_ERASURE:
     {
