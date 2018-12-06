@@ -31,9 +31,9 @@ public:
   string name;
   entity_addrvec_t addrs;
 
-  MMonJoin() : MessageInstance(MSG_MON_JOIN, 0) {}
+  MMonJoin() : MessageInstance(MSG_MON_JOIN, 0, HEAD_VERSION, COMPAT_VERSION) {}
   MMonJoin(uuid_d &f, string n, const entity_addrvec_t& av)
-    : MessageInstance(MSG_MON_JOIN, 0),
+    : MessageInstance(MSG_MON_JOIN, 0, HEAD_VERSION, COMPAT_VERSION),
       fsid(f), name(n), addrs(av)
   { }
   
@@ -66,7 +66,13 @@ public:
     paxos_decode(p);
     decode(fsid, p);
     decode(name, p);
-    decode(addrs, p);
+    if (header.version == 1) {
+      entity_addr_t addr;
+      decode(addr, p);
+      addrs = entity_addrvec_t(addr);
+    } else {
+      decode(addrs, p);
+    }
   }
 };
 
