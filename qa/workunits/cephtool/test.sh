@@ -2011,6 +2011,8 @@ function test_mon_osd_pool_set()
   ceph osd pool set $TEST_POOL_GETSET scrub_priority 0
   ceph osd pool get $TEST_POOL_GETSET scrub_priority | expect_false grep '.'
 
+  ceph osd pool set $TEST_POOL_GETSET pg_autoscale_mode off
+
   ceph osd pool set $TEST_POOL_GETSET nopgchange 1
   expect_false ceph osd pool set $TEST_POOL_GETSET pg_num 10
   expect_false ceph osd pool set $TEST_POOL_GETSET pgp_num 10
