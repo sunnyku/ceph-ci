@@ -427,7 +427,7 @@ def get_mons(roles, ips,
     v1_ports = {}
     v2_ports = {}
     mon_id = 0
-    is_mon = is_type('mon')
+    is_mon = teuthology.is_type('mon')
     for idx, roles in enumerate(roles):
         for role in roles:
             if not is_mon(role):
