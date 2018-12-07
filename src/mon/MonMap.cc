@@ -530,8 +530,11 @@ int MonMap::init_with_config_file(const ConfigProxy& conf,
              << ": error " << res << std::endl;
       continue;
     }
+    // the 'mon addr' field is a legacy field, so assume anything
+    // there on a weird port is a v1 address, and do not handle
+    // addrvecs.
     entity_addr_t addr;
-    if (!addr.parse(val.c_str())) {
+    if (!addr.parse(val.c_str(), nullptr, entity_addr_t::TYPE_LEGACY)) {
       errout << "unable to parse address for mon." << mon_name
              << ": addr='" << val << "'" << std::endl;
       continue;
