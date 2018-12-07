@@ -488,11 +488,11 @@ def skeleton_config(ctx, roles, ips, mons, cluster='ceph'):
     conf.setdefault('global', {})
     conf['global']['mon host'] = ','.join(mon_hosts)
     # set up standby mds's
-    is_mds = is_type('mds', cluster)
+    is_mds = teuthology.is_type('mds', cluster)
     for roles_subset in roles:
         for role in roles_subset:
-            if is_mds(role):
-                name = ceph_role(role)
+            if teuthology.is_mds(role):
+                name = teuthology.ceph_role(role)
                 conf.setdefault(name, {})
                 if '-s-' in name:
                     standby_mds = name[name.find('-s-') + 3:]
