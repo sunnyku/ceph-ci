@@ -479,10 +479,10 @@ def skeleton_config(ctx, roles, ips, mons, cluster='ceph'):
     conf = configobj.ConfigObj(StringIO(skconf), file_error=True)
     mon_hosts = []
     for role, addr in mons.iteritems():
-        mon_cluster, _, _ = split_role(role)
+        mon_cluster, _, _ = teuthology.split_role(role)
         if mon_cluster != cluster:
             continue
-        name = ceph_role(role)
+        name = teuthology.ceph_role(role)
         conf.setdefault(name, {})
         mon_hosts.append(addr)
     conf.setdefault('global', {})
