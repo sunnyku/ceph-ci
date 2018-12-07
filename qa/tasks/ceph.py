@@ -417,6 +417,134 @@ def cephfs_setup(ctx, config):
     yield
 
 
+def get_mons(roles, ips,
+             mon_bind_msgr2=False,
+             mon_bind_addrvec=False):
+    """
+    Get monitors and their associated addresses
+    """
+    mons = {}
+    v1_ports = {}
+    v2_ports = {}
+    mon_id = 0
+    is_mon = is_type('mon')
+    for idx, roles in enumerate(roles):
+        for role in roles:
+            if not is_mon(role):
+                continue
+            if ips[idx] not in v1_ports:
+                v1_ports[ips[idx]] = 6789
+            else:
+                v1_ports[ips[idx]] += 1
+            if mon_bind_msgr2:
+                assert mon_bind_addrvec
+                if ips[idx] not in v2_ports:
+                    v2_ports[ips[idx]] = 3300
+                    addr = '{ip}'.format(ip=ips[idx])
+                else:
+                    v2_ports[ips[idx]] += 1
+                    addr = 'v2:{ip}:{port2},v1:{ip}:{port1}'.format(
+                        ip=ips[idx],
+                        port2=v2_ports[ips[idx]],
+                        port1=v1_ports[ips[idx]],
+                    )
+            elif mon_bind_addrvec:
+                addr = 'v1:{ip}:{port}'.format(
+                    ip=ips[idx],
+                    port=v1_ports[ips[idx]],
+                )
+            else:
+                addr = '{ip}:{port}'.format(
+                    ip=ips[idx],
+                    port=v1_ports[ips[idx]],
+                )
+            mon_id += 1
+            mons[role] = addr
+    assert mons
+    return mons
+
+def skeleton_config(ctx, roles, ips, mons, cluster='ceph'):
+    """
+    Returns a ConfigObj that is prefilled with a skeleton config.
+
+    Use conf[section][key]=value or conf.merge to change it.
+
+    Use conf.write to write it out, override .filename first if you want.
+    """
+    path = os.path.join(os.path.dirname(__file__), 'ceph.conf.template')
+    t = open(path, 'r')
+    skconf = t.read().format(testdir=get_testdir(ctx))
+    conf = configobj.ConfigObj(StringIO(skconf), file_error=True)
+    mon_hosts = []
+    for role, addr in mons.iteritems():
+        mon_cluster, _, _ = split_role(role)
+        if mon_cluster != cluster:
+            continue
+        name = ceph_role(role)
+        conf.setdefault(name, {})
+        mon_hosts.append(addr)
+    conf.setdefault('global', {})
+    conf['global']['mon host'] = ','.join(mon_hosts)
+    # set up standby mds's
+    is_mds = is_type('mds', cluster)
+    for roles_subset in roles:
+        for role in roles_subset:
+            if is_mds(role):
+                name = ceph_role(role)
+                conf.setdefault(name, {})
+                if '-s-' in name:
+                    standby_mds = name[name.find('-s-') + 3:]
+                    conf[name]['mds standby for name'] = standby_mds
+    return conf
+
+def create_simple_monmap(ctx, remote, conf, mons,
+                         path=None,
+                         mon_bind_addrvec=False):
+    """
+    Writes a simple monmap based on current ceph.conf into path, or
+    <testdir>/monmap by default.
+
+    Assumes ceph_conf is up to date.
+
+    Assumes mon sections are named "mon.*", with the dot.
+
+    :return the FSID (as a string) of the newly created monmap
+    """
+
+    addresses = list(mons.iteritems())
+    assert addresses, "There are no monitors in config!"
+    log.debug('Ceph mon addresses: %s', addresses)
+
+    testdir = get_testdir(ctx)
+    args = [
+        'adjust-ulimits',
+        'ceph-coverage',
+        '{tdir}/archive/coverage'.format(tdir=testdir),
+        'monmaptool',
+        '--create',
+        '--clobber',
+    ]
+    for (name, addr) in addresses:
+        if mon_bind_addrvec:
+            args.extend(('--addv', name, addr))
+        else:
+            args.extend(('--add', name, addr))
+    if not path:
+        path = '{tdir}/monmap'.format(tdir=testdir)
+    args.extend([
+        '--print',
+        path
+    ])
+
+    r = remote.run(
+        args=args,
+        stdout=StringIO()
+    )
+    monmap_output = r.stdout.getvalue()
+    fsid = re.search("generated fsid (.+)$",
+                     monmap_output, re.MULTILINE).group(1)
+    return fsid
+
 @contextlib.contextmanager
 def cluster(ctx, config):
     """
@@ -518,10 +646,13 @@ def cluster(ctx, config):
     roles = [role_list for (remote, role_list) in remotes_and_roles]
     ips = [host for (host, port) in
            (remote.ssh.get_transport().getpeername() for (remote, role_list) in remotes_and_roles)]
-    conf = teuthology.skeleton_config(
-        ctx, roles=roles, ips=ips, cluster=cluster_name,
+    mons = get_mons(
+        roles, ips, 
         mon_bind_msgr2=config.get('mon_bind_msgr2'),
         mon_bind_addrvec=config.get('mon_bind_addrvec'),
+        )
+    conf = skeleton_config(
+        ctx, roles=roles, ips=ips, mons=mons, cluster=cluster_name,
     )
     for remote, roles_to_journals in remote_to_roles_to_journals.iteritems():
         for role, journal in roles_to_journals.iteritems():
@@ -586,10 +717,11 @@ def cluster(ctx, config):
     (mon0_remote,) = ctx.cluster.only(firstmon).remotes.keys()
     monmap_path = '{tdir}/{cluster}.monmap'.format(tdir=testdir,
                                                    cluster=cluster_name)
-    fsid = teuthology.create_simple_monmap(
+    fsid = create_simple_monmap(
         ctx,
         remote=mon0_remote,
         conf=conf,
+        mons=mons,
         path=monmap_path,
         mon_bind_addrvec=config.get('mon_bind_addrvec'),
     )
