@@ -14,6 +14,7 @@ import os
 import json
 import time
 import gevent
+import re
 import socket
 
 from paramiko import SSHException
@@ -474,7 +475,7 @@ def skeleton_config(ctx, roles, ips, mons, cluster='ceph'):
     """
     path = os.path.join(os.path.dirname(__file__), 'ceph.conf.template')
     t = open(path, 'r')
-    skconf = t.read().format(testdir=get_testdir(ctx))
+    skconf = t.read().format(testdir=teuthology.get_testdir(ctx))
     conf = configobj.ConfigObj(StringIO(skconf), file_error=True)
     mon_hosts = []
     for role, addr in mons.iteritems():
@@ -516,7 +517,7 @@ def create_simple_monmap(ctx, remote, conf, mons,
     assert addresses, "There are no monitors in config!"
     log.debug('Ceph mon addresses: %s', addresses)
 
-    testdir = get_testdir(ctx)
+    testdir = teuthology.get_testdir(ctx)
     args = [
         'adjust-ulimits',
         'ceph-coverage',
