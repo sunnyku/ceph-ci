@@ -6,6 +6,7 @@ Handle the setup, starting, and clean-up of a Ceph cluster.
 from cStringIO import StringIO
 
 import argparse
+import configobj
 import contextlib
 import errno
 import logging
