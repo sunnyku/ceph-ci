@@ -491,7 +491,7 @@ def skeleton_config(ctx, roles, ips, mons, cluster='ceph'):
     is_mds = teuthology.is_type('mds', cluster)
     for roles_subset in roles:
         for role in roles_subset:
-            if teuthology.is_mds(role):
+            if is_mds(role):
                 name = teuthology.ceph_role(role)
                 conf.setdefault(name, {})
                 if '-s-' in name:
