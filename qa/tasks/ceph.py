@@ -527,10 +527,11 @@ def create_simple_monmap(ctx, remote, conf, mons,
         '--clobber',
     ]
     for (name, addr) in addresses:
+        n = name[4:]
         if mon_bind_addrvec:
-            args.extend(('--addv', name, addr))
+            args.extend(('--addv', n, addr))
         else:
-            args.extend(('--add', name, addr))
+            args.extend(('--add', n, addr))
     if not path:
         path = '{tdir}/monmap'.format(tdir=testdir)
     args.extend([
