@@ -2144,6 +2144,12 @@ CtPtr ProtocolV1::send_connect_message_reply(char tag,
   reply.authorizer_len = authorizer_reply.length();
   reply_bl.append((char *)&reply, sizeof(reply));
 
+  ldout(cct, 10) << __func__ << " reply features 0x" << std::hex
+		 << reply.features << " policy 0x"
+		 << connection->policy.features_supported
+		 << " connect 0x" << connect_msg.features
+		 << dendl;
+
   if (reply.authorizer_len) {
     reply_bl.append(authorizer_reply.c_str(), authorizer_reply.length());
     authorizer_reply.clear();
