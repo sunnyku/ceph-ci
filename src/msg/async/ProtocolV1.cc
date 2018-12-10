@@ -1,4 +1,4 @@
-#include "Protocol.h"
+#include "ProtocolV1.h"
 
 #include "common/errno.h"
 
@@ -1727,10 +1727,13 @@ CtPtr ProtocolV1::send_server_banner() {
   auto legacy = messenger->get_myaddrs().legacy_addr();
   encode(legacy, bl, 0);  // legacy
   connection->port = legacy.get_port();
-  encode(connection->socket_addr, bl, 0);  // legacy
+  encode(connection->target_addr, bl, 0);  // legacy
 
-  ldout(cct, 1) << __func__ << " sd=" << connection->cs.fd() << " "
-                << connection->socket_addr << dendl;
+  ldout(cct, 1) << __func__ << " sd=" << connection->cs.fd()
+		<< " legacy " << legacy
+		<< " socket_addr " << connection->socket_addr
+		<< " target_addr " << connection->target_addr
+		<< dendl;
 
   return WRITE(bl, handle_server_banner_write);
 }
@@ -2140,6 +2143,12 @@ CtPtr ProtocolV1::send_connect_message_reply(char tag,
       connection->policy.features_required;
   reply.authorizer_len = authorizer_reply.length();
   reply_bl.append((char *)&reply, sizeof(reply));
+
+  ldout(cct, 10) << __func__ << " reply features 0x" << std::hex
+		 << reply.features << " policy 0x"
+		 << connection->policy.features_supported
+		 << " connect 0x" << connect_msg.features
+		 << dendl;
 
   if (reply.authorizer_len) {
     reply_bl.append(authorizer_reply.c_str(), authorizer_reply.length());
