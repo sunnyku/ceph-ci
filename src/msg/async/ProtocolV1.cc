@@ -1797,6 +1797,8 @@ CtPtr ProtocolV1::handle_client_banner(char *buffer, int r) {
   connection->set_peer_addr(peer_addr);  // so that connection_state gets set up
   connection->target_addr = peer_addr;
 
+  got_first_connect = false;
+
   return CONTINUE(wait_connect_message);
 }
 
@@ -1854,8 +1856,11 @@ CtPtr ProtocolV1::handle_connect_message_2() {
                  << connect_msg.connect_seq << " global_seq "
                  << connect_msg.global_seq << dendl;
 
-  connection->set_peer_type(connect_msg.host_type);
-  connection->policy = messenger->get_policy(connect_msg.host_type);
+  if (!got_first_connect) {
+    connection->set_peer_type(connect_msg.host_type);
+    connection->policy = messenger->get_policy(connect_msg.host_type);
+    got_first_connect = true;
+  }
 
   ldout(cct, 10) << __func__ << " accept of host_type " << connect_msg.host_type
                  << ", policy.lossy=" << connection->policy.lossy

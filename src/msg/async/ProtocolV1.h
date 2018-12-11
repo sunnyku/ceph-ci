@@ -116,6 +116,7 @@ protected:
   std::unique_ptr<AuthAuthorizerChallenge> authorizer_challenge;  // accept side
 
   // Open state
+  bool got_first_connect = false;
   ceph_msg_connect connect_msg;
   ceph_msg_connect_reply connect_reply;
   bufferlist authorizer_buf;
