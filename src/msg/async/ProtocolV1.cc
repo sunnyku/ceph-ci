@@ -2147,7 +2147,7 @@ CtPtr ProtocolV1::send_connect_message_reply(char tag,
   ldout(cct, 10) << __func__ << " reply features 0x" << std::hex
 		 << reply.features << " = (policy sup 0x"
 		 << connection->policy.features_supported
-		 << " & connect 0x" << connect_msg.features
+		 << " & connect 0x" << (uint64_t)connect_msg.features
 		 << " ) | policy req 0x"
 		 << connection->policy.features_required
 		 << dendl;
