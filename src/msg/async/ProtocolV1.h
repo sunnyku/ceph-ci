@@ -117,6 +117,7 @@ protected:
 
   // Open state
   bool got_first_connect = false;
+  uint64_t first_connect_features = 0;
   ceph_msg_connect connect_msg;
   ceph_msg_connect_reply connect_reply;
   bufferlist authorizer_buf;

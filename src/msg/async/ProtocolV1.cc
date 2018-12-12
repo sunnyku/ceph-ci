@@ -1860,6 +1860,7 @@ CtPtr ProtocolV1::handle_connect_message_2() {
     connection->set_peer_type(connect_msg.host_type);
     connection->policy = messenger->get_policy(connect_msg.host_type);
     got_first_connect = true;
+    first_connect_features = (uint64_t)connect_msg.features;
   }
 
   ldout(cct, 10) << __func__ << " accept of host_type " << connect_msg.host_type
@@ -2144,7 +2145,7 @@ CtPtr ProtocolV1::send_connect_message_reply(char tag,
   bufferlist reply_bl;
   reply.tag = tag;
   reply.features =
-      ((uint64_t)connect_msg.features & connection->policy.features_supported) |
+      (first_connect_features & connection->policy.features_supported) |
       connection->policy.features_required;
   reply.authorizer_len = authorizer_reply.length();
   reply_bl.append((char *)&reply, sizeof(reply));
@@ -2152,8 +2153,9 @@ CtPtr ProtocolV1::send_connect_message_reply(char tag,
   ldout(cct, 10) << __func__ << " reply features 0x" << std::hex
 		 << reply.features << " = (policy sup 0x"
 		 << connection->policy.features_supported
-		 << " & connect 0x" << (uint64_t)connect_msg.features
-		 << " ) | policy req 0x"
+		 << " & connect 0x" << first_connect_features
+		 << " (0x" << (uint64_t)connect_msg.features
+		 << ") ) | policy req 0x"
 		 << connection->policy.features_required
 		 << dendl;
 
