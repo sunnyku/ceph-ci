@@ -447,6 +447,7 @@ void AsyncConnection::connect(const entity_addrvec_t &addrs, int type,
                               entity_addr_t &target) {
 
   std::lock_guard<std::mutex> l(lock);
+  ldout(async_msgr->cct, 10) << __func__ << " peer_type " << type << dendl;
   set_peer_type(type);
   set_peer_addrs(addrs);
   policy = msgr->get_policy(type);
