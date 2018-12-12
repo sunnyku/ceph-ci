@@ -7,7 +7,7 @@ meta:
 - desc: install ceph/luminous latest
 tasks:
 - install:
-    branch: luminous
+    branch: msgr-debug-luminous
     exclude_packages: ['librados3']
     extra_packages: ['librados2']
 - print: "**** done install luminous"
