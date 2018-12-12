@@ -1819,6 +1819,8 @@ CtPtr ProtocolV1::handle_connect_message_1(char *buffer, int r) {
 
   connect_msg = *((ceph_msg_connect *)buffer);
 
+  ldout(cct, 10) << __func__ << " got first part of connect, features 0x"
+		 << std::hex << (uint64_t)connect_msg.features << std::dec << dendl;
   state = ACCEPTING_WAIT_CONNECT_MSG_AUTH;
 
   if (connect_msg.authorizer_len) {
@@ -1854,7 +1856,8 @@ CtPtr ProtocolV1::handle_connect_message_2() {
 
   ldout(cct, 20) << __func__ << " accept got peer connect_seq "
                  << connect_msg.connect_seq << " global_seq "
-                 << connect_msg.global_seq << dendl;
+                 << connect_msg.global_seq
+		 << dendl;
 
   if (!got_first_connect) {
     connection->set_peer_type(connect_msg.host_type);
@@ -1868,6 +1871,8 @@ CtPtr ProtocolV1::handle_connect_message_2() {
                  << " policy.server=" << connection->policy.server
                  << " policy.standby=" << connection->policy.standby
                  << " policy.resetcheck=" << connection->policy.resetcheck
+		 << " features 0x" << std::hex << (uint64_t)connect_msg.features
+		 << " (first 0x" << first_connect_features << ")" << std::dec
                  << dendl;
 
   ceph_msg_connect_reply reply;
