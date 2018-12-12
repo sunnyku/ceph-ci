@@ -2217,7 +2217,7 @@ CtPtr ProtocolV1::replace(AsyncConnectionRef existing,
     }
     exproto->reset_recv_state();
 
-    connect_msg.features = exproto->connect_msg.features;
+    exproto->connect_msg.features = connect_msg.features;
 
     auto temp_cs = std::move(connection->cs);
     EventCenter *new_center = connection->center;
