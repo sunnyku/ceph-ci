@@ -1797,8 +1797,6 @@ CtPtr ProtocolV1::handle_client_banner(char *buffer, int r) {
   connection->set_peer_addr(peer_addr);  // so that connection_state gets set up
   connection->target_addr = peer_addr;
 
-  got_first_connect = false;
-
   return CONTINUE(wait_connect_message);
 }
 
@@ -1859,12 +1857,8 @@ CtPtr ProtocolV1::handle_connect_message_2() {
                  << connect_msg.global_seq
 		 << dendl;
 
-  if (!got_first_connect) {
-    connection->set_peer_type(connect_msg.host_type);
-    connection->policy = messenger->get_policy(connect_msg.host_type);
-    got_first_connect = true;
-    first_connect_features = (uint64_t)connect_msg.features;
-  }
+  connection->set_peer_type(connect_msg.host_type);
+  connection->policy = messenger->get_policy(connect_msg.host_type);
 
   ldout(cct, 10) << __func__ << " accept of host_type " << connect_msg.host_type
                  << ", policy.lossy=" << connection->policy.lossy
@@ -1872,7 +1866,7 @@ CtPtr ProtocolV1::handle_connect_message_2() {
                  << " policy.standby=" << connection->policy.standby
                  << " policy.resetcheck=" << connection->policy.resetcheck
 		 << " features 0x" << std::hex << (uint64_t)connect_msg.features
-		 << " (first 0x" << first_connect_features << ")" << std::dec
+		 << std::dec
                  << dendl;
 
   ceph_msg_connect_reply reply;
@@ -2150,7 +2144,7 @@ CtPtr ProtocolV1::send_connect_message_reply(char tag,
   bufferlist reply_bl;
   reply.tag = tag;
   reply.features =
-      (first_connect_features & connection->policy.features_supported) |
+      (connect_msg.features & connection->policy.features_supported) |
       connection->policy.features_required;
   reply.authorizer_len = authorizer_reply.length();
   reply_bl.append((char *)&reply, sizeof(reply));
@@ -2158,9 +2152,8 @@ CtPtr ProtocolV1::send_connect_message_reply(char tag,
   ldout(cct, 10) << __func__ << " reply features 0x" << std::hex
 		 << reply.features << " = (policy sup 0x"
 		 << connection->policy.features_supported
-		 << " & connect 0x" << first_connect_features
-		 << " (0x" << (uint64_t)connect_msg.features
-		 << ") ) | policy req 0x"
+		 << " & connect 0x" << (uint64_t)connect_msg.features
+		 << ") | policy req 0x"
 		 << connection->policy.features_required
 		 << dendl;
 

@@ -116,8 +116,6 @@ protected:
   std::unique_ptr<AuthAuthorizerChallenge> authorizer_challenge;  // accept side
 
   // Open state
-  bool got_first_connect = false;
-  uint64_t first_connect_features = 0;
   ceph_msg_connect connect_msg;
   ceph_msg_connect_reply connect_reply;
   bufferlist authorizer_buf;
@@ -284,7 +282,8 @@ protected:
   CtPtr send_connect_message_reply(char tag, ceph_msg_connect_reply &reply,
                                    bufferlist &authorizer_reply);
   CtPtr handle_connect_message_reply_write(int r);
-  CtPtr replace(AsyncConnectionRef existing, ceph_msg_connect_reply &reply,
+  CtPtr replace(AsyncConnectionRef existing,
+		ceph_msg_connect_reply &reply,
                 bufferlist &authorizer_reply);
   CtPtr open(ceph_msg_connect_reply &reply, bufferlist &authorizer_reply);
   CtPtr handle_ready_connect_message_reply_write(int r);
