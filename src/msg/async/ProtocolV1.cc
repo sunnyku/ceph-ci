@@ -1,4 +1,4 @@
-#include "Protocol.h"
+#include "ProtocolV1.h"
 
 #include "common/errno.h"
 
@@ -1727,10 +1727,13 @@ CtPtr ProtocolV1::send_server_banner() {
   auto legacy = messenger->get_myaddrs().legacy_addr();
   encode(legacy, bl, 0);  // legacy
   connection->port = legacy.get_port();
-  encode(connection->socket_addr, bl, 0);  // legacy
+  encode(connection->target_addr, bl, 0);  // legacy
 
-  ldout(cct, 1) << __func__ << " sd=" << connection->cs.fd() << " "
-                << connection->socket_addr << dendl;
+  ldout(cct, 1) << __func__ << " sd=" << connection->cs.fd()
+		<< " legacy " << legacy
+		<< " socket_addr " << connection->socket_addr
+		<< " target_addr " << connection->target_addr
+		<< dendl;
 
   return WRITE(bl, handle_server_banner_write);
 }
@@ -1794,6 +1797,8 @@ CtPtr ProtocolV1::handle_client_banner(char *buffer, int r) {
   connection->set_peer_addr(peer_addr);  // so that connection_state gets set up
   connection->target_addr = peer_addr;
 
+  got_first_connect = false;
+
   return CONTINUE(wait_connect_message);
 }
 
@@ -1814,6 +1819,8 @@ CtPtr ProtocolV1::handle_connect_message_1(char *buffer, int r) {
 
   connect_msg = *((ceph_msg_connect *)buffer);
 
+  ldout(cct, 10) << __func__ << " got first part of connect, features 0x"
+		 << std::hex << (uint64_t)connect_msg.features << std::dec << dendl;
   state = ACCEPTING_WAIT_CONNECT_MSG_AUTH;
 
   if (connect_msg.authorizer_len) {
@@ -1849,16 +1856,23 @@ CtPtr ProtocolV1::handle_connect_message_2() {
 
   ldout(cct, 20) << __func__ << " accept got peer connect_seq "
                  << connect_msg.connect_seq << " global_seq "
-                 << connect_msg.global_seq << dendl;
+                 << connect_msg.global_seq
+		 << dendl;
 
-  connection->set_peer_type(connect_msg.host_type);
-  connection->policy = messenger->get_policy(connect_msg.host_type);
+  if (!got_first_connect) {
+    connection->set_peer_type(connect_msg.host_type);
+    connection->policy = messenger->get_policy(connect_msg.host_type);
+    got_first_connect = true;
+    first_connect_features = (uint64_t)connect_msg.features;
+  }
 
   ldout(cct, 10) << __func__ << " accept of host_type " << connect_msg.host_type
                  << ", policy.lossy=" << connection->policy.lossy
                  << " policy.server=" << connection->policy.server
                  << " policy.standby=" << connection->policy.standby
                  << " policy.resetcheck=" << connection->policy.resetcheck
+		 << " features 0x" << std::hex << (uint64_t)connect_msg.features
+		 << " (first 0x" << first_connect_features << ")" << std::dec
                  << dendl;
 
   ceph_msg_connect_reply reply;
@@ -2136,10 +2150,19 @@ CtPtr ProtocolV1::send_connect_message_reply(char tag,
   bufferlist reply_bl;
   reply.tag = tag;
   reply.features =
-      ((uint64_t)connect_msg.features & connection->policy.features_supported) |
+      (first_connect_features & connection->policy.features_supported) |
       connection->policy.features_required;
   reply.authorizer_len = authorizer_reply.length();
   reply_bl.append((char *)&reply, sizeof(reply));
+
+  ldout(cct, 10) << __func__ << " reply features 0x" << std::hex
+		 << reply.features << " = (policy sup 0x"
+		 << connection->policy.features_supported
+		 << " & connect 0x" << first_connect_features
+		 << " (0x" << (uint64_t)connect_msg.features
+		 << ") ) | policy req 0x"
+		 << connection->policy.features_required
+		 << dendl;
 
   if (reply.authorizer_len) {
     reply_bl.append(authorizer_reply.c_str(), authorizer_reply.length());
@@ -2193,6 +2216,8 @@ CtPtr ProtocolV1::replace(AsyncConnectionRef existing,
       ceph_assert(!connection->delay_state);
     }
     exproto->reset_recv_state();
+
+    exproto->connect_msg.features = connect_msg.features;
 
     auto temp_cs = std::move(connection->cs);
     EventCenter *new_center = connection->center;
