@@ -1249,20 +1249,19 @@ bool MDSRank::is_stale_message(const Message::const_ref &m) const
   // from bad mds?
   if (m->get_source().is_mds()) {
     mds_rank_t from = mds_rank_t(m->get_source().num());
-    if (!mdsmap->have_inst(from) ||
-	mdsmap->get_addrs(from) != m->get_source_addrs() ||
-	mdsmap->is_down(from)) {
-      // bogus mds?
+    if (mdsmap->is_down(from) ||
+	m->get_connection()->get_peer_global_id() !=
+	mdsmap->get_info(from).global_id) {
       if (m->get_type() == CEPH_MSG_MDS_MAP) {
-	dout(5) << "got " << *m << " from old/bad/imposter mds " << m->get_source()
+	dout(5) << "got " << *m << " from old/bad/imposter " << m->get_source()
 		<< ", but it's an mdsmap, looking at it" << dendl;
       } else if (m->get_type() == MSG_MDS_CACHEEXPIRE &&
 		 mdsmap->get_addrs(from) == m->get_source_addrs()) {
 	dout(5) << "got " << *m << " from down mds " << m->get_source()
 		<< ", but it's a cache_expire, looking at it" << dendl;
       } else {
-	dout(5) << "got " << *m << " from down/old/bad/imposter mds " << m->get_source()
-		<< ", dropping" << dendl;
+	dout(5) << "got " << *m << " from down/old/bad/imposter "
+		<< m->get_source() << ", dropping" << dendl;
 	return true;
       }
     }
