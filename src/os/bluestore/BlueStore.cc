@@ -11616,16 +11616,16 @@ int BlueStore::_do_alloc_write(
   }
 
   // checksum
-  int csum = csum_type.load();
+  int64_t csum = csum_type.load();
   csum = select_option(
     "csum_type",
     csum,
     [&]() {
-      int val;
+      int64_t val;
       if (coll->pool_opts.get(pool_opts_t::CSUM_TYPE, &val)) {
-        return  boost::optional<int>(val);
+        return boost::optional<int64_t>(val);
       }
-      return boost::optional<int>();
+      return boost::optional<int64_t>();
     }
   );
 
@@ -12010,7 +12010,7 @@ void BlueStore::_choose_write_options(
         "compression_max_blob_size",
         comp_max_blob_size.load(),
         [&]() {
-          int val;
+          int64_t val;
           if (c->pool_opts.get(pool_opts_t::COMPRESSION_MAX_BLOB_SIZE, &val)) {
    	    return boost::optional<uint64_t>((uint64_t)val);
           }
@@ -12024,7 +12024,7 @@ void BlueStore::_choose_write_options(
         "compression_min_blob_size",
         comp_min_blob_size.load(),
         [&]() {
-          int val;
+          int64_t val;
           if (c->pool_opts.get(pool_opts_t::COMPRESSION_MIN_BLOB_SIZE, &val)) {
    	    return boost::optional<uint64_t>((uint64_t)val);
           }
