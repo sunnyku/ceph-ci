@@ -1566,6 +1566,7 @@ void ReplicatedBackend::submit_push_data(
 		        oi.alloc_hint_flags);
       } else {
         if (!recovery_info.object_exist) {
+	  t->remove(coll, ghobject_t(target_oid));
           t->touch(coll, ghobject_t(target_oid));
           bufferlist bv = attrs.at(OI_ATTR);
           object_info_t oi(bv);
@@ -1588,7 +1589,7 @@ void ReplicatedBackend::submit_push_data(
     struct stat st;
     int r = store->stat(ch, ghobject_t(recovery_info.soid), &st);
     if (get_parent()->pg_is_remote_backfilling()) {
-      uint64_t size = 0
+      uint64_t size = 0;
       if (r == 0)
         size = st.st_size;
       // Don't need to do anything if object is still the same size
