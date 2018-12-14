@@ -439,11 +439,11 @@ def get_mons(roles, ips,
             else:
                 v1_ports[ips[idx]] += 1
             if mon_bind_msgr2:
-                assert mon_bind_addrvec
                 if ips[idx] not in v2_ports:
                     v2_ports[ips[idx]] = 3300
                     addr = '{ip}'.format(ip=ips[idx])
                 else:
+                    assert mon_bind_addrvec
                     v2_ports[ips[idx]] += 1
                     addr = 'v2:{ip}:{port2},v1:{ip}:{port1}'.format(
                         ip=ips[idx],
