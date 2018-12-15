@@ -207,6 +207,7 @@ bool Beacon::_send()
       want_state,
       last_seq,
       CEPH_FEATURES_SUPPORTED_DEFAULT);
+  beacon->set_mds_addrs(monc->get_myaddrs());
 
   beacon->set_standby_for_rank(standby_for_rank);
   beacon->set_standby_for_name(standby_for_name);
