@@ -378,6 +378,7 @@ int main(int argc, const char **argv)
 	addr.set_port(CEPH_MON_PORT_LEGACY);
 	addrs.v.push_back(addr);
       } else {
+	addr.set_type(entity_addr_t::TYPE_LEGACY);
 	addr.set_port(CEPH_MON_PORT_LEGACY);
 	addrs.v.push_back(addr);
       }
