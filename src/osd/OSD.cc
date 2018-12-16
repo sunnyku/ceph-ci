@@ -5707,7 +5707,7 @@ void OSD::_send_boot()
 
   MOSDBoot *mboot = new MOSDBoot(
     superblock, get_osdmap_epoch(), service.get_boot_epoch(),
-    hb_back_addrs, hb_front_addrs, cluster_addrs,
+    hb_back_addrs, hb_front_addrs, cluster_addrs, client_addrs,
     CEPH_FEATURES_ALL);
   dout(10) << " final client_addrs " << client_addrs
 	   << ", cluster_addrs " << cluster_addrs
@@ -7872,7 +7872,8 @@ void OSD::_committed_osd_maps(epoch_t first, epoch_t last, MOSDMap *m)
 
   epoch_t _bind_epoch = service.get_bind_epoch();
   if (osdmap->is_up(whoami) &&
-      osdmap->get_addrs(whoami) == client_messenger->get_myaddrs() &&
+      osdmap->get_addrs(whoami).legacy_equals(
+	client_messenger->get_myaddrs()) &&
       _bind_epoch < osdmap->get_up_from(whoami)) {
 
     if (is_booting()) {
@@ -7894,13 +7895,13 @@ void OSD::_committed_osd_maps(epoch_t first, epoch_t last, MOSDMap *m)
       do_shutdown = true;   // don't call shutdown() while we have
 			    // everything paused
     } else if (!osdmap->is_up(whoami) ||
-	       !osdmap->get_addrs(whoami).probably_equals(
+	       !osdmap->get_addrs(whoami).legacy_equals(
 		 client_messenger->get_myaddrs()) ||
-	       !osdmap->get_cluster_addrs(whoami).probably_equals(
+	       !osdmap->get_cluster_addrs(whoami).legacy_equals(
 		 cluster_messenger->get_myaddrs()) ||
-	       !osdmap->get_hb_back_addrs(whoami).probably_equals(
+	       !osdmap->get_hb_back_addrs(whoami).legacy_equals(
 		 hb_back_server_messenger->get_myaddrs()) ||
-	       !osdmap->get_hb_front_addrs(whoami).probably_equals(
+	       !osdmap->get_hb_front_addrs(whoami).legacy_equals(
 		 hb_front_server_messenger->get_myaddrs())) {
       if (!osdmap->is_up(whoami)) {
 	if (service.is_preparing_to_stop() || service.is_stopping()) {
@@ -7912,25 +7913,25 @@ void OSD::_committed_osd_maps(epoch_t first, epoch_t last, MOSDMap *m)
                         << " wrongly marked me down at e"
                         << osdmap->get_down_at(whoami);
 	}
-      } else if (!osdmap->get_addrs(whoami).probably_equals(
+      } else if (!osdmap->get_addrs(whoami).legacy_equals(
 		   client_messenger->get_myaddrs())) {
 	clog->error() << "map e" << osdmap->get_epoch()
 		      << " had wrong client addr (" << osdmap->get_addrs(whoami)
 		      << " != my " << client_messenger->get_myaddrs() << ")";
-      } else if (!osdmap->get_cluster_addrs(whoami).probably_equals(
+      } else if (!osdmap->get_cluster_addrs(whoami).legacy_equals(
 		   cluster_messenger->get_myaddrs())) {
 	clog->error() << "map e" << osdmap->get_epoch()
 		      << " had wrong cluster addr ("
 		      << osdmap->get_cluster_addrs(whoami)
 		      << " != my " << cluster_messenger->get_myaddrs() << ")";
-      } else if (!osdmap->get_hb_back_addrs(whoami).probably_equals(
+      } else if (!osdmap->get_hb_back_addrs(whoami).legacy_equals(
 		   hb_back_server_messenger->get_myaddrs())) {
 	clog->error() << "map e" << osdmap->get_epoch()
 		      << " had wrong heartbeat back addr ("
 		      << osdmap->get_hb_back_addrs(whoami)
 		      << " != my " << hb_back_server_messenger->get_myaddrs()
 		      << ")";
-      } else if (!osdmap->get_hb_front_addrs(whoami).probably_equals(
+      } else if (!osdmap->get_hb_front_addrs(whoami).legacy_equals(
 		   hb_front_server_messenger->get_myaddrs())) {
 	clog->error() << "map e" << osdmap->get_epoch()
 		      << " had wrong heartbeat front addr ("
