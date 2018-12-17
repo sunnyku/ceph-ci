@@ -107,7 +107,9 @@ class StandbyModule(MgrStandbyModule):
             'server.socket_host': server_addr,
             'server.socket_port': int(server_port),
             'engine.autoreload.on': False,
-            'log.screen': False
+            'log.screen': False,
+            'tools.response_headers.on': True,
+            'tools.response_headers.headers': [("Server", "ce")]
         })
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -890,7 +892,7 @@ class Module(MgrModule):
 
             @cherrypy.expose
             def index(self):
-                return self.health()
+                pass
 
             @cherrypy.expose
             @cherrypy.tools.json_out()
@@ -981,7 +983,9 @@ class Module(MgrModule):
             'server.socket_host': server_addr,
             'server.socket_port': int(server_port),
             'engine.autoreload.on': False,
-            'log.screen': False
+            'log.screen': False,
+            'tools.response_headers.on': True,
+            'tools.response_headers.headers': [("Server", "ce")]
         })
 
         osdmap = self.get_osdmap()
