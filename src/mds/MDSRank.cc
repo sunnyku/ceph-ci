@@ -1255,10 +1255,6 @@ bool MDSRank::is_stale_message(const Message::const_ref &m) const
       if (m->get_type() == CEPH_MSG_MDS_MAP) {
 	dout(5) << "got " << *m << " from old/bad/imposter " << m->get_source()
 		<< ", but it's an mdsmap, looking at it" << dendl;
-      } else if (m->get_type() == MSG_MDS_CACHEEXPIRE &&
-		 mdsmap->get_addrs(from) == m->get_source_addrs()) {
-	dout(5) << "got " << *m << " from down mds " << m->get_source()
-		<< ", but it's a cache_expire, looking at it" << dendl;
       } else {
 	dout(5) << "got " << *m << " from down/old/bad/imposter "
 		<< m->get_source() << ", dropping" << dendl;
