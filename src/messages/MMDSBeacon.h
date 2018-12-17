@@ -184,7 +184,7 @@ public:
   friend factory;
 private:
 
-  static constexpr int HEAD_VERSION = 7;
+  static constexpr int HEAD_VERSION = 8;
   static constexpr int COMPAT_VERSION = 6;
 
   uuid_d fsid;
@@ -206,6 +206,7 @@ private:
   map<string, string> sys_info;
 
   uint64_t mds_features;
+  entity_addrvec_t mds_addrs;
 
 protected:
   MMDSBeacon()
@@ -237,6 +238,17 @@ public:
   const fs_cluster_id_t& get_standby_for_fscid() const { return standby_for_fscid; }
   bool get_standby_replay() const { return standby_replay; }
   uint64_t get_mds_features() const { return mds_features; }
+  entity_addrvec_t get_mds_addrs() const {
+    if (header.version >= 8) {
+      return mds_addrs;
+    } else {
+      return get_source_addrs();
+    }
+  }
+
+  void set_mds_addrs(const entity_addrvec_t& av) {
+    mds_addrs = av;
+  }
 
   CompatSet const& get_compat() const { return compat; }
   void set_compat(const CompatSet& c) { compat = c; }
@@ -276,6 +288,7 @@ public:
     encode(mds_features, payload);
     encode(standby_for_fscid, payload);
     encode(standby_replay, payload);
+    encode(mds_addrs, payload, features);
   }
   void decode_payload() override {
     using ceph::decode;
@@ -297,6 +310,9 @@ public:
     decode(standby_for_fscid, p);
     if (header.version >= 7) {
       decode(standby_replay, p);
+    }
+    if (header.version >= 8) {
+      decode(mds_addrs, p);
     }
 
     if (header.version < 7  && state == MDSMap::STATE_STANDBY_REPLAY) {
