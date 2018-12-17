@@ -1517,7 +1517,7 @@ void MDSMonitor::check_sub(Subscription *sub)
       // What (if any) namespace are you assigned to?
       auto mds_info = fsmap.get_mds_info();
       for (const auto &p : mds_info) {
-        if (p.second.addrs == sub->session->addrs) {
+        if (p.first == sub->session->con->get_peer_global_id()) {
           mds_gid = p.first;
           fscid = fsmap.mds_roles.at(mds_gid);
         }
