@@ -530,7 +530,7 @@ bool MDSMonitor::prepare_beacon(MonOpRequestRef op)
   MMDSBeacon *m = static_cast<MMDSBeacon*>(op->get_req());
   // -- this is an update --
   dout(12) << "prepare_beacon " << *m << " from " << m->get_orig_source_inst() << dendl;
-  entity_addrvec_t addrs = m->get_orig_source_addrs();
+  entity_addrvec_t addrs = m->get_mds_addrs();
   mds_gid_t gid = m->get_global_id();
   MDSMap::DaemonState state = m->get_state();
   version_t seq = m->get_seq();
@@ -1517,7 +1517,7 @@ void MDSMonitor::check_sub(Subscription *sub)
       // What (if any) namespace are you assigned to?
       auto mds_info = fsmap.get_mds_info();
       for (const auto &p : mds_info) {
-        if (p.second.addrs == sub->session->addrs) {
+        if (p.first == sub->session->con->get_peer_global_id()) {
           mds_gid = p.first;
           fscid = fsmap.mds_roles.at(mds_gid);
         }

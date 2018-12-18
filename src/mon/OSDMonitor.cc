@@ -2827,11 +2827,11 @@ bool OSDMonitor::preprocess_boot(MonOpRequestRef op)
 
   // already booted?
   if (osdmap.is_up(from) &&
-      osdmap.get_addrs(from) == m->get_orig_source_addrs() &&
+      osdmap.get_addrs(from) == m->get_client_addrs() &&
       osdmap.get_cluster_addrs(from) == m->cluster_addrs) {
     // yup.
     dout(7) << "preprocess_boot dup from " << m->get_orig_source()
-	    << " " << m->get_orig_source_addrs()
+	    << " " << m->get_client_addrs()
 	    << " == " << osdmap.get_addrs(from) << dendl;
     _booted(op, false);
     return true;
@@ -2849,7 +2849,7 @@ bool OSDMonitor::preprocess_boot(MonOpRequestRef op)
 
   if (osdmap.exists(from) &&
       osdmap.get_info(from).up_from > m->version &&
-      osdmap.get_most_recent_addrs(from) == m->get_orig_source_addrs()) {
+      osdmap.get_most_recent_addrs(from) == m->get_client_addrs()) {
     dout(7) << "prepare_boot msg from before last up_from, ignoring" << dendl;
     send_latest(op, m->sb.current_epoch+1);
     return true;
@@ -2900,7 +2900,7 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
     dout(7) << __func__ << " was up, first marking down osd." << from << " "
 	    << osdmap.get_addrs(from) << dendl;
     // preprocess should have caught these;  if not, assert.
-    ceph_assert(osdmap.get_addrs(from) != m->get_orig_source_addrs() ||
+    ceph_assert(osdmap.get_addrs(from) != m->get_client_addrs() ||
            osdmap.get_cluster_addrs(from) != m->cluster_addrs);
     ceph_assert(osdmap.get_uuid(from) == m->sb.osd_fsid);
 
@@ -2917,7 +2917,7 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
     wait_for_finished_proposal(op, new C_RetryMessage(this, op));
   } else {
     // mark new guy up.
-    pending_inc.new_up_client[from] = m->get_orig_source_addrs();
+    pending_inc.new_up_client[from] = m->get_client_addrs();
     pending_inc.new_up_cluster[from] = m->cluster_addrs;
     pending_inc.new_hb_back_up[from] = m->hb_back_addrs;
     pending_inc.new_hb_front_up[from] = m->hb_front_addrs;
@@ -3031,7 +3031,8 @@ void OSDMonitor::_booted(MonOpRequestRef op, bool logit)
 	  << " w " << m->sb.weight << " from " << m->sb.current_epoch << dendl;
 
   if (logit) {
-    mon->clog->info() << m->get_orig_source_inst() << " boot";
+    mon->clog->info() << m->get_source() << " " << m->get_client_addrs()
+		      << " boot";
   }
 
   send_latest(op, m->sb.current_epoch+1);
@@ -10114,6 +10115,12 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       goto reply;
     }
     if (rel == CEPH_RELEASE_MIMIC) {
+      if (!mon->monmap->get_required_features().contains_all(
+	    ceph::features::mon::FEATURE_MIMIC)) {
+	ss << "not all mons are mimic";
+	err = -EPERM;
+	goto reply;
+      }
       if ((!HAVE_FEATURE(osdmap.get_up_osd_features(), SERVER_MIMIC))
            && !sure) {
 	ss << "not all up OSDs have CEPH_FEATURE_SERVER_MIMIC feature";
@@ -10121,6 +10128,12 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 	goto reply;
       }
     } else if (rel == CEPH_RELEASE_NAUTILUS) {
+      if (!mon->monmap->get_required_features().contains_all(
+	    ceph::features::mon::FEATURE_NAUTILUS)) {
+	ss << "not all mons are nautilus";
+	err = -EPERM;
+	goto reply;
+      }
       if ((!HAVE_FEATURE(osdmap.get_up_osd_features(), SERVER_NAUTILUS))
            && !sure) {
 	ss << "not all up OSDs have CEPH_FEATURE_SERVER_NAUTILUS feature";
@@ -11308,6 +11321,9 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       goto reply;
     }
     else {
+      // always blacklist type ANY
+      addr.set_type(entity_addr_t::TYPE_ANY);
+
       string blacklistop;
       cmd_getval(cct, cmdmap, "blacklistop", blacklistop);
       if (blacklistop == "add") {
