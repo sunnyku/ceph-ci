@@ -122,3 +122,11 @@
   a clean upgrade path is added to the pg log hard limit patches.
 
   See also: http://tracker.ceph.com/issues/36686
+
+12.2.11
+-------
+
+* New CephFS file system attributes session_timeout and session_autoclose
+  are configurable via `ceph fs set`. The MDS config options
+  mds_session_timeout, mds_session_autoclose, and mds_max_file_size are now
+  obsolete.
