@@ -72,7 +72,7 @@
 	mon reweight min bytes per osd = 10
 
 [mon]
-	debug ms = 1
+	debug ms = 20
 	debug mon = 20
 	debug paxos = 20
 	debug auth = 20
