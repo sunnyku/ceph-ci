@@ -73,7 +73,11 @@ MonClient::~MonClient()
 int MonClient::build_initial_monmap()
 {
   ldout(cct, 10) << __func__ << dendl;
-  return monmap.build_initial(cct, cerr);
+  int r = monmap.build_initial(cct, false, cerr);
+  ldout(cct,10) << "monmap:\n";
+  monmap.print(*_dout);
+  *_dout << dendl;
+  return r;
 }
 
 int MonClient::get_monmap()
@@ -577,6 +581,10 @@ void MonClient::handle_auth(MAuthReply *m)
     send_log(true);
     if (active_con) {
       std::swap(auth, active_con->get_auth());
+      if (global_id && global_id != active_con->get_global_id()) {
+	lderr(cct) << __func__ << " global_id changed from " << global_id
+		   << " to " << active_con->get_global_id() << dendl;
+      }
       global_id = active_con->get_global_id();
     }
   }
@@ -662,13 +670,13 @@ void MonClient::_reopen_session(int rank)
 
 MonConnection& MonClient::_add_conn(unsigned rank, uint64_t global_id)
 {
-  auto peer = monmap.get_addr(rank);
-  auto conn = messenger->connect_to_mon(monmap.get_addrs(rank));
+  auto peer = monmap.get_addrs(rank);
+  auto conn = messenger->connect_to_mon(peer);
   MonConnection mc(cct, conn, global_id);
   auto inserted = pending_cons.insert(make_pair(peer, move(mc)));
   ldout(cct, 10) << "picked mon." << monmap.get_name(rank)
                  << " con " << conn
-                 << " addr " << conn->get_peer_addr()
+                 << " addr " << peer
                  << dendl;
   return inserted.first->second;
 }
@@ -707,19 +715,23 @@ bool MonClient::ms_handle_reset(Connection *con)
     return false;
 
   if (_hunting()) {
-    if (pending_cons.count(con->get_peer_addr())) {
-      ldout(cct, 10) << __func__ << " hunted mon " << con->get_peer_addr() << dendl;
+    if (pending_cons.count(con->get_peer_addrs())) {
+      ldout(cct, 10) << __func__ << " hunted mon " << con->get_peer_addrs()
+		     << dendl;
     } else {
-      ldout(cct, 10) << __func__ << " stray mon " << con->get_peer_addr() << dendl;
+      ldout(cct, 10) << __func__ << " stray mon " << con->get_peer_addrs()
+		     << dendl;
     }
     return true;
   } else {
     if (active_con && con == active_con->get_con()) {
-      ldout(cct, 10) << __func__ << " current mon " << con->get_peer_addr() << dendl;
+      ldout(cct, 10) << __func__ << " current mon " << con->get_peer_addrs()
+		     << dendl;
       _reopen_session();
       return false;
     } else {
-      ldout(cct, 10) << "ms_handle_reset stray mon " << con->get_peer_addr() << dendl;
+      ldout(cct, 10) << "ms_handle_reset stray mon " << con->get_peer_addrs()
+		     << dendl;
       return true;
     }
   }
