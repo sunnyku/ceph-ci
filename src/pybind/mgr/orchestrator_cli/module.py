@@ -4,12 +4,11 @@ from mgr_module import MgrModule, HandleCommandResult
 
 import orchestrator
 
-
 class NoOrchestrator(Exception):
     pass
 
 
-class OrchestratorCli(MgrModule):
+class OrchestratorCli(orchestrator.OrchestratorClientMixin, MgrModule):
     MODULE_OPTIONS = [
         {'name': 'orchestrator'}
     ]
@@ -68,30 +67,6 @@ class OrchestratorCli(MgrModule):
 
         return o
 
-    def _oremote(self, *args, **kwargs):
-        """
-        Helper for invoking `remote` on whichever orchestrator is enabled
-        """
-        return self.remote(self._select_orchestrator(),
-                           *args, **kwargs)
-
-    def _wait(self, completions):
-        """
-        Helper to wait for completions to complete (reads) or
-        become persistent (writes).
-
-        Waits for writes to be *persistent* but not *effective*.
-        """
-
-        while not self._oremote("wait", completions):
-
-            if any(c.should_wait for c in completions):
-                time.sleep(5)
-            else:
-                break
-
-        if all(hasattr(c, 'error') and getattr(c, 'error')for c in completions):
-            raise Exception([getattr(c, 'error') for c in completions])
 
     def _list_devices(self, cmd):
         """
@@ -125,9 +100,9 @@ class OrchestratorCli(MgrModule):
         else:
             nf = None
 
-        completion = self._oremote("get_inventory", node_filter=nf)
+        completion = self.get_inventory(node_filter=nf)
 
-        self._wait([completion])
+        self._orchestrator_wait([completion])
 
         # Spit out a human readable version
         result = ""
@@ -145,8 +120,8 @@ class OrchestratorCli(MgrModule):
         hostname = cmd.get('host', None)
         service_type = cmd.get('type', None)
 
-        completion = self._oremote("describe_service", service_type, None, hostname)
-        self._wait([completion])
+        completion = self.describe_service(service_type, None, hostname)
+        self._orchestrator_wait([completion])
         services = completion.result
 
         if len(services) == 0:
@@ -173,9 +148,9 @@ class OrchestratorCli(MgrModule):
         # XXX this is kind of confusing for people because in the orchestrator
         # context the service ID for MDS is the filesystem ID, not the daemon ID
 
-        completion = self._oremote("describe_service", svc_type, svc_id, None)
+        completion = self.describe_service(svc_type, svc_id, None)
 
-        self._wait([completion])
+        self._orchestrator_wait([completion])
 
         service_list = completion.result
 
@@ -207,8 +182,8 @@ class OrchestratorCli(MgrModule):
             spec.format = "bluestore"
             spec.drive_group = orchestrator.DriveGroupSpec([block_device])
 
-            completion = self._oremote("create_osds", spec)
-            self._wait([completion])
+            completion = self.create_osds(spec)
+            self._orchestrator_wait([completion])
 
             return HandleCommandResult(rs="Success.")
 
@@ -218,12 +193,8 @@ class OrchestratorCli(MgrModule):
             spec = orchestrator.StatelessServiceSpec()
             spec.name = fs_name
 
-            completion = self._oremote(
-                "add_stateless_service",
-                svc_type,
-                spec
-            )
-            self._wait([completion])
+            completion = self.add_stateless_service(svc_type, spec)
+            self._orchestrator_wait([completion])
 
             return HandleCommandResult(rs="Success.")
         elif svc_type == "rgw":
@@ -232,12 +203,8 @@ class OrchestratorCli(MgrModule):
             spec = orchestrator.StatelessServiceSpec()
             spec.name = store_name
 
-            completion = self._oremote(
-                "add_stateless_service",
-                svc_type,
-                spec
-            )
-            self._wait([completion])
+            completion = self.add_stateless_service(svc_type, spec)
+            self._orchestrator_wait([completion])
 
             return HandleCommandResult(rs="Success.")
         else:
@@ -247,8 +214,8 @@ class OrchestratorCli(MgrModule):
         svc_type = cmd['svc_type']
         svc_id = cmd['svc_id']
 
-        completion = self._oremote("remove_stateless_service", svc_type, svc_id)
-        self._wait([completion])
+        completion = self.remove_stateless_service(svc_type, svc_id)
+        self._orchestrator_wait([completion])
         return HandleCommandResult(rs="Success.")
 
     def _set_backend(self, cmd):
@@ -298,7 +265,7 @@ class OrchestratorCli(MgrModule):
 
     def _status(self):
         try:
-            avail, why = self._oremote("available")
+            avail, why = self.available()
         except NoOrchestrator:
             return HandleCommandResult(odata="No orchestrator configured (try " \
                                        "`ceph orchestrator set backend`)")
