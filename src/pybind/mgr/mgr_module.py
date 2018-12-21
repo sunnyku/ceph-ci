@@ -321,7 +321,8 @@ class MgrStandbyModule(ceph_module.BaseMgrStandbyModule):
         """
         r = self._ceph_get_module_option(key)
         if r is None:
-            return default
+            final_key = key.split('/')[-1]
+            return self.MODULE_OPTION_DEFAULTS.get(final_key, default)
         else:
             return r
 
@@ -352,6 +353,7 @@ class MgrStandbyModule(ceph_module.BaseMgrStandbyModule):
 class MgrModule(ceph_module.BaseMgrModule):
     COMMANDS = []
     MODULE_OPTIONS = []
+    MODULE_OPTION_DEFAULTS = {}
 
     # Priority definitions for perf counters
     PRIO_CRITICAL = 10
@@ -397,6 +399,18 @@ class MgrModule(ceph_module.BaseMgrModule):
 
         # Keep a librados instance for those that need it.
         self._rados = None
+
+        for o in self.MODULE_OPTIONS:
+            if 'default' in o:
+                if 'type' in o:
+                    # we'll assume the declared type matches the
+                    # supplied default value's type.
+                    self.MODULE_OPTION_DEFAULTS[o['name']] = o['default']
+                else:
+                    # module not declaring it's type, so normalize the
+                    # default value to be a string for consistent behavior
+                    # with default and user-supplied option values.
+                    self.MODULE_OPTION_DEFAULTS[o['name']] = str(o['default'])
 
     def __del__(self):
         unconfigure_logger(self, self.module_name)
@@ -773,7 +787,8 @@ class MgrModule(ceph_module.BaseMgrModule):
     def _get_module_option(self, key, default):
         r = self._ceph_get_module_option(key)
         if r is None:
-            return default
+            final_key = key.split('/')[-1]
+            return self.MODULE_OPTION_DEFAULTS.get(final_key, default)
         else:
             return r
 
@@ -818,7 +833,7 @@ class MgrModule(ceph_module.BaseMgrModule):
         return self._get_localized(key, default, self._get_module_option)
 
     def _set_module_option(self, key, val):
-        return self._ceph_set_module_option(key, val)
+        return self._ceph_set_module_option(key, str(val))
 
     def set_module_option(self, key, val):
         """
