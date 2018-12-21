@@ -332,9 +332,10 @@ void MonMap::dump(Formatter *f) const
     f->open_object_section("mon");
     f->dump_int("rank", i);
     f->dump_string("name", *p);
-    f->dump_stream("addr") << get_addrs(*p).legacy_or_front_addr();
-    f->dump_stream("public_addr") << get_addrs(*p).legacy_or_front_addr();
     f->dump_object("public_addrs", get_addrs(*p));
+    // compat: make these look like pre-nautilus entity_addr_t
+    f->dump_stream("addr") << get_addrs(*p).get_legacy_str();
+    f->dump_stream("public_addr") << get_addrs(*p).get_legacy_str();
     f->close_section();
   }
   f->close_section();
