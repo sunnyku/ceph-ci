@@ -567,6 +567,12 @@ struct entity_addrvec_t {
     }
     return entity_addr_t();
   }
+  string get_legacy_str() const {
+    ostringstream ss;
+    auto a = legacy_or_front_addr();
+    ss << a.get_sockaddr() << "/" << a.get_nonce();
+    return ss.str();
+  }
 
   entity_addr_t msgr2_addr() const {
     for (auto &a : v) {
