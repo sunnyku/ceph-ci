@@ -32,16 +32,10 @@ protected:
   }
 
 private:
-  enum State {
-    STATE_STATUS_UPDATE,
-    STATE_SET_METADATA
-  };
-  State m_state;
   std::string m_key;
   std::string m_value;
   std::map<std::string, bufferlist> m_data;
 
-  void send_status_update();
   void send_metadata_set();
 };
 
