@@ -3425,10 +3425,10 @@ cdef class StatusImageIterator(object):
                 snaps_count = self.images[i].snapshots_count
                 if (snaps_count > 0):
                     snapshot_ids = [self.images[i].snapshot_ids[j] for j in range(snaps_count)]
-                qos_iops = 0 if self.images[i].qos_iops < 0 else self.images[i].qos_iops
-                qos_bps = 0 if self.images[i].qos_bps < 0 else self.images[i].qos_bps
-                qos_reservation = 0 if self.images[i].qos_reservation < 0 else self.images[i].qos_reservation
-                qos_weight = 100 if self.images[i].qos_weight < 0 else self.images[i].qos_weight
+                qos_iops = self.images[i].qos_iops
+                qos_bps = self.images[i].qos_bps
+                qos_reservation = self.images[i].qos_reservation
+                qos_weight = self.images[i].qos_weight
                 yield {
                     'Name'           : decode_cstr(self.images[i].name),
                     'Id'             : decode_cstr(self.images[i].id),
