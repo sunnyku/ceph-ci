@@ -189,10 +189,29 @@ int Image<I>::status_list_images(librados::IoCtx &io_ctx,
       image.stripe_count = it.stripe_count;
       image.size = it.size;
       image.used = it.used;
+
       image.qos_iops = it.qos_iops;
       image.qos_bps = it.qos_bps;
       image.qos_reservation = it.qos_reservation;
       image.qos_weight = it.qos_weight;
+
+      // special handling for qos value -1 and 0
+      if (image.qos_reservation == 0) {
+        if ((it.qos_weight != -1) && (it.qos_weight & QOS_FLAG_RSV)) {
+          image.qos_reservation = -1;
+        }
+      }
+      if (image.qos_iops == 0 || image.qos_iops == 1) {
+        if ((it.qos_weight != -1) && (it.qos_weight & QOS_FLAG_LMT)) {
+          image.qos_iops -= 1;
+        }
+      }
+      if (image.qos_bps == 0 || image.qos_bps == 2048) {
+        if ((it.qos_weight != -1) && (it.qos_weight & QOS_FLAG_BDW)) {
+          image.qos_bps = (image.qos_bps == 0 ? -1 : 0);
+        }
+      }
+
       for (auto &snap_it : it.snapshot_ids) {
         image.snapshot_ids.push_back(snap_it);
       }
