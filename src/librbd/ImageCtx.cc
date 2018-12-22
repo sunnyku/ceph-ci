@@ -549,12 +549,18 @@ struct C_InvalidateCache : public Context {
     m_status_update_started = true;
 
     uint64_t used = 0;
+    BitVector<2> om;
+    int r = 0;
     {
       RWLock::RLocker snap_locker(snap_lock);
       RWLock::RLocker object_map_locker(object_map_lock);
       if (object_map != nullptr) {
-        object_map->calculate_usage(&used, nullptr);
+        r = object_map->get_object_map(&om);
       }
+    }
+
+    if (r == 0) {
+      ObjectMap<>::ObjectMap::calculate_usage(*this, om, &used, nullptr);
     }
 
     librados::ObjectWriteOperation op;
@@ -568,7 +574,7 @@ struct C_InvalidateCache : public Context {
     using klass = ImageCtx;
     librados::AioCompletion *comp =
         util::create_rados_callback<klass, &klass::handle_status_update>(this);
-    int r = md_ctx.aio_operate(RBD_STATUS, comp, &op);
+    r = md_ctx.aio_operate(RBD_STATUS, comp, &op);
     assert(r == 0);
     comp->release();
 

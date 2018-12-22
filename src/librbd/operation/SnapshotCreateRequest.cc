@@ -218,12 +218,18 @@ void SnapshotCreateRequest<I>::send_status_add_snapshot() {
 
   uint64_t used = 0;
   uint64_t dirty = 0;
+  BitVector<2> om;
+  int r = 0;
   {
     RWLock::RLocker snap_locker(image_ctx.snap_lock);
     RWLock::RLocker object_map_locker(image_ctx.object_map_lock);
     if (image_ctx.object_map != nullptr) {
-      image_ctx.object_map->calculate_usage(&used, &dirty);
+      r = image_ctx.object_map->get_object_map(&om);
     }
+  }
+
+  if (r == 0) {
+    ObjectMap<I>::calculate_usage(image_ctx, om, &used, &dirty);
   }
 
   librados::ObjectWriteOperation op;
@@ -233,7 +239,7 @@ void SnapshotCreateRequest<I>::send_status_add_snapshot() {
   librados::AioCompletion *rados_completion = create_rados_callback<
       SnapshotCreateRequest<I>,
       &SnapshotCreateRequest<I>::handle_status_add_snapshot>(this);
-  int r = image_ctx.md_ctx.aio_operate(RBD_STATUS, rados_completion, &op);
+  r = image_ctx.md_ctx.aio_operate(RBD_STATUS, rados_completion, &op);
   assert(r == 0);
   rados_completion->release();
 }

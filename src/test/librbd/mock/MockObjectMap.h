@@ -7,6 +7,7 @@
 #include "common/RWLock.h"
 #include "librbd/Utils.h"
 #include "gmock/gmock.h"
+#include "common/bit_vector.hpp"
 
 namespace librbd {
 
@@ -56,7 +57,7 @@ struct MockObjectMap {
 
   MOCK_CONST_METHOD1(object_may_exist, bool(uint64_t));
 
-  MOCK_METHOD2(calculate_usage, int(uint64_t *used, uint64_t *dirty));
+  MOCK_METHOD1(get_object_map, int(BitVector<2>* om));
 
 };
 
