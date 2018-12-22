@@ -232,13 +232,15 @@ struct entity_addr_t {
     TYPE_NONE = 0,
     TYPE_LEGACY = 1,  ///< legacy msgr1 protocol (ceph jewel and older)
     TYPE_MSGR2 = 2,   ///< msgr2 protocol (new in ceph kraken)
+    TYPE_ANY = 3,  ///< ambiguous
   } type_t;
-  static const type_t TYPE_DEFAULT = TYPE_LEGACY;
+  static const type_t TYPE_DEFAULT = TYPE_MSGR2;
   static const char *get_type_name(int t) {
     switch (t) {
     case TYPE_NONE: return "none";
-    case TYPE_LEGACY: return "legacy";
-    case TYPE_MSGR2: return "msgr2";
+    case TYPE_LEGACY: return "v1";
+    case TYPE_MSGR2: return "v2";
+    case TYPE_ANY: return "any";
     default: return "???";
     }
   };
@@ -414,7 +416,7 @@ struct entity_addr_t {
 
   std::string ip_only_to_str() const;
 
-  bool parse(const char *s, const char **end = 0);
+  bool parse(const char *s, const char **end = 0, int type=0);
 
   void decode_legacy_addr_after_marker(bufferlist::const_iterator& bl)
   {
@@ -565,6 +567,21 @@ struct entity_addrvec_t {
     }
     return entity_addr_t();
   }
+  string get_legacy_str() const {
+    ostringstream ss;
+    auto a = legacy_or_front_addr();
+    ss << a.get_sockaddr() << "/" << a.get_nonce();
+    return ss.str();
+  }
+
+  entity_addr_t msgr2_addr() const {
+    for (auto &a : v) {
+      if (a.type == entity_addr_t::TYPE_MSGR2) {
+        return a;
+      }
+    }
+    return entity_addr_t();
+  }
 
   bool parse(const char *s, const char **end = 0);
 
@@ -584,10 +601,19 @@ struct entity_addrvec_t {
   void dump(Formatter *f) const;
   static void generate_test_instances(list<entity_addrvec_t*>& ls);
 
-  bool probably_equals(const entity_addrvec_t& o) const {
-    if (o.v.size() != v.size()) {
-      return false;
+  bool legacy_equals(const entity_addrvec_t& o) const {
+    if (v == o.v) {
+      return true;
     }
+    if (v.size() == 1 &&
+	front().is_legacy() &&
+	front() == o.legacy_addr()) {
+      return true;
+    }
+    return false;
+  }
+
+  bool probably_equals(const entity_addrvec_t& o) const {
     for (unsigned i = 0; i < v.size(); ++i) {
       if (!v[i].probably_equals(o.v[i])) {
 	return false;
