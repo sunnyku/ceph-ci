@@ -1,6 +1,7 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 
+#include <limits>
 #include "cls/rbd/cls_rbd_types.h"
 #include "librbd/operation/SnapshotCreateRequest.h"
 #include "common/dout.h"
@@ -216,8 +217,8 @@ void SnapshotCreateRequest<I>::send_status_add_snapshot() {
   assert(image_ctx.exclusive_lock == nullptr ||
          image_ctx.exclusive_lock->is_lock_owner());
 
-  uint64_t used = 0;
-  uint64_t dirty = 0;
+  uint64_t used = std::numeric_limits<uint64_t>::max();
+  uint64_t dirty = std::numeric_limits<uint64_t>::max();
   BitVector<2> om;
   int r = -1;
   {

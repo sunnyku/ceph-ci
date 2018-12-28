@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <boost/assign/list_of.hpp>
 #include <stddef.h>
+#include <limits>
 
 #include "common/ceph_context.h"
 #include "common/dout.h"
@@ -548,7 +549,7 @@ struct C_InvalidateCache : public Context {
 
     m_status_update_started = true;
 
-    uint64_t used = 0;
+    uint64_t used = std::numeric_limits<uint64_t>::max();
     BitVector<2> om;
     int r = -1;
     {
@@ -559,18 +560,11 @@ struct C_InvalidateCache : public Context {
       }
     }
 
+    librados::ObjectWriteOperation op;
     if (r == 0) {
       ObjectMap<>::ObjectMap::calculate_usage(*this, om, &used, nullptr);
     }
-
-    librados::ObjectWriteOperation op;
-    if (used != 0) {
-      cls_client::status_update_used(&op, id, used);
-    } else {
-      cls_client::status_update_state(&op, id,
-          static_cast<uint64_t>(cls::rbd::STATUS_IMAGE_STATE_MAPPED),
-          static_cast<uint64_t>(cls::rbd::STATUS_IMAGE_STATE_MASK));
-    }
+    cls_client::status_update_used(&op, id, used);
     using klass = ImageCtx;
     librados::AioCompletion *comp =
         util::create_rados_callback<klass, &klass::handle_status_update>(this);

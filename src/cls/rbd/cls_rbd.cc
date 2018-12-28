@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <errno.h>
 #include <sstream>
+#include <limits>
 
 #include "common/bit_vector.hpp"
 #include "common/errno.h"
@@ -5938,10 +5939,12 @@ int status_update_used(cls_method_context_t hctx, bufferlist *in, bufferlist *ou
   image.state &= ~cls::rbd::STATUS_IMAGE_STATE_MASK;
   image.state |= cls::rbd::STATUS_IMAGE_STATE_MAPPED;
   image.last_update = ceph_clock_now();
-  if (image.size < used) { // calculated using stale object map
-    used = image.size;
+  if (used != std::numeric_limits<uint64_t>::max()) {
+    if (used > image.size) { // calculated using stale object map
+      used = image.size;
+    }
+    image.used = used;
   }
-  image.used = used;
 
   bufferlist image_bl;
   ::encode(image, image_bl);
@@ -5997,8 +6000,10 @@ int status_add_snapshot(cls_method_context_t hctx, bufferlist *in, bufferlist *o
   if (r < 0) {
     return r;
   }
-  if (used > image.used) { // timer for status update is laggy
-    image.used = used;
+  if (used != std::numeric_limits<uint64_t>::max()) {
+    if (used <= image.size) { // status update may be laggy, update it now
+      image.used = used;
+    }
   }
   image.snapshot_ids.insert(snap_id);
   bufferlist image_bl;
@@ -6014,8 +6019,22 @@ int status_add_snapshot(cls_method_context_t hctx, bufferlist *in, bufferlist *o
   snapshot.image_id = image_id;
   snapshot.id = snap_id;
   snapshot.size = size;
-  snapshot.used = used;
-  snapshot.dirty = dirty;
+  if (used != std::numeric_limits<uint64_t>::max()) {
+    snapshot.used = used;
+  } else {
+    snapshot.used = image.used; // fallback to image.used
+  }
+  if (snapshot.size < snapshot.used) {
+    snapshot.used = snapshot.size;
+  }
+  if (dirty != std::numeric_limits<uint64_t>::max()) {
+    snapshot.dirty = dirty;
+  } else {
+    snapshot.dirty = 0; // status update maybe laggy
+  }
+  if (snapshot.size < snapshot.dirty) {
+    snapshot.dirty = snapshot.size;
+  }
   bufferlist snapshot_bl;
   ::encode(snapshot, snapshot_bl);
 
