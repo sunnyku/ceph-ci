@@ -5938,6 +5938,9 @@ int status_update_used(cls_method_context_t hctx, bufferlist *in, bufferlist *ou
   image.state &= ~cls::rbd::STATUS_IMAGE_STATE_MASK;
   image.state |= cls::rbd::STATUS_IMAGE_STATE_MAPPED;
   image.last_update = ceph_clock_now();
+  if (image.size < used) { // calculated using stale object map
+    used = image.size;
+  }
   image.used = used;
 
   bufferlist image_bl;
