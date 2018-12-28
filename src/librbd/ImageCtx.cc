@@ -550,7 +550,7 @@ struct C_InvalidateCache : public Context {
 
     uint64_t used = 0;
     BitVector<2> om;
-    int r = 0;
+    int r = -1;
     {
       RWLock::RLocker snap_locker(snap_lock);
       RWLock::RLocker object_map_locker(object_map_lock);

@@ -219,7 +219,7 @@ void SnapshotCreateRequest<I>::send_status_add_snapshot() {
   uint64_t used = 0;
   uint64_t dirty = 0;
   BitVector<2> om;
-  int r = 0;
+  int r = -1;
   {
     RWLock::RLocker snap_locker(image_ctx.snap_lock);
     RWLock::RLocker object_map_locker(image_ctx.object_map_lock);
