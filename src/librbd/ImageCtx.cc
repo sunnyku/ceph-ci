@@ -514,6 +514,8 @@ struct C_InvalidateCache : public Context {
   }
 
   void ImageCtx::status_update_start() {
+    ldout(cct, 5) << "initializing status update..." << dendl;
+
     if (read_only || !snap_name.empty()) {
       return;
     }
@@ -546,6 +548,8 @@ struct C_InvalidateCache : public Context {
 
   void ImageCtx::status_update() {
     assert(m_status_update_timer_lock.is_locked_by_me());
+
+    ldout(cct, 10) << "status updating..." << dendl;
 
     m_status_update_started = true;
 
