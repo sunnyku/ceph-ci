@@ -2766,7 +2766,8 @@ void Monitor::get_cluster_status(stringstream &ss, Formatter *f)
       for (set<int>::iterator p = quorum.begin(); p != quorum.end(); ++p)
 	f->dump_string("id", monmap->get_name(*p));
       f->close_section();
-      f->dump_stream("quorum_age") << (now - quorum_since);
+      f->dump_float("quorum_age",
+		    std::chrono::duration<double>(now - quorum_since).count());
     }
     f->open_object_section("monmap");
     monmap->dump(f);
