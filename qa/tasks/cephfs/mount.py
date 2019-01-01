@@ -107,7 +107,7 @@ class CephFSMount(object):
         addr = self.get_global_addr()
         blacklist = json.loads(self.fs.mon_manager.raw_cluster_cmd("osd", "blacklist", "ls", "--format=json"))
         for b in blacklist:
-            if addr == b["addr"]:
+            if addr == b["addr"] or 'any:' + addr == b['addr']:
                 return True
         return False
 
