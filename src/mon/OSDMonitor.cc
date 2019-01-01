@@ -4008,14 +4008,16 @@ int OSDMonitor::get_version_full(version_t ver, uint64_t features,
 epoch_t OSDMonitor::blacklist(const entity_addrvec_t& av, utime_t until)
 {
   dout(10) << "blacklist " << av << " until " << until << dendl;
-  for (auto& a : av.v) {
+  for (auto a : av.v) {
+    a.set_type(entity_addr_t::TYPE_ANY);
     pending_inc.new_blacklist[a] = until;
   }
   return pending_inc.epoch;
 }
 
-epoch_t OSDMonitor::blacklist(const entity_addr_t& a, utime_t until)
+epoch_t OSDMonitor::blacklist(entity_addr_t a, utime_t until)
 {
+  a.set_type(entity_addr_t::TYPE_ANY);
   dout(10) << "blacklist " << a << " until " << until << dendl;
   pending_inc.new_blacklist[a] = until;
   return pending_inc.epoch;
