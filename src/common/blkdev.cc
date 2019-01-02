@@ -29,7 +29,10 @@
 //#include "common/debug.h"
 #include "include/scope_guard.h"
 #include "include/uuid.h"
+#include "include/stringify.h"
 #include "blkdev.h"
+
+#include "json_spirit/json_spirit_reader.h"
 
 int get_device_by_path(const char *path, char* partition, char* device,
 		       size_t max)
@@ -79,14 +82,20 @@ BlkDev::BlkDev(const std::string& devname)
   : devname(devname)
 {}
 
-int BlkDev::get_devid(dev_t *id) const {
+int BlkDev::get_devid(dev_t *id) const
+{
   struct stat st;
-
-  int r = fstat(fd, &st);
-
-  if (r < 0)
+  int r;
+  if (fd >= 0) {
+    r = fstat(fd, &st);
+  } else {
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "/dev/%s", devname.c_str());
+    stat(path, &st);
+  }
+  if (r < 0) {
     return -errno;
-
+  }
   *id = S_ISBLK(st.st_mode) ? st.st_rdev : st.st_dev;
   return 0;
 }
@@ -301,6 +310,28 @@ void get_dm_parents(const std::string& dev, std::set<std::string> *ls)
   }
 }
 
+void get_raw_devices(const std::string& in,
+		     std::set<std::string> *ls)
+{
+  if (in.substr(0, 3) == "dm-") {
+    std::set<std::string> o;
+    get_dm_parents(in, &o);
+    for (auto& d : o) {
+      get_raw_devices(d, ls);
+    }
+  } else {
+    BlkDev d(in);
+    std::string wholedisk;
+    if (d.wholedisk(&wholedisk) == 0) {
+      std::cout << " wholedisk of " << in << " is " << wholedisk << std::endl;
+      ls->insert(wholedisk);
+    } else {
+      std::cout << " wholedisk of " << in << " failed" << std::endl;
+      ls->insert(in);
+    }
+  }
+}
+
 int _get_vdo_stats_handle(const char *devname, std::string *vdo_name)
 {
   int vdo_fd = -1;
@@ -392,7 +423,8 @@ bool get_vdo_utilization(int fd, uint64_t *total, uint64_t *avail)
 
 // trying to use udev first, and if it doesn't work, we fall back to 
 // reading /sys/block/$devname/device/(vendor/model/serial).
-std::string get_device_id(const std::string& devname)
+std::string get_device_id(const std::string& devname,
+			  std::string *err)
 {
   struct udev_device *dev;
   static struct udev *udev;
@@ -400,10 +432,17 @@ std::string get_device_id(const std::string& devname)
 
   udev = udev_new();
   if (!udev) {
+    if (err) {
+      *err = "udev_new failed";
+    }
     return {};
   }
   dev = udev_device_new_from_subsystem_sysname(udev, "block", devname.c_str());
   if (!dev) {
+    if (err) {
+      *err = std::string("udev_device_new_from_subsystem_sysname failed on '")
+	+ devname + "'";
+    }
     udev_unref(udev);
     return {};
   }
@@ -471,12 +510,39 @@ std::string get_device_id(const std::string& devname)
     serial = buf;
   }
   if (!model.size() || serial.size()) {
+    if (err) {
+      *err = std::string("fallback method has serial '") + serial
+	+ "'but no model";
+    }
     return {};
   }
 
   device_id = model + "_" + serial;
   std::replace(device_id.begin(), device_id.end(), ' ', '_');
   return device_id;
+}
+
+int block_device_get_metrics(const char *device, int timeout,
+			     json_spirit::mValue *result)
+{
+  std::string s;
+  if (int r = block_device_run_smartctl(device, timeout, &s); r != 0) {
+    s = "{\"error\": \"smartctl failed\", \"dev\": \"";
+    s += device;
+    s += "\", \"smartctl_error_code\": " + stringify(r);
+    s += "\", \"smartctl_output\": \"" + s;
+    s += + "\"}";
+  }
+  if (json_spirit::read(s, *result)) {
+    return 0;
+  }
+  s = "{\"error\": \"smartctl returned invalid JSON\", \"dev\": \"";
+  s += device;
+  s += "\"}";
+  if (json_spirit::read(s, *result)) {
+    return 0;
+  }
+  return -EINVAL;
 }
 
 int block_device_run_smartctl(const char *device, int timeout,
@@ -597,6 +663,11 @@ void get_dm_parents(const std::string& dev, std::set<std::string> *ls)
 {
 }
 
+void get_raw_devices(const std::string& in,
+		     std::set<std::string> *ls)
+{
+}
+
 int get_vdo_stats_handle(const char *devname, std::string *vdo_name)
 {
   return -1;
@@ -610,6 +681,16 @@ int64_t get_vdo_stat(int fd, const char *property)
 bool get_vdo_utilization(int fd, uint64_t *total, uint64_t *avail)
 {
   return false;
+}
+
+std::string get_device_id(const std::string& devname,
+			  std::string *err)
+{
+  // FIXME: implement me
+  if (err) {
+    *err = "not implemented";
+  }
+  return std::string();
 }
 
 #elif defined(__FreeBSD__)
@@ -747,6 +828,11 @@ void get_dm_parents(const std::string& dev, std::set<std::string> *ls)
 {
 }
 
+void get_raw_devices(const std::string& in,
+		     std::set<std::string> *ls)
+{
+}
+
 int get_vdo_stats_handle(const char *devname, std::string *vdo_name)
 {
   return -1;
@@ -762,9 +848,13 @@ bool get_vdo_utilization(int fd, uint64_t *total, uint64_t *avail)
   return false;
 }
 
-std::string get_device_id(const std::string& devname)
+std::string get_device_id(const std::string& devname,
+			  std::string *err)
 {
   // FIXME: implement me for freebsd
+  if (err) {
+    *err = "not implemented for FreeBSD";
+  }
   return std::string();
 }
 
@@ -874,6 +964,11 @@ void get_dm_parents(const std::string& dev, std::set<std::string> *ls)
 {
 }
 
+void get_raw_devices(const std::string& in,
+		     std::set<std::string> *ls)
+{
+}
+
 int get_vdo_stats_handle(const char *devname, std::string *vdo_name)
 {
   return -1;
@@ -889,9 +984,13 @@ bool get_vdo_utilization(int fd, uint64_t *total, uint64_t *avail)
   return false;
 }
 
-std::string get_device_id(const std::string& devname)
+std::string get_device_id(const std::string& devname,
+			  std::string *err)
 {
   // not implemented
+  if (err) {
+    *err = "not implemented";
+  }
   return std::string();
 }
 
