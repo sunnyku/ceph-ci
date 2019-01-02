@@ -2488,7 +2488,9 @@ void Client::handle_osd_map(MOSDMap *m)
   const auto myaddrs = messenger->get_myaddrs();
   bool new_blacklist = false;
   if (!blacklisted) {
-    for (auto& a : myaddrs.v) {
+    for (auto a : myaddrs.v) {
+      // blacklist entries are always TYPE_ANY
+      a.set_type(entity_addr_t::TYPE_ANY);
       if (new_blacklists.count(a)) {
 	new_blacklist = true;
 	break;
