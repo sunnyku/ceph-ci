@@ -2366,6 +2366,7 @@ CtPtr ProtocolV1::open(ceph_msg_connect_reply &reply,
                   << " state changed while accept_conn, it must be mark_down"
                   << dendl;
     ceph_assert(state == CLOSED || state == NONE);
+    messenger->unregister_conn(connection);
     ldout(cct, 10) << "accept fault after register" << dendl;
     connection->inject_delay();
     return _fault();
