@@ -1201,10 +1201,14 @@ bool OSDMap::is_blacklisted(const entity_addr_t& orig) const
     return false;
   }
 
-  // all blacklist entries are type ANY
+  // all blacklist entries are type ANY for nautilus+
   // FIXME: avoid this copy!
   entity_addr_t a = orig;
-  a.set_type(entity_addr_t::TYPE_ANY);
+  if (require_osd_release < CEPH_RELEASE_NAUTILUS) {
+    a.set_type(entity_addr_t::TYPE_LEGACY);
+  } else {
+    a.set_type(entity_addr_t::TYPE_ANY);
+  }
 
   // this specific instance?
   if (blacklist.count(a)) {
