@@ -5430,6 +5430,7 @@ void OSD::tick_without_osd_lock()
     }
   }
 
+  check_ops_in_flight();
   mgrc.update_osd_health(get_health_metrics());
   service.kick_recovery_queue();
   tick_timer_without_osd_lock.add_event_after(OSD_TICK_INTERVAL, new C_Tick_WithoutOSDLock(this));
