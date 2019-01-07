@@ -1868,7 +1868,14 @@ CtPtr ProtocolV2::handle_connect_message_1(char *buffer, int r) {
     ldout(cct, 1) << __func__ << " read connect msg failed" << dendl;
     return _fault();
   }
-
+  if (state != ACCEPTING &&
+      state != ACCEPTING_WAIT_CONNECT_MSG_AUTH) {
+    ldout(cct, 1) << __func__
+                  << " state changed while accept, it must be mark_down"
+                  << dendl;
+    ceph_assert(state == CLOSED);
+    return _fault();
+  }
   connect_msg = *((ceph_msg_connect *)buffer);
 
   state = ACCEPTING_WAIT_CONNECT_MSG_AUTH;
