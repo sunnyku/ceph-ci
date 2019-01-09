@@ -130,6 +130,7 @@ def _rebuild_db(ctx, manager, cluster_name, mon, mon_id, keyring_path):
                   '--cap', 'mgr', 'allow *'])
     mon.run(args=['sudo', '-u', 'ceph',
                   'CEPH_ARGS=--no-mon-config',
+                  '--monmap', '/tmp/monmap',
                   'ceph-monstore-tool', mon_store_dir,
                   'rebuild', '--', '--keyring',
                   keyring_path])
@@ -198,6 +199,10 @@ def task(ctx, config):
 
     first_mon = teuthology.get_first_mon(ctx, config)
     (mon,) = ctx.cluster.only(first_mon).remotes.iterkeys()
+
+    # stash a monmap for later
+    mon.run(args=['ceph', 'mon getmap', '-o', '/tmp/monmap'])
+
     manager = ceph_manager.CephManager(
         mon,
         ctx=ctx,
