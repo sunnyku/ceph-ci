@@ -2165,6 +2165,8 @@ private:
   void _validate_bdev();
   void _close_bdev();
 
+  int _minimal_open_bluefs(bool create);
+  void _minimal_close_bluefs();
   int _open_bluefs(bool create);
   void _close_bluefs();
 
@@ -2357,6 +2359,11 @@ public:
     }
     return device_class;
   }
+
+  int get_numa_node(
+    int *numa_node,
+    set<int> *nodes,
+    set<string> *failed) override;
 
   static int get_block_device_fsid(CephContext* cct, const string& path,
 				   uuid_d *fsid);
