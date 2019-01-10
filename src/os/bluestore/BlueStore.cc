@@ -10921,6 +10921,17 @@ int BlueStore::_do_write(
   WriteContext wctx;
   _choose_write_options(c, o, fadvise_flags, &wctx);
   o->extent_map.fault_range(db, offset, length);
+  if(c->cid == coll_t::meta()){
+    uint64_t unit = min_alloc_size > g_conf->bluestore_meta_fixed_length ?
+		min_alloc_size :  g_conf->bluestore_meta_fixed_length;
+    uint64_t unit_num = length / unit;
+    uint64_t last_unit_off = length % unit;
+    length = (unit_num + 1) * unit;
+    bl.append_zero(unit - last_unit_off);
+    dout(20) << __func__ << " " << c->cid << " " << o->oid
+	   << " 0x" << std::hex << offset << "~" << " append to "
+	   << length << std::dec<< dendl;
+  }
   _do_write_data(txc, c, o, offset, length, bl, &wctx);
   r = _do_alloc_write(txc, c, o, &wctx);
   if (r < 0) {
