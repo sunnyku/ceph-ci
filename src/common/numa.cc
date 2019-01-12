@@ -111,7 +111,6 @@ int get_numa_node_cpu_set(
   std::string fn = "/sys/devices/system/node/node";
   fn += stringify(node);
   fn += "/cpulist";
-  std::cout << __func__ << " fn " << fn << std::endl;
   int fd = ::open(fn.c_str(), O_RDONLY);
   if (fd < 0) {
     std::cout << __func__ << " fail to open " << errno << std::endl;
