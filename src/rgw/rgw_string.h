@@ -299,9 +299,6 @@ inline ssize_t rgw_unescape_str(const std::string& s, const ssize_t ofs,
   return rgw_unescape_str(s, ofs, esc_char, special_char, *dest_ptr);
 }
 
-/* size should be the required string size + 1 */
-int gen_rand_base64(CephContext *cct, char *dest, int size);
-
 namespace detail {
 
 // Does NOT null-terminate, assumes output target is of sufficient size:
