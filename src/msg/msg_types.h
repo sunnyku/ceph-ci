@@ -313,10 +313,17 @@ struct entity_addr_t {
   {
     switch (sa->sa_family) {
     case AF_INET:
+      // pre-zero, since we're only copying a portion of the source
+      memset(&u, 0, sizeof(u));
       memcpy(&u.sin, sa, sizeof(u.sin));
       break;
     case AF_INET6:
+      // pre-zero, since we're only copying a portion of the source
+      memset(&u, 0, sizeof(u));
       memcpy(&u.sin6, sa, sizeof(u.sin6));
+      break;
+    case AF_UNSPEC:
+      memset(&u, 0, sizeof(u));
       break;
     default:
       return false;
