@@ -1394,11 +1394,14 @@ def run_daemon(ctx, config, type_):
                 ]
             )
 
+    first_remote = None
     for remote, roles_for_host in daemons.remotes.iteritems():
         is_type_ = teuthology.is_type(type_, cluster_name)
         for role in roles_for_host:
             if not is_type_(role):
                 continue
+            if not first_remote:
+                first_remote = remote
             _, _, id_ = teuthology.split_role(role)
 
             run_cmd = [
@@ -1443,6 +1446,16 @@ def run_daemon(ctx, config, type_):
             if type_ != 'mgr' or not config.get('skip_mgr_daemons', False):
                 role = cluster_name + '.' + type_
                 ctx.daemons.get_daemon(type_, id_, cluster_name).restart()
+
+    if type_ == 'mon' and config.get('mon_do_enable_msgr2'):
+        first_remote.run(
+            args=[
+                'sudo',
+                'ceph',
+                'mon',
+                'enable-msgr2'
+            ]
+        )
 
     try:
         yield
@@ -1904,6 +1917,7 @@ def task(ctx, config):
             cluster=config['cluster'],
             mon_bind_msgr2=config.get('mon_bind_msgr2', True),
             mon_bind_addrvec=config.get('mon_bind_addrvec', True),
+            mon_do_enable_msgr2=config.get('mon_do_enable_msgr2', False),
         )),
         lambda: run_daemon(ctx=ctx, config=config, type_='mon'),
         lambda: run_daemon(ctx=ctx, config=config, type_='mgr'),
