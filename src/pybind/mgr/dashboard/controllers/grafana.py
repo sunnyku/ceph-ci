@@ -41,6 +41,8 @@ class GrafanaRestClient(object):
 
 
 def load_local_dashboards(path='../grafana_dashboards'):
+    if not path.startswith(os.path.sep):
+        path = os.path.join(os.path.dirname(__file__), path)
     path = os.path.abspath(path)
     dashboards = dict()
     for item in filter(lambda s: s.endswith('.json'), os.listdir(path)):
