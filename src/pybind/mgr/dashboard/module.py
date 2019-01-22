@@ -57,6 +57,7 @@ if 'COVERAGE_ENABLED' in os.environ:
 # pylint: disable=wrong-import-position
 from . import logger, mgr
 from .controllers import generate_routes, json_error_page
+from .controllers.grafana import push_local_dashboards
 from .tools import NotificationQueue, RequestLoggingTool, TaskManager, \
                    prepare_url_prefix
 from .services.auth import AuthManager, AuthManagerTool, JwtManager
@@ -313,6 +314,8 @@ class Module(MgrModule, CherryPyConfig):
         NotificationQueue.start_queue()
         TaskManager.init()
         logger.info('Engine started.')
+        logger.info('Starting Grafana dashboard task')
+        TaskManager.run('grafana_dashboards/update', {}, push_local_dashboards)
         # wait for the shutdown event
         self.shutdown_event.wait()
         self.shutdown_event.clear()
