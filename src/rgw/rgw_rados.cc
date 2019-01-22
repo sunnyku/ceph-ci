@@ -2456,36 +2456,7 @@ int RGWRados::Bucket::List::list_objects_ordered(int64_t max,
   prefix_obj.ns = params.ns;
   string cur_prefix = prefix_obj.get_index_key_name();
 
-  string bigger_than_delim;
-
-  if (!params.delim.empty()) {
-    unsigned long val = decode_utf8((unsigned char *)params.delim.c_str(),
-				    params.delim.size());
-    char buf[params.delim.size() + 16];
-    int r = encode_utf8(val + 1, (unsigned char *)buf);
-    if (r < 0) {
-      ldout(cct,0) << "ERROR: encode_utf8() failed" << dendl;
-      return -EINVAL;
-    }
-    buf[r] = '\0';
-
-    bigger_than_delim = buf;
-
-    /* if marker points at a common prefix, fast forward it into its upperbound string */
-    int delim_pos = cur_marker.name.find(params.delim, cur_prefix.size());
-    if (delim_pos >= 0) {
-      string s = cur_marker.name.substr(0, delim_pos);
-      s.append(bigger_than_delim);
-      cur_marker = s;
-    }
-  }
-
-  string skip_after_delim;
   while (truncated && count <= max) {
-    if (skip_after_delim > cur_marker.name) {
-      cur_marker = skip_after_delim;
-      ldout(cct, 20) << "setting cur_marker=" << cur_marker.name << "[" << cur_marker.instance << "]" << dendl;
-    }
     std::map<string, rgw_bucket_dir_entry> ent_map;
     int r = store->cls_bucket_list_ordered(target->get_bucket_info(),
 					   shard_id,
@@ -2563,14 +2534,6 @@ int RGWRados::Bucket::List::list_objects_ordered(int64_t max,
             }
             next_marker = prefix_key;
             (*common_prefixes)[prefix_key] = true;
-
-            int marker_delim_pos = cur_marker.name.find(params.delim, cur_prefix.size());
-
-            skip_after_delim = cur_marker.name.substr(0, marker_delim_pos);
-            skip_after_delim.append(bigger_than_delim);
-
-            ldout(cct, 20) << "skip_after_delim=" << skip_after_delim << dendl;
-
             count++;
           }
 
