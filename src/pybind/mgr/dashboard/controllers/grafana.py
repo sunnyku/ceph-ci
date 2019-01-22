@@ -20,6 +20,12 @@ class GrafanaRestClient(object):
         return response.status_code
 
     def push_dashboard(self, dashboard_obj):
+        if not Settings.GRAFANA_API_URL:
+            raise Exception("The Grafana dashboard URL is not set!")
+        if not Settings.GRAFANA_API_USERNAME:
+            raise Exception("The Grafana API username is not set!")
+        if not Settings.GRAFANA_API_PASSWORD:
+            raise Exception("The Grafana API password is not set!")
         url = Settings.GRAFANA_API_URL.rstrip('/') + \
             '/api/dashboards/db'
         headers = {
