@@ -315,7 +315,7 @@ class Module(MgrModule, CherryPyConfig):
         TaskManager.init()
         logger.info('Engine started.')
         logger.info('Starting Grafana dashboard task')
-        TaskManager.run('grafana_dashboards/update', {}, push_local_dashboards)
+        TaskManager.run('grafana/update_dashboards', {}, push_local_dashboards)
         # wait for the shutdown event
         self.shutdown_event.wait()
         self.shutdown_event.clear()

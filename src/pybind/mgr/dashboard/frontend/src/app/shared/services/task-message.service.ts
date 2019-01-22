@@ -121,6 +121,11 @@ export class TaskMessageService {
       })
   };
 
+  grafana = {
+    update_dashboards: (metadata) =>
+      this.i18n('all dashboards')
+  };
+
   messages = {
     // Pool tasks
     'pool/create': this.newTaskMessage(
@@ -310,6 +315,12 @@ export class TaskMessageService {
     'rbd/mirroring/peer/delete': this.newTaskMessage(
       this.commonOperations.delete,
       this.rbd_mirroring.pool_peer,
+      (metadata) => ({})
+    ),
+    // Grafana tasks
+    'grafana/update_dashboards': this.newTaskMessage(
+      this.commonOperations.update,
+      this.grafana.update_dashboards,
       (metadata) => ({})
     )
   };
