@@ -44,6 +44,7 @@ class GrafanaRestClient(object):
             auth=(Settings.GRAFANA_API_USERNAME,
                   Settings.GRAFANA_API_PASSWORD),
         )
+        response.raise_for_status()
         return response.status_code, response.json()
 
 
