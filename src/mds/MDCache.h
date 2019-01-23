@@ -757,8 +757,6 @@ public:
   void trim_client_leases();
   void check_memory_usage();
 
-  time last_recall_state;
-
   // shutdown
 private:
   set<inodeno_t> shutdown_exported_strays;
