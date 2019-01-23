@@ -5,7 +5,7 @@ import json
 import requests
 import os
 
-from . import ApiController, BaseController, Endpoint, ReadPermission
+from . import ApiController, BaseController, Endpoint, ReadPermission, WritePermission
 from .. import logger
 from ..security import Scope
 from ..settings import Settings
@@ -98,4 +98,15 @@ class Grafana(BaseController):
         url = Settings.GRAFANA_API_URL.rstrip('/') + \
             '/api/dashboards/uid/' + params
         response = grafana.url_validation(method, url)
+        return response
+
+    @Endpoint()
+    @WritePermission
+    def update_dashboards(self):
+        response = dict()
+        try:
+            response['success'] = push_local_dashboards()
+        except Exception as e:
+            response['error'] = str(e)
+            response['success'] = False
         return response
