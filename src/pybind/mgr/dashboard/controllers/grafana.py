@@ -6,6 +6,7 @@ import requests
 import os
 
 from . import ApiController, BaseController, Endpoint, ReadPermission
+from .. import logger
 from ..security import Scope
 from ..settings import Settings
 
@@ -58,10 +59,19 @@ def load_local_dashboards(path='../grafana_dashboards'):
 
 
 def push_local_dashboards():
-    dashboards = load_local_dashboards()
-    grafana = GrafanaRestClient()
-    for name, body in dashboards.items():
-        grafana.push_dashboard(body)
+    try:
+        dashboards = load_local_dashboards()
+    except Exception:
+        logger.exception("Failed to load local dashboard files")
+        raise
+    try:
+        grafana = GrafanaRestClient()
+        for name, body in dashboards.items():
+            grafana.push_dashboard(body)
+    except Exception:
+        logger.exception("Failed to push dashboards to Grafana")
+        raise
+    return True
 
 
 

@@ -356,7 +356,7 @@ class Module(MgrModule, CherryPyConfig):
             return 0, 'Self-signed certificate created', ''
         if cmd['prefix'] == 'dashboard update-grafana-dashboards':
             push_local_dashboards()
-            return 0, 'Grafana dashboards updated'
+            return 0, 'Grafana dashboards updated', ''
 
         return (-errno.EINVAL, '', 'Command not found \'{0}\''
                 .format(cmd['prefix']))
