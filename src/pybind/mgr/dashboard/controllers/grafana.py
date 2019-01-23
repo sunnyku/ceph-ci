@@ -107,6 +107,6 @@ class Grafana(BaseController):
         try:
             response['success'] = push_local_dashboards()
         except Exception as e:
-            response['error'] = str(e)
+            response['error'] = e.message
             response['success'] = False
         return response
