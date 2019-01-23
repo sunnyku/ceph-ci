@@ -235,6 +235,11 @@ class Module(MgrModule, CherryPyConfig):
             "desc": "Create self signed certificate",
             "perm": "w"
         },
+        {
+            "cmd": "dashboard update-grafana-dashboards",
+            "desc": "Push dashboards to Grafana",
+            "perm": "w",
+        },
     ]
     COMMANDS.extend(options_command_list())
     COMMANDS.extend(SSO_COMMANDS)
@@ -349,6 +354,9 @@ class Module(MgrModule, CherryPyConfig):
         if cmd['prefix'] == 'dashboard create-self-signed-cert':
             self.create_self_signed_cert()
             return 0, 'Self-signed certificate created', ''
+        if cmd['prefix'] == 'dashboard update-grafana-dashboards':
+            push_local_dashboards()
+            return 0, 'Grafana dashboards updated'
 
         return (-errno.EINVAL, '', 'Command not found \'{0}\''
                 .format(cmd['prefix']))
