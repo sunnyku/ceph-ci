@@ -11,6 +11,10 @@ from ..security import Scope
 from ..settings import Settings
 
 
+class GrafanaError(Exception):
+    pass
+
+
 class GrafanaRestClient(object):
 
     def url_validation(self, method, path):
@@ -22,13 +26,13 @@ class GrafanaRestClient(object):
 
     def push_dashboard(self, dashboard_obj):
         if not Settings.GRAFANA_API_URL:
-            raise Exception("The Grafana API URL is not set!")
+            raise GrafanaError("The Grafana API URL is not set!")
         if not Settings.GRAFANA_API_URL.startswith('http'):
-            raise Exception("The Grafana API URL is invalid")
+            raise GrafanaError("The Grafana API URL is invalid")
         if not Settings.GRAFANA_API_USERNAME:
-            raise Exception("The Grafana API username is not set!")
+            raise GrafanaError("The Grafana API username is not set!")
         if not Settings.GRAFANA_API_PASSWORD:
-            raise Exception("The Grafana API password is not set!")
+            raise GrafanaError("The Grafana API password is not set!")
         url = Settings.GRAFANA_API_URL.rstrip('/') + \
             '/api/dashboards/db'
         headers = {
@@ -75,7 +79,6 @@ def push_local_dashboards():
         logger.exception("Failed to push dashboards to Grafana")
         raise
     return True
-
 
 
 @ApiController('/grafana', Scope.GRAFANA)
