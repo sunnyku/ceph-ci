@@ -5,7 +5,7 @@ import json
 import requests
 import os
 
-from . import ApiController, BaseController, Endpoint, ReadPermission, WritePermission
+from . import ApiController, BaseController, Endpoint, ReadPermission, UpdatePermission
 from .. import logger
 from ..security import Scope
 from ..settings import Settings
@@ -101,7 +101,7 @@ class Grafana(BaseController):
         return response
 
     @Endpoint()
-    @WritePermission
+    @UpdatePermission
     def update_dashboards(self):
         response = dict()
         try:
