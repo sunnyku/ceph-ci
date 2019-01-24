@@ -671,6 +671,7 @@ void MDSRankDispatcher::tick()
   mdlog->flush();
 
   if (is_active() || is_stopping()) {
+    server->recall_client_state(nullptr, Server::RecallFlags::ENFORCE_MAX);
     mdcache->trim();
     mdcache->trim_client_leases();
     mdcache->check_memory_usage();
