@@ -100,7 +100,7 @@ class Grafana(BaseController):
         response = grafana.url_validation(method, url)
         return response
 
-    @Endpoint()
+    @Endpoint(method='POST')
     @UpdatePermission
     def update_dashboards(self):
         response = dict()
