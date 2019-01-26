@@ -142,7 +142,6 @@ set_source_files_properties(rgw_iam_policy.cc PROPERTIES
   OBJECT_DEPENDS ${CMAKE_BINARY_DIR}/src/rgw/rgw_iam_policy_keywords.frag.cc
   COMPILE_FLAGS -I${CMAKE_BINARY_DIR}/src/rgw)
 
-
 if (WITH_RADOSGW_FCGI_FRONTEND)
   list(APPEND rgw_a_srcs rgw_fcgi.cc)
 endif()
@@ -151,7 +150,9 @@ add_library(rgw_a STATIC ${rgw_a_srcs})
 
 add_dependencies(rgw_a civetweb_h)
 
-target_include_directories(rgw_a SYSTEM PUBLIC "../rapidjson/include")
+target_include_directories(rgw_a SYSTEM PUBLIC
+  "../rapidjson/include"
+  "${CMAKE_SOURCE_DIR}/src/seastar/fmt/include")
 
 target_link_libraries(rgw_a librados cls_lock_client cls_rgw_client cls_refcount_client
   cls_log_client cls_statelog_client cls_timeindex_client cls_version_client
@@ -186,6 +187,7 @@ endif (WITH_RADOSGW_BEAST_FRONTEND)
 
 add_library(radosgw_a STATIC ${radosgw_srcs}
   $<TARGET_OBJECTS:civetweb_common_objs>)
+
 if (WITH_RADOSGW_BEAST_FRONTEND AND WITH_RADOSGW_BEAST_OPENSSL)
   target_link_libraries(radosgw_a rgw_a ${SSL_LIBRARIES})
 endif()
