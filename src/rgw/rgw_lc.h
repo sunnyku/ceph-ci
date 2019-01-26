@@ -23,6 +23,7 @@
 #include "rgw_tag.h"
 
 #include <atomic>
+#include <tuple>
 
 #define HASH_PRIME 7877
 #define MAX_ID_LEN 255
@@ -210,8 +211,6 @@ class LCFilter
   void dump(Formatter *f) const;
 };
 WRITE_CLASS_ENCODER(LCFilter)
-
-
 
 class LCRule
 {
@@ -502,6 +501,13 @@ class RGWLC : public DoutPrefixProvider {
   int handle_multipart_expiration(RGWRados::Bucket *target, const map<string, lc_op>& prefix_map);
 };
 
+using LCCheckExpiresResult = std::tuple<bool, std::string, std::string>;
 
+std::string rgwlc_s3_expiration_header(
+  DoutPrefixProvider* dpp,
+  const rgw_obj_key& obj_key,
+  const RGWObjTags& obj_tagset,
+  const ceph::real_time& mtime,
+  const std::map<std::string, buffer::list>& bucket_attrs);
 
 #endif
