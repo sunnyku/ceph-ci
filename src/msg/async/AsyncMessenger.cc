@@ -882,10 +882,12 @@ bool AsyncMessenger::learned_addr(const entity_addr_t &peer_addr_for_me)
     return false;
   std::lock_guard l(lock);
   if (need_addr) {
-    need_addr = false;
     if (my_addrs->empty()) {
       auto a = peer_addr_for_me;
       a.set_nonce(nonce);
+      if (!did_bind) {
+	a.set_port(0);
+      }
       set_myaddrs(entity_addrvec_t(a));
       ldout(cct,10) << __func__ << " had no addrs" << dendl;
     } else {
@@ -895,7 +897,11 @@ bool AsyncMessenger::learned_addr(const entity_addr_t &peer_addr_for_me)
 	if (a.get_family() == peer_addr_for_me.get_family()) {
 	  entity_addr_t t = peer_addr_for_me;
 	  t.set_type(a.get_type());
-	  t.set_port(a.get_port());
+	  if (!did_bind) {
+	    t.set_port(0);
+	  } else {	  
+	    t.set_port(a.get_port());
+	  }
 	  t.set_nonce(a.get_nonce());
 	  ldout(cct,10) << __func__ << " " << a << " -> " << t << dendl;
 	  a = t;
@@ -906,6 +912,7 @@ bool AsyncMessenger::learned_addr(const entity_addr_t &peer_addr_for_me)
     ldout(cct, 1) << __func__ << " learned my addr " << *my_addrs
 		  << " (peer_addr_for_me " << peer_addr_for_me << ")" << dendl;
     _init_local_connection();
+    need_addr = false;
     return true;
   }
   return false;
