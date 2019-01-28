@@ -5,7 +5,8 @@ import json
 import requests
 import os
 
-from . import ApiController, BaseController, Endpoint, ReadPermission, UpdatePermission
+from . import (ApiController, BaseController, Endpoint, ReadPermission,
+               UpdatePermission)
 from .. import logger
 from ..security import Scope
 from ..settings import Settings
@@ -54,10 +55,13 @@ class GrafanaRestClient(object):
         return response.status_code, response.json()
 
 
-def load_local_dashboards(path='../grafana_dashboards'):
-    if not path.startswith(os.path.sep):
-        path = os.path.join(os.path.dirname(__file__), path)
-    path = os.path.abspath(path)
+def load_local_dashboards():
+    if os.environ.get('CEPH_DEV') == '1':
+        path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), '../grafana_dashboards')
+        )
+    else:
+        path = '/etc/grafana/dashboards/ceph-dashboard'
     dashboards = dict()
     for item in filter(lambda s: s.endswith('.json'), os.listdir(path)):
         db_path = os.path.join(path, item)
