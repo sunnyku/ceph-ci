@@ -444,6 +444,11 @@ bool AsyncConnection::is_connected() {
   return protocol->is_connected();
 }
 
+AuthConnectionMeta *AsyncConnection::get_auth_meta()
+{
+  return &protocol->auth_meta;
+}
+
 void AsyncConnection::connect(const entity_addrvec_t &addrs, int type,
                               entity_addr_t &target) {
 
@@ -650,7 +655,7 @@ void AsyncConnection::mark_down()
 
 void AsyncConnection::handle_write()
 {
-  ldout(async_msgr->cct, 4) << __func__ << dendl;
+  ldout(async_msgr->cct, 10) << __func__ << dendl;
   protocol->write_event();
 }
 

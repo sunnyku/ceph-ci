@@ -1,4 +1,4 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*- 
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 /*
  * Ceph - scalable distributed file system
@@ -7,9 +7,9 @@
  *
  * This is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License version 2.1, as published by the Free Software 
+ * License version 2.1, as published by the Free Software
  * Foundation.  See file COPYING.
- * 
+ *
  */
 
 
@@ -35,7 +35,7 @@
 #include "include/ceph_features.h"
 #include "auth/Crypto.h"
 #include "common/item_history.h"
-#include "auth/AuthAuthorizeHandler.h"
+#include "auth/AuthRegistry.h"
 #include "include/ceph_assert.h"
 
 #include <errno.h>
@@ -46,7 +46,8 @@
 
 class Timer;
 
-class AuthAuthorizerHandlerRegistry;
+class AuthClient;
+class AuthServer;
 
 class Messenger {
 private:
@@ -72,6 +73,9 @@ protected:
   int socket_priority;
 
 public:
+  AuthClient *auth_client = 0;
+  AuthServer *auth_server = 0;
+
   /**
    * Various Messenger conditional config/type flags to allow
    * different "transport" Messengers to tune themselves
@@ -91,8 +95,7 @@ public:
 
 protected:
   // for authentication
-  std::unique_ptr<AuthAuthorizeHandlerRegistry> auth_ah_service_registry;
-  std::unique_ptr<AuthAuthorizeHandlerRegistry> auth_ah_cluster_registry;
+  AuthRegistry auth_registry;
 
 public:
   /**
@@ -171,6 +174,13 @@ public:
    */
   uint32_t get_magic() { return magic; }
   void set_magic(int _magic) { magic = _magic; }
+
+  void set_auth_client(AuthClient *ac) {
+    auth_client = ac;
+  }
+  void set_auth_server(AuthServer *as) {
+    auth_server = as;
+  }
 
 protected:
   /**
@@ -334,7 +344,7 @@ public:
    *
    * @param d The Dispatcher to insert into the list.
    */
-  void add_dispatcher_head(Dispatcher *d) { 
+  void add_dispatcher_head(Dispatcher *d) {
     bool first = dispatchers.empty();
     dispatchers.push_front(d);
     if (d->ms_can_fast_dispatch_any())
@@ -349,7 +359,7 @@ public:
    *
    * @param d The Dispatcher to insert into the list.
    */
-  void add_dispatcher_tail(Dispatcher *d) { 
+  void add_dispatcher_tail(Dispatcher *d) {
     bool first = dispatchers.empty();
     dispatchers.push_back(d);
     if (d->ms_can_fast_dispatch_any())
@@ -389,6 +399,11 @@ public:
   virtual int client_bind(const entity_addr_t& bind_addr) = 0;
 
   virtual int bindv(const entity_addrvec_t& addrs);
+
+
+  virtual bool should_use_msgr2() {
+    return false;
+  }
 
   /**
    * @} // Configuration
@@ -777,7 +792,9 @@ public:
   bool ms_deliver_verify_authorizer(
     Connection *con, int peer_type,
     int protocol, bufferlist& authorizer, bufferlist& authorizer_reply,
-    bool& isvalid, CryptoKey& session_key,
+    bool& isvalid,
+    CryptoKey& session_key,
+    std::string *connection_secret,
     std::unique_ptr<AuthAuthorizerChallenge> *challenge);
 
   /**

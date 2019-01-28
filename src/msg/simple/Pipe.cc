@@ -524,8 +524,10 @@ int Pipe::accept()
     had_challenge = (bool)authorizer_challenge;
     authorizer_reply.clear();
     if (!msgr->ms_deliver_verify_authorizer(
-	  connection_state.get(), peer_type, connect.authorizer_protocol, authorizer,
+	  connection_state.get(), peer_type, connect.authorizer_protocol,
+	  authorizer,
 	  authorizer_reply, authorizer_valid, session_key,
+	  nullptr /* connection_secret */,
 	  need_challenge ? &authorizer_challenge : nullptr) ||
 	!authorizer_valid) {
       pipe_lock.Lock();
@@ -817,6 +819,7 @@ int Pipe::accept()
       get_auth_session_handler(msgr->cct,
 			       connect.authorizer_protocol,
 			       session_key,
+			       string(), /* connection_secret */
 			       connection_state->get_features()));
 
   // notify
@@ -1223,7 +1226,7 @@ int Pipe::connect()
 
     if (authorizer) {
       auto iter = authorizer_reply.cbegin();
-      if (!authorizer->verify_reply(iter)) {
+      if (!authorizer->verify_reply(iter, nullptr /* connection_secret */)) {
         ldout(msgr->cct,0) << "failed verifying authorize reply" << dendl;
 	goto fail;
       }
@@ -1339,10 +1342,12 @@ int Pipe::connect()
 
       if (authorizer != NULL) {
 	session_security.reset(
-            get_auth_session_handler(msgr->cct,
-				     authorizer->protocol,
-				     authorizer->session_key,
-				     connection_state->get_features()));
+            get_auth_session_handler(
+	      msgr->cct,
+	      authorizer->protocol,
+	      authorizer->session_key,
+	      string() /* connection secret*/,
+	      connection_state->get_features()));
       }  else {
         // We have no authorizer, so we shouldn't be applying security to messages in this pipe.  PLR
 	session_security.reset();

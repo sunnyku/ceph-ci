@@ -840,6 +840,40 @@ std::vector<Option> get_global_options() {
     .set_long_description("If not specified, use ms_type")
     .add_see_also("ms_type"),
 
+    Option("ms_mon_cluster_mode", Option::TYPE_STR, Option::LEVEL_BASIC)
+    .set_default("crc secure")
+    .set_description("Connection modes (crc, secure) for intra-mon connections in order of preference")
+    .add_see_also("ms_mon_service_mode")
+    .add_see_also("ms_service_mode")
+    .add_see_also("ms_cluster_mode")
+    .add_see_also("ms_client_mode"),
+
+    Option("ms_mon_service_mode", Option::TYPE_STR, Option::LEVEL_BASIC)
+    .set_default("crc secure")
+    .set_description("Connection modes (crc, secure) for connections to mons in order of preference")
+    .add_see_also("ms_service_mode")
+    .add_see_also("ms_mon_cluster_mode")
+    .add_see_also("ms_cluster_mode")
+    .add_see_also("ms_client_mode"),
+
+    Option("ms_cluster_mode", Option::TYPE_STR, Option::LEVEL_BASIC)
+    .set_default("crc secure")
+    .set_description("Connection modes (crc, secure) for intra-cluster connections in order of preference")
+    .add_see_also("ms_service_mode")
+    .add_see_also("ms_client_mode"),
+
+    Option("ms_service_mode", Option::TYPE_STR, Option::LEVEL_BASIC)
+    .set_default("crc secure")
+    .set_description("Connection modes (crc, secure) for connections to daemons in order of preference")
+    .add_see_also("ms_cluster_mode")
+    .add_see_also("ms_client_mode"),
+
+    Option("ms_client_mode", Option::TYPE_STR, Option::LEVEL_BASIC)
+    .set_default("crc secure")
+    .set_description("Connection modes (crc, secure) for connections from clients in order of preference")
+    .add_see_also("ms_cluster_mode")
+    .add_see_also("ms_service_mode"),
+
     Option("ms_tcp_nodelay", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(true)
     .set_description("Disable Nagle's algorithm and send queued network traffic immediately"),
@@ -888,6 +922,16 @@ std::vector<Option> get_global_options() {
     Option("ms_dispatch_throttle_bytes", Option::TYPE_SIZE, Option::LEVEL_ADVANCED)
     .set_default(100_M)
     .set_description("Limit messages that are read off the network but still being processed"),
+
+    Option("ms_msgr2_sign_messages", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("Sign msgr2 frames' payload")
+    .add_see_also("ms_msgr2_encrypt_messages"),
+
+    Option("ms_msgr2_encrypt_messages", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("Encrypt msgr2 frames' payload")
+    .add_see_also("ms_msgr2_sign_messages"),
 
     Option("ms_bind_ipv4", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(true)

@@ -46,7 +46,7 @@ public:
   }
 };
 
-#define CONTINUATION_DECL(C, F, ...)                \
+#define CONTINUATION_DECL(C, F, ...)                    \
   std::unique_ptr<CtFun<C, ##__VA_ARGS__>> F##_cont_ =  \
       std::make_unique<CtFun<C, ##__VA_ARGS__>>(&C::F); \
   CtFun<C, ##__VA_ARGS__> *F##_cont = F##_cont_.get()
@@ -64,7 +64,8 @@ public:
     }                                                             \
   }
 
-#define READ_HANDLER_CONTINUATION_DECL(C, F) CONTINUATION_DECL(C, F, char*, int)
+#define READ_HANDLER_CONTINUATION_DECL(C, F) \
+  CONTINUATION_DECL(C, F, char *, int)
 #define WRITE_HANDLER_CONTINUATION_DECL(C, F) CONTINUATION_DECL(C, F, int)
 
 //////////////////////////////////////////////////////////////////////
@@ -77,6 +78,8 @@ protected:
   AsyncConnection *connection;
   AsyncMessenger *messenger;
   CephContext *cct;
+public:
+  AuthConnectionMeta auth_meta;
 
 public:
   Protocol(int type, AsyncConnection *connection);
@@ -100,6 +103,10 @@ public:
   virtual void read_event() = 0;
   virtual void write_event() = 0;
   virtual bool is_queued() = 0;
+
+  virtual AuthConnectionMeta *get_auth_meta() {
+    return nullptr;
+  }
 };
 
 #endif /* _MSG_ASYNC_PROTOCOL_ */
