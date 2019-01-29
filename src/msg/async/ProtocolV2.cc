@@ -2072,7 +2072,8 @@ CtPtr ProtocolV2::send_auth_request(std::vector<uint32_t> &allowed_methods) {
   vector<uint32_t> preferred_modes;
   connection->lock.unlock();
   int r = messenger->auth_client->get_auth_request(
-    connection, &auth_meta.auth_method, &preferred_modes, &bl);
+    connection, &auth_meta,
+    &auth_meta.auth_method, &preferred_modes, &bl);
   connection->lock.lock();
   if (state != State::CONNECTING) {
     return _fault();
@@ -2100,7 +2101,9 @@ CtPtr ProtocolV2::handle_auth_bad_method(char *payload, uint32_t length) {
   ceph_assert(messenger->auth_client);
   connection->lock.unlock();
   int r = messenger->auth_client->handle_auth_bad_method(
-    connection, bad_method.method(), bad_method.result(),
+    connection,
+    &auth_meta,
+    bad_method.method(), bad_method.result(),
     bad_method.allowed_methods(),
     bad_method.allowed_modes());
   connection->lock.lock();
@@ -2123,7 +2126,7 @@ CtPtr ProtocolV2::handle_auth_reply_more(char *payload, uint32_t length)
   bufferlist reply;
   connection->lock.unlock();
   int r = messenger->auth_client->handle_auth_reply_more(
-    connection, auth_more.auth_payload(), &reply);
+    connection, &auth_meta, auth_more.auth_payload(), &reply);
   connection->lock.lock();
   if (state != State::CONNECTING) {
     return _fault();
@@ -2146,6 +2149,7 @@ CtPtr ProtocolV2::handle_auth_done(char *payload, uint32_t length) {
   connection->lock.unlock();
   int r = messenger->auth_client->handle_auth_done(
     connection,
+    &auth_meta,
     auth_done.global_id(),
     auth_done.con_mode(),
     auth_done.auth_payload(),
@@ -2443,7 +2447,8 @@ CtPtr ProtocolV2::_handle_auth_request(bufferlist& auth_payload, bool more)
   bufferlist reply;
   connection->lock.unlock();
   int r = messenger->auth_server->handle_auth_request(
-    connection, more, auth_meta.auth_method, auth_payload,
+    connection, &auth_meta,
+    more, auth_meta.auth_method, auth_payload,
     &reply);
   connection->lock.lock();
   if (state != ACCEPTING) {
