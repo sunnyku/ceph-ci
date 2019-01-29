@@ -104,9 +104,6 @@ public:
   virtual void write_event() = 0;
   virtual bool is_queued() = 0;
 
-  virtual AuthConnectionMeta *get_auth_meta() {
-    return nullptr;
-  }
 };
 
 #endif /* _MSG_ASYNC_PROTOCOL_ */
