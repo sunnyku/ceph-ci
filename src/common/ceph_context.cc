@@ -63,7 +63,7 @@ CephContext::CephContext()
 CephContext::~CephContext()
 {}
 
-int CephContext::get_module_type() const
+uint32_t CephContext::get_module_type() const
 {
   return module_type;
 }
