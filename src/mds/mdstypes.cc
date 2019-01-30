@@ -88,6 +88,8 @@ void nest_info_t::encode(bufferlist &bl) const
   }
   encode(rsnaps, bl);
   encode(rctime, bl);
+  encode(user_rbytes, bl);
+  encode(group_rbytes, bl);
   ENCODE_FINISH(bl);
 }
 
@@ -104,6 +106,8 @@ void nest_info_t::decode(bufferlist::iterator &bl)
   }
   decode(rsnaps, bl);
   decode(rctime, bl);
+  decode(user_rbytes, bl);
+  decode(group_rbytes, bl);
   DECODE_FINISH(bl);
 }
 
@@ -113,6 +117,14 @@ void nest_info_t::dump(Formatter *f) const
   f->dump_unsigned("rbytes", rbytes);
   f->dump_unsigned("rfiles", rfiles);
   f->dump_unsigned("rsubdirs", rsubdirs);
+  for (auto& p : user_rbytes) {
+    f->dump_unsigned("user", p.first);
+    f->dump_unsigned("rbytes", p.second);
+  }
+  for (auto& p : group_rbytes) {
+    f->dump_unsigned("group", p.first);
+    f->dump_unsigned("rbytes", p.second);
+  }
   f->dump_unsigned("rsnaps", rsnaps);
   f->dump_stream("rctime") << rctime;
 }
@@ -125,6 +137,8 @@ void nest_info_t::generate_test_instances(list<nest_info_t*>& ls)
   ls.back()->rbytes = 2;
   ls.back()->rfiles = 3;
   ls.back()->rsubdirs = 4;
+  ls.back()->user_rbytes[1] = 2;
+  ls.back()->group_rbytes[1] = 2;
   ls.back()->rsnaps = 6;
   ls.back()->rctime = utime_t(7, 8);
 }
@@ -138,6 +152,10 @@ ostream& operator<<(ostream &out, const nest_info_t &n)
     out << " rc" << n.rctime;
   if (n.rbytes)
     out << " b" << n.rbytes;
+  for (auto& p : n.user_rbytes)
+    out << " user" << p.first << " b" << p.second;
+  for (auto& p : n.group_rbytes)
+    out << " group" << p.first << " b" << p.second;
   if (n.rsnaps)
     out << " rs" << n.rsnaps;
   if (n.rfiles || n.rsubdirs)
@@ -153,6 +171,14 @@ void quota_info_t::dump(Formatter *f) const
 {
   f->dump_int("max_bytes", max_bytes);
   f->dump_int("max_files", max_files);
+  for (auto& p : user_max_bytes) {
+      f->dump_int("user", p.first);
+      f->dump_int("max_bytes", p.second);
+  }
+  for (auto& p : group_max_bytes) {
+      f->dump_int("group", p.first);
+      f->dump_int("max_bytes", p.second);
+  }
 }
 
 void quota_info_t::generate_test_instances(list<quota_info_t *>& ls)
@@ -161,6 +187,8 @@ void quota_info_t::generate_test_instances(list<quota_info_t *>& ls)
   ls.push_back(new quota_info_t);
   ls.back()->max_bytes = 16;
   ls.back()->max_files = 16;
+  ls.back()->user_max_bytes[1] = 16;
+  ls.back()->group_max_bytes[2] = 16;
 }
 
 ostream& operator<<(ostream &out, const quota_info_t &n)
@@ -169,6 +197,12 @@ ostream& operator<<(ostream &out, const quota_info_t &n)
       << "max_bytes = " << n.max_bytes
       << " max_files = " << n.max_files
       << ")";
+  for (auto& p : n.user_max_bytes) {
+    out << "user = " << p.first << " max_bytes = " << p.second;
+  }
+  for (auto& p : n.group_max_bytes) {
+    out << "group = " << p.first << " max_bytes = " << p.second;
+  }
   return out;
 }
 
