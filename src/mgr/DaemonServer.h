@@ -88,6 +88,7 @@ protected:
   SafeTimer timer;
   set<int> last_adjusted_osds;
   set<int> last_adjusted_primaries;
+  utime_t last_adjust;
 
   std::map<int, cache_stat_t> cache_stat; // record cache info by osd-id
 
