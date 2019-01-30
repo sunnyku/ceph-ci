@@ -388,7 +388,7 @@ class Module(MgrModule):
                            begin_time, end_time, timeofday)
             sleep_interval = float(self.get_config('sleep_interval',
                                                    default_sleep_interval))
-            enable_smart_optimize = bool(int(self.get_config('enable_smart_optimize', 0)))
+            enable_smart_optimize = bool(int(self.get_config('enable_smart_optimize', 1)))
             if enable_smart_optimize:
                 auto_optimize_pool_age = int(self.get_config('auto_optimize_pool_age', 300))
                 auto_optimize_pool_mode = self.get_config('auto_optimize_pool_mode', 'upmap')
