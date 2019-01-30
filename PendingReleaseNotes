@@ -56,3 +56,13 @@ notes (?))
   than the previous bluestore_cache_size of 1GB, so OSDs using
   BlueStore will use more memory by default.
   For more details, see `BlueStore docs <http://docs.ceph.com/docs/mimic/rados/configuration/bluestore-config-ref/#automatic-cache-sizing>_`
+
+13.2.5
+======
+
+* This release fixes the pg log hard limit bug(http://tracker.ceph.com/issues/36686).
+  A flag called pglog_hardlimit has been introduced. It is off by default.
+  This flag enables the feature that limits the length of the pg log. Users should run
+  'ceph osd set pglog_hardlimit' after completely upgrading to 13.2.5. Once all the OSDs
+  have this flag set, the length of the pg log will be capped by a hard limit. This flag
+  should not be unset.
