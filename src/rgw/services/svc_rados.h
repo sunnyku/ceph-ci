@@ -3,22 +3,24 @@
 
 #pragma once
 
+#include <cstdint>
+#include <string>
+#include <string_view>
 #include "rgw/rgw_service.h"
-
-#include "include/rados/librados.hpp"
 #include "common/async/yield_context.h"
 
 class RGWAccessListFilter {
 public:
   virtual ~RGWAccessListFilter() {}
-  virtual bool filter(const string& name, string& key) = 0;
+  virtual bool filter(std::string_view name, std::string_view key) = 0;
 };
 
 struct RGWAccessListFilterPrefix : public RGWAccessListFilter {
-  string prefix;
+  std::string prefix;
 
-  explicit RGWAccessListFilterPrefix(const string& _prefix) : prefix(_prefix) {}
-  bool filter(const string& name, string& key) override {
+  explicit RGWAccessListFilterPrefix(std::string prefix)
+    : prefix(std::move(prefix)) {}
+  bool filter(std::string_view name, std::string_view key) override {
     return (prefix.compare(key.substr(0, prefix.size())) == 0);
   }
 };
@@ -49,11 +51,8 @@ public:
 
   uint64_t instance_id();
 
-  class Handle;
-
   class Obj {
     friend class RGWSI_RADOS;
-    friend Handle;
 
     RGWSI_RADOS *rados_svc{nullptr};
     rgw_rados_ref ref;
@@ -94,7 +93,6 @@ public:
 
   class Pool {
     friend class RGWSI_RADOS;
-    friend Handle;
 
     RGWSI_RADOS *rados_svc{nullptr};
     rgw_pool pool;
@@ -136,27 +134,7 @@ public:
     friend List;
   };
 
-  class Handle {
-    friend class RGWSI_RADOS;
-
-    RGWSI_RADOS *rados_svc{nullptr};
-
-    Handle(RGWSI_RADOS *_rados_svc) : rados_svc(_rados_svc) {}
-  public:
-    Obj obj(const rgw_raw_obj& o) {
-      return Obj(rados_svc, o);
-    }
-
-    Pool pool(const rgw_pool& p) {
-      return Pool(rados_svc, p);
-    }
-
-    int watch_flush();
-  };
-
-  Handle handle() {
-    return Handle(this);
-  }
+  int watch_flush();
 
   Obj obj(const rgw_raw_obj& o) {
     return Obj(this, o);
