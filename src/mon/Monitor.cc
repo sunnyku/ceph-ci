@@ -5884,6 +5884,7 @@ int Monitor::get_auth_request(
   auth_registry.get_supported_modes(CEPH_ENTITY_TYPE_MON, auth->protocol,
 				    preferred_modes);
   *out = auth->bl;
+  delete auth;
   return 0;
 }
 
