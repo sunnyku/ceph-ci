@@ -4,26 +4,21 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 #include "rgw/rgw_service.h"
 #include "common/async/yield_context.h"
 
-class RGWAccessListFilter {
-public:
-  virtual ~RGWAccessListFilter() {}
-  virtual bool filter(std::string_view name, std::string_view key) = 0;
-};
+using RGWAccessListFilter =
+  std::function<bool(std::string_view, std::string_view)>;
 
-struct RGWAccessListFilterPrefix : public RGWAccessListFilter {
-  std::string prefix;
-
-  explicit RGWAccessListFilterPrefix(std::string prefix)
-    : prefix(std::move(prefix)) {}
-  bool filter(std::string_view name, std::string_view key) override {
-    return (prefix.compare(key.substr(0, prefix.size())) == 0);
-  }
-};
+inline auto RGWAccessListFilterPrefix(std::string prefix) {
+  return [prefix = std::move(prefix)](std::string_view,
+                                      std::string_view key) -> bool {
+           return (prefix.compare(key.substr(0, prefix.size())) == 0);
+         };
+}
 
 class RGWSI_RADOS : public RGWServiceInstance
 {
@@ -36,7 +31,7 @@ class RGWSI_RADOS : public RGWServiceInstance
   int pool_iterate(librados::IoCtx& ioctx,
                    librados::NObjectIterator& iter,
                    uint32_t num, vector<rgw_bucket_dir_entry>& objs,
-                   RGWAccessListFilter *filter,
+                   const RGWAccessListFilter& filter,
                    bool *is_truncated);
 
 public:
@@ -116,12 +111,12 @@ public:
         bool initialized{false};
         librados::IoCtx ioctx;
         librados::NObjectIterator iter;
-        RGWAccessListFilter *filter{nullptr};
+        RGWAccessListFilter filter;
       } ctx;
 
       List(Pool& _pool) : pool(_pool) {}
 
-      int init(const string& marker, RGWAccessListFilter *filter = nullptr);
+      int init(const string& marker, RGWAccessListFilter&& filter = nullptr);
       int get_next(int max,
                    std::list<string> *oids,
                    bool *is_truncated);

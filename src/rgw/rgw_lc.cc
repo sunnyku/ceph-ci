@@ -373,7 +373,6 @@ static bool pass_object_lock_check(RGWRados *store, RGWBucketInfo& bucket_info, 
 int RGWLC::handle_multipart_expiration(
   RGWRados::Bucket *target, const multimap<string, lc_op>& prefix_map)
 {
-  MultipartMetaFilter mp_filter;
   vector<rgw_bucket_dir_entry> objs;
   RGWMPObj mp_obj;
   bool is_truncated;
@@ -387,7 +386,8 @@ int RGWLC::handle_multipart_expiration(
    * operating on one shard at a time */
   list_op.params.allow_unordered = true;
   list_op.params.ns = RGW_OBJ_NS_MULTIPART;
-  list_op.params.filter = &mp_filter;
+ list_op.params.filter = &MultipartMetaFilter;
+
   for (auto prefix_iter = prefix_map.begin(); prefix_iter != prefix_map.end(); ++prefix_iter) {
     if (!prefix_iter->second.status || prefix_iter->second.mp_expiration <= 0) {
       continue;
