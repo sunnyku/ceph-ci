@@ -18,6 +18,12 @@
 #include "Crypto.h"
 #include "common/entity_name.h"
 
+enum {
+  AUTH_MODE_NONE = 0,
+  AUTH_MODE_AUTHORIZER = 1,
+  AUTH_MODE_MON = 100,
+};
+
 class Cond;
 
 struct EntityAuth {
@@ -140,14 +146,47 @@ struct AuthAuthorizer {
   explicit AuthAuthorizer(__u32 p) : protocol(p) {}
   virtual ~AuthAuthorizer() {}
   virtual bool verify_reply(bufferlist::const_iterator& reply,
-			    CryptoKey *connection_secret) = 0;
-  virtual bool add_challenge(CephContext *cct, bufferlist& challenge) = 0;
+			    std::string *connection_secret) = 0;
+  virtual bool add_challenge(CephContext *cct, const bufferlist& challenge) = 0;
 };
 
 struct AuthAuthorizerChallenge {
   virtual ~AuthAuthorizerChallenge() {}
 };
 
+struct AuthConnectionMeta {
+  uint32_t auth_method = CEPH_AUTH_UNKNOWN;  //< CEPH_AUTH_*
+
+  /// client: initial empty, but populated if server said bad method
+  std::vector<uint32_t> allowed_methods;
+
+  int auth_mode = 0;  ///< AUTH_MODE_*
+
+  int con_mode = 0;  ///< negotiated mode
+
+  bool is_mode_crc() {
+    return con_mode == CEPH_CON_MODE_CRC;
+  }
+  bool is_mode_secure() {
+    return con_mode == CEPH_CON_MODE_SECURE;
+  }
+
+  CryptoKey session_key;           ///< per-ticket key
+
+  size_t get_connection_secret_length() const {
+    switch (con_mode) {
+    case CEPH_CON_MODE_CRC:
+      return 0;
+    case CEPH_CON_MODE_SECURE:
+      return 16 * 4;
+    }
+    return 0;
+  }
+  std::string connection_secret;   ///< per-connection key
+
+  std::unique_ptr<AuthAuthorizer> authorizer;
+  std::unique_ptr<AuthAuthorizerChallenge> authorizer_challenge;
+};
 
 /*
  * Key management
