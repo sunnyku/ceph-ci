@@ -153,7 +153,9 @@ int MgrStandby::init()
   mgrc.init();
   client_messenger->add_dispatcher_tail(&mgrc);
 
+  lock.unlock();
   r = monc.authenticate();
+  lock.lock();
   if (r < 0) {
     derr << "Authentication failed, did you specify a mgr ID with a valid keyring?" << dendl;
     monc.shutdown();
