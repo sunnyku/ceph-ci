@@ -93,6 +93,24 @@ void PyModuleRegistry::init()
     clog->error() << "Failed to load ceph-mgr modules: " << joinify(
         failed_modules.begin(), failed_modules.end(), std::string(", "));
   }
+
+  if (mgr_map.epoch) {
+    // occasionally we see the mgrmap before we have au
+    _init_module_status();
+  }
+}
+
+void PyModuleRegister::_init_module_status()
+{
+  // First time we see MgrMap, set the enabled flags on modules
+  // This should always happen before someone calls standby_start
+  // or active_start
+  for (const auto &[module_name, module] : modules) {
+    const bool enabled = (mgr_map.modules.count(module_name) > 0);
+    module->set_enabled(enabled);
+    const bool always_on = (mgr_map.get_always_on_modules().count(module_name) > 0);
+    module->set_always_on(always_on);
+  }
 }
 
 bool PyModuleRegistry::handle_mgr_map(const MgrMap &mgr_map_)
@@ -101,17 +119,7 @@ bool PyModuleRegistry::handle_mgr_map(const MgrMap &mgr_map_)
 
   if (mgr_map.epoch == 0) {
     mgr_map = mgr_map_;
-
-    // First time we see MgrMap, set the enabled flags on modules
-    // This should always happen before someone calls standby_start
-    // or active_start
-    for (const auto &[module_name, module] : modules) {
-      const bool enabled = (mgr_map.modules.count(module_name) > 0);
-      module->set_enabled(enabled);
-      const bool always_on = (mgr_map.get_always_on_modules().count(module_name) > 0);
-      module->set_always_on(always_on);
-    }
-
+    _init_module_status();
     return false;
   } else {
     bool modules_changed = mgr_map_.modules != mgr_map.modules ||
@@ -382,21 +390,31 @@ void PyModuleRegistry::get_health_checks(health_check_map_t *checks)
         ss << "Module '" << iter->first << "' has failed dependency: "
            << iter->second;
       } else if (dependency_modules.size() > 1) {
-        ss << dependency_modules.size() << " ceph-mgr modules have failed dependencies";
+        ss << dependency_modules.size()
+	   << " mgr modules have failed dependencies";
       }
-      checks->add("MGR_MODULE_DEPENDENCY", HEALTH_WARN, ss.str());
+      auto& d = checks->add("MGR_MODULE_DEPENDENCY", HEALTH_WARN, ss.str());
+      for (auto& i : dependency_modules) {
+	std::ostringstream ss;
+        ss << "Module '" << i.first << "' has failed dependency: " << i.second;
+	d.detail.push_back(ss.str());
+      }
     }
 
     if (!failed_modules.empty()) {
       std::ostringstream ss;
       if (failed_modules.size() == 1) {
         auto iter = failed_modules.begin();
-        ss << "Module '" << iter->first << "' has failed: "
-           << iter->second;
+        ss << "Module '" << iter->first << "' has failed: " << iter->second;
       } else if (failed_modules.size() > 1) {
-        ss << failed_modules.size() << " modules have failed";
+        ss << failed_modules.size() << " mgr modules have failed";
       }
-      checks->add("MGR_MODULE_ERROR", HEALTH_ERR, ss.str());
+      auto& d = checks->add("MGR_MODULE_ERROR", HEALTH_ERR, ss.str());
+      for (auto& i : failed_modules) {
+	std::ostringstream ss;
+        ss << "Module '" << i.first << "' has failed: " << i.second;
+	d.detail.push_back(ss.str());
+      }
     }
   }
 }
