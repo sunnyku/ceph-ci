@@ -100,7 +100,7 @@ void PyModuleRegistry::init()
   }
 }
 
-void PyModuleRegister::_init_module_status()
+void PyModuleRegistry::_init_module_status()
 {
   // First time we see MgrMap, set the enabled flags on modules
   // This should always happen before someone calls standby_start
