@@ -260,6 +260,7 @@ int MonClient::ping_monitor(const string &mon_id, string *result_reply)
   pinger->lock.Unlock();
 
   con->mark_down();
+  pinger->mc.reset();
   smsgr->shutdown();
   smsgr->wait();
   delete smsgr;
