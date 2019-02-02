@@ -193,7 +193,8 @@ namespace ECTransaction {
     map<shard_id_t, ObjectStore::Transaction> *transactions,
     set<hobject_t> *temp_added,
     set<hobject_t> *temp_removed,
-    DoutPrefixProvider *dpp);
+    DoutPrefixProvider *dpp,
+    uint8_t require_osd_release = 0);
 };
 
 #endif
