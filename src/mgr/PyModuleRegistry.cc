@@ -93,6 +93,24 @@ void PyModuleRegistry::init()
     clog->error() << "Failed to load ceph-mgr modules: " << joinify(
         failed_modules.begin(), failed_modules.end(), std::string(", "));
   }
+
+  if (mgr_map.epoch) {
+    // occasionally we see the mgrmap before we have au
+    _init_module_status();
+  }
+}
+
+void PyModuleRegister::_init_module_status()
+{
+  // First time we see MgrMap, set the enabled flags on modules
+  // This should always happen before someone calls standby_start
+  // or active_start
+  for (const auto &[module_name, module] : modules) {
+    const bool enabled = (mgr_map.modules.count(module_name) > 0);
+    module->set_enabled(enabled);
+    const bool always_on = (mgr_map.get_always_on_modules().count(module_name) > 0);
+    module->set_always_on(always_on);
+  }
 }
 
 bool PyModuleRegistry::handle_mgr_map(const MgrMap &mgr_map_)
@@ -101,17 +119,7 @@ bool PyModuleRegistry::handle_mgr_map(const MgrMap &mgr_map_)
 
   if (mgr_map.epoch == 0) {
     mgr_map = mgr_map_;
-
-    // First time we see MgrMap, set the enabled flags on modules
-    // This should always happen before someone calls standby_start
-    // or active_start
-    for (const auto &[module_name, module] : modules) {
-      const bool enabled = (mgr_map.modules.count(module_name) > 0);
-      module->set_enabled(enabled);
-      const bool always_on = (mgr_map.get_always_on_modules().count(module_name) > 0);
-      module->set_always_on(always_on);
-    }
-
+    _init_module_status();
     return false;
   } else {
     bool modules_changed = mgr_map_.modules != mgr_map.modules ||

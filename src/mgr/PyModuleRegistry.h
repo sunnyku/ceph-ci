@@ -59,6 +59,9 @@ private:
 
   PyModuleConfig module_config;
 
+  // must be called once we have modules *and* a mgrmap
+  void _init_module_status();
+
 public:
   void handle_config(const std::string &k, const std::string &v);
   void handle_config_notify();
