@@ -113,8 +113,8 @@ int get_default_crc_flags(const ConfigProxy& conf)
 
 int Messenger::bindv(const entity_addrvec_t& addrs)
 {
-  lderr(cct) << __func__ << " " << addrs << " fallback to legacy "
-	     << addrs.legacy_addr() << dendl;
+  ldout(cct,10) << __func__ << " " << addrs << " using legacy "
+		<< addrs.legacy_addr() << dendl;
   return bind(addrs.legacy_addr());
 }
 
