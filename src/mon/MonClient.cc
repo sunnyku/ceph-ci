@@ -1514,6 +1514,9 @@ int MonConnection::get_auth_request(
   if (auth_method < 0) {
     vector<uint32_t> as;
     auth_registry->get_supported_methods(con->get_peer_type(), &as);
+    if (as.empty()) {
+      return -EACCES;
+    }
     auth_method = as.front();
   }
   *method = auth_method;
@@ -1521,6 +1524,9 @@ int MonConnection::get_auth_request(
 				     preferred_modes);
   ldout(cct,10) << __func__ << " method " << *method
 		<< " preferred_modes " << *preferred_modes << dendl;
+  if (preferred_modes->empty()) {
+    return -EACCES;
+  }
 
   if (auth) {
     auth.reset();
