@@ -16,8 +16,11 @@
 #ifndef CEPH_CRYPTO_ONWIRE_H
 #define CEPH_CRYPTO_ONWIRE_H
 
-#include "include/types.h"
+#include <cstdint>
+#include <memory>
 
+#include "auth/Auth.h"
+#include "include/buffer.h"
 
 namespace ceph::math {
 
@@ -100,11 +103,13 @@ struct rxtx_t {
   // Hmm, isn't that too much flexbility?
   std::unique_ptr<RxHandler> rx;
   std::unique_ptr<TxHandler> tx;
+
+  static rxtx_t create_handler_pair(
+    CephContext* ctx,
+    const class AuthConnectionMeta& auth_meta,
+    bool crossed);
 };
 
-static rxtx_t create_stream_handler_pair(
-  CephContext* ctx,
-  const class AuthConnectionMeta& auth_meta);
 
 } // namespace ceph::crypto::onwire
 
