@@ -2594,8 +2594,9 @@ CtPtr ProtocolV2::handle_reconnect(char *payload, uint32_t length) {
   connection->target_addr = connection->_infer_target_addr(reconnect.addrs());
 
   peer_name = entity_name_t(connection->get_peer_type(), reconnect.gid());
-  connection->set_features(reconnect.supported_features() &
-                           connection->policy.features_supported);
+  connection_features = reconnect.supported_features() &
+    connection->policy.features_supported;
+  peer_global_seq = reconnect.global_seq();
 
   connection->lock.unlock();
   AsyncConnectionRef existing = messenger->lookup_conn(*connection->peer_addrs);
@@ -2822,11 +2823,11 @@ CtPtr ProtocolV2::reuse_connection(AsyncConnectionRef existing,
     ceph_assert(!connection->delay_state);
   }
   exproto->reset_recv_state();
-  if (!reconnecting) {
-    exproto->peer_name = peer_name;
-    exproto->peer_global_seq = peer_global_seq;
-    exproto->connection_features = connection_features;
-  }
+
+  exproto->peer_name = peer_name;
+  exproto->peer_global_seq = peer_global_seq;
+  exproto->connection_features = connection_features;
+  existing->set_features(connection_features);
 
   auto temp_cs = std::move(connection->cs);
   EventCenter *new_center = connection->center;
