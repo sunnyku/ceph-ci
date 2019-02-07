@@ -76,7 +76,6 @@ private:
   uint64_t peer_required_features;
   std::shared_ptr<AuthSessionHandler> session_security;
 
-  uint64_t connection_features;
   uint64_t cookie;
   uint64_t global_seq;
   uint64_t connect_seq;
