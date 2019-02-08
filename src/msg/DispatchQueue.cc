@@ -244,6 +244,8 @@ void DispatchQueue::discard_local()
 
 void DispatchQueue::shutdown()
 {
+  ldout(cct,10) << __func__ << dendl;
+
   // stop my local delivery thread
   local_delivery_lock.Lock();
   stop_local_delivery = true;

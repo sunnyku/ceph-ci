@@ -527,6 +527,7 @@ int AsyncMessenger::start()
 void AsyncMessenger::wait()
 {
   lock.Lock();
+  ldout(cct,10) << __func__ << dendl;
   if (!started) {
     lock.Unlock();
     return;
@@ -536,6 +537,10 @@ void AsyncMessenger::wait()
 
   lock.Unlock();
 
+  // first pass: close connections
+  ldout(cct,10) << __func__ << " first pass" << dendl;
+  shutdown_connections();
+
   dispatch_queue.shutdown();
   if (dispatch_queue.is_started()) {
     ldout(cct, 10) << __func__ << ": waiting for dispatch queue" << dendl;
@@ -544,8 +549,11 @@ void AsyncMessenger::wait()
     ldout(cct, 10) << __func__ << ": dispatch queue is stopped" << dendl;
   }
 
-  // close all connections
-  shutdown_connections(false);
+  // second pass: close connections and mop up... just in case
+  ldout(cct,10) << __func__ << " second pass" << dendl;
+  shutdown_connections();
+  dispatch_queue.discard_local();
+
   stack->drain();
 
   ldout(cct, 10) << __func__ << ": done." << dendl;
@@ -784,7 +792,7 @@ void AsyncMessenger::set_addrs(const entity_addrvec_t &addrs)
   _init_local_connection();
 }
 
-void AsyncMessenger::shutdown_connections(bool queue_reset)
+void AsyncMessenger::shutdown_connections()
 {
   ldout(cct,1) << __func__ << " " << dendl;
   lock.Lock();
@@ -792,7 +800,7 @@ void AsyncMessenger::shutdown_connections(bool queue_reset)
        q != accepting_conns.end(); ++q) {
     AsyncConnectionRef p = *q;
     ldout(cct, 5) << __func__ << " accepting_conn " << p.get() << dendl;
-    p->stop(queue_reset);
+    p->stop();
   }
   accepting_conns.clear();
 
@@ -802,7 +810,7 @@ void AsyncMessenger::shutdown_connections(bool queue_reset)
     ldout(cct, 5) << __func__ << " mark down " << it->first << " " << p << dendl;
     conns.erase(it);
     p->get_perf_counter()->dec(l_msgr_active_connections);
-    p->stop(queue_reset);
+    p->stop();
   }
 
   {
@@ -823,7 +831,7 @@ void AsyncMessenger::mark_down_addrs(const entity_addrvec_t& addrs)
   AsyncConnectionRef p = _lookup_conn(addrs);
   if (p) {
     ldout(cct, 1) << __func__ << " " << addrs << " -- " << p << dendl;
-    p->stop(true);
+    p->stop();
   } else {
     ldout(cct, 1) << __func__ << " " << addrs << " -- connection dne" << dendl;
   }
