@@ -479,6 +479,11 @@ flushjournal_out:
     derr << "OSD's recorded require_osd_release " << require_osd_release
 	 << " + 2 < this release " << ceph_release()
 	 << "; you can only upgrade 2 releases at a time" << dendl;
+    derr << "you should first upgrade to "
+	 << (require_osd_release + 1)
+	 << " (" << ceph_release_name(require_osd_release + 1) << ") or "
+	 << (require_osd_release + 2)
+	 << " (" << ceph_release_name(require_osd_release + 2) << ")" << dendl;
     forker.exit(1);
   }
 
