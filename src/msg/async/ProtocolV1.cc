@@ -119,14 +119,17 @@ void ProtocolV1::stop() {
 
   ldout(cct, 2) << __func__ << dendl;
   std::lock_guard<std::mutex> l(connection->write_lock);
+  {
+    reset_recv_state();
+    discard_out_queue();
 
-  reset_recv_state();
-  discard_out_queue();
+    connection->_stop();
 
-  connection->_stop();
+    can_write = WriteStatus::CLOSED;
+    state = CLOSED;
+  }
 
-  can_write = WriteStatus::CLOSED;
-  state = CLOSED;
+  connection->dispatch_queue->queue_reset(connection);
 }
 
 void ProtocolV1::fault() {
@@ -141,7 +144,6 @@ void ProtocolV1::fault() {
       state != CONNECTING) {
     ldout(cct, 1) << __func__ << " on lossy channel, failing" << dendl;
     stop();
-    connection->dispatch_queue->queue_reset(connection);
     return;
   }
 
@@ -158,7 +160,6 @@ void ProtocolV1::fault() {
                    << " accept state just closed" << dendl;
     connection->write_lock.unlock();
     stop();
-    connection->dispatch_queue->queue_reset(connection);
     return;
   }
   replacing = false;
@@ -2193,7 +2194,6 @@ CtPtr ProtocolV1::replace(AsyncConnectionRef existing,
     ldout(cct, 1) << __func__ << " replacing on lossy channel, failing existing"
                   << dendl;
     existing->protocol->stop();
-    existing->dispatch_queue->queue_reset(existing.get());
   } else {
     ceph_assert(can_write == WriteStatus::NOWRITE);
     existing->write_lock.lock();
@@ -2224,7 +2224,6 @@ CtPtr ProtocolV1::replace(AsyncConnectionRef existing,
     // queue a reset on the new connection, which we're dumping for the old
     stop();
 
-    connection->dispatch_queue->queue_reset(connection);
     ldout(messenger->cct, 1)
         << __func__ << " stop myself to swap existing" << dendl;
     exproto->can_write = WriteStatus::REPLACING;

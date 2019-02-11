@@ -525,21 +525,21 @@ void ProtocolV2::reset_session() {
 
 void ProtocolV2::stop() {
   ldout(cct, 1) << __func__ << dendl;
-  if (state == CLOSED) {
-    return;
+  if (state != CLOSED) {
+    if (connection->delay_state) {
+      connection->delay_state->flush();
+    }
+    std::lock_guard<std::mutex> l(connection->write_lock);
+
+    reset_recv_state();
+    discard_out_queue();
+
+    connection->_stop();
+
+    can_write = false;
+    state = CLOSED;
   }
-
-  if (connection->delay_state) connection->delay_state->flush();
-
-  std::lock_guard<std::mutex> l(connection->write_lock);
-
-  reset_recv_state();
-  discard_out_queue();
-
-  connection->_stop();
-
-  can_write = false;
-  state = CLOSED;
+  connection->dispatch_queue->queue_reset(connection);
 }
 
 void ProtocolV2::fault() { _fault(); }
@@ -635,7 +635,6 @@ CtPtr ProtocolV2::_fault() {
       state != CONNECTING) {
     ldout(cct, 2) << __func__ << " on lossy channel, failing" << dendl;
     stop();
-    connection->dispatch_queue->queue_reset(connection);
     return nullptr;
   }
 
@@ -651,7 +650,6 @@ CtPtr ProtocolV2::_fault() {
                    << " accept state just closed" << dendl;
     connection->write_lock.unlock();
     stop();
-    connection->dispatch_queue->queue_reset(connection);
     return nullptr;
   }
 
@@ -1313,7 +1311,6 @@ CtPtr ProtocolV2::_handle_peer_banner_payload(char *buffer, int r) {
                   << " supported=" << std::hex << peer_supported_features
                   << std::dec << dendl;
     stop();
-    connection->dispatch_queue->queue_reset(connection);
     return nullptr;
   }
   if ((supported_features & peer_required_features) != peer_required_features) {
@@ -1321,7 +1318,6 @@ CtPtr ProtocolV2::_handle_peer_banner_payload(char *buffer, int r) {
                   << " required=" << std::hex << peer_required_features
                   << " supported=" << std::hex << supported_features << dendl;
     stop();
-    connection->dispatch_queue->queue_reset(connection);
     return nullptr;
   }
 
@@ -1361,7 +1357,6 @@ CtPtr ProtocolV2::handle_hello(char *payload, uint32_t length) {
                     << " peer advertises " << connection->get_peer_type()
                     << " != " << (int)hello.entity_type() << dendl;
       stop();
-      connection->dispatch_queue->queue_reset(connection);
       return nullptr;
     }
   }
@@ -2090,7 +2085,6 @@ CtPtr ProtocolV2::send_auth_request(std::vector<uint32_t> &allowed_methods) {
     ldout(cct, 0) << __func__ << " get_initial_auth_request returned " << r
 		  << dendl;
     stop();
-    connection->dispatch_queue->queue_reset(connection);
     return nullptr;
   }
   AuthRequestFrame frame(auth_meta->auth_method, preferred_modes, bl);
@@ -2753,7 +2747,6 @@ CtPtr ProtocolV2::handle_existing_connection(AsyncConnectionRef existing) {
                   << " existing->peer_global_seq=" << exproto->peer_global_seq
                   << ", stopping this connection." << dendl;
     stop();
-    connection->dispatch_queue->queue_reset(connection);
     return nullptr;
   }
 
@@ -2764,7 +2757,6 @@ CtPtr ProtocolV2::handle_existing_connection(AsyncConnectionRef existing) {
         << " is a lossy channel. Stopping existing in favor of this connection"
         << dendl;
     existing->protocol->stop();
-    existing->dispatch_queue->queue_reset(existing.get());
     return send_server_ident();
   }
 
@@ -2849,8 +2841,6 @@ CtPtr ProtocolV2::reuse_connection(AsyncConnectionRef existing,
   // avoid _stop shutdown replacing socket
   // queue a reset on the new connection, which we're dumping for the old
   stop();
-
-  connection->dispatch_queue->queue_reset(connection);
 
   exproto->can_write = false;
   exproto->reconnecting = reconnecting;

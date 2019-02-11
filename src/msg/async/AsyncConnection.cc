@@ -687,12 +687,11 @@ void AsyncConnection::handle_write_callback() {
   write_lock.unlock();
 }
 
-void AsyncConnection::stop(bool queue_reset) {
+void AsyncConnection::stop()
+{
   lock.lock();
-  bool need_queue_reset = (state != STATE_CLOSED) && queue_reset;
   protocol->stop();
   lock.unlock();
-  if (need_queue_reset) dispatch_queue->queue_reset(this);
 }
 
 void AsyncConnection::cleanup() {

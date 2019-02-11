@@ -155,7 +155,7 @@ public:
   }
   void mark_down_addrs(const entity_addrvec_t& addrs) override;
   void mark_down_all() override {
-    shutdown_connections(true);
+    shutdown_connections();
   }
   /** @} // Connection Management */
 
@@ -331,7 +331,7 @@ private:
     ms_deliver_handle_fast_connect(local_connection.get());
   }
 
-  void shutdown_connections(bool queue_reset);
+  void shutdown_connections();
 
 public:
 
