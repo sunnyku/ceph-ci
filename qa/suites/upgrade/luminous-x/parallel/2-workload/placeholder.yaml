@@ -1,0 +1,6 @@
+workload:
+  full_sequential:
+  - sequential:
+    - exec:
+        client.2:
+          - echo foo
