@@ -924,6 +924,7 @@ protected:
     const eversion_t prior_version = entries.begin()->prior_version;
     const eversion_t first_divergent_update = entries.begin()->version;
     const eversion_t last_divergent_update = entries.rbegin()->version;
+    const bool is_delete = entries.rbegin()->is_delete();
     const bool object_not_in_store =
       !missing.is_missing(hoid) &&
       entries.rbegin()->is_delete();
@@ -1062,7 +1063,8 @@ protected:
 	  rollbacker->trim(i);
 	}
       }
-      missing.add(hoid, prior_version, eversion_t(), false);
+      ldpp_dout(dpp, 10) << __func__ << ": hoid " << hoid << " is_delete: " << is_delete << dendl;
+      missing.add(hoid, prior_version, eversion_t(), is_delete);
       if (prior_version <= info.log_tail) {
 	ldpp_dout(dpp, 10) << __func__ << ": hoid " << hoid
 			   << " prior_version " << prior_version
