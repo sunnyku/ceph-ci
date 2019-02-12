@@ -1,0 +1,4 @@
+tasks:
+- exec:
+    client.2:
+      - echo foo
