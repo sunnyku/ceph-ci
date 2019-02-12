@@ -936,7 +936,10 @@ int AsyncMessenger::reap_dead()
   while (!deleted_conns.empty()) {
     auto it = deleted_conns.begin();
     AsyncConnectionRef p = *it;
-    ldout(cct, 5) << __func__ << " delete " << p << dendl;
+    ldout(cct, 5) << __func__ << " delete " << p
+		  << " (priv " << p->priv << ")" << dendl;
+    // there may be a priv <-> session ref cycle; try to break it here
+    p->priv.reset(nullptr);
     auto conns_it = conns.find(*p->peer_addrs);
     if (conns_it != conns.end() && conns_it->second == p)
       conns.erase(conns_it);
