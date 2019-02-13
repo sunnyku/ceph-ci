@@ -3151,6 +3151,7 @@ void Monitor::handle_command(MonOpRequestRef op)
     auto features = m->get_connection()->get_features();
     format_command_descriptions(commands, f, features, &rdata);
     delete f;
+    dout(20) << "commands:\n" << rdata.to_str() << dendl;
     reply_command(op, 0, "", rdata, 0);
     return;
   }
