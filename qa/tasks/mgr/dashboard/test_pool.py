@@ -2,7 +2,6 @@
 from __future__ import absolute_import
 
 import logging
-
 import six
 import time
 
@@ -105,7 +104,7 @@ class PoolTest(DashboardTestCase):
     @classmethod
     def tearDownClass(cls):
         super(PoolTest, cls).tearDownClass()
-        for name in ['dashboard_pool1', 'dashboard_pool2', 'dashboard_pool3', 'dashboard_pool_update1']:
+        for name in ['dashboard_pool1', 'dashboard_pool2', 'dashboard_pool3', 'dashboard_pool_update']:
             cls._ceph_cmd(['osd', 'pool', 'delete', name, name, '--yes-i-really-really-mean-it'])
         cls._ceph_cmd(['osd', 'erasure-code-profile', 'rm', 'ecprofile'])
 
@@ -203,6 +202,7 @@ class PoolTest(DashboardTestCase):
             'pool': 'dashboard_pool2',
             'pg_num': '10',
             'pool_type': 'erasure',
+            'application_metadata': ['rbd'],
             'erasure_code_profile': 'ecprofile',
             'crush_rule': 'ecrule',
         }
@@ -220,6 +220,7 @@ class PoolTest(DashboardTestCase):
             'compression_mode': 'aggressive',
             'compression_max_blob_size': '10000000',
             'compression_required_ratio': '0.8',
+            'application_metadata': ['rbd'],
             'configuration': {
                 'rbd_qos_bps_limit': 2048,
                 'rbd_qos_iops_limit': None,
@@ -253,6 +254,7 @@ class PoolTest(DashboardTestCase):
             'compression_mode': 'passive',
             'compression_max_blob_size': '131072',
             'compression_required_ratio': '0.875',
+            'application_metadata': ['rbd'],
             'configuration': {
                 'rbd_qos_bps_limit': 1024000,
                 'rbd_qos_iops_limit': 5000,
@@ -261,12 +263,12 @@ class PoolTest(DashboardTestCase):
         pool_name = pool_data['pool']
         self._task_post('/api/pool/', pool_data)
         self.assertStatus(201)
-        time.sleep(1)
+        time.sleep(10)
         self._validate_pool_properties(pool_data, self._get_pool(pool_name))
 
         properties = {'application_metadata': ['rbd', 'sth']}
         self._task_put('/api/pool/' + pool_name, properties)
-        time.sleep(1)
+        time.sleep(10)
         self._validate_pool_properties(properties, self._get_pool(pool_name))
 
         properties = {'application_metadata': ['rgw']}
@@ -281,11 +283,11 @@ class PoolTest(DashboardTestCase):
             'compression_required_ratio': '0.8',
         }
         self._task_put('/api/pool/' + pool_name, properties)
-        time.sleep(1)
+        time.sleep(10)
         self._validate_pool_properties(properties, self._get_pool(pool_name))
 
         self._task_put('/api/pool/' + pool_name, {'compression_mode': 'unset'})
-        time.sleep(1)
+        time.sleep(10)
         self._validate_pool_properties({
             'compression_algorithm': None,
             'compression_mode': None,
@@ -307,7 +309,7 @@ class PoolTest(DashboardTestCase):
             'value': '0',
         }]
         self._task_put('/api/pool/' + pool_name, {'configuration': configuration})
-        time.sleep(2)
+        time.sleep(10)
         pool_config = self._get_pool(pool_name)['configuration']
         for conf in expected_configuration:
             self.assertIn(conf, pool_config)
