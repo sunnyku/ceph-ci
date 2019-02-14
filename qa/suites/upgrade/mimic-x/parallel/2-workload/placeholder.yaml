@@ -1,0 +1,4 @@
+workload:
+  full_sequential:
+  - sequential:
+    - print: foo

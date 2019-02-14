@@ -1,0 +1,3 @@
+stress-tasks:
+- full_sequential:
+    - print: hello
