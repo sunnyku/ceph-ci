@@ -444,8 +444,9 @@ struct ReconnectFrame
   inline uint64_t &msg_seq() { return get_val<8>(); }
 };
 
-struct ResetFrame : public Frame<ResetFrame> {
+struct ResetFrame : public SignedEncryptedFrame<ResetFrame> {
   static const ProtocolV2::Tag tag = ProtocolV2::Tag::SESSION_RESET;
+  using SignedEncryptedFrame::SignedEncryptedFrame;
 };
 
 struct RetryFrame : public SignedEncryptedFrame<RetryFrame, uint64_t> {
@@ -2334,6 +2335,8 @@ CtPtr ProtocolV2::handle_ident_missing_features(char *payload,
 CtPtr ProtocolV2::handle_session_reset() {
   ldout(cct, 20) << __func__ << dendl;
 
+  ceph_assert(rx_segments_data.size() == 1);
+  ResetFrame(*this, rx_segments_data[0].c_str(), rx_segments_data[0].length());
   ldout(cct, 1) << __func__ << " received session reset" << dendl;
   reset_session();
 
@@ -2706,7 +2709,7 @@ CtPtr ProtocolV2::handle_reconnect(char *payload, uint32_t length) {
     return _fault();
   }
 
-  ResetFrame reset;
+  ResetFrame reset(*this);
   bufferlist &bl = reset.get_buffer();
 
   if (!existing) {
