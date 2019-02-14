@@ -184,6 +184,14 @@ void DispatchQueue::entry()
 	case D_CONN_REFUSED:
 	  msgr->ms_deliver_handle_refused(qitem.get_connection());
 	  break;
+	case D_CONN_REAP:
+	  {
+	    auto con = qitem.get_connection();
+	    ldout(cct,10) << "DispatchQueue::entry reset con " << con
+			  << " priv " << con->priv << dendl;
+	    con->priv.reset(nullptr);
+	  }
+	  break;
 	default:
 	  ceph_abort();
 	}
