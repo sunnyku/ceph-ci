@@ -37,44 +37,30 @@ class PoolTest(DashboardTestCase):
         'wr': pool_list_stat_schema,
     }, allow_unknown=True)
 
-    pool_rbd_conf_schema = JList(JObj(sub_elems={
-        'name': str,
-        'value': str,
-        'source': int
-    }))
+    def _pool_create(self, data):
+        try:
+            self._task_post('/api/pool/', data)
+            self.assertStatus(201)
 
-    def _validate_pool_properties(self, data, pool):
-        for prop, value in data.items():
-            if prop == 'pool_type':
-                self.assertEqual(pool['type'], value)
-            elif prop == 'size':
-                self.assertEqual(pool[prop], int(value),
-                                 '{}: {} != {}'.format(prop, pool[prop], value))
-            elif prop == 'pg_num':
-                self._check_pg_num(value, pool)
-            elif prop == 'application_metadata':
-                self.assertIsInstance(pool[prop], list)
-                self.assertEqual(value, pool[prop])
-            elif prop == 'pool':
-                self.assertEqual(pool['pool_name'], value)
-            elif prop.startswith('compression'):
-                if value is not None:
-                    if prop.endswith('size'):
-                        value = int(value)
-                    elif prop.endswith('ratio'):
-                        value = float(value)
-                    self.assertEqual(pool['options'][prop], value)
-                else:
-                    self.assertEqual(pool['options'], {})
-            elif prop == 'configuration':
-                # configuration cannot really be checked here for two reasons:
-                #   1.  The default value cannot be given to this method, which becomes relevant
-                #       when resetting a value, because it's not always zero.
-                #   2.  The expected `source` cannot be given to this method, and it cannot
-                #       relibably be determined (see 1)
-                pass
-            else:
-                self.assertEqual(pool[prop], value, '{}: {} != {}'.format(prop, pool[prop], value))
+            self._check_pool_properties(data)
+
+            self._task_delete("/api/pool/" + data['pool'])
+            self.assertStatus(204)
+        except Exception:
+            log.exception("test_pool_create: data=%s", data)
+            raise
+
+    def _check_pool_properties(self, data, pool_name=None):
+        if not pool_name:
+            pool_name = data['pool']
+        pool = self._get_pool(pool_name)
+        try:
+            for k, v in data.items():
+                self._check_pool_property(k, v, pool)
+
+        except Exception:
+            log.exception("test_pool_create: pool=%s", pool)
+            raise
 
         health = self._get('/api/health/minimal')['health']
         self.assertEqual(health['status'], 'HEALTH_OK', msg='health={}'.format(health))
@@ -85,21 +71,43 @@ class PoolTest(DashboardTestCase):
         self.assertSchemaBody(self.pool_schema)
         return pool
 
+    def _check_pool_property(self, prop, value, pool):
+        if prop == 'pool_type':
+            self.assertEqual(pool['type'], value)
+        elif prop == 'size':
+            self.assertEqual(pool[prop], int(value), '{}: {} != {}'.format(prop, pool[prop], value))
+        elif prop == 'pg_num':
+            self._check_pg_num(value, pool)
+        elif prop == 'application_metadata':
+            self.assertIsInstance(pool[prop], list)
+            self.assertEqual(pool[prop], value)
+        elif prop == 'pool':
+            self.assertEqual(pool['pool_name'], value)
+        elif prop.startswith('compression'):
+            if value is not None:
+                if prop.endswith('size'):
+                    value = int(value)
+                elif prop.endswith('ratio'):
+                    value = float(value)
+            self.assertEqual(pool['options'].get(prop), value)
+        else:
+            self.assertEqual(pool[prop], value, '{}: {} != {}'.format(prop, pool[prop], value))
+
     def _check_pg_num(self, value, pool):
-        """
-        If both properties have not the same value, the cluster goes into a warning state, which
-        will only happen during a pg update on an existing pool. The test that does that is
-        currently commented out because our QA systems can't deal with the change. Feel free to test
-        it locally.
-        """
+        # If both properties have not the same value, the cluster goes into a warning state,
+        # which will only happen during a pg update on a existing pool.
+        # The test that does that is currently commented out because
+        # our QA systems can't deal with the change.
+        # Feel free to test it locally.
+        prop = 'pg_num'
         pgp_prop = 'pg_placement_num'
-        t = 0
-        while (int(value) != pool[pgp_prop] or self._get('/api/health/minimal')['health']['status']
-               != 'HEALTH_OK') and t < 180:
+        health = lambda: self._get('/api/health/minimal')['health']['status'] == 'HEALTH_OK'
+        t = 0;
+        while (int(value) != pool[pgp_prop] or not health()) and t < 180:
             time.sleep(2)
             t += 2
             pool = self._get_pool(pool['pool_name'])
-        for p in ['pg_num', pgp_prop]:  # Should have the same values
+        for p in [prop, pgp_prop]:  # Should have the same values
             self.assertEqual(pool[p], int(value), '{}: {} != {}'.format(p, pool[p], value))
 
     @classmethod
@@ -180,39 +188,23 @@ class PoolTest(DashboardTestCase):
         self.assertNotIn('pg_status', pool)
         self.assertSchema(pool['stats'], self.pool_list_stats_schema)
         self.assertNotIn('flags_names', pool)
-        self.assertSchema(pool['configuration'], self.pool_rbd_conf_schema)
 
     def test_pool_create(self):
         self._ceph_cmd(['osd', 'crush', 'rule', 'create-erasure', 'ecrule'])
         self._ceph_cmd(
             ['osd', 'erasure-code-profile', 'set', 'ecprofile', 'crush-failure-domain=osd'])
-
-        pool = {
+        pools = [{
             'pool': 'dashboard_pool1',
             'pg_num': '10',
             'pool_type': 'replicated',
             'application_metadata': ['rbd', 'sth'],
-        }
-        self._task_post('/api/pool/', pool)
-        self.assertStatus(201)
-        self._validate_pool_properties(pool, self._get_pool(pool['pool']))
-        self._task_delete("/api/pool/" + pool['pool'])
-        self.assertStatus(204)
-
-        pool = {
+        }, {
             'pool': 'dashboard_pool2',
             'pg_num': '10',
             'pool_type': 'erasure',
             'erasure_code_profile': 'ecprofile',
             'crush_rule': 'ecrule',
-        }
-        self._task_post('/api/pool/', pool)
-        self.assertStatus(201)
-        self._validate_pool_properties(pool, self._get_pool(pool['pool']))
-        self._task_delete("/api/pool/" + pool['pool'])
-        self.assertStatus(204)
-
-        pool = {
+        }, {
             'pool': 'dashboard_pool3',
             'pg_num': '10',
             'pool_type': 'replicated',
@@ -220,99 +212,60 @@ class PoolTest(DashboardTestCase):
             'compression_mode': 'aggressive',
             'compression_max_blob_size': '10000000',
             'compression_required_ratio': '0.8',
-            'configuration': {
-                'rbd_qos_bps_limit': 2048,
-                'rbd_qos_iops_limit': None,
-            },
-        }
-        expected_configuration = [{
-            'name': 'rbd_qos_bps_limit',
-            'source': 1,
-            'value': '2048',
-        }, {
-            'name': 'rbd_qos_iops_limit',
-            'source': 0,
-            'value': '0',
         }]
-        self._task_post('/api/pool/', pool)
-        self.assertStatus(201)
-        new_pool = self._get_pool(pool['pool'])
-        self._validate_pool_properties(pool, new_pool)
-        for conf in expected_configuration:
-            self.assertIn(conf, new_pool['configuration'])
+        for data in pools:
+            self._pool_create(data)
 
-        self._task_delete("/api/pool/" + pool['pool'])
-        self.assertStatus(204)
-
-    def test_pool_update(self):
-        pool_data = {
-            'pool': 'dashboard_pool_update',
+    def test_update(self):
+        pool = {
+            'pool': 'dashboard_pool_update1',
             'pg_num': '4',
             'pool_type': 'replicated',
-            'compression_algorithm': 'snappy',
             'compression_mode': 'passive',
+            'compression_algorithm': 'snappy',
             'compression_max_blob_size': '131072',
             'compression_required_ratio': '0.875',
-            'configuration': {
-                'rbd_qos_bps_limit': 1024000,
-                'rbd_qos_iops_limit': 5000,
+        }
+        updates = [
+            {
+                'application_metadata': ['rbd', 'sth'],
+            },
+            # The following test case is currently commented out because
+            # our QA systems can't deal with the change and will fail because
+            # they can't recover from the resulting warning state.
+            # Feel free to test it locally.
+            # {
+            #     'pg_num': '8',
+            # },
+            {
+                'application_metadata': ['rgw'],
+            },
+            {
+                'compression_algorithm': 'zstd',
+                'compression_mode': 'aggressive',
+                'compression_max_blob_size': '10000000',
+                'compression_required_ratio': '0.8',
+            },
+            {
+                'compression_mode': 'unset'
             }
-        }
-        pool_name = pool_data['pool']
-        self._task_post('/api/pool/', pool_data)
+        ]
+        self._task_post('/api/pool/', pool)
         self.assertStatus(201)
-        time.sleep(1)
-        self._validate_pool_properties(pool_data, self._get_pool(pool_name))
+        self._check_pool_properties(pool)
 
-        properties = {'application_metadata': ['rbd', 'sth']}
-        self._task_put('/api/pool/' + pool_name, properties)
-        time.sleep(1)
-        self._validate_pool_properties(properties, self._get_pool(pool_name))
-
-        properties = {'application_metadata': ['rgw']}
-        self._task_put('/api/pool/' + pool_name, properties)
-        time.sleep(10)
-        self._validate_pool_properties(properties, self._get_pool(pool_name))
-
-        properties = {
-            'compression_algorithm': 'zstd',
-            'compression_mode': 'aggressive',
-            'compression_max_blob_size': '10000000',
-            'compression_required_ratio': '0.8',
-        }
-        self._task_put('/api/pool/' + pool_name, properties)
-        time.sleep(1)
-        self._validate_pool_properties(properties, self._get_pool(pool_name))
-
-        self._task_put('/api/pool/' + pool_name, {'compression_mode': 'unset'})
-        time.sleep(1)
-        self._validate_pool_properties({
-            'compression_algorithm': None,
-            'compression_mode': None,
-            'compression_max_blob_size': None,
-            'compression_required_ratio': None,
-        }, self._get_pool(pool_name))
-
-        configuration = {
-            'rbd_qos_bps_limit': 1024,
-            'rbd_qos_iops_limit': None,
-        }
-        expected_configuration = [{
-            'name': 'rbd_qos_bps_limit',
-            'source': 1,
-            'value': '1024',
-        }, {
-            'name': 'rbd_qos_iops_limit',
-            'source': 0,
-            'value': '0',
-        }]
-        self._task_put('/api/pool/' + pool_name, {'configuration': configuration})
-        time.sleep(2)
-        pool_config = self._get_pool(pool_name)['configuration']
-        for conf in expected_configuration:
-            self.assertIn(conf, pool_config)
-
-        self._task_delete('/api/pool/' + pool_name)
+        for update in updates:
+            self._task_put('/api/pool/' + pool['pool'], update)
+            if update.get('compression_mode') == 'unset':
+                update = {
+                    'compression_mode': None,
+                    'compression_algorithm': None,
+                    'compression_mode': None,
+                    'compression_max_blob_size': None,
+                    'compression_required_ratio': None,
+                }
+            self._check_pool_properties(update, pool_name=pool['pool'])
+        self._task_delete("/api/pool/" + pool['pool'])
         self.assertStatus(204)
 
     def test_pool_create_fail(self):
