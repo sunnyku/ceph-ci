@@ -318,8 +318,8 @@ class PoolTest(DashboardTestCase):
             for conf in expected_configuration:
                 self.assertIn(conf, pool_config)
 
-    def test_pool_update(self):
-        pool_name = 'pool_update'
+    def test_pool_update_compression(self):
+        pool_name = 'pool_update_compression'
         with self.__create_pool(pool_name):
             properties = {
                 'compression_algorithm': 'zstd',
@@ -330,7 +330,10 @@ class PoolTest(DashboardTestCase):
             self._task_put('/api/pool/' + pool_name, properties)
             time.sleep(10)
             self._validate_pool_properties(properties, self._get_pool(pool_name))
-    
+
+    def test_pool_update_unset_compression(self):
+        pool_name = 'pool_update_unset_compression'
+        with self.__create_pool(pool_name):
             self._task_put('/api/pool/' + pool_name, {'compression_mode': 'unset'})
             time.sleep(10)
             self._validate_pool_properties({
