@@ -4,6 +4,7 @@ from __future__ import absolute_import
 import logging
 import six
 import time
+from contextlib import contextmanager
 
 from .helper import DashboardTestCase, JAny, JList, JObj
 
@@ -41,6 +42,33 @@ class PoolTest(DashboardTestCase):
         'value': str,
         'source': int
     }))
+
+    @contextmanager
+    def __create_pool(self, name, data=None):
+        if data:
+            pool_data = data
+        else:
+            pool_data = {
+                'pool': name,
+                'pg_num': '4',
+                'pool_type': 'replicated',
+                'compression_algorithm': 'snappy',
+                'compression_mode': 'passive',
+                'compression_max_blob_size': '131072',
+                'compression_required_ratio': '0.875',
+                'application_metadata': ['rbd'],
+                'configuration': {
+                    'rbd_qos_bps_limit': 1024000,
+                    'rbd_qos_iops_limit': 5000,
+                }
+            }
+        self._task_post('/api/pool/', pool_data)
+        self.assertStatus(201)
+        time.sleep(10)
+        self._validate_pool_properties(pool_data, self._get_pool(name))
+        yield pool_data
+        self._task_delete('/api/pool/' + name)
+        self.assertStatus(204)
 
     def _validate_pool_properties(self, data, pool):
         for prop, value in data.items():
@@ -245,77 +273,72 @@ class PoolTest(DashboardTestCase):
         self._task_delete("/api/pool/" + pool['pool'])
         self.assertStatus(204)
 
-    def test_pool_update(self):
-        pool_data = {
-            'pool': 'dashboard_pool_update',
-            'pg_num': '4',
-            'pool_type': 'replicated',
-            'compression_algorithm': 'snappy',
-            'compression_mode': 'passive',
-            'compression_max_blob_size': '131072',
-            'compression_required_ratio': '0.875',
-            'application_metadata': ['rbd'],
-            'configuration': {
-                'rbd_qos_bps_limit': 1024000,
-                'rbd_qos_iops_limit': 5000,
+    def test_pool_update_set_metadata(self):
+        pool_name = 'pool_update_metadata'
+        with self.__create_pool(pool_name):
+            props = {'application_metadata': ['rbd', 'sth']}
+            self._task_put('/api/pool/{}'.format(pool_name), props)
+            time.sleep(10)
+            self._validate_pool_properties(props, self._get_pool(pool_name))
+
+            properties = {'application_metadata': ['rgw']}
+            self._task_put('/api/pool/' + pool_name, properties)
+            time.sleep(10)
+            self._validate_pool_properties(properties, self._get_pool(pool_name))
+
+            properties = {'application_metadata': ['rgw']}
+            self._task_put('/api/pool/' + pool_name, properties)
+            time.sleep(10)
+            self._validate_pool_properties(properties, self._get_pool(pool_name))
+
+            properties = {'application_metadata': ['rbd', 'sth']}
+            self._task_put('/api/pool/' + pool_name, properties)
+            time.sleep(10)
+            self._validate_pool_properties(properties, self._get_pool(pool_name))
+            
+    def test_pool_update_configuration(self):
+        pool_name = 'pool_update_configuration'
+        with self.__create_pool(pool_name):
+            configuration = {
+                'rbd_qos_bps_limit': 1024,
+                'rbd_qos_iops_limit': None,
             }
-        }
-        pool_name = pool_data['pool']
-        self._task_post('/api/pool/', pool_data)
-        self.assertStatus(201)
-        time.sleep(10)
-        self._validate_pool_properties(pool_data, self._get_pool(pool_name))
+            expected_configuration = [{
+                'name': 'rbd_qos_bps_limit',
+                'source': 1,
+                'value': '1024',
+            }, {
+                'name': 'rbd_qos_iops_limit',
+                'source': 0,
+                'value': '0',
+            }]
+            self._task_put('/api/pool/' + pool_name, {'configuration': configuration})
+            time.sleep(10)
+            pool_config = self._get_pool(pool_name)['configuration']
+            for conf in expected_configuration:
+                self.assertIn(conf, pool_config)
 
-        properties = {'application_metadata': ['rbd', 'sth']}
-        self._task_put('/api/pool/' + pool_name, properties)
-        time.sleep(10)
-        self._validate_pool_properties(properties, self._get_pool(pool_name))
-
-        properties = {'application_metadata': ['rgw']}
-        self._task_put('/api/pool/' + pool_name, properties)
-        time.sleep(10)
-        self._validate_pool_properties(properties, self._get_pool(pool_name))
-
-        properties = {
-            'compression_algorithm': 'zstd',
-            'compression_mode': 'aggressive',
-            'compression_max_blob_size': '10000000',
-            'compression_required_ratio': '0.8',
-        }
-        self._task_put('/api/pool/' + pool_name, properties)
-        time.sleep(10)
-        self._validate_pool_properties(properties, self._get_pool(pool_name))
-
-        self._task_put('/api/pool/' + pool_name, {'compression_mode': 'unset'})
-        time.sleep(10)
-        self._validate_pool_properties({
-            'compression_algorithm': None,
-            'compression_mode': None,
-            'compression_max_blob_size': None,
-            'compression_required_ratio': None,
-        }, self._get_pool(pool_name))
-
-        configuration = {
-            'rbd_qos_bps_limit': 1024,
-            'rbd_qos_iops_limit': None,
-        }
-        expected_configuration = [{
-            'name': 'rbd_qos_bps_limit',
-            'source': 1,
-            'value': '1024',
-        }, {
-            'name': 'rbd_qos_iops_limit',
-            'source': 0,
-            'value': '0',
-        }]
-        self._task_put('/api/pool/' + pool_name, {'configuration': configuration})
-        time.sleep(10)
-        pool_config = self._get_pool(pool_name)['configuration']
-        for conf in expected_configuration:
-            self.assertIn(conf, pool_config)
-
-        self._task_delete('/api/pool/' + pool_name)
-        self.assertStatus(204)
+    def test_pool_update(self):
+        pool_name = 'pool_update'
+        with self.__create_pool(pool_name):
+            properties = {
+                'compression_algorithm': 'zstd',
+                'compression_mode': 'aggressive',
+                'compression_max_blob_size': '10000000',
+                'compression_required_ratio': '0.8',
+            }
+            self._task_put('/api/pool/' + pool_name, properties)
+            time.sleep(10)
+            self._validate_pool_properties(properties, self._get_pool(pool_name))
+    
+            self._task_put('/api/pool/' + pool_name, {'compression_mode': 'unset'})
+            time.sleep(10)
+            self._validate_pool_properties({
+                'compression_algorithm': None,
+                'compression_mode': None,
+                'compression_max_blob_size': None,
+                'compression_required_ratio': None,
+            }, self._get_pool(pool_name))
 
     def test_pool_create_fail(self):
         data = {'pool_type': u'replicated', 'rule_name': u'dnf', 'pg_num': u'8', 'pool': u'sadfs'}
