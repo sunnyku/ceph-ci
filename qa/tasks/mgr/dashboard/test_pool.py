@@ -286,16 +286,16 @@ class PoolTest(DashboardTestCase):
             time.sleep(10)
             self._validate_pool_properties(properties, self._get_pool(pool_name))
 
+            properties = {'application_metadata': ['rbd', 'sth']}
+            self._task_put('/api/pool/' + pool_name, properties)
+            time.sleep(10)
+            self._validate_pool_properties(properties, self._get_pool(pool_name))
+
             properties = {'application_metadata': ['rgw']}
             self._task_put('/api/pool/' + pool_name, properties)
             time.sleep(10)
             self._validate_pool_properties(properties, self._get_pool(pool_name))
 
-            properties = {'application_metadata': ['rbd', 'sth']}
-            self._task_put('/api/pool/' + pool_name, properties)
-            time.sleep(10)
-            self._validate_pool_properties(properties, self._get_pool(pool_name))
-            
     def test_pool_update_configuration(self):
         pool_name = 'pool_update_configuration'
         with self.__create_pool(pool_name):
