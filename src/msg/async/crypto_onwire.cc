@@ -97,7 +97,7 @@ void AES128GCM_OnWireTxHandler::authenticated_encrypt_update(
 	plaintext.length())) {
     throw std::runtime_error("EVP_EncryptUpdate failed");
   }
-  ceph_assert_always(update_len == plaintext.length());
+  ceph_assert_always(update_len == (int)plaintext.length());
 
   ldout(cct, 15) << __func__
 		 << " plaintext.length()=" << plaintext.length()
@@ -215,7 +215,7 @@ ceph::bufferlist AES128GCM_OnWireRxHandler::authenticated_decrypt_update(
 	ciphertext.length())) {
     throw std::runtime_error("EVP_DecryptUpdate failed");
   }
-  ceph_assert_always(ciphertext.length() == update_len);
+  ceph_assert_always((int)ciphertext.length() == update_len);
   ceph::bufferlist outbl;
   outbl.push_back(std::move(plaintext));
   return std::move(outbl);
