@@ -67,7 +67,8 @@ void ProtocolV2::run_continuation(CtPtr continuation) {
 
 #define READB(L, B, C) read(CONTINUATION(C), L, B)
 
-static void alloc_aligned_buffer(bufferlist &data, unsigned len, unsigned off) {
+static void alloc_aligned_buffer(bufferlist &data, unsigned len, unsigned off)
+{
   // create a buffer to read into that matches the data alignment
   unsigned alloc_len = 0;
   unsigned left = len;
@@ -94,7 +95,7 @@ using segment_t = ProtocolV2::segment_t;
 
 // V2 preamble is consisted with one or many preable blocks depending
 // on the number of segments particular frame needs. Each block holds
-// up to 2 segments and has its own CRC.
+// up to MAX_NUM_SEGMENTS segments and has its own CRC.
 //
 // XXX: currently the multi-segment facility is NOT implemented.
 struct preamble_block_t {
@@ -112,7 +113,6 @@ struct preamble_block_t {
   std::array<ProtocolV2::segment_t, MAX_NUM_SEGMENTS> segments;
 
   uint8_t num_extra_preamble_blocks() const {
-    // the first 16 bytes of preamble can carry up to 2 segment descriptors.
     return num_segments <= MAX_NUM_SEGMENTS ? 0
 					    : num_segments - MAX_NUM_SEGMENTS;
   }
