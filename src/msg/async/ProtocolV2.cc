@@ -706,8 +706,9 @@ void ProtocolV2::reset_recv_state() {
   connection->pendingReadLen.reset();
   connection->writeCallback.reset();
 
-  uint32_t cur_msg_size = current_header.front_len + current_header.middle_len +
-                          current_header.data_len;
+  uint32_t cur_msg_size = rx_segments_todo_rev[2].length + \
+			  rx_segments_todo_rev[1].length + \
+			  rx_segments_todo_rev[0].length;
 
   if (state > THROTTLE_MESSAGE && state <= THROTTLE_DONE &&
       connection->policy.throttler_messages) {
