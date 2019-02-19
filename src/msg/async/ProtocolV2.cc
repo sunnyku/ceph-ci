@@ -864,16 +864,18 @@ void ProtocolV2::send_message(Message *m) {
 
   // TODO: Currently not all messages supports reencode like MOSDMap, so here
   // only let fast dispatch support messages prepare message
-  bool can_fast_prepare = messenger->ms_can_fast_dispatch(m);
+  const bool can_fast_prepare = messenger->ms_can_fast_dispatch(m);
   if (can_fast_prepare) {
     prepare_send_message(f, m);
   }
 
   std::lock_guard<std::mutex> l(connection->write_lock);
+  bool is_prepared = can_fast_prepare;
   // "features" changes will change the payload encoding
   if (can_fast_prepare && (!can_write || connection->get_features() != f)) {
     // ensure the correctness of message encoding
     m->clear_payload();
+    is_prepared = false;
     ldout(cct, 10) << __func__ << " clear encoded buffer previous " << f
                    << " != " << connection->get_features() << dendl;
   }
@@ -886,7 +888,7 @@ void ProtocolV2::send_message(Message *m) {
                   << " type=" << m->get_type() << " " << *m << dendl;
     m->trace.event("async enqueueing message");
     out_queue[m->get_priority()].emplace_back(
-      out_queue_entry_t{can_fast_prepare, m});
+      out_queue_entry_t{is_prepared, m});
     ldout(cct, 15) << __func__ << " inline write is denied, reschedule m=" << m
                    << dendl;
     if ((!replacing && can_write) || state == STANDBY) {
