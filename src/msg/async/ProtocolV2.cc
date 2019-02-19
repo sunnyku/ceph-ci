@@ -1001,26 +1001,27 @@ ssize_t ProtocolV2::write_message(Message *m, bool more) {
       std::move(message.get_buffer()));
 
     // receiver uses "front" for "payload"
+    // TODO: switch TxHandler from `bl&&` to `const bl&`.
     if (m->get_payload().length()) {
       session_stream_handlers.tx->authenticated_encrypt_update(
-	std::move(m->get_payload()));
+	ceph::bufferlist(m->get_payload()));
     }
     if (m->get_middle().length()) {
       session_stream_handlers.tx->authenticated_encrypt_update(
-	std::move(m->get_middle()));
+	ceph::bufferlist(m->get_middle()));
     }
     if (m->get_data().length()) {
       session_stream_handlers.tx->authenticated_encrypt_update(
-	std::move(m->get_data()));
+	ceph::bufferlist(m->get_data()));
     }
 
     auto cipherbl = session_stream_handlers.tx->authenticated_encrypt_final();
     connection->outcoming_bl.claim_append(cipherbl);
   } else {
     connection->outcoming_bl.claim_append(message.get_buffer());
-    connection->outcoming_bl.claim_append(m->get_payload());
-    connection->outcoming_bl.claim_append(m->get_middle());
-    connection->outcoming_bl.claim_append(m->get_data());
+    connection->outcoming_bl.append(m->get_payload());
+    connection->outcoming_bl.append(m->get_middle());
+    connection->outcoming_bl.append(m->get_data());
   }
 
   ldout(cct, 5) << __func__ << " sending message m=" << m
