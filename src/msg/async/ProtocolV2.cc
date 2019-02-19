@@ -131,9 +131,7 @@ protected:
   ceph::bufferlist::contiguous_filler preamble_filler;
 
   void fill_preamble(
-    // TODO: get rid of this distinction
-    const std::initializer_list<segment_t> main_segments,
-    const std::initializer_list<segment_t> extra_segments)
+    const std::initializer_list<segment_t> main_segments)
   {
     ceph_assert(
       std::size(main_segments) <= preamble_block_t::MAX_NUM_SEGMENTS);
@@ -147,8 +145,7 @@ protected:
       // TODO: we might fill/pad with pseudo-random data.
       ::memset(&main_preamble, 0, sizeof(main_preamble));
 
-      main_preamble.num_segments = \
-        std::size(main_segments) + std::size(extra_segments);
+      main_preamble.num_segments = std::size(main_segments);
       main_preamble.tag = static_cast<__u8>(T::tag);
       ceph_assert(main_preamble.tag != 0);
 
@@ -162,26 +159,6 @@ protected:
       preamble_filler.copy_in(sizeof(main_preamble),
 			      reinterpret_cast<const char*>(&main_preamble));
     }
-
-    // the extra preamble block
-    if (!std::empty(extra_segments)) {
-      preamble_block_t extra_preamble;
-      // TODO: we might fill/pad with pseudo-random data.
-      ::memset(&extra_preamble, 0, sizeof(extra_preamble));
-
-      extra_preamble.num_segments = std::size(extra_segments);
-      extra_preamble.tag = static_cast<__u8>(T::tag);
-
-      std::copy(std::cbegin(extra_segments), std::cend(extra_segments),
-	        std::begin(extra_preamble.segments));
-
-      extra_preamble.crc = ceph_crc32c(0,
-	reinterpret_cast<unsigned char*>(&extra_preamble),
-	sizeof(extra_preamble));
-
-      preamble_filler.copy_in(sizeof(extra_preamble),
-			      reinterpret_cast<const char*>(&extra_preamble));
-    }
   }
 
 public:
@@ -191,7 +168,7 @@ public:
     fill_preamble({
       segment_t{ payload.length() - FRAME_PREAMBLE_SIZE,
 		 segment_t::DEFAULT_ALIGNMENT }
-    }, {});
+    });
     return payload;
   }
 
@@ -362,7 +339,7 @@ struct SignedEncryptedFrame : public PayloadFrame<T, Args...> {
     this->fill_preamble({
       segment_t{ this->payload.length() - FRAME_PREAMBLE_SIZE,
 		 segment_t::DEFAULT_ALIGNMENT }
-    }, {});
+    });
 
     if (protocol.session_stream_handlers.tx) {
       ceph_assert(protocol.session_stream_handlers.tx);
@@ -547,7 +524,7 @@ struct MessageHeaderFrame
       segment_t{ front_len, segment_t::DEFAULT_ALIGNMENT },
       segment_t{ middle_len, segment_t::DEFAULT_ALIGNMENT },
       segment_t{ data_len, segment_t::DEFERRED_ALLOCATION },
-    }, {});
+    });
   }
 
   MessageHeaderFrame(ceph::bufferlist&& text)
