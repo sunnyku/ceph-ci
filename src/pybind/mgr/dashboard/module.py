@@ -75,20 +75,97 @@ def prepare_url_prefix(url_prefix):
     url_prefix = urlparse.urljoin('/', url_prefix)
     return url_prefix.rstrip('/')
 
+
+def bound_lo_v4(server_addrs):
+    """
+    return True if server accepts on 127.0.0.1
+    """
+    if not isinstance(server_addrs, (list, tuple, set)):
+        assert isinstance(server_addrs, str), 'must be list or tuple or set or str'
+        server_addrs = [server_addrs]
+
+    addrs = []
+    for server_addr in server_addrs:
+        host, port = server_addr, 0
+        try:
+            info = socket.getaddrinfo(host, port, socket.AF_UNSPEC,
+                                      socket.SOCK_STREAM, 0, socket.AI_PASSIVE)
+        except socket.gaierror as e:
+            log.error("failed to get addr info for {0}: {1}".format(host, e))
+            if ':' in self.addr:
+                info = [(socket.AF_INET6, socket.SOCK_STREAM,
+                         0, '', (server_addr, 0) + (0, 0))]
+            else:
+                info = [(socket.AF_INET, socket.SOCK_STREAM,
+                         0, '', (server_addr, 0))]
+
+        for res in info:
+            af, socktype, proto, canonname, sa = res
+            addrs.append(sa[0])
+
+    return len([x for x in addrs if x in ('::', '0.0.0.0', '127.0.0.1')]) > 0
+
+
+def parse_ipaddr(addr):
+    """
+    parse IPv4/IPv6 address string from a sockaddr string
+
+    e.g.,
+    '10.120.155.40:6800'
+    '[fe80::a00:27ff:fe8c:7dbb]:6800'
+
+    :param addr: sockaddr string dumped by ostream& operator<<(ostream& out, const sockaddr *sa)
+    :return: IPv4/IPv6 address string
+    """
+
+    def _split(delims, string, maxsplit=0):
+        import re
+        pattern = '|'.join(map(re.escape, delims))
+        return re.split(pattern, string, maxsplit)
+
+    v = []
+    if '[' in addr:  # IPv6 sockaddr string
+        v = _split(('[', ']'), addr)
+    else:
+        v = _split(':', addr)
+        v.insert(0, '')
+    return v[1]
+
+
 class StandbyModule(MgrStandbyModule):
     def serve(self):
-        server_addr = self.get_localized_config('server_addr', '::')
+        server_addr = self.get_localized_config('server_addr', '')
         server_port = self.get_localized_config('server_port', '7000')
         url_prefix = prepare_url_prefix(self.get_config('url_prefix', default=''))
 
         if server_addr is None:
             raise RuntimeError('no server_addr configured; try "ceph config-key set mgr/dashboard/server_addr <ip>"')
-        log.info("server_addr: %s server_port: %s" % (server_addr, server_port))
-        cherrypy.config.update({
-            'server.socket_host': server_addr,
-            'server.socket_port': int(server_port),
-            'engine.autoreload.on': False
-        })
+
+        if server_addr != '':
+            # bind explicitly
+            if not bound_lo_v4(server_addr):
+                # bind to local if possible
+                cherrypy.config.update({
+                    'server.slo.socket_host': '127.0.0.1',
+                    'server.slo.socket_port': int(server_port),
+                    'engine.autoreload.on': False
+                })
+
+            log.info("server_addr: %s server_port: %s" % (server_addr, server_port))
+            cherrypy.config.update({
+                'server.socket_host': server_addr,
+                'server.socket_port': int(server_port),
+                'engine.autoreload.on': False
+            })
+        else:
+            # disable default cherrypy server
+            cherrypy.server.unsubscribe()
+
+            cherrypy.config.update({
+                'server.slo.socket_host': '127.0.0.1',
+                'server.slo.socket_port': int(server_port),
+                'engine.autoreload.on': False
+            })
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
         jinja_loader = jinja2.FileSystemLoader(current_dir)
@@ -969,16 +1046,66 @@ class Module(MgrModule):
         url_prefix = prepare_url_prefix(self.get_config('url_prefix', default=''))
         self.url_prefix = url_prefix
 
-        server_addr = self.get_localized_config('server_addr', '::')
+        server_addr = self.get_localized_config('server_addr', '')
         server_port = self.get_localized_config('server_port', '7000')
         if server_addr is None:
             raise RuntimeError('no server_addr configured; try "ceph config-key set mgr/dashboard/server_addr <ip>"')
-        log.info("server_addr: %s server_port: %s" % (server_addr, server_port))
-        cherrypy.config.update({
-            'server.socket_host': server_addr,
-            'server.socket_port': int(server_port),
-            'engine.autoreload.on': False
-        })
+
+        if server_addr != '':
+            # bind explicitly
+            if not bound_lo_v4(server_addr):
+                # bind to local if possible
+                cherrypy.config.update({
+                    'server.slo.socket_host': '127.0.0.1',
+                    'server.slo.socket_port': int(server_port),
+                    'engine.autoreload.on': False
+                })
+
+            log.info("server_addr: %s server_port: %s" % (server_addr, server_port))
+            cherrypy.config.update({
+                'server.socket_host': server_addr,
+                'server.socket_port': int(server_port),
+                'engine.autoreload.on': False
+            })
+        else:
+            # disable default cherrypy server
+            cherrypy.server.unsubscribe()
+
+            # try to get daemon server addr as server_addr
+            server_addrs = []
+            try:
+                # python array, e.g., ['10.120.155.40:6800'] or ['[fe80::a00:27ff:fe8c:7dbb]:6800']
+                myaddr = self.get_myaddr()
+
+                for i in myaddr:
+                    server_addrs.append(parse_ipaddr(i))
+            except Exception as e:
+                log.error("failed to get mgr daemon server addr: {0}".format(e))
+            except:
+                log.error("failed to get mgr daemon server addr")
+
+            if len(server_addrs) == 0:
+                # fallback if failed
+                server_addrs.append('::')
+
+            # remove duplicates
+            server_addrs = set(server_addrs)
+
+            if not bound_lo_v4(server_addrs):
+                # bind to local if possible
+                cherrypy.config.update({
+                    'server.slo.socket_host': '127.0.0.1',
+                    'server.slo.socket_port': int(server_port),
+                    'engine.autoreload.on': False
+                })
+
+            for idx, server_addr in enumerate(server_addrs):
+                log.info("server_addr: %s server_port: %s" % (server_addr, server_port))
+                cherrypy.config.update({
+                    'server.s{0}.socket_host'.format(idx): server_addr,
+                    'server.s{0}.socket_port'.format(idx): int(server_port),
+                    'engine.autoreload.on': False
+                })
 
         osdmap = self.get_osdmap()
         log.info("latest osdmap is %d" % osdmap.get_epoch())
