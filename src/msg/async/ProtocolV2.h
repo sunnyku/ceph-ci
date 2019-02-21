@@ -4,7 +4,10 @@
 #ifndef _MSG_ASYNC_PROTOCOL_V2_
 #define _MSG_ASYNC_PROTOCOL_V2_
 
+#include <boost/container/static_vector.hpp>
+
 #include "Protocol.h"
+#include "crypto_onwire.h"
 
 class ProtocolV2 : public Protocol {
 private:
@@ -19,7 +22,7 @@ private:
     THROTTLE_MESSAGE,
     THROTTLE_BYTES,
     THROTTLE_DISPATCH_QUEUE,
-    READ_MESSAGE_FRONT,
+    THROTTLE_DONE,
     READ_MESSAGE_COMPLETE,
     STANDBY,
     WAIT,
@@ -37,7 +40,7 @@ private:
                                       "THROTTLE_MESSAGE",
                                       "THROTTLE_BYTES",
                                       "THROTTLE_DISPATCH_QUEUE",
-                                      "READ_MESSAGE_FRONT",
+                                      "THROTTLE_DONE",
                                       "READ_MESSAGE_COMPLETE",
                                       "STANDBY",
                                       "WAIT",
@@ -46,7 +49,7 @@ private:
   }
 
 public:
-  enum class Tag : uint32_t {
+  enum class Tag : __u8 {
     HELLO = 1,
     AUTH_REQUEST,
     AUTH_BAD_METHOD,
@@ -68,6 +71,8 @@ public:
     ACK
   };
 
+  // TODO: move into auth_meta?
+  ceph::crypto::onwire::rxtx_t session_stream_handlers;
 private:
   enum class AuthFlag : uint64_t { ENCRYPTED = 1, SIGNED = 2 };
 
@@ -75,7 +80,6 @@ private:
   char *temp_buffer;
   State state;
   uint64_t peer_required_features;
-  std::shared_ptr<AuthSessionHandler> session_security;
 
   uint64_t client_cookie;
   uint64_t server_cookie;
@@ -86,7 +90,11 @@ private:
   bool reconnecting;
   bool replacing;
   bool can_write;
-  std::map<int, std::list<std::pair<bufferlist, Message *>>> out_queue;
+  struct out_queue_entry_t {
+    bool is_prepared {false};
+    Message* m {nullptr};
+  };
+  std::map<int, std::list<out_queue_entry_t>> out_queue;
   std::list<Message *> sent;
   std::atomic<uint64_t> out_seq{0};
   std::atomic<uint64_t> in_seq{0};
@@ -96,6 +104,51 @@ private:
   Ct<ProtocolV2> *bannerExchangeCallback;
 
   uint32_t next_payload_len;
+
+public:
+  struct segment_t {
+    // TODO: this will be dropped with support for `allocation policies`.
+    // We need them because of the rx_buffers zero-copy optimization.
+    static constexpr __le16 DEFERRED_ALLOCATION { 0x0000 };
+
+    static constexpr __le16 DEFAULT_ALIGNMENT = sizeof(void*);
+
+    __le32 length;
+    __le16 alignment;
+  } __attribute__((packed));
+
+  struct onwire_segment_t {
+    // crypto-processed segment can be expanded on-wire because of:
+    //  * padding to achieve CRYPTO_BLOCK_SIZE alignment,
+    //  * authentication tag. It's appended at the end of message.
+    //    See RxHandler::get_extra_size_at_final().
+    __le32 onwire_length;
+
+    struct segment_t logical;
+  } __attribute__((packed));
+
+  static constexpr std::size_t MAX_NUM_SEGMENTS = 4;
+
+  struct SegmentIndex {
+    struct Msg {
+      static constexpr std::size_t HEADER = 0;
+      static constexpr std::size_t FRONT = 1;
+      static constexpr std::size_t MIDDLE = 2;
+      static constexpr std::size_t DATA = 3;
+    };
+
+    struct Frame {
+      static constexpr std::size_t PAYLOAD = 0;
+    };
+  };
+
+  boost::container::static_vector<onwire_segment_t,
+				  MAX_NUM_SEGMENTS> rx_segments_desc;
+  boost::container::static_vector<ceph::bufferlist,
+				  MAX_NUM_SEGMENTS> rx_segments_data;
+
+private:
+
   Tag next_tag;
   ceph_msg_header2 current_header;
   utime_t backoff;  // backoff time
@@ -110,7 +163,6 @@ private:
 
   ostream &_conn_prefix(std::ostream *_dout);
   void run_continuation(Ct<ProtocolV2> *continuation);
-  void calc_signature(const char *in, uint32_t length, char *out);
 
   Ct<ProtocolV2> *read(CONTINUATION_PARAM(next, ProtocolV2, char *, int),
                        int len, char *buffer = nullptr);
@@ -124,9 +176,9 @@ private:
   Ct<ProtocolV2> *_fault();
   void discard_out_queue();
   void reset_session();
-  void prepare_send_message(uint64_t features, Message *m, bufferlist &bl);
-  Message *_get_next_outgoing(bufferlist *bl);
-  ssize_t write_message(Message *m, bufferlist &bl, bool more);
+  void prepare_send_message(uint64_t features, Message *m);
+  out_queue_entry_t _get_next_outgoing();
+  ssize_t write_message(Message *m, bool more);
   void append_keepalive();
   void append_keepalive_ack(utime_t &timestamp);
   void handle_message_ack(uint64_t seq);
@@ -142,33 +194,28 @@ private:
   Ct<ProtocolV2> *handle_hello(char *payload, uint32_t length);
 
   CONTINUATION_DECL(ProtocolV2, read_frame);
-  READ_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_read_frame_length_and_tag);
-  READ_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_frame_payload);
-  READ_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_message_header);
+  READ_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_read_frame_preamble_main);
+  READ_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_read_frame_segment);
   CONTINUATION_DECL(ProtocolV2, throttle_message);
   CONTINUATION_DECL(ProtocolV2, throttle_bytes);
   CONTINUATION_DECL(ProtocolV2, throttle_dispatch_queue);
-  READ_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_message_front);
-  READ_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_message_middle);
   CONTINUATION_DECL(ProtocolV2, read_message_data);
   READ_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_message_data);
   READ_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_message_extra_bytes);
 
   Ct<ProtocolV2> *read_frame();
-  Ct<ProtocolV2> *handle_read_frame_length_and_tag(char *buffer, int r);
-  Ct<ProtocolV2> *handle_frame_payload(char *buffer, int r);
+  Ct<ProtocolV2> *handle_read_frame_preamble_main(char *buffer, int r);
+  Ct<ProtocolV2> *handle_read_frame_dispatch();
+  Ct<ProtocolV2> *read_frame_segment();
+  Ct<ProtocolV2> *handle_read_frame_segment(char *buffer, int r);
+  Ct<ProtocolV2> *handle_frame_payload();
 
   Ct<ProtocolV2> *ready();
 
   Ct<ProtocolV2> *handle_message();
-  Ct<ProtocolV2> *handle_message_header(char *buffer, int r);
   Ct<ProtocolV2> *throttle_message();
   Ct<ProtocolV2> *throttle_bytes();
   Ct<ProtocolV2> *throttle_dispatch_queue();
-  Ct<ProtocolV2> *read_message_front();
-  Ct<ProtocolV2> *handle_message_front(char *buffer, int r);
-  Ct<ProtocolV2> *read_message_middle();
-  Ct<ProtocolV2> *handle_message_middle(char *buffer, int r);
   Ct<ProtocolV2> *read_message_data_prepare();
   Ct<ProtocolV2> *read_message_data();
   Ct<ProtocolV2> *handle_message_data(char *buffer, int r);
@@ -197,14 +244,6 @@ public:
   virtual void read_event() override;
   virtual void write_event() override;
   virtual bool is_queued() override;
-
-  void sign_payload(bufferlist &payload);
-  void verify_signature(char *payload, uint32_t length);
-  void encrypt_payload(bufferlist &payload);
-  void decrypt_payload(char *payload, uint32_t &length);
-  void calculate_payload_size(uint32_t length, uint32_t *total_len,
-                              uint32_t *sig_pad_len = nullptr,
-                              uint32_t *enc_pad_len = nullptr);
 
 private:
   // Client Protocol
@@ -251,6 +290,8 @@ private:
   Ct<ProtocolV2> *send_server_ident();
   Ct<ProtocolV2> *send_reconnect_ok();
   Ct<ProtocolV2> *server_ready();
+
+  uint32_t get_onwire_size(uint32_t logical_size) const;
 };
 
 #endif /* _MSG_ASYNC_PROTOCOL_V2_ */

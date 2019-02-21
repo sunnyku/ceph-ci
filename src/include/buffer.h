@@ -885,9 +885,12 @@ namespace buffer CEPH_BUFFER_API {
       contiguous_filler(char* const pos) : pos(pos) {}
 
     public:
+      void advance(const unsigned len) {
+	pos += len;
+      }
       void copy_in(const unsigned len, const char* const src) {
 	memcpy(pos, src, len);
-	pos += len;
+	advance(len);
       }
       char* c_str() {
         return pos;
