@@ -187,6 +187,10 @@ endif (WITH_RADOSGW_BEAST_FRONTEND)
 
 add_library(radosgw_a STATIC ${radosgw_srcs}
   $<TARGET_OBJECTS:civetweb_common_objs>)
+
+target_include_directories(radosgw_a SYSTEM PUBLIC
+  "${CMAKE_SOURCE_DIR}/src/seastar/fmt/include")
+
 if (WITH_RADOSGW_BEAST_FRONTEND AND WITH_RADOSGW_BEAST_OPENSSL)
   target_link_libraries(radosgw_a rgw_a ${SSL_LIBRARIES})
 endif()
