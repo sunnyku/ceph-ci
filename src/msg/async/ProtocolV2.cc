@@ -1546,8 +1546,18 @@ CtPtr ProtocolV2::read_frame_segment() {
     return handle_read_frame_dispatch();
   }
 
-  auto rx_buffer = ceph::buffer::ptr_node::create(buffer::create_aligned(
-    cur_rx_desc.onwire_length, cur_rx_desc.logical.alignment));
+  std::unique_ptr<buffer::ptr_node, buffer::ptr_node::disposer> rx_buffer;
+  try {
+    rx_buffer = ceph::buffer::ptr_node::create(buffer::create_aligned(
+      cur_rx_desc.onwire_length, cur_rx_desc.logical.alignment));
+  } catch (std::bad_alloc&) {
+    // Catching because of potential issues with satisfying alignment.
+    ldout(cct, 20) << __func__ << " can't allocate aligned rx_buffer "
+		   << " len=" << cur_rx_desc.onwire_length
+		   << " align=" << cur_rx_desc.logical.alignment
+		   << dendl;
+    return _fault();
+  }
 
   rx_segments_data.emplace_back();
   rx_segments_data.back().push_back(std::move(rx_buffer));
