@@ -55,9 +55,3 @@ AuthSessionHandler *get_auth_session_handler(
   }
 }
 
-AuthStreamHandler::rxtx_t AuthStreamHandler::create_stream_handler_pair(
-  CephContext* cct,
-  const class AuthConnectionMeta& auth_meta)
-{
-  return { nullptr, nullptr };
-}
