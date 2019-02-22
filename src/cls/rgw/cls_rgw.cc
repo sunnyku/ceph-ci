@@ -3363,15 +3363,8 @@ static int gc_iterate_entries(cls_method_context_t hctx,
 
   map<string, bufferlist>::iterator iter = keys.begin();
   if (iter == keys.end()) {
-    if (truncated && *truncated) {
-      // this should likely be an assert, but if this is a problem we
-      // need to handle it gently for the time being, so we'll log and
-      // fix
-      CLS_LOG(0,
-	      "%s LOGIC ERROR: if no entries truncated must be false\n",
-	      __func__);
-      *truncated = false;
-    }
+    // if keys empty must not come back as truncated
+    ceph_assert(!truncated || !(*truncated));
     return 0;
   }
 
