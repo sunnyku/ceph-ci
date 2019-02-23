@@ -40,6 +40,7 @@
 #include "auth/AuthClientHandler.h"
 #include "auth/AuthMethodList.h"
 #include "auth/RotatingKeyRing.h"
+#include "osdc/Objecter.h"
 
 #define dout_subsys ceph_subsys_monc
 #undef dout_prefix
@@ -729,6 +730,8 @@ void MonClient::_finish_hunting()
     ldout(cct, 1) << "found mon."
 		  << monmap.get_name(con->get_peer_addr())
 		  << dendl;
+    if (objecter)
+      objecter->try_resend();
   } else {
     ldout(cct, 1) << "no mon sessions established" << dendl;
   }

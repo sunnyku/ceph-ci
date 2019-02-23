@@ -443,6 +443,7 @@ void Objecter::init()
   }
 
   update_crush_location();
+  monc->set_objecter(this);
 
   cct->_conf->add_observer(this);
 
@@ -1356,61 +1357,7 @@ void Objecter::handle_osd_map(MOSDMap *m)
   }
 
   // resend requests
-  for (map<ceph_tid_t, Op*>::iterator p = need_resend.begin();
-       p != need_resend.end(); ++p) {
-    Op *op = p->second;
-    OSDSession *s = op->session;
-    bool mapped_session = false;
-    if (!s) {
-      int r = _map_session(&op->target, &s, sul);
-      assert(r == 0);
-      mapped_session = true;
-    } else {
-      get_session(s);
-    }
-    OSDSession::unique_lock sl(s->lock);
-    if (mapped_session) {
-      _session_op_assign(s, op);
-    }
-    if (op->should_resend) {
-      if (!op->session->is_homeless() && !op->target.paused) {
-	logger->inc(l_osdc_op_resend);
-	_send_op(op);
-      }
-    } else {
-      _op_cancel_map_check(op);
-      _cancel_linger_op(op);
-    }
-    sl.unlock();
-    put_session(s);
-  }
-  for (list<LingerOp*>::iterator p = need_resend_linger.begin();
-       p != need_resend_linger.end(); ++p) {
-    LingerOp *op = *p;
-    if (!op->session) {
-      _calc_target(&op->target, nullptr);
-      OSDSession *s = NULL;
-      const int r = _get_session(op->target.osd, &s, sul);
-      assert(r == 0);
-      assert(s != NULL);
-      op->session = s;
-      put_session(s);
-    }
-    if (!op->session->is_homeless()) {
-      logger->inc(l_osdc_linger_resend);
-      _send_linger(op, sul);
-    }
-  }
-  for (map<ceph_tid_t,CommandOp*>::iterator p = need_resend_command.begin();
-       p != need_resend_command.end(); ++p) {
-    CommandOp *c = p->second;
-    if (c->target.osd >= 0) {
-      _assign_command_session(c, sul);
-      if (c->session && !c->session->is_homeless()) {
-	_send_command(c);
-      }
-    }
-  }
+  _try_resend(need_resend, need_resend_linger, need_resend_command, sul);
 
   _dump_active();
 
@@ -2330,6 +2277,97 @@ void Objecter::resend_mon_ops()
   }
 }
 
+void Objecter::_try_resend(map<ceph_tid_t, Op*>& need_resend,
+                           list<LingerOp*>& need_resend_linger,
+                           map<ceph_tid_t, CommandOp*>& need_resend_command,
+                           shunique_lock& sul) {
+  assert(sul.owns_lock() && sul.mutex() == &rwlock);
+  // submit ops
+  for (auto p = need_resend.begin(); p != need_resend.end(); ++p) {
+    Op *op = p->second;
+    OSDSession *s = op->session;
+    bool mapped_session = false;
+    if (!s) {
+      int r = _map_session(&op->target, &s, sul);
+      assert(r == 0);
+      mapped_session = true;
+    } else {
+      get_session(s);
+    }
+    OSDSession::unique_lock sl(s->lock);
+    if (mapped_session) {
+      _session_op_assign(s, op);
+    }
+    if (op->should_resend) {
+      if (!op->session->is_homeless() && !op->target.paused) {
+	logger->inc(l_osdc_op_resend);
+	_send_op(op);
+      }
+    } else {
+      _op_cancel_map_check(op);
+      _cancel_linger_op(op);
+    }
+    sl.unlock();
+    put_session(s);
+  }
+  // linger ops
+  for (list<LingerOp*>::iterator p = need_resend_linger.begin();
+       p != need_resend_linger.end(); ++p) {
+    LingerOp *op = *p;
+    if (!op->session) {
+      _calc_target(&op->target, nullptr);
+      OSDSession *s = NULL;
+      const int r = _get_session(op->target.osd, &s, sul);
+      assert(r == 0);
+      assert(s != NULL);
+      op->session = s;
+      put_session(s);
+    }
+    if (!op->session->is_homeless()) {
+      logger->inc(l_osdc_linger_resend);
+      _send_linger(op, sul);
+    }
+  }
+  // command ops
+  for (map<ceph_tid_t,CommandOp*>::iterator p = need_resend_command.begin();
+       p != need_resend_command.end(); ++p) {
+    CommandOp *c = p->second;
+    if (c->target.osd >= 0) {
+      _assign_command_session(c, sul);
+      if (c->session && !c->session->is_homeless()) {
+	_send_command(c);
+      }
+    }
+  }
+
+}
+
+void Objecter::try_resend() {
+  map<ceph_tid_t, Op*> need_resend;
+  map<ceph_tid_t, CommandOp*> need_resend_command;
+  list<LingerOp*> need_resend_linger;
+
+  if (!cct->_conf->objecter_pause_on_mon_lost) {
+    return;
+  }
+  ldout(cct, 10) << "try_resend_requests" << dendl;
+
+  shunique_lock sul(rwlock, ceph::acquire_unique);
+  _scan_requests(homeless_session, false, false, NULL, need_resend,
+		 need_resend_linger, need_resend_command, sul);
+  for (map<int,OSDSession*>::iterator p = osd_sessions.begin();
+       p != osd_sessions.end(); ++p) {
+    OSDSession *s = p->second;
+    _scan_requests(s, false, false, NULL, need_resend,
+                   need_resend_linger, need_resend_command, sul);
+  }
+
+  return _try_resend(need_resend,
+                         need_resend_linger,
+                         need_resend_command,
+                         sul);
+}
+
 // read | write ---------------------------
 
 void Objecter::op_submit(Op *op, ceph_tid_t *ptid, int *ctx_budget)
@@ -2503,7 +2541,12 @@ void Objecter::_op_submit(Op *op, shunique_lock& sul, ceph_tid_t *ptid)
 
   bool need_send = false;
 
-  if (osdmap->get_epoch() < epoch_barrier) {
+  if (!monc->is_connected() &&
+      cct->_conf->objecter_pause_on_mon_lost) {
+    ldout(cct, 10) << " mon lost, paused " << op << " tid " << op->tid
+		   << dendl;
+    op->target.paused = true;
+  } else if (osdmap->get_epoch() < epoch_barrier) {
     ldout(cct, 10) << " barrier, paused " << op << " tid " << op->tid
 		   << dendl;
     op->target.paused = true;
@@ -2744,7 +2787,9 @@ bool Objecter::target_should_be_paused(op_target_t *t)
 
   return (t->flags & CEPH_OSD_FLAG_READ && pauserd) ||
     (t->flags & CEPH_OSD_FLAG_WRITE && pausewr) ||
-    (osdmap->get_epoch() < epoch_barrier);
+    (osdmap->get_epoch() < epoch_barrier) ||
+    (cct->_conf->objecter_pause_on_mon_lost &&
+    !monc->is_connected());
 }
 
 /**

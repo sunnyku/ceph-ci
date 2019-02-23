@@ -38,6 +38,7 @@ class AuthMethodList;
 class AuthClientHandler;
 class KeyRing;
 class RotatingKeyRing;
+class Objecter;
 
 struct MonClientPinger : public Dispatcher {
 
@@ -149,6 +150,7 @@ public:
   MonMap monmap;
 private:
   Messenger *messenger;
+  Objecter *objecter = nullptr;
 
   std::unique_ptr<MonConnection> active_con;
   std::map<entity_addr_t, MonConnection> pending_cons;
@@ -216,6 +218,7 @@ private:
 
 public:
   void set_entity_name(EntityName name) { entity_name = name; }
+  void set_objecter(Objecter *o) { objecter = o; }
 
   int _check_auth_tickets();
   int _check_auth_rotating();
