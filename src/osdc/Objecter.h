@@ -2151,6 +2151,10 @@ private:
 			      ceph_tid_t *ptid,
 			      int *ctx_budget = NULL);
   inline void unregister_op(Op *op);
+  void _try_resend(map<ceph_tid_t, Op*>& need_resend,
+                   list<LingerOp*>& need_resend_linger,
+                   map<ceph_tid_t, CommandOp*>& need_resend_command,
+                   shunique_lock& sul);
 
   // public interface
 public:
@@ -2160,6 +2164,7 @@ public:
     return !((!inflight_ops) && linger_ops.empty() &&
 	     poolstat_ops.empty() && statfs_ops.empty());
   }
+  void try_resend(shunique_lock& sul);
 
   /**
    * Output in-flight requests
