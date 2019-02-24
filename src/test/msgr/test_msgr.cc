@@ -339,6 +339,10 @@ struct TestInterceptor : public Interceptor {
  * Scenario: A connects to B, and B connects to A at the same time.
  */ 
 TEST_P(MessengerTest, ConnectionRaceTest) {
+  if (string(GetParam()) == "simple") {
+    return;
+  }
+
   FakeDispatcher cli_dispatcher(false), srv_dispatcher(false);
 
   TestInterceptor *cli_interceptor = new TestInterceptor();
