@@ -3648,7 +3648,7 @@ std::vector<Option> get_global_options() {
     .set_description(""),
 
     Option("bluestore_meta_fixed_length", Option::TYPE_UINT, Option::LEVEL_DEV)
-    .set_default(65536)
+    .set_default(0)
     .set_safe()
     .set_description(""),
 
