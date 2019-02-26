@@ -1623,7 +1623,7 @@ std::vector<Option> get_global_options() {
     .set_description(""),
 
     Option("objecter_pause_on_mon_lost", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
-    .set_default(false)
+    .set_default(true)
     .set_description("pause io when losing connection to monintor"),
 
     Option("filer_max_purge_ops", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
