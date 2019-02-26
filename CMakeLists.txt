@@ -345,7 +345,6 @@ if(WITH_LZ4)
 endif(WITH_LZ4)
 
 option(WITH_CEPH_DEBUG_MUTEX "Use debug ceph::mutex with lockdep" OFF)
-option(WITH_DEBUG_PG_REFS "Debug PG references" OFF)
 
 #if allocator is set on command line make sure it matches below strings
 set(ALLOCATOR "" CACHE STRING
