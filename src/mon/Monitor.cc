@@ -986,6 +986,8 @@ void Monitor::bootstrap()
 
     // reset all connections, or else our peers will think we are someone else.
     messenger->mark_down_all();
+  } else if (g_conf->mon_markdown_all_on_bootstrap){
+    messenger->mark_down_all();
   }
 
   // reset
