@@ -3618,6 +3618,8 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
     encode(file_i->rstat.rfiles, bl);
     encode(file_i->rstat.rsubdirs, bl);
     encode(file_i->rstat.rctime, bl);
+    encode(file_i->rstat.user_rbytes, bl);
+    encode(file_i->rstat.group_rbytes, bl);
     dirfragtree.encode(bl);
     encode(symlink, bl);
     encode(file_i->dir_layout, bl);
@@ -3664,6 +3666,8 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
     encode(file_i->rstat.rfiles, bl);
     encode(file_i->rstat.rsubdirs, bl);
     encode(file_i->rstat.rctime, bl);
+    encode(file_i->rstat.user_rbytes, bl);
+    encode(file_i->rstat.group_rbytes, bl);
     dirfragtree.encode(bl);
     encode(symlink, bl);
     if (session->get_connection()->has_feature(CEPH_FEATURE_DIRLAYOUTHASH)) {
