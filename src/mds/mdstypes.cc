@@ -119,6 +119,14 @@ void nest_info_t::dump(Formatter *f) const
   f->dump_unsigned("rbytes", rbytes);
   f->dump_unsigned("rfiles", rfiles);
   f->dump_unsigned("rsubdirs", rsubdirs);
+  for (auto& p : user_rbytes) {
+    f->dump_unsigned("user", p.first);
+    f->dump_unsigned("rbytes", p.second);
+  }
+  for (auto& p : group_rbytes) {
+    f->dump_unsigned("group", p.first);
+    f->dump_unsigned("rbytes", p.second);
+  }
   f->dump_unsigned("rsnaps", rsnaps);
   f->dump_stream("rctime") << rctime;
 }
@@ -131,6 +139,8 @@ void nest_info_t::generate_test_instances(list<nest_info_t*>& ls)
   ls.back()->rbytes = 2;
   ls.back()->rfiles = 3;
   ls.back()->rsubdirs = 4;
+  ls.back()->user_rbytes[1] = 2;
+  ls.back()->group_rbytes[1] = 2;
   ls.back()->rsnaps = 6;
   ls.back()->rctime = utime_t(7, 8);
 }
@@ -144,6 +154,10 @@ ostream& operator<<(ostream &out, const nest_info_t &n)
     out << " rc" << n.rctime;
   if (n.rbytes)
     out << " b" << n.rbytes;
+  for (auto& p : n.user_rbytes)
+    out << " user" << p.first << " b" << p.second;
+  for (auto& p : n.group_rbytes)
+    out << " group" << p.first << " b" << p.second;
   if (n.rsnaps)
     out << " rs" << n.rsnaps;
   if (n.rfiles || n.rsubdirs)
