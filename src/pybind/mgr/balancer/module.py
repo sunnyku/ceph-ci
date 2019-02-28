@@ -264,7 +264,7 @@ class Module(MgrModule):
             "perm": "r",
         },
     ]
-    active = False
+    active = True
     run = True
     plans = {}
     mode = ''
@@ -388,8 +388,7 @@ class Module(MgrModule):
                            begin_time, end_time, timeofday)
             sleep_interval = float(self.get_config('sleep_interval',
                                                    default_sleep_interval))
-            enable_smart_optimize = bool(int(self.get_config('enable_smart_optimize', 1)))
-            if enable_smart_optimize:
+            if self.active and self.time_in_interval(timeofday, begin_time, end_time):
                 auto_optimize_pool_age = int(self.get_config('auto_optimize_pool_age', 300))
                 auto_optimize_pool_mode = self.get_config('auto_optimize_pool_mode', 'upmap')
                 osdmap = self.get_osdmap()
@@ -468,14 +467,6 @@ class Module(MgrModule):
                         else:
                             self.log.info('done optimizing pools %s' % pools)
                     self.plan_rm(name)
-            if self.active and self.time_in_interval(timeofday, begin_time, end_time):
-                self.log.debug('Running')
-                name = 'auto_%s' % time.strftime(TIME_FORMAT, time.gmtime())
-                plan = self.plan_create(name, self.get_osdmap(), [])
-                r, detail = self.optimize(plan)
-                if r == 0:
-                    self.execute(plan)
-                self.plan_rm(name)
             self.log.debug('Sleeping for %d', sleep_interval)
             self.event.wait(sleep_interval)
             self.event.clear()
