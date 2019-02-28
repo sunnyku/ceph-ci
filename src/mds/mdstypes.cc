@@ -173,6 +173,14 @@ void quota_info_t::dump(Formatter *f) const
 {
   f->dump_int("max_bytes", max_bytes);
   f->dump_int("max_files", max_files);
+  for (auto& p : user_max_bytes) {
+      f->dump_int("user", p.first);
+      f->dump_int("max_bytes", p.second);
+  }
+  for (auto& p : group_max_bytes) {
+      f->dump_int("group", p.first);
+      f->dump_int("max_bytes", p.second);
+  }
 }
 
 void quota_info_t::generate_test_instances(list<quota_info_t *>& ls)
@@ -181,6 +189,8 @@ void quota_info_t::generate_test_instances(list<quota_info_t *>& ls)
   ls.push_back(new quota_info_t);
   ls.back()->max_bytes = 16;
   ls.back()->max_files = 16;
+  ls.back()->user_max_bytes[1] = 16;
+  ls.back()->group_max_bytes[1] = 16;
 }
 
 ostream& operator<<(ostream &out, const quota_info_t &n)
@@ -189,6 +199,12 @@ ostream& operator<<(ostream &out, const quota_info_t &n)
       << "max_bytes = " << n.max_bytes
       << " max_files = " << n.max_files
       << ")";
+  for (auto& p : n.user_max_bytes) {
+    out << "user = " << p.first << " max_bytes = " << p.second;
+  }
+  for (auto& p : n.group_max_bytes) {
+    out << "group = " << p.first << " max_bytes = " << p.second;
+  }
   return out;
 }
 
