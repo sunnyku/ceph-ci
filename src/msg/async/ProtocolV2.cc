@@ -2464,6 +2464,10 @@ CtPtr ProtocolV2::handle_reconnect(ceph::bufferlist &payload)
     ldout(cct, 1) << __func__
                   << " existing racing replace happened while replacing."
                   << " existing=" << existing << dendl;
+    existing->lock.unlock();
+    // make sure we notice if existing connection is no longer functioning
+    existing->send_keepalive();
+    existing->lock.lock();
     auto retry = RetryGlobalFrame::Encode(session_stream_handlers,
                                           exproto->peer_global_seq);
     return WRITE(retry, "session retry", read_frame);
@@ -2571,6 +2575,10 @@ CtPtr ProtocolV2::handle_existing_connection(AsyncConnectionRef existing) {
     ldout(cct, 1) << __func__
                   << " existing racing replace happened while replacing."
                   << " existing=" << existing << dendl;
+    existing->lock.unlock();
+    // make sure we notice if existing connection is no longer functioning
+    existing->send_keepalive();
+    existing->lock.lock();
     auto wait = WaitFrame::Encode(session_stream_handlers);
     return WRITE(wait, "wait", read_frame);
   }
