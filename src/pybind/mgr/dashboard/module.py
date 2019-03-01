@@ -76,36 +76,6 @@ def prepare_url_prefix(url_prefix):
     return url_prefix.rstrip('/')
 
 
-def bound_lo_v4(server_addrs):
-    """
-    return True if server accepts on 127.0.0.1
-    """
-    if not isinstance(server_addrs, (list, tuple, set)):
-        assert isinstance(server_addrs, str), 'must be list or tuple or set or str'
-        server_addrs = [server_addrs]
-
-    addrs = []
-    for server_addr in server_addrs:
-        host, port = server_addr, 0
-        try:
-            info = socket.getaddrinfo(host, port, socket.AF_UNSPEC,
-                                      socket.SOCK_STREAM, 0, socket.AI_PASSIVE)
-        except socket.gaierror as e:
-            log.error("failed to get addr info for {0}: {1}".format(host, e))
-            if ':' in self.addr:
-                info = [(socket.AF_INET6, socket.SOCK_STREAM,
-                         0, '', (server_addr, 0) + (0, 0))]
-            else:
-                info = [(socket.AF_INET, socket.SOCK_STREAM,
-                         0, '', (server_addr, 0))]
-
-        for res in info:
-            af, socktype, proto, canonname, sa = res
-            addrs.append(sa[0])
-
-    return len([x for x in addrs if x in ('::', '0.0.0.0', '127.0.0.1')]) > 0
-
-
 def parse_ipaddr(addr):
     """
     parse IPv4/IPv6 address string from a sockaddr string
@@ -147,14 +117,6 @@ class StandbyModule(MgrStandbyModule):
 
         if server_addr != '':
             # bind explicitly
-            if not bound_lo_v4(server_addr):
-                # bind to local if possible
-                cherrypy.config.update({
-                    'server.slo.socket_host': '127.0.0.1',
-                    'server.slo.socket_port': int(server_port),
-                    'engine.autoreload.on': False
-                })
-
             log.info("server_addr: %s server_port: %s" % (server_addr, server_port))
             cherrypy.config.update({
                 'server.socket_host': server_addr,
@@ -165,11 +127,7 @@ class StandbyModule(MgrStandbyModule):
             # disable default cherrypy server
             cherrypy.server.unsubscribe()
 
-            cherrypy.config.update({
-                'server.slo.socket_host': '127.0.0.1',
-                'server.slo.socket_port': int(server_port),
-                'engine.autoreload.on': False
-            })
+            log.info("dashboard disabled in standby module")
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
         jinja_loader = jinja2.FileSystemLoader(current_dir)
@@ -1059,14 +1017,6 @@ class Module(MgrModule):
 
         if server_addr != '':
             # bind explicitly
-            if not bound_lo_v4(server_addr):
-                # bind to local if possible
-                cherrypy.config.update({
-                    'server.slo.socket_host': '127.0.0.1',
-                    'server.slo.socket_port': int(server_port),
-                    'engine.autoreload.on': False
-                })
-
             log.info("server_addr: %s server_port: %s" % (server_addr, server_port))
             cherrypy.config.update({
                 'server.socket_host': server_addr,
@@ -1097,14 +1047,6 @@ class Module(MgrModule):
             # remove duplicates
             server_addrs = set(server_addrs)
 
-            if not bound_lo_v4(server_addrs):
-                # bind to local if possible
-                cherrypy.config.update({
-                    'server.slo.socket_host': '127.0.0.1',
-                    'server.slo.socket_port': int(server_port),
-                    'engine.autoreload.on': False
-                })
-
             for idx, server_addr in enumerate(server_addrs):
                 log.info("server_addr: %s server_port: %s" % (server_addr, server_port))
                 cherrypy.config.update({
@@ -1112,6 +1054,9 @@ class Module(MgrModule):
                     'server.s{0}.socket_port'.format(idx): int(server_port),
                     'engine.autoreload.on': False
                 })
+
+            # todo
+            server_addr = list(server_addrs)[-1]
 
         osdmap = self.get_osdmap()
         log.info("latest osdmap is %d" % osdmap.get_epoch())
