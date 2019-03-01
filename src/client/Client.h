@@ -996,9 +996,9 @@ private:
    */
   struct VXattr {
 	  const string name;
-	  size_t (Client::*getxattr_cb)(Inode *in, char *val, size_t size);
+	  size_t (Client::*getxattr_cb)(Inode *in, char *val, size_t size, const char *name);
 	  bool readonly, hidden;
-	  bool (Client::*exists_cb)(Inode *in);
+	  bool (Client::*exists_cb)(Inode *in, const char *name);
 	  unsigned int flags;
   };
 
@@ -1141,29 +1141,37 @@ private:
 
   vinodeno_t _get_vino(Inode *in);
 
-  bool _vxattrcb_quota_exists(Inode *in);
-  size_t _vxattrcb_quota(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_quota_max_bytes(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_quota_max_files(Inode *in, char *val, size_t size);
+  bool _vxattrcb_quota_exists(Inode *in, const char *name);
+  size_t _vxattrcb_quota(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_quota_max_bytes(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_quota_max_files(Inode *in, char *val, size_t size, const char *name);
+  bool _vxattrcb_user_quota_exists(Inode *in, const char *name);
+  size_t _vxattrcb_user_quota(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_user_quota_max_bytes(Inode *in, char *val, size_t size, const char *name);
+  bool _vxattrcb_group_quota_exists(Inode *in, const char *name);
+  size_t _vxattrcb_group_quota(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_group_quota_max_bytes(Inode *in, char *val, size_t size, const char *name);
 
-  bool _vxattrcb_layout_exists(Inode *in);
-  size_t _vxattrcb_layout(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_layout_stripe_unit(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_layout_stripe_count(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_layout_object_size(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_layout_pool(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_layout_pool_namespace(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_entries(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_files(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_subdirs(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_rentries(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_rfiles(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_rsubdirs(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_rbytes(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_rctime(Inode *in, char *val, size_t size);
+  bool _vxattrcb_layout_exists(Inode *in, const char *name);
+  size_t _vxattrcb_layout(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_layout_stripe_unit(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_layout_stripe_count(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_layout_object_size(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_layout_pool(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_layout_pool_namespace(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_dir_entries(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_dir_files(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_dir_subdirs(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_dir_rentries(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_dir_rfiles(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_dir_rsubdirs(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_dir_rbytes(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_dir_rctime(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_dir_user_rbytes(Inode *in, char *val, size_t size, const char *name);
+  size_t _vxattrcb_dir_group_rbytes(Inode *in, char *val, size_t size, const char *name);
 
-  bool _vxattrcb_dir_pin_exists(Inode *in);
-  size_t _vxattrcb_dir_pin(Inode *in, char *val, size_t size);
+  bool _vxattrcb_dir_pin_exists(Inode *in, const char *name);
+  size_t _vxattrcb_dir_pin(Inode *in, char *val, size_t size, const char *name);
 
   size_t _vxattrs_calcu_name_size(const VXattr *vxattrs);
 
