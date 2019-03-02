@@ -55,6 +55,8 @@
 #include <list>
 #include <iostream>
 #include <string_view>
+#include <pwd.h>
+#include <sys/types.h>
 
 #include "common/config.h"
 
