@@ -12841,6 +12841,22 @@ int Client::_rename(Inode *fromdir, const char *fromname, Inode *todir, const ch
     if (fromdir_root != todir_root) {
       return -EXDEV;
     }
+
+    fromdir_root =
+      fromdir->quota.is_user_enable()? fromdir : get_user_quota_root(fromdir);
+    todir_root =
+      todir->quota.is_user_enable()? todir : get_user_quota_root(todir);
+    if (fromdir_root != todir_root) {
+      return -EXDEV;
+    }
+
+    fromdir_root =
+      fromdir->quota.is_group_enable()? fromdir : get_group_quota_root(fromdir);
+    todir_root =
+      todir->quota.is_group_enable()? todir : get_group_quota_root(todir);
+    if (fromdir_root != todir_root) {
+      return -EXDEV;
+    }
   }
 
   InodeRef target;
