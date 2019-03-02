@@ -5272,7 +5272,7 @@ void Server::create_user_quota_realm(CInode *in)
 {
   dout(10) << __func__ << " " << *in << dendl;
 
-  MClientRequest *req = new MClientRequest(CEPH_MDS_OP_SETXATTR);
+  auto req = MClientRequest::create(CEPH_MDS_OP_SETXATTR);
   req->set_filepath(filepath(in->ino()));
   req->set_string2("ceph.user_quota");
   // empty vxattr value
@@ -5285,7 +5285,7 @@ void Server::create_group_quota_realm(CInode *in)
 {
   dout(10) << __func__ << " " << *in << dendl;
 
-  MClientRequest *req = new MClientRequest(CEPH_MDS_OP_SETXATTR);
+  auto req = MClientRequest::create(CEPH_MDS_OP_SETXATTR);
   req->set_filepath(filepath(in->ino()));
   req->set_string2("ceph.group_quota");
   // empty vxattr value
@@ -5488,13 +5488,13 @@ void Server::handle_set_vxattr(MDRequestRef& mdr, CInode *cur,
       return;
     }
 
-    xlocks.insert(&cur->policylock);
+    lov.add_xlock(&cur->policylock);
     if (quota.is_user_enable() && !cur->get_projected_srnode()) {
-      xlocks.insert(&cur->snaplock);
+      lov.add_xlock(&cur->snaplock);
       new_realm = true;
     }
 
-    if (!mds->locker->acquire_locks(mdr, rdlocks, wrlocks, xlocks))
+    if (!mds->locker->acquire_locks(mdr, lov))
       return;
 
     auto &pi = cur->project_inode(false, new_realm);
@@ -5527,13 +5527,13 @@ void Server::handle_set_vxattr(MDRequestRef& mdr, CInode *cur,
       return;
     }
 
-    xlocks.insert(&cur->policylock);
+    lov.add_xlock(&cur->policylock);
     if (quota.is_group_enable() && !cur->get_projected_srnode()) {
-      xlocks.insert(&cur->snaplock);
+      lov.add_xlock(&cur->snaplock);
       new_realm = true;
     }
 
-    if (!mds->locker->acquire_locks(mdr, rdlocks, wrlocks, xlocks))
+    if (!mds->locker->acquire_locks(mdr, lov))
       return;
 
     auto &pi = cur->project_inode(false, new_realm);
