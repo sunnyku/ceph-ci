@@ -201,14 +201,14 @@ int Image<I>::status_list_images(librados::IoCtx &io_ctx,
           image.qos_reservation = -1;
         }
       }
-      if (image.qos_iops == 0 || image.qos_iops == 1) {
+      if (image.qos_iops == 0 ) {
         if ((it.qos_weight != -1) && (it.qos_weight & QOS_FLAG_LMT)) {
-          image.qos_iops -= 1;
+          image.qos_iops = -1;
         }
       }
-      if (image.qos_bps == 0 || image.qos_bps == 2048) {
+      if (image.qos_bps == 0) {
         if ((it.qos_weight != -1) && (it.qos_weight & QOS_FLAG_BDW)) {
-          image.qos_bps = (image.qos_bps == 0 ? -1 : 0);
+          image.qos_bps = -1;
         }
       }
 

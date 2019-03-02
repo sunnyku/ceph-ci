@@ -2596,12 +2596,8 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
         }
       }
       ldout(ictx->cct, 10) << "reservation=" << *rsv << dendl;
-      if (*rsv == 0) {
-        if (*wgt & QOS_FLAG_RSV) {
-          *rsv = -1;
-        } else if (!(*mflag & QOS_FLAG_WGT)) {
-          *rsv = -1;
-        }
+      if (*wgt & QOS_FLAG_RSV) {
+        *rsv = (*rsv == 0) ? -1 : *rsv;
       }
     }
 
@@ -2617,12 +2613,8 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
         }
       }
       ldout(ictx->cct, 10) << "limit=" << *lmt << dendl;
-      if (*lmt == 0 || *lmt == 1) {
-        if (*wgt & QOS_FLAG_LMT) {
-          *lmt -= 1;
-        } else if (!(*mflag & QOS_FLAG_WGT)) {
-          *lmt -= 1;
-        }
+      if (*wgt & QOS_FLAG_LMT) {
+        *lmt = (*lmt == 0) ? -1 : *lmt;
       }
     }
 
@@ -2638,12 +2630,8 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
         }
       }
       ldout(ictx->cct, 10) << "bandwidth=" << *lmt << dendl;
-      if (*bdw == 0 || *bdw == 2048) {
-        if (*wgt & QOS_FLAG_BDW) {
-          *bdw = (*bdw == 0 ? -1 : 0);
-        } else if (!(*mflag & QOS_FLAG_WGT)) {
-          *bdw = (*bdw == 0 ? -1 : 0);
-        }
+      if (*wgt & QOS_FLAG_BDW) {
+        *bdw = (*bdw == 0) ? -1 : *bdw;
       }
     }
 
