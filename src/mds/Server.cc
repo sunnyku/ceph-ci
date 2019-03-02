@@ -5268,6 +5268,32 @@ void Server::create_quota_realm(CInode *in)
   mds->send_message_mds(req, in->authority().first);
 }
 
+void Server::create_user_quota_realm(CInode *in)
+{
+  dout(10) << __func__ << " " << *in << dendl;
+
+  auto req = MClientRequest::create(CEPH_MDS_OP_SETXATTR);
+  req->set_filepath(filepath(in->ino()));
+  req->set_string2("ceph.user_quota");
+  // empty vxattr value
+  req->set_tid(mds->issue_tid());
+
+  mds->send_message_mds(req, in->authority().first);
+}
+
+void Server::create_group_quota_realm(CInode *in)
+{
+  dout(10) << __func__ << " " << *in << dendl;
+
+  auto req = MClientRequest::create(CEPH_MDS_OP_SETXATTR);
+  req->set_filepath(filepath(in->ino()));
+  req->set_string2("ceph.group_quota");
+  // empty vxattr value
+  req->set_tid(mds->issue_tid());
+
+  mds->send_message_mds(req, in->authority().first);
+}
+
 /*
  * Verify that the file layout attribute carried by client
  * is well-formatted.
