@@ -1443,6 +1443,8 @@ private:
   void print_osd_line(int cur, ostream *out, Formatter *f) const;
 public:
   void print(ostream& out) const;
+  void print_osd(int id, ostream& out) const;
+  void print_osds(ostream& out) const;
   void print_pools(ostream& out) const;
   void print_summary(Formatter *f, ostream& out, const string& prefix, bool extra=false) const;
   void print_oneline_summary(ostream& out) const;
@@ -1468,6 +1470,8 @@ public:
     const mempool::osdmap::map<string,map<string,string> > &profiles,
     Formatter *f);
   void dump(Formatter *f) const;
+  void dump_osd(int id, Formatter *f) const;
+  void dump_osds(Formatter *f) const;
   static void generate_test_instances(list<OSDMap*>& o);
   bool check_new_blacklist_entries() const { return new_blacklist_entries; }
 
