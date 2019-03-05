@@ -497,6 +497,7 @@ function test_run_mon() {
     setup $dir || return 1
 
     run_mon $dir a --mon-initial-members=a || return 1
+    run_osd $dir 0 || return 1
     create_rbd_pool || return 1
     # rbd has not been deleted / created, hence it has pool id 0
     ceph osd dump | grep "pool 1 'rbd'" || return 1
@@ -1550,6 +1551,7 @@ function test_wait_for_clean() {
 
     setup $dir || return 1
     run_mon $dir a --osd_pool_default_size=1 || return 1
+    run_osd $dir 0 || return 1
     run_mgr $dir x || return 1
     create_rbd_pool || return 1
     ! WAIT_FOR_CLEAN_TIMEOUT=1 wait_for_clean || return 1
