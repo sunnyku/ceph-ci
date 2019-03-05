@@ -51,7 +51,7 @@
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_mds
 #undef dout_prefix
-#define dout_prefix *_dout << "mds." << mdcache->mds->get_nodeid() << ".cache.ino(" << inode.ino << ") "
+#define dout_prefix *_dout << "mds."
 
 
 class CInodeIOContext : public MDSIOContextBase
@@ -1433,23 +1433,34 @@ void CInode::encode_store(bufferlist& bl, uint64_t features)
 void InodeStoreBase::decode_bare(bufferlist::iterator &bl,
 			      bufferlist& snap_blob, __u8 struct_v)
 {
+  dout(10) << "user_quota:Enter " << __func__ << "struct_v= " << struct_v << dendl;
   using ceph::decode;
   decode(inode, bl);
+  dout(10) << "user_quota: after decode(inode, bl) " << dendl;
   if (is_symlink()) {
     std::string tmp;
     decode(tmp, bl);
     symlink = std::string_view(tmp);
   }
+  dout(10) << "user_quota: before decode(dirfragtree, bl); " << dendl;
   decode(dirfragtree, bl);
+  dout(10) << "user_quota: before decode(xattrs, bl); " << dendl;
   decode(xattrs, bl);
+  dout(10) << "user_quota: before decode(snap_blob, bl); " << dendl;
   decode(snap_blob, bl);
 
+  dout(10) << "user_quota: before decode(old_inodes, bl) " << dendl;
   decode(old_inodes, bl);
+
   if (struct_v == 2 && inode.is_dir()) {
     bool default_layout_exists;
+    dout(10) << "user_quota: before decode(default_layout_exists, bl); " << dendl;
     decode(default_layout_exists, bl);
+
     if (default_layout_exists) {
+      dout(10) << "user_quota: before decode(struct_v, bl); " << dendl;
       decode(struct_v, bl); // this was a default_file_layout
+      dout(10) << "user_quota: before decode(inode.layout, bl); " << dendl;
       decode(inode.layout, bl); // but we only care about the layout portion
     }
   }
@@ -1458,21 +1469,26 @@ void InodeStoreBase::decode_bare(bufferlist::iterator &bl,
     // InodeStore is embedded in dentries without proper versioning, so
     // we consume up to the end of the buffer
     if (!bl.end()) {
+      dout(10) << "user_quota: before decode(oldest_snap, bl); " << dendl;
       decode(oldest_snap, bl);
     }
 
     if (!bl.end()) {
+      dout(10) << "user_quota: before decode(damage_flags, bl) " << dendl;
       decode(damage_flags, bl);
     }
   }
+  dout(10) << "user_quota:Out " <<  __func__  << "struct_v= " << struct_v << dendl;
 }
 
 
 void InodeStoreBase::decode(bufferlist::iterator &bl, bufferlist& snap_blob)
 {
+  dout(10) << "user_quota:Enter " <<  __func__  << dendl;
   DECODE_START_LEGACY_COMPAT_LEN(5, 4, 4, bl);
   decode_bare(bl, snap_blob, struct_v);
   DECODE_FINISH(bl);
+  dout(10) << "user_quota:Out " <<  __func__  << dendl;
 }
 
 void CInode::decode_store(bufferlist::iterator& bl)
@@ -2234,7 +2250,7 @@ void CInode::finish_scatter_gather_update(int type)
 
       rstat.rsubdirs = 1;
       if (const sr_t *srnode = get_projected_srnode(); srnode)
-	rstat.rsnaps = srnode->snaps.size();
+        rstat.rsnaps = srnode->snaps.size();
 
       mempool_inode *pi = get_projected_inode();
       dout(20) << "  orig rstat " << pi->rstat << dendl;
@@ -2785,12 +2801,15 @@ void CInode::encode_snap_blob(bufferlist &snapbl)
 }
 void CInode::decode_snap_blob(bufferlist& snapbl)
 {
+  dout(10) << "user_quota:Enter " <<  __func__  << snapbl.length() << snaprealm << dendl;
   using ceph::decode;
   if (snapbl.length()) {
     open_snaprealm();
     auto old_flags = snaprealm->srnode.flags;
     bufferlist::iterator p = snapbl.begin();
+	  dout(10) << "user_quota: before decode(snaprealm->srnode, p) " << dendl;
     decode(snaprealm->srnode, p);
+	  dout(10) << "user_quota: after decode(snaprealm->srnode, p) " << dendl;
     if (is_base()) {
       bool ok = snaprealm->_open_parents(NULL);
       assert(ok);
@@ -2805,6 +2824,7 @@ void CInode::decode_snap_blob(bufferlist& snapbl)
     assert(mdcache->mds->is_any_replay());
     snaprealm->merge_to(NULL);
   }
+  dout(10) << "user_quota:Out " <<  __func__  << dendl;
 }
 
 void CInode::encode_snap(bufferlist& bl)
@@ -3401,6 +3421,8 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
   if (cap) {
     cap->last_rbytes = file_i->rstat.rbytes;
     cap->last_rsize = file_i->rstat.rsize();
+    cap->last_user_rbytes = file_i->rstat.user_rbytes;
+    cap->last_group_rbytes = file_i->rstat.group_rbytes;
   }
 
   // auth
@@ -3580,6 +3602,8 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
   encode(file_i->rstat.rfiles, bl);
   encode(file_i->rstat.rsubdirs, bl);
   encode(file_i->rstat.rctime, bl);
+  encode(file_i->rstat.user_rbytes, bl);
+  encode(file_i->rstat.group_rbytes, bl);
 
   dirfragtree.encode(bl);
 
@@ -4184,6 +4208,7 @@ next:
 	  in->mdcache->create_unlinked_system_inode(shadow_in, in->inode.ino, in->inode.mode);
 	  in->mdcache->num_shadow_inodes++;
 	}
+        dout(10) << "user_quota: validate_directory_data call fetch " << dendl;
         shadow_in->fetch(get_internal_callback(INODE));
         return false;
       } else {
