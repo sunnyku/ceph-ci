@@ -33,6 +33,7 @@ function run() {
         setup $dir || return 1
         run_mon $dir a || return 1
 	run_mgr $dir x || return 1
+	run_osd $dir 0 || return 1
 	create_rbd_pool || return 1
 
         # check that erasure code plugins are preloaded
