@@ -237,6 +237,16 @@ void ProtocolV2::reset_recv_state() {
   reset_throttle();
 }
 
+size_t ProtocolV2::get_current_msg_size() const {
+  ceph_assert(!rx_segments_desc.empty());
+  size_t sum = 0;
+  // we don't include SegmentIndex::Msg::HEADER.
+  for (__u8 idx = 1; idx < rx_segments_desc.size(); idx++) {
+    sum += rx_segments_desc[idx].length;
+  }
+  return sum;
+}
+
 void ProtocolV2::reset_throttle() {
   if (state > THROTTLE_MESSAGE && state <= THROTTLE_DONE &&
       connection->policy.throttler_messages) {
@@ -249,11 +259,7 @@ void ProtocolV2::reset_throttle() {
   }
   if (state > THROTTLE_BYTES && state <= THROTTLE_DONE) {
     if (connection->policy.throttler_bytes) {
-      const uint32_t cur_msg_size = \
-	rx_segments_desc[SegmentIndex::Msg::FRONT].length + \
-	rx_segments_desc[SegmentIndex::Msg::MIDDLE].length + \
-	rx_segments_desc[SegmentIndex::Msg::DATA].length;
-
+      const size_t cur_msg_size = get_current_msg_size();
       ldout(cct, 10) << __func__ << " releasing " << cur_msg_size
                      << " bytes to policy throttler "
                      << connection->policy.throttler_bytes->get_current() << "/"
@@ -262,11 +268,7 @@ void ProtocolV2::reset_throttle() {
     }
   }
   if (state > THROTTLE_DISPATCH_QUEUE && state <= THROTTLE_DONE) {
-    const uint32_t cur_msg_size = \
-      rx_segments_desc[SegmentIndex::Msg::FRONT].length + \
-      rx_segments_desc[SegmentIndex::Msg::MIDDLE].length + \
-      rx_segments_desc[SegmentIndex::Msg::DATA].length;
-
+    const size_t cur_msg_size = get_current_msg_size();
     ldout(cct, 10)
         << __func__ << " releasing " << cur_msg_size
         << " bytes to dispatch_queue throttler "
@@ -1037,14 +1039,15 @@ CtPtr ProtocolV2::handle_read_frame_preamble_main(rx_buffer_t &&buffer, int r) {
       return _fault();
     }
 
-    // currently we do support only 4 or 1 segments
-    if (main_preamble.num_segments != 1 && main_preamble.num_segments != 4) {
+    // currently we do support between 1 and MAX_NUM_SEGMENTS segments
+    if (main_preamble.num_segments < 1 ||
+        main_preamble.num_segments > MAX_NUM_SEGMENTS) {
       ldout(cct, 10) << __func__ << " unsupported num_segments="
 		     << " tx_crc=" << main_preamble.num_segments << dendl;
       return _fault();
     }
 
-    Tag received_tag = next_tag;
+    const Tag received_tag = next_tag;
     next_tag = static_cast<Tag>(main_preamble.tag);
 
     uint64_t expected_tag_mask = expected_tags(sent_tag, received_tag);
@@ -1335,8 +1338,6 @@ CtPtr ProtocolV2::handle_read_frame_epilogue_main(rx_buffer_t &&buffer, int r)
 
 CtPtr ProtocolV2::handle_message() {
   ldout(cct, 20) << __func__ << dendl;
-
-  ceph_assert(rx_segments_data.size() == 4);
   ceph_assert(state == THROTTLE_DONE);
 
 #if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
@@ -1553,11 +1554,7 @@ CtPtr ProtocolV2::throttle_message() {
 CtPtr ProtocolV2::throttle_bytes() {
   ldout(cct, 20) << __func__ << dendl;
 
-  ceph_assert(rx_segments_desc.size() == 4);
-  uint32_t cur_msg_size = \
-    rx_segments_desc[SegmentIndex::Msg::FRONT].length + \
-    rx_segments_desc[SegmentIndex::Msg::MIDDLE].length + \
-    rx_segments_desc[SegmentIndex::Msg::DATA].length;
+  const size_t cur_msg_size = get_current_msg_size();
   if (cur_msg_size) {
     if (connection->policy.throttler_bytes) {
       ldout(cct, 10) << __func__ << " wants " << cur_msg_size
@@ -1589,12 +1586,7 @@ CtPtr ProtocolV2::throttle_bytes() {
 CtPtr ProtocolV2::throttle_dispatch_queue() {
   ldout(cct, 20) << __func__ << dendl;
 
-  ceph_assert(rx_segments_desc.size() == 4);
-  uint32_t cur_msg_size =
-    rx_segments_desc[SegmentIndex::Msg::FRONT].length + \
-    rx_segments_desc[SegmentIndex::Msg::MIDDLE].length + \
-    rx_segments_desc[SegmentIndex::Msg::DATA].length;
-
+  const size_t cur_msg_size = get_current_msg_size();
   if (cur_msg_size) {
     if (!connection->dispatch_queue->dispatch_throttler.get_or_fail(
             cur_msg_size)) {
