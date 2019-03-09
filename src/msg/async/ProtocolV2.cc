@@ -94,6 +94,7 @@ ProtocolV2::ProtocolV2(AsyncConnection *connection)
       bannerExchangeCallback(nullptr),
       next_tag(static_cast<Tag>(0)),
       keepalive(false) {
+  ceph::crypto::init(cct);
 }
 
 ProtocolV2::~ProtocolV2() {
@@ -1776,8 +1777,9 @@ CtPtr ProtocolV2::handle_auth_done(ceph::bufferlist &payload)
 
   state = AUTH_CONNECTING_SIGN;
 
-  // FIXME, WIP: crc32 is just scaffolding
-  auto sig_frame = AuthSignatureFrame::Encode(pre_auth.rxbuf.crc32c(-1));
+  const auto sig = auth_meta->session_key.empty() ? sha256_digest_t() :
+    auth_meta->session_key.hmac_sha256(cct, pre_auth.rxbuf);
+  auto sig_frame = AuthSignatureFrame::Encode(sig);
   pre_auth.enabled = false;
   pre_auth.rxbuf.clear();
   return WRITE(sig_frame, "auth signature", read_frame);
@@ -2185,8 +2187,9 @@ CtPtr ProtocolV2::finish_auth()
   session_stream_handlers = \
     ceph::crypto::onwire::rxtx_t::create_handler_pair(cct, *auth_meta, true);
 
-  // FIXME, WIP: crc32 is just scaffolding
-  auto sig_frame = AuthSignatureFrame::Encode(pre_auth.rxbuf.crc32c(-1));
+  const auto sig = auth_meta->session_key.empty() ? sha256_digest_t() :
+    auth_meta->session_key.hmac_sha256(cct, pre_auth.rxbuf);
+  auto sig_frame = AuthSignatureFrame::Encode(sig);
   pre_auth.enabled = false;
   pre_auth.rxbuf.clear();
   return WRITE(sig_frame, "auth signature", read_frame);
@@ -2220,7 +2223,8 @@ CtPtr ProtocolV2::handle_auth_signature(ceph::bufferlist &payload)
 
   auto sig_frame = AuthSignatureFrame::Decode(payload);
 
-  const auto actual_tx_sig = pre_auth.txbuf.crc32c(-1);
+  const auto actual_tx_sig = auth_meta->session_key.empty() ?
+    sha256_digest_t() : auth_meta->session_key.hmac_sha256(cct, pre_auth.txbuf);
   if (sig_frame.signature() != actual_tx_sig) {
     ldout(cct, 2) << __func__ << " pre-auth signature mismatch"
                   << " actual_tx_sig=" << actual_tx_sig
