@@ -932,7 +932,7 @@ CtPtr ProtocolV2::handle_hello(ceph::bufferlist &payload)
   return callback;
 }
 
-uint64_t ProtocolV2::expected_tags(Tag sent_tag, Tag received_tag) {
+uint64_t ProtocolV2::expected_tags(Tag sent_tag, const Tag received_tag) {
   switch(sent_tag) {
     case Tag::HELLO:
       if (received_tag == Tag::HELLO) {
@@ -950,15 +950,24 @@ uint64_t ProtocolV2::expected_tags(Tag sent_tag, Tag received_tag) {
     case Tag::AUTH_REPLY_MORE:
       return TAG_MASK(Tag::AUTH_REQUEST_MORE);
     case Tag::AUTH_DONE:
-      return TAG_MASK(Tag::CLIENT_IDENT) | TAG_MASK(Tag::SESSION_RECONNECT);
+       return TAG_MASK(Tag::AUTH_SIGNATURE);
+    case Tag::AUTH_SIGNATURE:
+      if (received_tag == Tag::AUTH_SIGNATURE) {
+        return TAG_MASK(Tag::CLIENT_IDENT) | TAG_MASK(Tag::SESSION_RECONNECT);
+      } else {
+        return TAG_MASK(Tag::AUTH_SIGNATURE);
+      }
     case Tag::CLIENT_IDENT:
       if (state == READY) {
         return TAG_MASK(Tag::MESSAGE) | TAG_MASK(Tag::KEEPALIVE2) |
                TAG_MASK(Tag::KEEPALIVE2_ACK) | TAG_MASK(Tag::ACK);
-      } else {
+      } else if (received_tag == Tag::AUTH_SIGNATURE) {
         ceph_assert(state == CONNECTING);
         return TAG_MASK(Tag::SERVER_IDENT) |
                TAG_MASK(Tag::IDENT_MISSING_FEATURES) | TAG_MASK(Tag::WAIT);
+      } else {
+        ceph_assert(state == CONNECTING);
+        return TAG_MASK(Tag::AUTH_SIGNATURE);
       }
     case Tag::SESSION_RECONNECT:
       if (state == READY) {
@@ -1106,6 +1115,7 @@ CtPtr ProtocolV2::handle_read_frame_dispatch() {
     case Tag::AUTH_REPLY_MORE:
     case Tag::AUTH_REQUEST_MORE:
     case Tag::AUTH_DONE:
+    case Tag::AUTH_SIGNATURE:
     case Tag::CLIENT_IDENT:
     case Tag::SERVER_IDENT:
     case Tag::IDENT_MISSING_FEATURES:
@@ -1215,6 +1225,8 @@ CtPtr ProtocolV2::handle_frame_payload() {
       return handle_auth_request_more(payload);
     case Tag::AUTH_DONE:
       return handle_auth_done(payload);
+    case Tag::AUTH_SIGNATURE:
+      return handle_auth_signature(payload);
     case Tag::CLIENT_IDENT:
       return handle_client_ident(payload);
     case Tag::SERVER_IDENT:
@@ -1791,6 +1803,14 @@ CtPtr ProtocolV2::handle_auth_done(ceph::bufferlist &payload)
   session_stream_handlers = \
     ceph::crypto::onwire::rxtx_t::create_handler_pair(cct, *auth_meta, false);
 
+  // FIXME, WIP: crc32 is just scaffolding
+  auto sig_frame = AuthSignatureFrame::Encode(pre_auth.rxbuf.crc32c(-1));
+  pre_auth.enabled = false;
+  pre_auth.rxbuf.clear();
+  return WRITE(sig_frame, "auth signature", finish_client_auth);
+}
+
+CtPtr ProtocolV2::finish_client_auth() {
   if (!server_cookie) {
     ceph_assert(connect_seq == 0);
     return send_client_ident();
@@ -2138,9 +2158,16 @@ CtPtr ProtocolV2::_handle_auth_request(bufferlist& auth_payload, bool more)
 CtPtr ProtocolV2::finish_auth()
 {
   ceph_assert(auth_meta);
+  // TODO: having a possibility to check whether we're server or client could
+  // allow reusing finish_auth().
   session_stream_handlers = \
     ceph::crypto::onwire::rxtx_t::create_handler_pair(cct, *auth_meta, true);
-  return CONTINUE(read_frame);
+
+  // FIXME, WIP: crc32 is just scaffolding
+  auto sig_frame = AuthSignatureFrame::Encode(pre_auth.rxbuf.crc32c(-1));
+  pre_auth.enabled = false;
+  pre_auth.rxbuf.clear();
+  return WRITE(sig_frame, "auth signature", read_frame);
 }
 
 CtPtr ProtocolV2::handle_auth_request_more(ceph::bufferlist &payload)
@@ -2149,6 +2176,29 @@ CtPtr ProtocolV2::handle_auth_request_more(ceph::bufferlist &payload)
 		 << " payload.length()=" << payload.length() << dendl;
   auto auth_more = AuthRequestMoreFrame::Decode(payload);
   return _handle_auth_request(auth_more.auth_payload(), true);
+}
+
+CtPtr ProtocolV2::handle_auth_signature(ceph::bufferlist &payload)
+{
+  ldout(cct, 20) << __func__
+		 << " payload.length()=" << payload.length() << dendl;
+  auto sig_frame = AuthSignatureFrame::Decode(payload);
+
+  const auto actual_tx_sig = pre_auth.txbuf.crc32c(-1);
+  if (sig_frame.signature() != actual_tx_sig) {
+    ldout(cct, 2) << __func__ << " pre-auth signature mismatch"
+                  << " actual_tx_sig=" << actual_tx_sig
+                  << " sig_frame.signature()=" << sig_frame.signature()
+                  << dendl;
+    return _fault();
+  } else {
+    ldout(cct, 20) << __func__ << " pre-auth signature success"
+                   << " sig_frame.signature()=" << sig_frame.signature()
+                   << dendl;
+    pre_auth.txbuf.clear();
+  }
+
+  return CONTINUE(read_frame);
 }
 
 CtPtr ProtocolV2::handle_client_ident(ceph::bufferlist &payload)

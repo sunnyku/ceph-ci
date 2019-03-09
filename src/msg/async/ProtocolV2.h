@@ -140,6 +140,7 @@ private:
 
   CONTINUATION_DECL(ProtocolV2, read_frame);
   CONTINUATION_DECL(ProtocolV2, finish_auth);
+  CONTINUATION_DECL(ProtocolV2, finish_client_auth);
   READ_BPTR_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_read_frame_preamble_main);
   READ_BPTR_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_read_frame_segment);
   READ_BPTR_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_read_frame_epilogue_main);
@@ -149,6 +150,7 @@ private:
 
   Ct<ProtocolV2> *read_frame();
   Ct<ProtocolV2> *finish_auth();
+  Ct<ProtocolV2> *finish_client_auth();
   Ct<ProtocolV2> *handle_read_frame_preamble_main(rx_buffer_t &&buffer, int r);
   Ct<ProtocolV2> *read_frame_segment();
   Ct<ProtocolV2> *handle_read_frame_segment(rx_buffer_t &&rx_buffer, int r);
@@ -202,6 +204,7 @@ private:
   Ct<ProtocolV2> *handle_auth_bad_method(ceph::bufferlist &payload);
   Ct<ProtocolV2> *handle_auth_reply_more(ceph::bufferlist &payload);
   Ct<ProtocolV2> *handle_auth_done(ceph::bufferlist &payload);
+  Ct<ProtocolV2> *handle_auth_signature(ceph::bufferlist &payload);
   Ct<ProtocolV2> *send_client_ident();
   Ct<ProtocolV2> *send_reconnect();
   Ct<ProtocolV2> *handle_ident_missing_features(ceph::bufferlist &payload);
