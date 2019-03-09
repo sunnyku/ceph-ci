@@ -1803,8 +1803,8 @@ CtPtr ProtocolV2::handle_auth_done(ceph::bufferlist &payload)
   session_stream_handlers = \
     ceph::crypto::onwire::rxtx_t::create_handler_pair(cct, *auth_meta, false);
 
-  // FIXME, WIP: crc32 is just scaffolding
-  auto sig_frame = AuthSignatureFrame::Encode(pre_auth.rxbuf.crc32c(-1));
+  auto sig_frame = AuthSignatureFrame::Encode(
+    auth_meta->session_key.hmac_sha256(cct, pre_auth.rxbuf));
   pre_auth.enabled = false;
   pre_auth.rxbuf.clear();
   return WRITE(sig_frame, "auth signature", finish_client_auth);
@@ -2163,8 +2163,8 @@ CtPtr ProtocolV2::finish_auth()
   session_stream_handlers = \
     ceph::crypto::onwire::rxtx_t::create_handler_pair(cct, *auth_meta, true);
 
-  // FIXME, WIP: crc32 is just scaffolding
-  auto sig_frame = AuthSignatureFrame::Encode(pre_auth.rxbuf.crc32c(-1));
+  auto sig_frame = AuthSignatureFrame::Encode(
+    auth_meta->session_key.hmac_sha256(cct, pre_auth.rxbuf));
   pre_auth.enabled = false;
   pre_auth.rxbuf.clear();
   return WRITE(sig_frame, "auth signature", read_frame);
@@ -2184,7 +2184,8 @@ CtPtr ProtocolV2::handle_auth_signature(ceph::bufferlist &payload)
 		 << " payload.length()=" << payload.length() << dendl;
   auto sig_frame = AuthSignatureFrame::Decode(payload);
 
-  const auto actual_tx_sig = pre_auth.txbuf.crc32c(-1);
+  const auto actual_tx_sig =
+    auth_meta->session_key.hmac_sha256(cct, pre_auth.txbuf);
   if (sig_frame.signature() != actual_tx_sig) {
     ldout(cct, 2) << __func__ << " pre-auth signature mismatch"
                   << " actual_tx_sig=" << actual_tx_sig
