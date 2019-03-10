@@ -68,9 +68,11 @@ class TestModuleSelftest(MgrTestCase):
                 "osd", "pool", "delete", pool_name, pool_name,
                 "--yes-i-really-really-mean-it")
 
-
     def test_selftest_run(self):
         self._load_module("selftest")
+        self.mgr_cluster.mon_manager.raw_cluster_cmd("config", "set", "mgr",
+                                                     "mgr/selftest/rwoption6",
+                                                     "False")
         self.mgr_cluster.mon_manager.raw_cluster_cmd("mgr", "self-test", "run")
 
     def test_telemetry(self):
@@ -94,7 +96,7 @@ class TestModuleSelftest(MgrTestCase):
         self.mgr_cluster.mon_manager.raw_cluster_cmd("config", "set",
                 "mgr", "mgr/selftest/testkey", "testvalue")
 
-        self.wait_until_equal(get_value, "testvalue",timeout=10)
+        self.wait_until_equal(get_value, "testvalue", timeout=10)
 
         active_id = self.mgr_cluster.get_active_id()
 
