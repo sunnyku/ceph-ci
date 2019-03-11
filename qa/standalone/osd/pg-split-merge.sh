@@ -69,8 +69,10 @@ function TEST_a_merge_empty() {
 
     wait_for_clean || return 1
     ceph pg scrub 1.0
-    sleep 5
-    ceph -s | grep inconsistent || return 1
+    sleep 10
+    ceph log last debug
+    ceph pg ls
+    ceph pg ls | grep ' active.clean ' || return 1
 }
 
 function TEST_import_after_merge_and_gap() {

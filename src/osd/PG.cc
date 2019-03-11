@@ -2712,9 +2712,11 @@ void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
   dout(10) << __func__ << " from " << sources << " split_bits " << split_bits
 	   << dendl;
   bool incomplete = false;
-  if (info.last_complete != info.last_update ||
+  if (info.pgid.pgid != last_pg_merge_meta.source_pgid.get_parent() ||
+      info.last_complete != info.last_update ||
       info.is_incomplete() ||
-      info.dne()) {
+      info.dne() ||
+      info.last_update != last_pg_merge_meta.target_version) {
     dout(10) << __func__ << " target incomplete" << dendl;
     incomplete = true;
   }
@@ -2734,9 +2736,11 @@ void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
       incomplete = true;
       continue;
     }
-    if (source->info.last_complete != source->info.last_update ||
+    if (info.pgid.pgid != last_pg_merge_meta.source_pgid ||
+	source->info.last_complete != source->info.last_update ||
 	source->info.is_incomplete() ||
-	source->info.dne()) {
+	source->info.dne() ||
+      source->info.last_update != last_pg_merge_meta.source_version) {
       dout(10) << __func__ << " source " << source->pg_id << " incomplete"
 	       << dendl;
       incomplete = true;
