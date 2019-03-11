@@ -2552,12 +2552,13 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
       return r;
     }
 
-    ictx->prepare_to_update(&rsv, &wgt, &lmt, &bdw);
-    r = ictx->operations->qos_update(rsv, wgt, lmt, bdw);
-    if (r < 0) {
-      return r;
+    ictx->qos_set_enabled(false);
+    if (ictx->need_to_update(&rsv, &wgt, &lmt, &bdw)) {
+      r = ictx->operations->qos_update(rsv, wgt, lmt, bdw);
+      if (r < 0) {
+        return r;
+      }
     }
-
     return 0;
   }
 
