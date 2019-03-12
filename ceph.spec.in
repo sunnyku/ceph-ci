@@ -528,6 +528,7 @@ Group:          System/Filesystems
 %endif
 Requires:       ceph-mgr = %{_epoch_prefix}%{version}-%{release}
 Requires:       python%{_python_buildid}-kubernetes
+Requires:       libstoragemgmt
 %description mgr-rook
 ceph-mgr-rook is a ceph-mgr plugin for orchestration functions using
 a Rook backend.
@@ -540,6 +541,7 @@ Group:          System/Filesystems
 %endif
 Requires:       ceph-mgr = %{_epoch_prefix}%{version}-%{release}
 Requires:       python%{_python_buildid}-remoto
+Requires:       libstoragemgmt
 %description mgr-ssh
 ceph-mgr-ssh is a ceph-mgr module for orchestration functions using
 direct SSH connections for management operations.
