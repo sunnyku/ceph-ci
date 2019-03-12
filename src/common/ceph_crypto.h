@@ -203,6 +203,7 @@ namespace ceph {
 
 #ifdef USE_OPENSSL
 namespace ceph::crypto::ssl {
+# if OPENSSL_VERSION_NUMBER < 0x10100000L
   class HMAC {
   private:
     HMAC_CTX mContext;
@@ -219,7 +220,7 @@ namespace ceph::crypto::ssl {
       HMAC_CTX_cleanup(&mContext);
     }
 
-    void Restart() {
+    void Restart () {
       const auto r = HMAC_Init_ex(&mContext, nullptr, 0, mpType, nullptr);
       ceph_assert_always(r == 1);
     }
@@ -235,6 +236,39 @@ namespace ceph::crypto::ssl {
       ceph_assert_always(r == 1);
     }
   };
+# else
+  class HMAC {
+  private:
+    HMAC_CTX *mpContext;
+
+  public:
+    HMAC (const EVP_MD *type, const unsigned char *key, size_t length)
+      : mpContext(HMAC_CTX_new()) {
+      const auto r = HMAC_Init_ex(mpContext, key, length, type, nullptr);
+      ceph_assert_always(r == 1);
+    }
+    ~HMAC () {
+      HMAC_CTX_free(mpContext);
+    }
+
+    void Restart () {
+      const EVP_MD * const type = HMAC_CTX_get_md(mpContext);
+      const auto r = HMAC_Init_ex(mpContext, nullptr, 0, type, nullptr);
+      ceph_assert_always(r == 1);
+    }
+    void Update (const unsigned char *input, size_t length) {
+      if (length) {
+        const auto r = HMAC_Update(mpContext, input, length);
+        ceph_assert_always(r == 1);
+      }
+    }
+    void Final (unsigned char *digest) {
+      unsigned int s;
+      const auto r = HMAC_Final(mpContext, digest, &s);
+      ceph_assert_always(r == 1);
+    }
+  };
+# endif // OPENSSL_VERSION_NUMBER < 0x10100000L
 
   struct HMACSHA1 : public HMAC {
     HMACSHA1 (const unsigned char *key, size_t length)
