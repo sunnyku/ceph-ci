@@ -224,6 +224,9 @@ void ProtocolV2::reset_recv_state() {
     auth_meta.reset(new AuthConnectionMeta);
     session_stream_handlers.tx.reset(nullptr);
     session_stream_handlers.rx.reset(nullptr);
+    pre_auth.enabled = true;
+    pre_auth.txbuf.clear();
+    pre_auth.rxbuf.clear();
   }
 
   // clean read and write callbacks
