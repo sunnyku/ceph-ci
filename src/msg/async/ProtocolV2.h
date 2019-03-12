@@ -67,10 +67,7 @@ public:
   // TODO: move into auth_meta?
   ceph::crypto::onwire::rxtx_t session_stream_handlers;
 private:
-  enum class AuthFlag : uint64_t { ENCRYPTED = 1, SIGNED = 2 };
-
   entity_name_t peer_name;
-  char *temp_buffer;
   State state;
   uint64_t peer_required_features;
 
@@ -96,16 +93,10 @@ private:
   using ProtFuncPtr = void (ProtocolV2::*)();
   Ct<ProtocolV2> *bannerExchangeCallback;
 
-  uint32_t next_payload_len;
-
-public:
-
   boost::container::static_vector<ceph::msgr::v2::segment_t,
 				  ceph::msgr::v2::MAX_NUM_SEGMENTS> rx_segments_desc;
   boost::container::static_vector<ceph::bufferlist,
 				  ceph::msgr::v2::MAX_NUM_SEGMENTS> rx_segments_data;
-private:
-
   ceph::msgr::v2::Tag next_tag;
   utime_t backoff;  // backoff time
   utime_t recv_stamp;
@@ -114,15 +105,17 @@ private:
   bool keepalive;
 
   ostream &_conn_prefix(std::ostream *_dout);
-  void run_continuation(Ct<ProtocolV2> *continuation);
+  void run_continuation(Ct<ProtocolV2> *pcontinuation);
+  void run_continuation(Ct<ProtocolV2> &continuation);
 
-  Ct<ProtocolV2> *read(CONTINUATION_PARAM(next, ProtocolV2, char *, int),
-                       int len, char *buffer = nullptr);
+  Ct<ProtocolV2> *read(CONTINUATION_RXBPTR_TYPE<ProtocolV2> &next,
+                       rx_buffer_t&& buffer);
   template <class F>
   Ct<ProtocolV2> *write(const std::string &desc,
-                        CONTINUATION_PARAM(next, ProtocolV2), F &frame);
+                        CONTINUATION_TYPE<ProtocolV2> &next,
+			F &frame);
   Ct<ProtocolV2> *write(const std::string &desc,
-                        CONTINUATION_PARAM(next, ProtocolV2),
+                        CONTINUATION_TYPE<ProtocolV2> &next,
                         bufferlist &buffer);
 
   void requeue_sent();
@@ -140,28 +133,30 @@ private:
   void handle_message_ack(uint64_t seq);
 
   CONTINUATION_DECL(ProtocolV2, _wait_for_peer_banner);
-  READ_HANDLER_CONTINUATION_DECL(ProtocolV2, _handle_peer_banner);
-  READ_HANDLER_CONTINUATION_DECL(ProtocolV2, _handle_peer_banner_payload);
+  READ_BPTR_HANDLER_CONTINUATION_DECL(ProtocolV2, _handle_peer_banner);
+  READ_BPTR_HANDLER_CONTINUATION_DECL(ProtocolV2, _handle_peer_banner_payload);
 
-  Ct<ProtocolV2> *_banner_exchange(Ct<ProtocolV2> *callback);
+  Ct<ProtocolV2> *_banner_exchange(Ct<ProtocolV2> &callback);
   Ct<ProtocolV2> *_wait_for_peer_banner();
-  Ct<ProtocolV2> *_handle_peer_banner(char *buffer, int r);
-  Ct<ProtocolV2> *_handle_peer_banner_payload(char *buffer, int r);
+  Ct<ProtocolV2> *_handle_peer_banner(rx_buffer_t &&buffer, int r);
+  Ct<ProtocolV2> *_handle_peer_banner_payload(rx_buffer_t &&buffer, int r);
   Ct<ProtocolV2> *handle_hello(ceph::bufferlist &payload);
 
   CONTINUATION_DECL(ProtocolV2, read_frame);
-  READ_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_read_frame_preamble_main);
-  READ_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_read_frame_segment);
-  READ_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_read_frame_epilogue_main);
+  CONTINUATION_DECL(ProtocolV2, finish_auth);
+  READ_BPTR_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_read_frame_preamble_main);
+  READ_BPTR_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_read_frame_segment);
+  READ_BPTR_HANDLER_CONTINUATION_DECL(ProtocolV2, handle_read_frame_epilogue_main);
   CONTINUATION_DECL(ProtocolV2, throttle_message);
   CONTINUATION_DECL(ProtocolV2, throttle_bytes);
   CONTINUATION_DECL(ProtocolV2, throttle_dispatch_queue);
 
   Ct<ProtocolV2> *read_frame();
-  Ct<ProtocolV2> *handle_read_frame_preamble_main(char *buffer, int r);
+  Ct<ProtocolV2> *finish_auth();
+  Ct<ProtocolV2> *handle_read_frame_preamble_main(rx_buffer_t &&buffer, int r);
   Ct<ProtocolV2> *read_frame_segment();
-  Ct<ProtocolV2> *handle_read_frame_segment(char *buffer, int r);
-  Ct<ProtocolV2> *handle_read_frame_epilogue_main(char *buffer, int r);
+  Ct<ProtocolV2> *handle_read_frame_segment(rx_buffer_t &&rx_buffer, int r);
+  Ct<ProtocolV2> *handle_read_frame_epilogue_main(rx_buffer_t &&buffer, int r);
   Ct<ProtocolV2> *handle_read_frame_dispatch();
   Ct<ProtocolV2> *handle_frame_payload();
 
@@ -244,6 +239,7 @@ private:
 
   uint32_t get_onwire_size(uint32_t logical_size) const;
   uint32_t get_epilogue_size() const;
+  size_t get_current_msg_size() const;
 };
 
 #endif /* _MSG_ASYNC_PROTOCOL_V2_ */
