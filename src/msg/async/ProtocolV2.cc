@@ -1778,6 +1778,17 @@ CtPtr ProtocolV2::handle_auth_done(ceph::bufferlist &payload)
 
   const auto sig = auth_meta->session_key.empty() ? sha256_digest_t() :
     auth_meta->session_key.hmac_sha256(cct, pre_auth.rxbuf);
+  {
+    // XXX, DNM, XXX. DO NOT MERGE. For debugging ONLY!
+    std::string _____secret_for_debug;
+    auth_meta->session_key.to_str(_____secret_for_debug);
+    ldout(cct, 2) << __func__ << " preparing signature of rxbuf"
+                  << " rx_sig=" << sig
+                  << " ____secret_for_debug=" << _____secret_for_debug
+                  << " pre_auth.rxbuf.length()=" << pre_auth.rxbuf.length()
+                  << " pre_auth.txbuf.length()=" << pre_auth.txbuf.length()
+                  << dendl;
+  }
   auto sig_frame = AuthSignatureFrame::Encode(sig);
   pre_auth.enabled = false;
   pre_auth.rxbuf.clear();
@@ -2188,6 +2199,17 @@ CtPtr ProtocolV2::finish_auth()
 
   const auto sig = auth_meta->session_key.empty() ? sha256_digest_t() :
     auth_meta->session_key.hmac_sha256(cct, pre_auth.rxbuf);
+  {
+    // XXX, DNM, XXX. DO NOT MERGE. For debugging ONLY!
+    std::string _____secret_for_debug;
+    auth_meta->session_key.to_str(_____secret_for_debug);
+    ldout(cct, 2) << __func__ << " preparing signature of rxbuf"
+                  << " rx_sig=" << sig
+                  << " ____secret_for_debug=" << _____secret_for_debug
+                  << " pre_auth.rxbuf.length()=" << pre_auth.rxbuf.length()
+                  << " pre_auth.txbuf.length()=" << pre_auth.txbuf.length()
+                  << dendl;
+  }
   auto sig_frame = AuthSignatureFrame::Encode(sig);
   pre_auth.enabled = false;
   pre_auth.rxbuf.clear();
@@ -2225,9 +2247,15 @@ CtPtr ProtocolV2::handle_auth_signature(ceph::bufferlist &payload)
   const auto actual_tx_sig = auth_meta->session_key.empty() ?
     sha256_digest_t() : auth_meta->session_key.hmac_sha256(cct, pre_auth.txbuf);
   if (sig_frame.signature() != actual_tx_sig) {
+    // XXX, DNM, XXX. DO NOT MERGE. For debugging ONLY!
+    std::string _____secret_for_debug;
+    auth_meta->session_key.to_str(_____secret_for_debug);
     ldout(cct, 2) << __func__ << " pre-auth signature mismatch"
                   << " actual_tx_sig=" << actual_tx_sig
                   << " sig_frame.signature()=" << sig_frame.signature()
+                  << " ____secret_for_debug=" << _____secret_for_debug
+                  << " pre_auth.txbuf.length()=" << pre_auth.txbuf.length()
+                  << " pre_auth.rxbuf.length()=" << pre_auth.rxbuf.length()
                   << dendl;
     return _fault();
   } else {
