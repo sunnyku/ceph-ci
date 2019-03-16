@@ -21,7 +21,7 @@ typedef uint64_t slot_t;
 struct interval_t
 {
   uint64_t offset = 0;
-  uint32_t length = 0;
+  uint64_t length = 0;
 
   interval_t() {}
   interval_t(uint64_t o, uint64_t l) : offset(o), length(l) {}
@@ -37,7 +37,7 @@ typedef std::vector<slot_t> slot_vector_t;
 #include "include/mempool.h"
 #include "common/ceph_mutex.h"
 
-typedef bluestore_pextent_t interval_t;
+typedef bluestore_interval_t<uint64_t, uint64_t> interval_t;
 typedef PExtentVector interval_vector_t;
 
 typedef mempool::bluestore_alloc::vector<slot_t> slot_vector_t;
@@ -86,6 +86,9 @@ public:
 
   virtual ~AllocatorLevel()
   {}
+
+  virtual void collect_stats(
+    std::map<size_t, size_t>& bins_overall) = 0;
 
 };
 
@@ -466,6 +469,8 @@ public:
     }
     return res * l0_granularity;
   }
+  void collect_stats(
+    std::map<size_t, size_t>& bins_overall) override;
 };
 
 class AllocatorLevel01Compact : public AllocatorLevel01
@@ -475,6 +480,11 @@ class AllocatorLevel01Compact : public AllocatorLevel01
     return 8;
   }
 public:
+  void collect_stats(
+    std::map<size_t, size_t>& bins_overall) override
+  {
+    // not implemented
+  }
 };
 
 template <class L1>
@@ -502,6 +512,12 @@ public:
   inline uint64_t get_min_alloc_size() const
   {
     return l1.get_min_alloc_size();
+  }
+  void collect_stats(
+    std::map<size_t, size_t>& bins_overall) override {
+
+      std::lock_guard l(lock);
+      l1.collect_stats(bins_overall);
   }
 
 protected:
