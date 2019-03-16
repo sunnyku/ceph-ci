@@ -1767,14 +1767,16 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id,
 	     << ", requesting pg_temp change" << dendl;
     want_acting = want;
 
-    if (want_acting == up) {
-      // There can't be any pending backfill if
-      // want is the same as crush map up OSDs.
-      ceph_assert(want_backfill.empty());
-      vector<int> empty;
-      osd->queue_want_pg_temp(info.pgid.pgid, empty);
-    } else
-      osd->queue_want_pg_temp(info.pgid.pgid, want);
+    if (!cct->_conf->osd_debug_no_acting_change) {
+      if (want_acting == up) {
+	// There can't be any pending backfill if
+	// want is the same as crush map up OSDs.
+	ceph_assert(want_backfill.empty());
+	vector<int> empty;
+	osd->queue_want_pg_temp(info.pgid.pgid, empty);
+      } else
+	osd->queue_want_pg_temp(info.pgid.pgid, want);
+    }
     return false;
   }
   want_acting.clear();
@@ -2376,11 +2378,12 @@ void PG::try_mark_clean()
 	if (target) {
 	  ldout(cct, 10) << "ready to merge (target)" << dendl;
 	  osd->set_ready_to_merge_target(this,
+					 info.last_update,
 					 info.history.last_epoch_started,
 					 info.history.last_epoch_clean);
 	} else {
 	  ldout(cct, 10) << "ready to merge (source)" << dendl;
-	  osd->set_ready_to_merge_source(this);
+	  osd->set_ready_to_merge_source(this, info.last_update);
 	}
       }
     } else {
@@ -2704,8 +2707,7 @@ void PG::finish_split_stats(const object_stat_sum_t& stats, ObjectStore::Transac
 
 void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
 		    unsigned split_bits,
-		    epoch_t dec_last_epoch_started,
-		    epoch_t dec_last_epoch_clean)
+		    const pg_merge_meta_t& last_pg_merge_meta)
 {
   dout(10) << __func__ << " from " << sources << " split_bits " << split_bits
 	   << dendl;
@@ -2715,6 +2717,20 @@ void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
       info.dne()) {
     dout(10) << __func__ << " target incomplete" << dendl;
     incomplete = true;
+  }
+  if (last_pg_merge_meta.source_pgid != pg_t()) {
+    if (info.pgid.pgid != last_pg_merge_meta.source_pgid.get_parent()) {
+      dout(10) << __func__ << " target doesn't match expected parent "
+	       << last_pg_merge_meta.source_pgid.get_parent()
+	       << " of source_pgid " << last_pg_merge_meta.source_pgid
+	       << dendl;
+      incomplete = true;
+    }
+    if (info.last_update != last_pg_merge_meta.target_version) {
+      dout(10) << __func__ << " target version doesn't match expected "
+	       << last_pg_merge_meta.target_version << dendl;
+      incomplete = true;
+    }
   }
 
   PGLogEntryHandler handler{this, rctx->transaction};
@@ -2738,6 +2754,19 @@ void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
       dout(10) << __func__ << " source " << source->pg_id << " incomplete"
 	       << dendl;
       incomplete = true;
+    }
+    if (last_pg_merge_meta.source_pgid != pg_t()) {
+      if (source->info.pgid.pgid != last_pg_merge_meta.source_pgid) {
+	dout(10) << __func__ << " source " << source->info.pgid.pgid
+		 << " doesn't match expected source pgid "
+		 << last_pg_merge_meta.source_pgid << dendl;
+	incomplete = true;
+      }
+      if (source->info.last_update != last_pg_merge_meta.source_version) {
+	dout(10) << __func__ << " source version doesn't match expected "
+		 << last_pg_merge_meta.target_version << dendl;
+	incomplete = true;
+      }
     }
 
     // prepare log
@@ -2790,15 +2819,15 @@ void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
     // remapped in concert with each other...
     info.history = sources.begin()->second->info.history;
 
-    // we use the pg_num_dec_last_epoch_{started,clean} we got from
+    // we use the last_epoch_{started,clean} we got from
     // the caller, which are the epochs that were reported by the PGs were
     // found to be ready for merge.
-    info.history.last_epoch_clean = dec_last_epoch_clean;
-    info.history.last_epoch_started = dec_last_epoch_started;
-    info.last_epoch_started = dec_last_epoch_started;
+    info.history.last_epoch_clean = last_pg_merge_meta.last_epoch_clean;
+    info.history.last_epoch_started = last_pg_merge_meta.last_epoch_started;
+    info.last_epoch_started = last_pg_merge_meta.last_epoch_started;
     dout(10) << __func__
-	     << " set les/c to " << dec_last_epoch_started << "/"
-	     << dec_last_epoch_clean
+	     << " set les/c to " << last_pg_merge_meta.last_epoch_started << "/"
+	     << last_pg_merge_meta.last_epoch_clean
 	     << " from pool last_dec_*, source pg history was "
 	     << sources.begin()->second->info.history
 	     << dendl;
@@ -2815,6 +2844,26 @@ void PG::merge_from(map<spg_t,PGRef>& sources, RecoveryCtx *rctx,
 	       << info.history.last_epoch_clean << " < past_interval start "
 	       << pib.first << ", adjusting start backwards" << dendl;
       past_intervals.adjust_start_backwards(info.history.last_epoch_clean);
+    }
+
+    // Similarly, if the same_interval_since value is later than
+    // last_epoch_clean, the next interval change will result in a
+    // past_interval start that is later than last_epoch_clean.  This
+    // can happen if we use the pg_history values from the merge
+    // source.  Adjust the same_interval_since value backwards if that
+    // happens.  (We trust the les and lec values more because they came from
+    // the real target, whereas the history value we stole from the source.)
+    if (info.history.last_epoch_started < info.history.same_interval_since) {
+      dout(10) << __func__ << " last_epoch_started "
+	       << info.history.last_epoch_started << " < same_interval_since "
+	       << info.history.same_interval_since
+	       << ", adjusting pg_history backwards" << dendl;
+      info.history.same_interval_since = info.history.last_epoch_clean;
+      // make sure same_{up,primary}_since are <= same_interval_since
+      info.history.same_up_since = std::min(
+	info.history.same_up_since, info.history.same_interval_since);
+      info.history.same_primary_since = std::min(
+	info.history.same_primary_since, info.history.same_interval_since);
     }
   }
 
@@ -2993,6 +3042,9 @@ void PG::purge_strays()
   if (is_premerge()) {
     dout(10) << "purge_strays " << stray_set << " but premerge, doing nothing"
 	     << dendl;
+    return;
+  }
+  if (cct->_conf.get_val<bool>("osd_debug_no_purge_strays")) {
     return;
   }
   dout(10) << "purge_strays " << stray_set << dendl;
