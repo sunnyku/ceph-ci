@@ -49,6 +49,15 @@ const static std::map<uint32_t, std::set<std::string>> always_on_modules = {
       "devicehealth",
       "orchestrator_cli",
       "volumes",
+    },
+    CEPH_RELEASE_OCTOPUS, {
+      "crash",
+      "status",
+      "progress",
+      "balancer",
+      "devicehealth",
+      "orchestrator_cli",
+      "volumes",
     }
   }
 };
