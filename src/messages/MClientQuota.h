@@ -32,6 +32,8 @@ public:
     encode(rstat.rfiles, payload);
     encode(rstat.rsubdirs, payload);
     encode(quota, payload);
+    encode(rstat.user_rbytes, payload);
+    encode(rstat.group_rbytes, payload);
   }
   void decode_payload() override {
     bufferlist::iterator p = payload.begin();
@@ -41,6 +43,8 @@ public:
     decode(rstat.rfiles, p);
     decode(rstat.rsubdirs, p);
     decode(quota, p);
+    decode(rstat.user_rbytes, p);
+    decode(rstat.group_rbytes, p);
     assert(p.end());
   }
 };

@@ -198,6 +198,10 @@ struct InodeStat {
       btime = utime_t();
       change_attr = 0;
     }
+    if ((features & CEPH_FEATURE_MDS_USER_GROUP_QUOTA)) {
+      decode(rstat.user_rbytes, p);
+      decode(rstat.group_rbytes, p);
+    }
   }
   
   // see CInode::encode_inodestat for encoder.

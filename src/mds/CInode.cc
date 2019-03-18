@@ -1443,11 +1443,12 @@ void InodeStoreBase::decode_bare(bufferlist::iterator &bl,
   decode(dirfragtree, bl);
   decode(xattrs, bl);
   decode(snap_blob, bl);
-
   decode(old_inodes, bl);
+
   if (struct_v == 2 && inode.is_dir()) {
     bool default_layout_exists;
     decode(default_layout_exists, bl);
+
     if (default_layout_exists) {
       decode(struct_v, bl); // this was a default_file_layout
       decode(inode.layout, bl); // but we only care about the layout portion
@@ -2234,7 +2235,7 @@ void CInode::finish_scatter_gather_update(int type)
 
       rstat.rsubdirs = 1;
       if (const sr_t *srnode = get_projected_srnode(); srnode)
-	rstat.rsnaps = srnode->snaps.size();
+       rstat.rsnaps = srnode->snaps.size();
 
       mempool_inode *pi = get_projected_inode();
       dout(20) << "  orig rstat " << pi->rstat << dendl;
@@ -3401,6 +3402,8 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
   if (cap) {
     cap->last_rbytes = file_i->rstat.rbytes;
     cap->last_rsize = file_i->rstat.rsize();
+    cap->last_user_rbytes = file_i->rstat.user_rbytes;
+    cap->last_group_rbytes = file_i->rstat.group_rbytes;
   }
 
   // auth
@@ -3602,6 +3605,10 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
   if (session->connection->has_feature(CEPH_FEATURE_FS_BTIME)) {
     encode(any_i->btime, bl);
     encode(any_i->change_attr, bl);
+  }
+  if (session->connection->has_feature(CEPH_FEATURE_MDS_USER_GROUP_QUOTA)) {
+    encode(file_i->rstat.user_rbytes, bl);
+    encode(file_i->rstat.group_rbytes, bl);
   }
 
   return valid;
