@@ -1785,6 +1785,10 @@ void PGMap::dump_delta(Formatter *f) const
   }
   f->close_section();
   pg_sum_delta.dump(f);
+  std::stringstream ssr;
+  overall_recovery_rate_summary(f, &ssr);
+  list<string> sl;
+  overall_recovery_summary(f, &sl);
   f->close_section();
 }
 
