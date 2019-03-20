@@ -1106,6 +1106,10 @@ void OSDService::send_pg_temp()
     }
   }
   _sent_pg_temp();
+
+  if (cct->_conf->osd_request_osdmap_for_pg_temp) {
+    request_osdmap_update(get_osdmap_epoch() + 1);
+  }
 }
 
 void OSDService::send_pg_created(pg_t pgid)

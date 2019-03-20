@@ -792,6 +792,7 @@ OPTION(osd_max_push_objects, OPT_U64)  // max objects in single push op
 OPTION(osd_recovery_forget_lost_objects, OPT_BOOL)   // off for now
 OPTION(osd_max_scrubs, OPT_INT)
 OPTION(osd_scrub_during_recovery, OPT_BOOL) // Allow new scrubs to start while recovery is active on the OSD
+OPTION(osd_request_osdmap_for_pg_temp, OPT_BOOL)
 OPTION(osd_scrub_begin_hour, OPT_INT)
 OPTION(osd_scrub_end_hour, OPT_INT)
 OPTION(osd_scrub_begin_week_day, OPT_INT)
