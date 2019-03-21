@@ -4542,6 +4542,11 @@ std::vector<Option> get_global_options() {
     .set_description("Period in seconds from last beacon to manager dropping "
                      "state about a monitored service (RGW, rbd-mirror etc)"),
 
+    Option("mgr_stats_high_burrs_multiples", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(5)
+    .add_service("mgr")
+    .set_description("multiples of average pg stats for high burrs"),
+
     Option("mon_mgr_digest_period", Option::TYPE_INT, Option::LEVEL_DEV)
     .set_default(5)
     .add_service("mon")

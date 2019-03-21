@@ -1814,6 +1814,20 @@ struct object_stat_sum_t {
       num_keys_recovered < 0;
   }
 
+  bool maybe_high_burrs(const object_stat_sum_t& ds,
+                        utime_t& dt, int64_t multiples) const {
+    if ((double)dt == 0.0) {
+      return true;
+    }
+    return num_rd >= multiples * ds.num_rd / (double)dt ||
+           num_rd_kb >= multiples * ds.num_rd_kb / (double)dt ||
+           num_wr >= multiples * ds.num_wr / (double)dt ||
+           num_wr_kb >= multiples * ds.num_wr_kb / (double)dt ||
+           num_objects_recovered >= multiples * ds.num_objects_recovered / (double)dt ||
+           num_bytes_recovered >= multiples * ds.num_bytes_recovered / (double)dt ||
+           num_keys_recovered >= multiples * ds.num_keys_recovered / (double)dt;
+  }
+
   void dump(Formatter *f) const;
   void padding_check() {
     static_assert(

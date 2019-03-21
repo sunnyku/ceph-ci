@@ -1272,7 +1272,10 @@ void PGMap::apply_incremental(CephContext *cct, const Incremental& inc)
     pool_stat_t d = pg_sum;
     d.stats.sub(pg_sum_old.stats);
     auto period = cct ? cct->_conf->get_val<int64_t>("mgr_tick_period") : 2;
-    if (!d.stats.sum.is_negative() && (double)delta_t >= period) {
+    auto multiples = cct ?
+      cct->_conf->get_val<int64_t>("mgr_stats_high_burrs_multiples") : 5;
+    if (!d.stats.sum.is_negative() && ((double)delta_t >= period ||
+        !d.stats.sum.maybe_high_burrs(pg_sum_delta.stats.sum, stamp_delta, multiples))) {
       pg_sum_deltas.push_back(make_pair(d, delta_t));
       stamp_delta += delta_t;
       pg_sum_delta.stats.add(d.stats);
@@ -1283,6 +1286,16 @@ void PGMap::apply_incremental(CephContext *cct, const Incremental& inc)
         stamp_delta -= pg_sum_deltas.front().second;
         pg_sum_deltas.pop_front();
       }
+    } else {
+      dout(10) << " filter out, delta_t: " << (double)delta_t
+               << ", num_rd: " << d.stats.sum.num_rd
+               << ", num_rd_kb: " << d.stats.sum.num_rd_kb
+               << ", num_wr: " << d.stats.sum.num_wr
+               << ", num_wr_kb: " << d.stats.sum.num_wr_kb
+               << ", num_objects_recovered: " << d.stats.sum.num_objects_recovered
+               << ", num_bytes_recovered: " << d.stats.sum.num_bytes_recovered
+               << ", num_keys_recovered: " << d.stats.sum.num_keys_recovered
+               << dendl;
     }
   }
   stamp = inc.stamp;
@@ -2362,7 +2375,10 @@ void PGMap::update_delta(
   d.stats.sub(old_pool_sum.stats);
   // filter non-negative delta value that updated by mgr tick
   auto period = cct ? cct->_conf->get_val<int64_t>("mgr_tick_period") : 2;
-  if (d.stats.sum.is_negative() || (double)delta_t < period)
+  auto multiples = cct ?
+    cct->_conf->get_val<int64_t>("mgr_stats_high_burrs_multiples") : 5;
+  if (d.stats.sum.is_negative() || ((double)delta_t < period &&
+      d.stats.sum.maybe_high_burrs(result_pool_delta->stats.sum, *result_ts_delta, multiples)))
     return;
 
   /* Aggregate current delta, and take out the last seen delta (if any) to
