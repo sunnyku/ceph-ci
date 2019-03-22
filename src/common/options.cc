@@ -4543,7 +4543,7 @@ std::vector<Option> get_global_options() {
                      "state about a monitored service (RGW, rbd-mirror etc)"),
 
     Option("mgr_stats_high_burrs_multiples", Option::TYPE_INT, Option::LEVEL_ADVANCED)
-    .set_default(5)
+    .set_default(10)
     .add_service("mgr")
     .set_description("multiples of average pg stats for high burrs"),
 

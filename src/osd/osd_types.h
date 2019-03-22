@@ -1819,13 +1819,13 @@ struct object_stat_sum_t {
     if ((double)dt == 0.0) {
       return true;
     }
-    return num_rd >= multiples * ds.num_rd / (double)dt ||
-           num_rd_kb >= multiples * ds.num_rd_kb / (double)dt ||
-           num_wr >= multiples * ds.num_wr / (double)dt ||
-           num_wr_kb >= multiples * ds.num_wr_kb / (double)dt ||
-           num_objects_recovered >= multiples * ds.num_objects_recovered / (double)dt ||
-           num_bytes_recovered >= multiples * ds.num_bytes_recovered / (double)dt ||
-           num_keys_recovered >= multiples * ds.num_keys_recovered / (double)dt;
+    int64_t avg_num_rd = ds.num_rd / (double)dt;
+    int64_t avg_num_wr = ds.num_wr / (double)dt;
+    int64_t avg_obj_recovered = ds.num_objects_recovered / (double)dt;
+
+    return (avg_num_rd >= 10 && num_rd >= multiples * avg_num_rd) ||
+      (avg_num_wr >= 10 && num_wr >= multiples * avg_num_wr) ||
+      (avg_obj_recovered >= 10 && num_objects_recovered >= multiples * avg_obj_recovered);
   }
 
   void dump(Formatter *f) const;
