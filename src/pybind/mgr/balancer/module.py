@@ -293,7 +293,7 @@ class Module(MgrModule):
             return (0, '', '')
         elif command['prefix'] == 'balancer off':
             if self.active:
-                self.set_config('active', '')
+                self.set_config('active', '0')
                 self.active = False
             self.event.set()
             return (0, '', '')
@@ -379,7 +379,9 @@ class Module(MgrModule):
     def serve(self):
         self.log.info('Starting')
         while self.run:
-            self.active = self.get_config('active', '') is not ''
+            if self.get_config('active', '') is '' and self.active:
+                self.set_config('active', '1')
+            self.active = self.get_config('active', '') is '1'
             begin_time = self.get_config('begin_time') or '0000'
             end_time = self.get_config('end_time') or '2400'
             timeofday = time.strftime('%H%M', time.localtime())
