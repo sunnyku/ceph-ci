@@ -63,7 +63,7 @@
 // cons/des
 MDSDaemon::MDSDaemon(std::string_view n, Messenger *m, MonClient *mc) :
   Dispatcher(m->cct),
-  mds_lock("MDSDaemon::mds_lock"),
+  mds_lock("MDSDaemon::mds_lock", true),
   stopping(false),
   timer(m->cct, mds_lock),
   gss_ktfile_client(m->cct->_conf.get_val<std::string>("gss_ktab_client_file")),
@@ -386,11 +386,9 @@ void MDSDaemon::handle_conf_change(const ConfigProxy& conf,
 			     const std::set <std::string> &changed)
 {
   // We may be called within mds_lock (via `tell`) or outwith the
-  // lock (via admin socket `config set`), so handle either case.
-  const bool initially_locked = mds_lock.is_locked_by_me();
-  if (!initially_locked) {
-    mds_lock.Lock();
-  }
+  // lock (via admin socket `config set`).
+  // Since mds_lock is recursive, it should handle either case.
+  std::lock_guard l(mds_lock);
 
   if (changed.count("mds_op_complaint_time") ||
       changed.count("mds_op_log_threshold")) {
@@ -433,10 +431,6 @@ void MDSDaemon::handle_conf_change(const ConfigProxy& conf,
 
   if (mds_rank) {
     mds_rank->handle_conf_change(conf, changed);
-  }
-
-  if (!initially_locked) {
-    mds_lock.Unlock();
   }
 }
 
@@ -562,7 +556,6 @@ void MDSDaemon::reset_tick()
   tick_event = timer.add_event_after(
     g_conf()->mds_tick_interval,
     new FunctionContext([this](int) {
-	ceph_assert(mds_lock.is_locked_by_me());
 	tick();
       }));
 }
