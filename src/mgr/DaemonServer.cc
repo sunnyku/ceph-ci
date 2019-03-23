@@ -76,7 +76,7 @@ DaemonServer::DaemonServer(MonClient *monc_,
       py_modules(py_modules_),
       clog(clog_),
       audit_clog(audit_clog_),
-      lock("DaemonServer"),
+      lock("DaemonServer", true),
       pgmap_ready(false),
       timer(g_ceph_context, lock),
       shutting_down(false),
@@ -329,8 +329,6 @@ void DaemonServer::tick()
 // fire after all modules have had a chance to set their health checks.
 void DaemonServer::schedule_tick_locked(double delay_sec)
 {
-  ceph_assert(lock.is_locked_by_me());
-
   if (tick_event) {
     timer.cancel_event(tick_event);
     tick_event = nullptr;
@@ -2733,11 +2731,9 @@ void DaemonServer::handle_conf_change(const ConfigProxy& conf,
 				      const std::set <std::string> &changed)
 {
   // We may be called within lock (via MCommand `config set`) or outwith the
-  // lock (via admin socket `config set`), so handle either case.
-  const bool initially_locked = lock.is_locked_by_me();
-  if (!initially_locked) {
-    lock.Lock();
-  }
+  // lock (via admin socket `config set`).
+  // Since lock is recursive, it should handle either case.
+  std::lock_guard l(lock);
 
   if (changed.count("mgr_stats_threshold") || changed.count("mgr_stats_period")) {
     dout(4) << "Updating stats threshold/period on "
@@ -2752,8 +2748,6 @@ void DaemonServer::handle_conf_change(const ConfigProxy& conf,
 
 void DaemonServer::_send_configure(ConnectionRef c)
 {
-  ceph_assert(lock.is_locked_by_me());
-
   auto configure = new MMgrConfigure();
   configure->stats_period = g_conf().get_val<int64_t>("mgr_stats_period");
   configure->stats_threshold = g_conf().get_val<int64_t>("mgr_stats_threshold");
