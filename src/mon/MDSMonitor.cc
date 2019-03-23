@@ -897,6 +897,42 @@ bool MDSMonitor::preprocess_command(MonOpRequestRef op)
       ds << fsmap;
     }
     r = 0;
+  } else if (prefix == "mds ok-to-stop") {
+    vector<string> ids;
+    if (!cmd_getval(g_ceph_context, cmdmap, "ids", ids)) {
+      r = -EINVAL;
+      ss << "must specify mds id";
+      goto out;
+    }
+    set<mds_gid_t> active;
+    set<mds_gid_t> standby;
+    for (auto& id : ids) {
+      ostringstream ess;
+      mds_gid_t gid = gid_from_arg(fsmap, id, ess);
+      if (gid == MDS_GID_NONE) {
+	if (fsmap.is_any_degraded()) {
+	  ss << ess.str();
+	  r = -ENOENT;
+	  goto out;
+	}
+	// the mds doesn't exist, but no file systems are unhappy, so losing it
+	// can't have any effect.
+	continue;
+      }
+      if (fsmap.gid_has_rank(gid)) {
+	active.insert(gid);
+      } else {
+	standby.insert(gid);
+      }
+    }
+    if (fsmap.get_num_standby() - standby.size() < active.size()) {
+      r = -EBUSY;
+      ss << "insufficent standby MDS daemons to stop active gids " << stringify(active)
+	 << " and/or standby gids " << stringify(standby);;
+      goto out;
+    }
+    r = 0;
+    ss << "should be safe to stop " << ids;
   } else if (prefix == "fs dump") {
     int64_t epocharg;
     epoch_t epoch;
