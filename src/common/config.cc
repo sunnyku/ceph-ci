@@ -702,6 +702,16 @@ int md_config_t::parse_option(ConfigValues& values,
       }
       ret = _set_val(values, tracker,  val, opt, level, &error_message);
       break;
+    } else if (ceph_argparse_witharg(
+		 args, i, &val, err,
+		 string(string("--default-") + opt.name).c_str(), (char*)NULL)) {
+      if (!err.str().empty()) {
+        error_message = err.str();
+	ret = -EINVAL;
+	break;
+      }
+      ret = _set_val(values, tracker,  val, opt, CONF_DEFAULT, &error_message);
+      break;
     }
     ++o;
   }
