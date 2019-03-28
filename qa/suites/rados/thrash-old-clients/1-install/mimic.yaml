@@ -1,3 +1,10 @@
+overrides:
+  ceph:
+    mon_bind_addrvec: false
+    mon_bind_msgr2: false
+    conf:
+      global:
+        ms type: async
 tasks:
 - install:
     branch: mimic
