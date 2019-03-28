@@ -1,3 +1,7 @@
+overrides:
+  ceph:
+    mon_bind_addrvec: false
+    mon_bind_msgr2: false
 tasks:
 - install:
     branch: luminous
