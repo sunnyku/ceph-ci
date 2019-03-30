@@ -402,11 +402,14 @@ ceph_config_set(BaseMgrModule *self, PyObject *args)
   if (!PyArg_ParseTuple(args, "sz:ceph_config_set", &key, &value)) {
     return nullptr;
   }
+
+  PyThreadState *tstate = PyEval_SaveThread();
   boost::optional<string> val;
   if (value) {
     val = value;
   }
   self->py_modules->set_config(self->this_module->get_name(), key, val);
+  PyEval_RestoreThread(tstate);
 
   Py_RETURN_NONE;
 }
