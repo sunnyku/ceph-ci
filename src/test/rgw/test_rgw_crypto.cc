@@ -677,7 +677,7 @@ TEST(TestRGWCrypto, check_RGWGetObj_BlockDecrypt_fixup_invalid_ranges)
 {
 
   ut_get_sink get_sink;
-  auto nonecrypt = std::make_unique<BlockCryptNone>(4096);
+  auto nonecrypt = ceph::make_unique<BlockCryptNone>(4096);
   TestRGWGetObj_BlockDecrypt decrypt(g_ceph_context, &get_sink,
 				     std::move(nonecrypt));
 
