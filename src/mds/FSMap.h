@@ -173,6 +173,19 @@ public:
     return legacy_client_fscid;
   }
 
+  size_t get_num_standby() const {
+    return standby_daemons.size();
+  }
+
+  bool is_any_degraded() const {
+    for (auto& i : filesystems) {
+      if (i.second->mds_map.is_degraded()) {
+	return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * Get state of all daemons (for all filesystems, including all standbys)
    */
