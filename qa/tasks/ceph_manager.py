@@ -680,7 +680,7 @@ class Thrasher:
             k = 0
             m = 99
             has_pools = False
-            pools_json = self.get_osd_dump_json()['pools']
+            pools_json = self.ceph_manager.get_osd_dump_json()['pools']
 
             for pool_json in pools_json:
                 pool = pool_json['pool_name']
