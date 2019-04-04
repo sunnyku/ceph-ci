@@ -263,9 +263,9 @@ BuildRequires:  redhat-lsb-core
 BuildRequires:	python2-Cython
 %endif
 %if 0%{?rhel} == 7
-BuildRequires:	python34-devel
-BuildRequires:	python34-setuptools
-BuildRequires:	python34-Cython
+BuildRequires:	python%{_python_buildid}-devel
+BuildRequires:	python%{_python_buildid}-setuptools
+BuildRequires:	python%{_python_buildid}-Cython
 %else
 BuildRequires:	python3-devel
 BuildRequires:	python3-setuptools
