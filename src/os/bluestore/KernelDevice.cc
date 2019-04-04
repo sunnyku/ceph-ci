@@ -32,6 +32,8 @@
 #include "common/align.h"
 #include "common/numa.h"
 
+#include "global/global_context.h"
+
 #define dout_context cct
 #define dout_subsys ceph_subsys_bdev
 #undef dout_prefix
@@ -520,6 +522,14 @@ void KernelDevice::_aio_thread()
         } else if (aio[i]->length != (uint64_t)r) {
           derr << "aio to " << aio[i]->offset << "~" << aio[i]->length
                << " but returned: " << r << dendl;
+	  if (r == -EIO || r == EIO) {
+	    note_eio_event(
+	      devname.c_str(),
+	      path.c_str(),
+	      aio[i]->iocb.aio_lio_opcode,
+	      aio[i]->offset,
+	      aio[i]->length);
+	  }
           ceph_abort_msg("unexpected aio error");
         }
 
