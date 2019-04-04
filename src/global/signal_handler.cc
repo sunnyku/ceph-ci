@@ -255,6 +255,16 @@ static void handle_fatal_signal(int signum)
 	  jf.dump_string("assert_msg", g_assert_msg);
 	}
 
+	// eio?
+	if (g_eio) {
+	  jf.dump_bool("eio", true);
+	  jf.dump_string("eio_devname", g_eio_devname);
+	  jf.dump_string("eio_path", g_eio_path);
+	  jf.dump_int("eio_optype", g_eio_iotype);
+	  jf.dump_unsigned("eio_offset", g_eio_offset);
+	  jf.dump_unsigned("eio_length", g_eio_length);
+	}
+
 	// backtrace
 	bt.dump(&jf);
 
