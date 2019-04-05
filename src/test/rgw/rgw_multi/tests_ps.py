@@ -9,7 +9,7 @@ from rgw_multi.tests import get_realm, \
     zone_data_checkpoint, \
     check_bucket_eq, \
     gen_bucket_name
-from rgw_multi.zone_ps import PSTopic, PSNotification, PSSubscription, PSNotificationS3
+from rgw_multi.zone_ps import PSTopic, PSNotification, PSSubscription, PSNotificationS3, print_connection_info
 from nose import SkipTest
 from nose.tools import assert_not_equal, assert_equal
 
@@ -125,6 +125,13 @@ NOTIFICATION_SUFFIX = "_notif"
 ##############
 # pubsub tests
 ##############
+
+def test_ps_info():
+    zones, ps_zones = init_env()
+    print("Master Zone")
+    print_connection_info(zones[0].conn)
+    print("PubSub Zone")
+    print_connection_info(ps_zones[0].conn)
 
 
 def test_ps_s3_notification_low_level():
