@@ -861,6 +861,8 @@ def test_ps_versioned_deletion():
 
 
 def test_ps_push_http():
+    # test cannot run in automated environment, since it requires an http server
+    return
     """ test pushing to http endpoint """
     zones, ps_zones = init_env()
     bucket_name = gen_bucket_name()
@@ -908,6 +910,8 @@ def test_ps_push_http():
 
 def test_ps_s3_push_http():
     """ test pushing to http endpoint n s3 record format"""
+    # test cannot run in automated environment, since it requires an http server
+    return
     zones, ps_zones = init_env()
     bucket_name = gen_bucket_name()
     topic_name = bucket_name+TOPIC_SUFFIX
@@ -953,6 +957,8 @@ def test_ps_s3_push_http():
 
 def test_ps_push_amqp():
     """ test pushing to amqp endpoint """
+    # test cannot run in automated environment, since it requires an amqp broker
+    return
     zones, ps_zones = init_env()
     bucket_name = gen_bucket_name()
     topic_name = bucket_name+TOPIC_SUFFIX
@@ -1002,6 +1008,8 @@ def test_ps_push_amqp():
 
 def test_ps_s3_push_amqp():
     """ test pushing to amqp endpoint n s3 record format"""
+    # test cannot run in automated environment, since it requires an amqp broker
+    return
     zones, ps_zones = init_env()
     bucket_name = gen_bucket_name()
     topic_name = bucket_name+TOPIC_SUFFIX
