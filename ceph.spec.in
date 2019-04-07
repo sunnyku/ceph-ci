@@ -87,7 +87,13 @@
 
 %{!?_udevrulesdir: %global _udevrulesdir /lib/udev/rules.d}
 %{!?tmpfiles_create: %global tmpfiles_create systemd-tmpfiles --create}
+%if 0%{?rhel} == 7
+%{!?python3_pkgversion: %global python3_pkgversion 34}
+%{!?python3_version: %global python3_version 3.4}
+%else
 %{!?python3_pkgversion: %global python3_pkgversion 3}
+%{!?python3_version: %global python3_version 3}
+%endif
 # define _python_buildid macro which will expand to the empty string when
 # building with python2
 %global _python_buildid %{?_defined_if_python2_absent:%{python3_pkgversion}}
@@ -262,15 +268,9 @@ BuildRequires:  redhat-lsb-core
 %if 0%{with python2}
 BuildRequires:	python2-Cython
 %endif
-%if 0%{?rhel} == 7
-BuildRequires:	python34-devel
-BuildRequires:	python34-setuptools
-BuildRequires:	python34-Cython
-%else
-BuildRequires:	python3-devel
-BuildRequires:	python3-setuptools
-BuildRequires:	python3-Cython
-%endif
+BuildRequires:	python%{python3_pkgversion}-devel
+BuildRequires:	python%{python3_pkgversion}-setuptools
+BuildRequires:	python%{python3_pkgversion}-Cython
 BuildRequires:	python%{_python_buildid}-prettytable
 BuildRequires:	python%{_python_buildid}-sphinx
 BuildRequires:	lz4-devel >= 1.7
@@ -1127,7 +1127,7 @@ ${CMAKE} .. \
     -DCMAKE_INSTALL_DOCDIR=%{_docdir}/ceph \
     -DCMAKE_INSTALL_INCLUDEDIR=%{_includedir} \
     -DWITH_MANPAGE=ON \
-    -DWITH_PYTHON3=ON \
+    -DWITH_PYTHON3=%{python3_version} \
     -DWITH_MGR_DASHBOARD_FRONTEND=OFF \
 %if %{with python2}
     -DWITH_PYTHON2=ON \

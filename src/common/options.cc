@@ -663,11 +663,18 @@ std::vector<Option> get_global_options() {
     .set_description("Syslog facility for cluster log messages")
     .add_see_also("mon_cluster_log_to_syslog"),
 
+    Option("mon_cluster_log_to_file", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .add_service("mon")
+    .set_description("Make monitor send cluster log messages to file")
+    .add_see_also("mon_cluster_log_file"),
+
     Option("mon_cluster_log_file", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("default=/var/log/ceph/$cluster.$channel.log cluster=/var/log/ceph/$cluster.log")
     .add_service("mon")
     .set_description("File(s) to write cluster log to")
-    .set_long_description("This can either be a simple file name to receive all messages, or a list of key/value pairs where the key is the log channel and the value is the filename, which may include $cluster and $channel metavariables"),
+    .set_long_description("This can either be a simple file name to receive all messages, or a list of key/value pairs where the key is the log channel and the value is the filename, which may include $cluster and $channel metavariables")
+    .add_see_also("mon_cluster_log_to_file"),
 
     Option("mon_cluster_log_file_level", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("debug")
@@ -1861,6 +1868,12 @@ std::vector<Option> get_global_options() {
     .add_service("mon")
     .set_flag(Option::FLAG_CLUSTER_CREATE)
     .set_description("do not set nautilus feature for new mon clusters"),
+
+    Option("mon_debug_no_require_octopus", Option::TYPE_BOOL, Option::LEVEL_DEV)
+    .set_default(false)
+    .add_service("mon")
+    .set_flag(Option::FLAG_CLUSTER_CREATE)
+    .set_description("do not set octopus feature for new mon clusters"),
 
     Option("mon_debug_no_require_bluestore_for_ec_overwrites", Option::TYPE_BOOL, Option::LEVEL_DEV)
     .set_default(false)
@@ -3789,7 +3802,12 @@ std::vector<Option> get_global_options() {
 
     Option("rocksdb_enable_rmrange", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)
-    .set_description(""),
+    .set_description("Refer to github.com/facebook/rocksdb/wiki/DeleteRange-Implementation"),
+
+    Option("rocksdb_max_items_rmrange", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(1024)
+    .set_description("Delete Range will be called if number of keys exceeded, must enable rocksdb_enable_rmrange first")
+    .add_see_also("rocksdb_enable_rmrange"),
 
     Option("rocksdb_bloom_bits_per_key", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
     .set_default(20)
@@ -4684,6 +4702,13 @@ std::vector<Option> get_global_options() {
     Option("bluestore_log_omap_iterator_age", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(1)
     .set_description("log omap iteration operation if it's slower than this age (seconds)"),
+
+    Option("bluestore_debug_enforce_settings", Option::TYPE_STR, Option::LEVEL_DEV)
+    .set_default("default")
+    .set_enum_allowed({"default", "hdd", "ssd"})
+    .set_description("Enforces specific hw profile settings")
+    .set_long_description("'hdd' enforces settings intended for BlueStore above a rotational drive. 'ssd' enforces settings intended for BlueStore above a solid drive. 'default' - using settings for the actual hardware."),
+
 
     // -----------------------------------------
     // kstore
