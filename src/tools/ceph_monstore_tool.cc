@@ -635,9 +635,13 @@ static int update_paxos(MonitorDBStore& st)
   }
   const string prefix("paxos");
   auto t = make_shared<MonitorDBStore::Transaction>();
-  t->put(prefix, "first_committed", 0);
-  t->put(prefix, "last_committed", 0);
-  auto pending_v = 1;
+  // a large enough version greater than the maximum possible `last_committed`
+  // that could be replied by the peons when the leader is collecting paxos
+  // transactions during recovery
+  constexpr version_t last_committed = 0x42;
+  t->put(prefix, "first_committed", last_committed);
+  t->put(prefix, "last_committed", last_committed);
+  auto pending_v = last_committed + 1;
   t->put(prefix, pending_v, pending_proposal);
   t->put(prefix, "pending_v", pending_v);
   t->put(prefix, "pending_pn", 400);
