@@ -2297,7 +2297,7 @@ void object_stat_sum_t::decode(bufferlist::const_iterator& bl)
   bool decode_finish = false;
   DECODE_START(20, bl);  // make sure to also update fast decode below
 #if defined(CEPH_LITTLE_ENDIAN)
-  if (struct_v >= 19) {  // this must match newest decode version
+  if (struct_v >= 20) {  // this must match newest decode version
     bl.copy(sizeof(object_stat_sum_t), (char*)(&num_bytes));
     decode_finish = true;
   }
