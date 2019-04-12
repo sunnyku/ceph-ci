@@ -9,6 +9,8 @@
 #include "AsyncMessenger.h"
 #include "common/EventTrace.h"
 #include "include/random.h"
+#include "auth/AuthClient.h"
+#include "auth/AuthServer.h"
 
 #define dout_subsys ceph_subsys_ms
 #undef dout_prefix
@@ -72,7 +74,6 @@ ProtocolV1::ProtocolV1(AsyncConnection *connection)
       once_ready(false),
       state(NONE),
       global_seq(0),
-      authorizer(nullptr),
       wait_for_seq(false) {
   temp_buffer = new char[4096];
 }
@@ -82,20 +83,12 @@ ProtocolV1::~ProtocolV1() {
   ceph_assert(sent.empty());
 
   delete[] temp_buffer;
-
-  if (authorizer) {
-    delete authorizer;
-  }
 }
 
 void ProtocolV1::connect() {
   this->state = START_CONNECT;
 
   // reset connect state variables
-  if (authorizer) {
-    delete authorizer;
-    authorizer = nullptr;
-  }
   authorizer_buf.clear();
   memset(&connect_msg, 0, sizeof(connect_msg));
   memset(&connect_reply, 0, sizeof(connect_reply));
@@ -1235,14 +1228,11 @@ void ProtocolV1::discard_out_queue() {
   out_q.clear();
 }
 
-void ProtocolV1::reset_recv_state() {
+void ProtocolV1::reset_recv_state()
+{
   // clean up state internal variables and states
-  if (state == CONNECTING_SEND_CONNECT_MSG) {
-    if (authorizer) {
-      delete authorizer;
-    }
-    authorizer = nullptr;
-  }
+  auth_meta.reset(new AuthConnectionMeta);
+  authorizer_more.clear();
 
   // clean read and write callbacks
   connection->pendingReadLen.reset();
@@ -1434,13 +1424,36 @@ CtPtr ProtocolV1::handle_my_addr_write(int r) {
   return CONTINUE(send_connect_message);
 }
 
-CtPtr ProtocolV1::send_connect_message() {
+CtPtr ProtocolV1::send_connect_message()
+{
   state = CONNECTING_SEND_CONNECT_MSG;
 
   ldout(cct, 20) << __func__ << dendl;
+  ceph_assert(messenger->auth_client);
 
-  if (!authorizer) {
-    authorizer = messenger->ms_deliver_get_authorizer(connection->peer_type);
+  bufferlist auth_bl;
+  vector<uint32_t> preferred_modes;
+
+  if (connection->peer_type != CEPH_ENTITY_TYPE_MON) {
+    if (authorizer_more.length()) {
+      ldout(cct,10) << __func__ << " using augmented (challenge) auth payload"
+		    << dendl;
+      auth_bl.claim(authorizer_more);
+    } else {
+      auto am = auth_meta;
+      connection->lock.unlock();
+      int r = messenger->auth_client->get_auth_request(
+	connection, am.get(),
+	&am->auth_method, &preferred_modes, &auth_bl);
+      connection->lock.lock();
+      if (r < 0) {
+	return _fault();
+      }
+      if (state != CONNECTING_SEND_CONNECT_MSG) {
+	ldout(cct, 1) << __func__ << " state changed!" << dendl;
+	return _fault();
+      }
+    }
   }
 
   ceph_msg_connect connect;
@@ -1450,13 +1463,15 @@ CtPtr ProtocolV1::send_connect_message() {
   connect.connect_seq = connect_seq;
   connect.protocol_version =
       messenger->get_proto_version(connection->peer_type, true);
-  connect.authorizer_protocol = authorizer ? authorizer->protocol : 0;
-  connect.authorizer_len = authorizer ? authorizer->bl.length() : 0;
-
-  if (authorizer) {
+  if (auth_bl.length()) {
     ldout(cct, 10) << __func__
-                   << " connect_msg.authorizer_len=" << connect.authorizer_len
-                   << " protocol=" << connect.authorizer_protocol << dendl;
+                   << " connect_msg.authorizer_len=" << auth_bl.length()
+                   << " protocol=" << auth_meta->auth_method << dendl;
+    connect.authorizer_protocol = auth_meta->auth_method;
+    connect.authorizer_len = auth_bl.length();
+  } else {
+    connect.authorizer_protocol = 0;
+    connect.authorizer_len = 0;
   }
 
   connect.flags = 0;
@@ -1467,8 +1482,8 @@ CtPtr ProtocolV1::send_connect_message() {
 
   bufferlist bl;
   bl.append((char *)&connect, sizeof(connect));
-  if (authorizer) {
-    bl.append(authorizer->bl.c_str(), authorizer->bl.length());
+  if (auth_bl.length()) {
+    bl.append(auth_bl.c_str(), auth_bl.length());
   }
 
   ldout(cct, 10) << __func__ << " connect sending gseq=" << global_seq
@@ -1549,17 +1564,38 @@ CtPtr ProtocolV1::handle_connect_reply_auth(char *buffer, int r) {
   bufferlist authorizer_reply;
   authorizer_reply.append(buffer, connect_reply.authorizer_len);
 
-  if (connect_reply.tag == CEPH_MSGR_TAG_CHALLENGE_AUTHORIZER) {
-    ldout(cct, 10) << __func__ << " connect got auth challenge" << dendl;
-    authorizer->add_challenge(cct, authorizer_reply);
-    return CONTINUE(send_connect_message);
-  }
-
-  auto iter = authorizer_reply.cbegin();
-  if (authorizer && !authorizer->verify_reply(iter,
-					      nullptr /* connection_secret */)) {
-    ldout(cct, 0) << __func__ << " failed verifying authorize reply" << dendl;
-    return _fault();
+  if (connection->peer_type != CEPH_ENTITY_TYPE_MON) {
+    auto am = auth_meta;
+    bool more = (connect_reply.tag == CEPH_MSGR_TAG_CHALLENGE_AUTHORIZER);
+    bufferlist auth_retry_bl;
+    int r;
+    connection->lock.unlock();
+    if (more) {
+      r = messenger->auth_client->handle_auth_reply_more(
+	connection, am.get(), authorizer_reply, &auth_retry_bl);
+    } else {
+      // these aren't used for v1
+      CryptoKey skey;
+      string con_secret;
+      r = messenger->auth_client->handle_auth_done(
+	connection, am.get(),
+	0 /* global id */, 0 /* con mode */,
+	authorizer_reply,
+	&skey, &con_secret);
+    }
+    connection->lock.lock();
+    if (state != CONNECTING_SEND_CONNECT_MSG) {
+      ldout(cct, 1) << __func__ << " state changed" << dendl;
+      ceph_assert(state == CLOSED);
+      return _fault();
+    }
+    if (r < 0) {
+      return _fault();
+    }
+    if (more && r == 0) {
+      authorizer_more = auth_retry_bl;
+      return CONTINUE(send_connect_message);
+    }
   }
 
   return handle_connect_reply_2();
@@ -1708,12 +1744,12 @@ CtPtr ProtocolV1::client_ready() {
 
   // If we have an authorizer, get a new AuthSessionHandler to deal with
   // ongoing security of the connection.  PLR
-  if (authorizer != NULL) {
+  if (auth_meta->authorizer) {
     ldout(cct, 10) << __func__ << " setting up session_security with auth "
-		   << authorizer << dendl;
+		   << auth_meta->authorizer.get() << dendl;
     session_security.reset(get_auth_session_handler(
-        cct, authorizer->protocol,
-	authorizer->session_key,
+        cct, auth_meta->authorizer->protocol,
+	auth_meta->authorizer->session_key,
         connection->get_features()));
   } else {
     // We have no authorizer, so we shouldn't be applying security to messages
@@ -1935,41 +1971,34 @@ CtPtr ProtocolV1::handle_connect_message_2() {
   }
 
   bufferlist auth_bl_copy = authorizer_buf;
+  auto am = auth_meta;
   connection->lock.unlock();
   ldout(cct,10) << __func__ << " authorizor_protocol "
 		<< connect_msg.authorizer_protocol
 		<< " len " << auth_bl_copy.length()
 		<< dendl;
-  bool authorizer_valid;
-  bool need_challenge = HAVE_FEATURE(connect_msg.features, CEPHX_V2);
-  bool had_challenge = (bool)authorizer_challenge;
-  if (!messenger->ms_deliver_verify_authorizer(
-          connection, connection->peer_type, connect_msg.authorizer_protocol,
-          auth_bl_copy, authorizer_reply, authorizer_valid, session_key,
-	  nullptr /* connection_secret */,
-          need_challenge ? &authorizer_challenge : nullptr) ||
-      !authorizer_valid) {
+  bool more = (bool)auth_meta->authorizer_challenge;
+  int r = messenger->auth_server->handle_auth_request(
+    connection,
+    am.get(),
+    more,
+    am->auth_method,
+    auth_bl_copy,
+    &authorizer_reply);
+  if (r < 0) {
     connection->lock.lock();
-    if (state != ACCEPTING_WAIT_CONNECT_MSG_AUTH) {
-      ldout(cct, 1) << __func__
-		    << " state changed while accept, it must be mark_down"
-		    << dendl;
-      ceph_assert(state == CLOSED);
-      return _fault();
-    }
-
-    if (need_challenge && !had_challenge && authorizer_challenge) {
-      ldout(cct, 10) << __func__ << ": challenging authorizer" << dendl;
-      ceph_assert(authorizer_reply.length());
-      return send_connect_message_reply(CEPH_MSGR_TAG_CHALLENGE_AUTHORIZER,
-                                        reply, authorizer_reply);
-    } else {
-      ldout(cct, 0) << __func__ << ": got bad authorizer, auth_reply_len="
-                    << authorizer_reply.length() << dendl;
-      session_security.reset();
-      return send_connect_message_reply(CEPH_MSGR_TAG_BADAUTHORIZER, reply,
-                                        authorizer_reply);
-    }
+    ldout(cct, 0) << __func__ << ": got bad authorizer, auth_reply_len="
+		  << authorizer_reply.length() << dendl;
+    session_security.reset();
+    return send_connect_message_reply(CEPH_MSGR_TAG_BADAUTHORIZER, reply,
+				      authorizer_reply);
+  }
+  if (r == 0) {
+    connection->lock.lock();
+    ldout(cct, 10) << __func__ << ": challenging authorizer" << dendl;
+    ceph_assert(authorizer_reply.length());
+    return send_connect_message_reply(CEPH_MSGR_TAG_CHALLENGE_AUTHORIZER,
+				      reply, authorizer_reply);
   }
 
   // We've verified the authorizer for this AsyncConnection, so set up the
@@ -2244,6 +2273,7 @@ CtPtr ProtocolV1::replace(const AsyncConnectionRef& existing,
       ceph_assert(!connection->delay_state);
     }
     exproto->reset_recv_state();
+    exproto->auth_meta = auth_meta;
 
     exproto->connect_msg.features = connect_msg.features;
 
@@ -2267,8 +2297,6 @@ CtPtr ProtocolV1::replace(const AsyncConnectionRef& existing,
     existing->recv_start = existing->recv_end = 0;
     // there shouldn't exist any buffer
     ceph_assert(connection->recv_start == connection->recv_end);
-
-    exproto->authorizer_challenge.reset();
 
     auto deactivate_existing = std::bind(
         [existing, new_worker, new_center, exproto, reply,
