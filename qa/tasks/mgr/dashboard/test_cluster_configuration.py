@@ -183,8 +183,8 @@ class ClusterConfigurationTest(DashboardTestCase):
 
     def test_bulk_set_cant_update_at_runtime(self):
         config_options = {
-            'clog_to_syslog': {'section': 'global', 'value': 'true'},  # not updatable
-            'clog_to_graylog': {'section': 'global', 'value': 'true'}  # not updatable
+            'public_bind_addr': {'section': 'global', 'value': '1.2.3.4:567'},  # not updatable
+            'public_network': {'section': 'global', 'value': '10.0.0.0/8'}  # not updatable
         }
         orig_values = dict()
 
@@ -207,7 +207,7 @@ class ClusterConfigurationTest(DashboardTestCase):
 
     def test_bulk_set_cant_update_at_runtime_partial(self):
         config_options = {
-            'clog_to_syslog': {'section': 'global', 'value': 'true'},  # not updatable
+            'public_bind_addr': {'section': 'global', 'value': 'true'},  # not updatable
             'log_to_stderr': {'section': 'global', 'value': 'true'}  # updatable
         }
         orig_values = dict()
@@ -221,7 +221,7 @@ class ClusterConfigurationTest(DashboardTestCase):
         self.assertError(code='config_option_not_updatable_at_runtime',
                          component='cluster_configuration',
                          detail='Config option {} is/are not updatable at runtime'.format(
-                             'clog_to_syslog'))
+                             'public_bind_addr'))
 
         # check if config option values are still the original ones
         for config_name, value in orig_values.items():
