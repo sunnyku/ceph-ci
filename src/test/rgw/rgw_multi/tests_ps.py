@@ -9,7 +9,7 @@ from rgw_multi.tests import get_realm, \
     zone_data_checkpoint, \
     check_bucket_eq, \
     gen_bucket_name
-from rgw_multi.zone_ps import PSTopic, PSNotification, PSSubscription, PSNotificationS3
+from rgw_multi.zone_ps import PSTopic, PSNotification, PSSubscription, PSNotificationS3, print_connection_info
 from nose import SkipTest
 from nose.tools import assert_not_equal, assert_equal
 
@@ -125,6 +125,13 @@ NOTIFICATION_SUFFIX = "_notif"
 ##############
 # pubsub tests
 ##############
+
+def test_ps_info():
+    zones, ps_zones = init_env()
+    print("Master Zone")
+    print_connection_info(zones[0].conn)
+    print("PubSub Zone")
+    print_connection_info(ps_zones[0].conn)
 
 
 def test_ps_s3_notification_low_level():
@@ -854,6 +861,8 @@ def test_ps_versioned_deletion():
 
 
 def test_ps_push_http():
+    # test cannot run in automated environment, since it requires an http server
+    return
     """ test pushing to http endpoint """
     zones, ps_zones = init_env()
     bucket_name = gen_bucket_name()
@@ -901,6 +910,8 @@ def test_ps_push_http():
 
 def test_ps_s3_push_http():
     """ test pushing to http endpoint n s3 record format"""
+    # test cannot run in automated environment, since it requires an http server
+    return
     zones, ps_zones = init_env()
     bucket_name = gen_bucket_name()
     topic_name = bucket_name+TOPIC_SUFFIX
@@ -946,6 +957,8 @@ def test_ps_s3_push_http():
 
 def test_ps_push_amqp():
     """ test pushing to amqp endpoint """
+    # test cannot run in automated environment, since it requires an amqp broker
+    return
     zones, ps_zones = init_env()
     bucket_name = gen_bucket_name()
     topic_name = bucket_name+TOPIC_SUFFIX
@@ -995,6 +1008,8 @@ def test_ps_push_amqp():
 
 def test_ps_s3_push_amqp():
     """ test pushing to amqp endpoint n s3 record format"""
+    # test cannot run in automated environment, since it requires an amqp broker
+    return
     zones, ps_zones = init_env()
     bucket_name = gen_bucket_name()
     topic_name = bucket_name+TOPIC_SUFFIX
