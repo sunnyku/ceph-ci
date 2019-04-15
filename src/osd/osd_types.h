@@ -1814,18 +1814,20 @@ struct object_stat_sum_t {
       num_keys_recovered < 0;
   }
 
-  bool maybe_high_burrs(const object_stat_sum_t& ds,
-                        utime_t& dt, int64_t multiples) const {
-    if ((double)dt == 0.0) {
-      return true;
-    }
-    int64_t avg_num_rd = ds.num_rd / (double)dt;
-    int64_t avg_num_wr = ds.num_wr / (double)dt;
-    int64_t avg_obj_recovered = ds.num_objects_recovered / (double)dt;
+  bool maybe_high_burrs(int64_t max_bytes,
+                        int64_t max_ops) const {
 
-    return (avg_num_rd >= 10 && num_rd >= multiples * avg_num_rd) ||
-      (avg_num_wr >= 10 && num_wr >= multiples * avg_num_wr) ||
-      (avg_obj_recovered >= 10 && num_objects_recovered >= multiples * avg_obj_recovered);
+    if (max_bytes > 0 && (num_rd_kb * 1024 > max_bytes ||
+                          num_wr_kb * 1024 > max_bytes ||
+                          num_bytes_recovered > max_bytes))
+      return true;
+
+    if (max_ops > 0 && (num_rd > max_ops ||
+                        num_wr > max_ops ||
+                        num_objects_recovered > max_ops))
+      return true;
+
+    return false;
   }
 
   void dump(Formatter *f) const;

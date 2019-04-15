@@ -1269,11 +1269,14 @@ void PGMap::apply_incremental(CephContext *cct, const Incremental& inc)
     // calculate a delta, and average over the last 2 deltas.
     pool_stat_t d = pg_sum;
     d.stats.sub(pg_sum_old.stats);
-    auto period = cct ? cct->_conf->get_val<int64_t>("mgr_tick_period") : 2;
-    auto multiples = cct ?
-      cct->_conf->get_val<int64_t>("mgr_stats_high_burrs_multiples") : 5;
-    if (!d.stats.sum.is_negative() && ((double)delta_t >= period ||
-        !d.stats.sum.maybe_high_burrs(pg_sum_delta.stats.sum, stamp_delta, multiples))) {
+    auto osd_max_bdw = cct ? cct->_conf->get_val<int64_t>(
+      "mgr_stat_osd_max_bandwidth") : (200 << 20);
+    auto osd_max_ops = cct ? cct->_conf->get_val<int64_t>(
+      "mgr_stat_osd_max_iops") : 1000;
+    auto max_bytes = osd_max_bdw * num_osd * (double)delta_t;
+    auto max_ops = osd_max_ops * num_osd * (double)delta_t;
+    if (!d.stats.sum.is_negative() &&
+        !d.stats.sum.maybe_high_burrs(max_bytes, max_ops)) {
       pg_sum_deltas.push_back(make_pair(d, delta_t));
       stamp_delta += delta_t;
       pg_sum_delta.stats.add(d.stats);
@@ -2372,11 +2375,13 @@ void PGMap::update_delta(
   pool_stat_t d = current_pool_sum;
   d.stats.sub(old_pool_sum.stats);
   // filter non-negative delta value that updated by mgr tick
-  auto period = cct ? cct->_conf->get_val<int64_t>("mgr_tick_period") : 2;
-  auto multiples = cct ?
-    cct->_conf->get_val<int64_t>("mgr_stats_high_burrs_multiples") : 5;
-  if (d.stats.sum.is_negative() || ((double)delta_t < period &&
-      d.stats.sum.maybe_high_burrs(result_pool_delta->stats.sum, *result_ts_delta, multiples)))
+  auto osd_max_bdw = cct ? cct->_conf->get_val<int64_t>(
+    "mgr_stat_osd_max_bandwidth") : (200 << 20);
+  auto osd_max_ops = cct ? cct->_conf->get_val<int64_t>(
+    "mgr_stat_osd_max_iops") : 1000;
+  auto max_bytes = osd_max_bdw * num_osd * (double)delta_t;
+  auto max_ops = osd_max_ops * num_osd * (double)delta_t;
+  if (d.stats.sum.is_negative() || d.stats.sum.maybe_high_burrs(max_bytes, max_ops))
     return;
 
   /* Aggregate current delta, and take out the last seen delta (if any) to
