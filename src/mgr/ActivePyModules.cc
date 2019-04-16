@@ -615,7 +615,13 @@ void ActivePyModules::set_store(const std::string &module_name,
     jf.flush(cmd_json);
     set_cmd.run(&monc, cmd_json.str());
   }
-  set_cmd.wait();
+
+  // drop GIL while we block for a reply
+  {
+    PyThreadState *tstate = PyEval_SaveThread();
+    set_cmd.wait();
+    PyEval_RestoreThread(tstate);
+  }
 
   if (set_cmd.r != 0) {
     // config-key set will fail if mgr's auth key has insufficient
