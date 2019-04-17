@@ -8,7 +8,7 @@ from .tests import get_realm, \
     zone_bucket_checkpoint, \
     zone_data_checkpoint, \
     gen_bucket_name
-from rgw_multi.zone_ps import PSTopic, PSNotification, PSSubscription, PSNotificationS3, print_connection_info
+from .zone_ps import PSTopic, PSNotification, PSSubscription, PSNotificationS3, print_connection_info
 from nose import SkipTest
 from nose.tools import assert_not_equal, assert_equal
 
@@ -487,7 +487,6 @@ def test_ps_subscription():
 
 def test_ps_event_type_subscription():
     """ test subscriptions for different events """
-    return;
     zones, ps_zones = init_env()
     bucket_name = gen_bucket_name()
 
@@ -861,7 +860,7 @@ def test_ps_versioned_deletion():
 
 
 def test_ps_push_http():
-    # test cannot run in automated environment, since it requires an http server
+    # TODO: test cannot run in automated environment, since it requires an http server
     return
     """ test pushing to http endpoint """
     zones, ps_zones = init_env()
@@ -910,7 +909,7 @@ def test_ps_push_http():
 
 def test_ps_s3_push_http():
     """ test pushing to http endpoint n s3 record format"""
-    # test cannot run in automated environment, since it requires an http server
+    # TODO test cannot run in automated environment, since it requires an http server
     return
     zones, ps_zones = init_env()
     bucket_name = gen_bucket_name()
@@ -957,7 +956,7 @@ def test_ps_s3_push_http():
 
 def test_ps_push_amqp():
     """ test pushing to amqp endpoint """
-    # test cannot run in automated environment, since it requires an amqp broker
+    # TODO test cannot run in automated environment, since it requires an amqp broker
     return
     zones, ps_zones = init_env()
     bucket_name = gen_bucket_name()
@@ -1008,7 +1007,7 @@ def test_ps_push_amqp():
 
 def test_ps_s3_push_amqp():
     """ test pushing to amqp endpoint n s3 record format"""
-    # test cannot run in automated environment, since it requires an amqp broker
+    # TODO test cannot run in automated environment, since it requires an amqp broker
     return
     zones, ps_zones = init_env()
     bucket_name = gen_bucket_name()
@@ -1055,7 +1054,6 @@ def test_ps_s3_push_amqp():
 
 
 def test_ps_delete_bucket():
-    return;
     """ test notification status upon bucket deletion """
     zones, ps_zones = init_env()
     bucket_name = gen_bucket_name()
