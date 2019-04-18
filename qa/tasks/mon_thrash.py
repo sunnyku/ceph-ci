@@ -60,7 +60,7 @@ class MonitorThrasher:
     freeze_mon_duration: how many seconds to freeze the mon (default: 15)
     scrub               Scrub after each iteration (default: True)
 
-    Note: if 'store-thrash' is set to True, then 'maintain-quorum' must also
+    Note: if 'thrash_store' is set to True, then 'maintain_quorum' must also
           be set to True.
 
     For example::
@@ -117,15 +117,15 @@ class MonitorThrasher:
         assert self.max_killable() > 0, \
             'Unable to kill at least one monitor with the current config.'
 
-        """ Store thrashing """
-        self.store_thrash = self.config.get('store_thrash', False)
-        self.store_thrash_probability = int(
-            self.config.get('store_thrash_probability', 50))
-        if self.store_thrash:
-            assert self.store_thrash_probability > 0, \
-                'store_thrash is set, probability must be > 0'
+        """ Monitor Store thrashing """
+        self.thrash_store = self.config.get('thrash_store', False)
+        self.thrash_store_probability = int(
+            self.config.get('thrash_store_probability', 50))
+        if self.thrash_store:
+            assert self.thrash_store_probability > 0, \
+                'thrash_store is set, probability must be > 0'
             assert self.maintain_quorum, \
-                'store_thrash = true must imply maintain_quorum = true'
+                'thrash_store = true must imply maintain_quorum = true'
 
         self.thread = gevent.spawn(self.do_thrash)
 
@@ -145,11 +145,11 @@ class MonitorThrasher:
     def should_thrash_store(self):
         """
         If allowed, indicate that we should thrash a certain percentage of
-        the time as determined by the store_thrash_probability value.
+        the time as determined by the thrash_store_probability value.
         """
-        if not self.store_thrash:
+        if not self.thrash_store:
             return False
-        return self.rng.randrange(0, 101) < self.store_thrash_probability
+        return self.rng.randrange(0, 101) < self.thrash_store_probability
 
     def thrash_store(self, mon):
         """
@@ -221,7 +221,7 @@ class MonitorThrasher:
                    'freeze mon: prob {fp} duration {fd}'.format(
                 s=self.random_seed,r=self.revive_delay,t=self.thrash_delay,
                 tm=self.thrash_many, mq=self.maintain_quorum,
-                st=self.store_thrash,stp=self.store_thrash_probability,
+                st=self.thrash_store,stp=self.thrash_store_probability,
                 fp=self.freeze_mon_probability,fd=self.freeze_mon_duration,
                 ))
 
