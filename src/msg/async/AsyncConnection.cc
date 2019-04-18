@@ -1807,6 +1807,7 @@ ssize_t AsyncConnection::handle_connect_msg(ceph_msg_connect &connect, bufferlis
         if (existing->state == STATE_CLOSED)
           return ;
         assert(existing->state == STATE_NONE);
+        existing->state = STATE_ACCEPTING_WAIT_CONNECT_MSG;
 
         // we have called shutdown_socket above
         ceph_assert(existing->last_tick_id == 0);
