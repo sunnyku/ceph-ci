@@ -3,4 +3,5 @@ overrides:
     conf:
       global:
         ms type: async
+        debug ms: 20
         enable experimental unrecoverable data corrupting features: '*'
