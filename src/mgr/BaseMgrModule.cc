@@ -154,7 +154,7 @@ ceph_send_command(BaseMgrModule *self, PyObject *args)
     auto c = new FunctionContext([command_c, self](int command_r){
       self->py_modules->get_objecter().wait_for_latest_osdmap(
           new FunctionContext([command_c, command_r](int wait_r){
-            command_c->finish(command_r);
+            command_c->complete(command_r);
           })
       );
     });
@@ -165,7 +165,7 @@ ceph_send_command(BaseMgrModule *self, PyObject *args)
         {},
         &command_c->outbl,
         &command_c->outs,
-        c);
+        new C_OnFinisher(c, &self->py_modules->finisher));
   } else if (std::string(type) == "osd") {
     std::string err;
     uint64_t osd_id = strict_strtoll(name, 10, &err);
@@ -186,7 +186,7 @@ ceph_send_command(BaseMgrModule *self, PyObject *args)
         &tid,
         &command_c->outbl,
         &command_c->outs,
-        command_c);
+        new C_OnFinisher(command_c, &self->py_modules->finisher));
   } else if (std::string(type) == "mds") {
     int r = self->py_modules->get_client().mds_command(
         name,
@@ -194,7 +194,7 @@ ceph_send_command(BaseMgrModule *self, PyObject *args)
         {},
         &command_c->outbl,
         &command_c->outs,
-        command_c);
+        new C_OnFinisher(command_c, &self->py_modules->finisher));
     if (r != 0) {
       string msg("failed to send command to mds: ");
       msg.append(cpp_strerror(r));
@@ -221,7 +221,7 @@ ceph_send_command(BaseMgrModule *self, PyObject *args)
         &tid,
         &command_c->outbl,
         &command_c->outs,
-        command_c);
+        new C_OnFinisher(command_c, &self->py_modules->finisher));
     PyEval_RestoreThread(tstate);
     return nullptr;
   } else {
@@ -443,9 +443,7 @@ ceph_set_module_option(BaseMgrModule *self, PyObject *args)
   if (value) {
     val = value;
   }
-  PyThreadState *tstate = PyEval_SaveThread();
   self->py_modules->set_config(module, key, val);
-  PyEval_RestoreThread(tstate);
 
   Py_RETURN_NONE;
 }
@@ -483,9 +481,7 @@ ceph_store_set(BaseMgrModule *self, PyObject *args)
   if (value) {
     val = value;
   }
-  PyThreadState *tstate = PyEval_SaveThread();
   self->py_modules->set_store(self->this_module->get_name(), key, val);
-  PyEval_RestoreThread(tstate);
 
   Py_RETURN_NONE;
 }

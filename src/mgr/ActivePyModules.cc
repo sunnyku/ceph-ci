@@ -592,15 +592,18 @@ void ActivePyModules::set_store(const std::string &module_name,
                                    + module_name + "/" + key;
   
   Command set_cmd;
+  std::ostringstream cmd_json;
   {
+    PyThreadState *tstate = PyEval_SaveThread();
     std::lock_guard l(lock);
+    PyEval_RestoreThread(tstate);
+
     if (val) {
       store_cache[global_key] = *val;
     } else {
       store_cache.erase(global_key);
     }
 
-    std::ostringstream cmd_json;
     JSONFormatter jf;
     jf.open_object_section("cmd");
     if (val) {
@@ -613,9 +616,15 @@ void ActivePyModules::set_store(const std::string &module_name,
     }
     jf.close_section();
     jf.flush(cmd_json);
-    set_cmd.run(&monc, cmd_json.str());
   }
-  set_cmd.wait();
+
+  // drop GIL while we send the request and block for a reply
+  {
+    PyThreadState *tstate = PyEval_SaveThread();
+    set_cmd.run(&monc, cmd_json.str());
+    set_cmd.wait();
+    PyEval_RestoreThread(tstate);
+  }
 
   if (set_cmd.r != 0) {
     // config-key set will fail if mgr's auth key has insufficient
@@ -630,7 +639,7 @@ void ActivePyModules::set_store(const std::string &module_name,
 void ActivePyModules::set_config(const std::string &module_name,
     const std::string &key, const boost::optional<std::string>& val)
 {
-  module_config.set_config(&monc, module_name, key, val);
+  module_config.set_config(&monc, module_name, key, val, true);
 }
 
 std::map<std::string, std::string> ActivePyModules::get_services() const

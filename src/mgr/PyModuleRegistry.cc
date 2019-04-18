@@ -496,7 +496,7 @@ void PyModuleRegistry::upgrade_config(
       // Consult module schema to see if this is really
       // a configuration value
       if (!option_name.empty() && module->is_option(option_name)) {
-        module_config.set_config(monc, module_name, key, i.second);
+        module_config.set_config(monc, module_name, key, i.second, false);
         dout(4) << "Rewrote configuration module:key "
                 << module_name << ":" << key << dendl;
       } else {

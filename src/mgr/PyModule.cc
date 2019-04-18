@@ -140,12 +140,20 @@ PyModuleConfig::~PyModuleConfig() = default;
 void PyModuleConfig::set_config(
     MonClient *monc,
     const std::string &module_name,
-    const std::string &key, const boost::optional<std::string>& val)
+    const std::string &key, const boost::optional<std::string>& val,
+    bool holding_gil)
 {
   const std::string global_key = PyModule::config_prefix
                                    + module_name + "/" + key;
   {
+    PyThreadState *tstate;
+    if (holding_gil) {
+      tstate = PyEval_SaveThread();
+    }
     std::lock_guard l(lock);
+    if (holding_gil) {
+      PyEval_RestoreThread(tstate);
+    }
 
     if (val) {
       config[global_key] = *val;
@@ -155,8 +163,8 @@ void PyModuleConfig::set_config(
   }
 
   Command set_cmd;
+  std::ostringstream cmd_json;
   {
-    std::ostringstream cmd_json;
     JSONFormatter jf;
     jf.open_object_section("cmd");
     if (val) {
@@ -171,9 +179,18 @@ void PyModuleConfig::set_config(
     }
     jf.close_section();
     jf.flush(cmd_json);
-    set_cmd.run(monc, cmd_json.str());
   }
-  set_cmd.wait();
+  {
+    PyThreadState *tstate;
+    if (holding_gil) {
+      tstate = PyEval_SaveThread();
+    }
+    set_cmd.run(monc, cmd_json.str());
+    set_cmd.wait();
+    if (holding_gil) {
+      PyEval_RestoreThread(tstate);
+    }
+  }
 
   if (set_cmd.r != 0) {
     dout(0) << "`config set mgr" << global_key << " " << val << "` failed: "
