@@ -46,7 +46,9 @@ class ActivePyModules
   LogChannelRef clog, audit_clog;
   Objecter &objecter;
   Client   &client;
+public:
   Finisher &finisher;
+private:
   DaemonServer &server;
   PyModuleRegistry &py_module_registry;
 
