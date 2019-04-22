@@ -308,6 +308,7 @@ if(NOT fmt_FOUND)
   message(STATUS "Could not find fmt, will build it")
   add_subdirectory(fmt)
 endif()
+include_directories(SYSTEM "${CMAKE_SOURCE_DIR}/src/fmt/include")
 
 if(WITH_SEASTAR)
   find_package(c-ares 1.13.0 QUIET)
