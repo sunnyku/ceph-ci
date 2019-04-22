@@ -18,7 +18,8 @@ class TestVolumeClient(CephFSTestCase):
 
     def setUp(self):
         CephFSTestCase.setUp(self)
-        self.py_version = self.ctx.config.get('overrides', {}).get('python', 'python')
+        self.py_version = self.ctx.config.get('overrides', {}).\
+                          get('python', self.py_version)
         log.info("using python version: %s".format(self.py_version))
 
     def _volume_client_python(self, client, script, vol_prefix=None, ns_prefix=None):
