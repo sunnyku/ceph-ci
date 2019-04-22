@@ -183,8 +183,8 @@ class ClusterConfigurationTest(DashboardTestCase):
 
     def test_bulk_set_cant_update_at_runtime(self):
         config_options = {
-            'clog_to_syslog': {'section': 'global', 'value': 'true'},  # not updatable
-            'clog_to_graylog': {'section': 'global', 'value': 'true'}  # not updatable
+            'public_bind_addr': {'section': 'global', 'value': 'true'},  # not updatable
+            'public_network': {'section': 'global', 'value': 'true'}  # not updatable
         }
         orig_values = dict()
 
