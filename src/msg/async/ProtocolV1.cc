@@ -1241,6 +1241,7 @@ void ProtocolV1::reset_recv_state()
   // clean up state internal variables and states
   auth_meta.reset(new AuthConnectionMeta);
   authorizer_more.clear();
+  session_security.reset();
 
   // clean read and write callbacks
   connection->pendingReadLen.reset();
