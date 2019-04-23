@@ -1447,9 +1447,10 @@ CtPtr ProtocolV1::send_connect_message()
     if (authorizer_more.length()) {
       ldout(cct,10) << __func__ << " using augmented (challenge) auth payload"
 		    << dendl;
-      auth_bl.claim(authorizer_more);
+      auth_bl = authorizer_more;
     } else {
       auto am = auth_meta;
+      authorizer_more.clear();
       connection->lock.unlock();
       int r = messenger->auth_client->get_auth_request(
 	connection, am.get(),
@@ -1631,6 +1632,7 @@ CtPtr ProtocolV1::handle_connect_reply_2() {
 
   if (connect_reply.tag == CEPH_MSGR_TAG_BADAUTHORIZER) {
     ldout(cct, 0) << __func__ << " connect got BADAUTHORIZER" << dendl;
+    authorizer_more.clear();
     return _fault();
   }
 
