@@ -1010,6 +1010,10 @@ void ReplicatedBackend::do_repop(OpRequestRef op)
 	   << " " << m->logbl.length()
 	   << dendl;
 
+  if (cct->_conf->osd_debug_repop_crash) {
+    assert(0 == "debuging... crash before repop submit");
+  }
+
   // sanity checks
   ceph_assert(m->map_epoch >= get_info().history.same_interval_since);
 
