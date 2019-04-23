@@ -6078,6 +6078,7 @@ void PG::fulfill_query(const MQuery& query, RecoveryCtx *rctx)
   } else {
     update_history(query.query.history);
     fulfill_log(query.from, query.query, query.query_epoch);
+    send_notify = false;
   }
 }
 
