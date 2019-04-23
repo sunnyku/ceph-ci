@@ -1986,6 +1986,9 @@ CtPtr ProtocolV1::handle_connect_message_2() {
 		<< connect_msg.authorizer_protocol
 		<< " len " << auth_bl_copy.length()
 		<< dendl;
+  ldout(cct,20) << __func__ << " authorizer dump:\n";
+  auth_bl_copy.hexdump(*_dout);
+  *_dout << dendl;
   bool more = (bool)auth_meta->authorizer_challenge;
   int r = messenger->auth_server->handle_auth_request(
     connection,
@@ -1994,6 +1997,9 @@ CtPtr ProtocolV1::handle_connect_message_2() {
     am->auth_method,
     auth_bl_copy,
     &authorizer_reply);
+  ldout(cct,20) << __func__ << " r = " << r << ", reply dump:\n";
+  authorizer_reply.hexdump(*_dout);
+  *_dout << dendl;
   if (r < 0) {
     connection->lock.lock();
     if (state != ACCEPTING_WAIT_CONNECT_MSG_AUTH) {
