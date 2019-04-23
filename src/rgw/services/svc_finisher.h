@@ -4,9 +4,9 @@
 #pragma once
 
 #include "rgw/rgw_service.h"
+#include "common/Finisher.h"
 
 class Context;
-class Finisher;
 
 class RGWSI_Finisher : public RGWServiceInstance
 {
@@ -15,7 +15,7 @@ public:
   class ShutdownCB;
 
 private:
-  Finisher *finisher{nullptr};
+  std::unique_ptr<Finisher> finisher;
   bool finalized{false};
 
   void shutdown() override;
@@ -25,10 +25,11 @@ private:
 
 protected:
   void init() {}
-  int do_start() override;
+  boost::system::error_code do_start() override;
 
 public:
-  RGWSI_Finisher(CephContext *cct): RGWServiceInstance(cct) {}
+  RGWSI_Finisher(CephContext* cct, boost::asio::io_context& ioc)
+    : RGWServiceInstance(cct, ioc) {}
   ~RGWSI_Finisher();
 
   class ShutdownCB {
