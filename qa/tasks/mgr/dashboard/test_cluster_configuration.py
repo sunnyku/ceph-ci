@@ -43,6 +43,36 @@ class ClusterConfigurationTest(DashboardTestCase):
         if orig_value:
             self._ceph_cmd(['config', 'set', 'mon', config_name, orig_value[0]['value']])
 
+    def test_filter_config_options(self):
+        config_names = ['osd_scrub_during_recovery', 'osd_scrub_begin_hour', 'osd_scrub_end_hour']
+        data = self._get('/api/cluster_conf/filter?names={}'.format(','.join(config_names)))
+        self.assertStatus(200)
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 3)
+        for conf in data:
+            self._validate_single(conf)
+            self.assertIn(conf['name'], config_names)
+
+    def test_filter_config_options_empty_names(self):
+        self._get('/api/cluster_conf/filter?names=')
+        self.assertStatus(404)
+        self.assertEqual(self._resp.json()['detail'], 'Config options `` not found')
+
+    def test_filter_config_options_unknown_name(self):
+        self._get('/api/cluster_conf/filter?names=abc')
+        self.assertStatus(404)
+        self.assertEqual(self._resp.json()['detail'], 'Config options `abc` not found')
+
+    def test_filter_config_options_contains_unknown_name(self):
+        config_names = ['osd_scrub_during_recovery', 'osd_scrub_begin_hour', 'abc']
+        data = self._get('/api/cluster_conf/filter?names={}'.format(','.join(config_names)))
+        self.assertStatus(200)
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 2)
+        for conf in data:
+            self._validate_single(conf)
+            self.assertIn(conf['name'], config_names)
+
     def test_create(self):
         config_name = 'debug_ms'
         orig_value = self._get_config_by_name(config_name)
@@ -228,6 +258,56 @@ class ClusterConfigurationTest(DashboardTestCase):
             result = self._wait_for_expected_get_result(self._get_config_by_name, config_name,
                                                         value)
             self.assertEqual(result, value)
+
+    def test_check_existence(self):
+        """
+        This test case is intended to check the existence of all hard coded config options used by
+        the dashboard.
+
+        If you include further hard coded options in the dashboard, feel free to the list.
+        """
+        hard_coded_options = [
+            'osd_max_backfills',
+            'osd_recovery_max_active',
+            'osd_recovery_max_single_start',
+            'osd_recovery_sleep',
+            'osd_scrub_during_recovery',
+            'osd_scrub_begin_hour',
+            'osd_scrub_end_hour',
+            'osd_scrub_begin_week_day',
+            'osd_scrub_end_week_day',
+            'osd_scrub_min_interval',
+            'osd_scrub_max_interval',
+            'osd_deep_scrub_interval',
+            'osd_scrub_auto_repair',
+            'osd_max_scrubs',
+            'osd_scrub_priority',
+            'osd_scrub_sleep',
+            'osd_scrub_auto_repair_num_errors',
+            'osd_debug_deep_scrub_sleep',
+            'osd_deep_scrub_keys',
+            'osd_deep_scrub_large_omap_object_key_threshold',
+            'osd_deep_scrub_large_omap_object_value_sum_threshold',
+            'osd_deep_scrub_randomize_ratio',
+            'osd_deep_scrub_stride',
+            'osd_deep_scrub_update_digest_min_age',
+            'osd_op_queue_mclock_scrub_lim',
+            'osd_op_queue_mclock_scrub_res',
+            'osd_op_queue_mclock_scrub_wgt',
+            'osd_requested_scrub_priority',
+            'osd_scrub_backoff_ratio',
+            'osd_scrub_chunk_max',
+            'osd_scrub_chunk_min',
+            'osd_scrub_cost',
+            'osd_scrub_interval_randomize_ratio',
+            'osd_scrub_invalid_stats',
+            'osd_scrub_load_threshold',
+            'osd_scrub_max_preemptions'
+        ]
+
+        for config_option in hard_coded_options:
+            self._get('/api/cluster_conf/{}'.format(config_option))
+            self.assertStatus(200)
 
     def _validate_single(self, data):
         self.assertIn('name', data)
