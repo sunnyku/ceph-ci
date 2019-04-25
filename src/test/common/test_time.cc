@@ -18,6 +18,7 @@
 #include "common/ceph_time.h"
 #include "include/rados.h"
 #include "gtest/gtest.h"
+#include "include/stringify.h"
 
 
 using ceph::real_clock;
@@ -175,4 +176,13 @@ TEST(TimePoints, SignedSubtraciton) {
   ASSERT_LT((cmta - cmtb).count(), 0);
   ASSERT_GT(cmtb - cmta, ceph::signedspan::zero());
   ASSERT_GT((cmtb - cmta).count(), 0);
+}
+
+TEST(TimePoints, stringify) {
+  ceph::real_clock::time_point tp(seconds(1556122013) + nanoseconds(39923122));
+  ASSERT_EQ(stringify(tp), "2019-04-24T11:06:53.039923-0500");
+
+  ceph::coarse_real_clock::time_point ctp(seconds(1556122013) +
+					  nanoseconds(399000000));
+  ASSERT_EQ(stringify(ctp), "2019-04-24T11:06:53.399000-0500");
 }
