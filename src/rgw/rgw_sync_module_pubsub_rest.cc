@@ -691,7 +691,7 @@ public:
     const auto& id = s->owner.get_id();
 
     ret = store->get_bucket_info(*s->sysobj_ctx, id.tenant, bucket_name,
-                                 bucket_info, nullptr, nullptr);
+                                 bucket_info, nullptr, null_yield, nullptr);
     if (ret < 0) {
       ldout(s->cct, 1) << "failed to get bucket info, cannot verify ownership" << dendl;
       return ret;
@@ -952,7 +952,7 @@ public:
     }
 
     ret = store->get_bucket_info(*s->sysobj_ctx, s->owner.get_id().tenant, bucket_name,
-                                 bucket_info, nullptr, nullptr);
+                                 bucket_info, nullptr, null_yield, nullptr);
     if (ret < 0) {
       return ret;
     }
@@ -1111,7 +1111,7 @@ public:
     }
 
     ret = store->get_bucket_info(*s->sysobj_ctx, s->owner.get_id().tenant, bucket_name,
-                                 bucket_info, nullptr, nullptr);
+                                 bucket_info, nullptr, null_yield, nullptr);
     if (ret < 0) {
       return ret;
     }
