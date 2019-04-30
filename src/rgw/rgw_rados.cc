@@ -8125,7 +8125,7 @@ int RGWRados::get_bucket_instance_info(RGWSysObjectCtx& obj_ctx, const string& m
   string oid = RGW_BUCKET_INSTANCE_MD_PREFIX + meta_key;
   rgw_bucket_instance_key_to_oid(oid);
 
-  return get_bucket_instance_from_oid(obj_ctx, oid, info, pmtime, pattrs);
+  return get_bucket_instance_from_oid(obj_ctx, oid, info, pmtime, pattrs, y);
 }
 
 int RGWRados::get_bucket_instance_info(RGWSysObjectCtx& obj_ctx, const rgw_bucket& bucket, RGWBucketInfo& info,
@@ -8138,11 +8138,12 @@ int RGWRados::get_bucket_instance_info(RGWSysObjectCtx& obj_ctx, const rgw_bucke
     oid = bucket.oid;
   }
 
-  return get_bucket_instance_from_oid(obj_ctx, oid, info, pmtime, pattrs);
+  return get_bucket_instance_from_oid(obj_ctx, oid, info, pmtime, pattrs, y);
 }
 
 int RGWRados::get_bucket_instance_from_oid(RGWSysObjectCtx& obj_ctx, const string& oid, RGWBucketInfo& info,
                                            real_time *pmtime, map<string, bufferlist> *pattrs,
+                                           optional_yield y,
                                            rgw_cache_entry_info *cache_info,
 					   boost::optional<obj_version> refresh_version)
 {
@@ -8310,7 +8311,7 @@ int RGWRados::_get_bucket_info(RGWSysObjectCtx& obj_ctx,
 
   rgw_cache_entry_info cache_info;
 
-  ret = get_bucket_instance_from_oid(obj_ctx, oid, e.info, &e.mtime, &e.attrs,
+  ret = get_bucket_instance_from_oid(obj_ctx, oid, e.info, &e.mtime, &e.attrs, y,
 				     &cache_info, refresh_version);
   e.info.ep_objv = ot.read_version;
   info = e.info;
