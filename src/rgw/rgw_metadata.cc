@@ -766,6 +766,7 @@ int RGWMetadataManager::put(string& metadata_key, bufferlist& bl,
 
   JSONParser parser;
   if (!parser.parse(bl.c_str(), bl.length())) {
+    ldout(store->ctx(), 0) << "ERROR: JSONParser::parse() failed on bl='" << bl.c_str() << "'" << dendl;
     return -EINVAL;
   }
 
@@ -780,11 +781,13 @@ int RGWMetadataManager::put(string& metadata_key, bufferlist& bl,
     JSONDecoder::decode_json("ver", *objv, &parser);
     JSONDecoder::decode_json("mtime", mtime, &parser);
   } catch (JSONDecoder::err& e) {
+    ldout(store->ctx(), 0) << "ERROR: JSONDecoder failed with " << e.message << dendl;
     return -EINVAL;
   }
 
   JSONObj *jo = parser.find_obj("data");
   if (!jo) {
+    ldout(store->ctx(), 0) << "ERROR: failed to find 'data' in json" << dendl;
     return -EINVAL;
   }
 
