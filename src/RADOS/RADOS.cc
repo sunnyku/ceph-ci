@@ -114,7 +114,7 @@ std::ostream& operator <<(std::ostream& m, const Object& o) {
 
 struct IOContextImpl {
   object_locator_t oloc;
-  snapid_t snap_seq;
+  snapid_t snap_seq = CEPH_NOSNAP;
   SnapContext snapc;
 };
 
