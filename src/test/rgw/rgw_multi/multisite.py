@@ -344,9 +344,10 @@ class Credentials:
         return ['--access-key', self.access_key, '--secret', self.secret]
 
 class User(SystemObject):
-    def __init__(self, uid, data = None, name = None, credentials = None):
+    def __init__(self, uid, data = None, name = None, credentials = None, tenant = None):
         self.name = name
         self.credentials = credentials or []
+        self.tenant = tenant
         super(User, self).__init__(data, uid)
 
     def user_arg(self):
@@ -367,12 +368,16 @@ class User(SystemObject):
         """ create the user with the given arguments """
         assert(zone.cluster)
         args = zone.zone_args() + (args or [])
+        if self.tenant:
+            args += ['--tenant', self.tenant]
         return self.json_command(zone.cluster, 'create', args, **kwargs)
 
     def info(self, zone, args = None, **kwargs):
         """ read the user from storage """
         assert(zone.cluster)
         args = zone.zone_args() + (args or [])
+        if self.tenant:
+            args += ['--tenant', self.tenant]
         kwargs['read_only'] = True
         return self.json_command(zone.cluster, 'info', args, **kwargs)
 
