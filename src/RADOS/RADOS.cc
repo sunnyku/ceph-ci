@@ -704,14 +704,17 @@ boost::uuids::uuid RADOS::get_fsid() const noexcept {
 }
 
 
-void RADOS::lookup_pool(std::string name, std::unique_ptr<LookupPoolComp> c)
+void RADOS::lookup_pool(std::string_view name,
+			std::unique_ptr<LookupPoolComp> c)
 {
   auto objecter = reinterpret_cast<_::RADOS*>(&impl)->objecter.get();
+  // I kind of want to make lookup_pg_pool return
+  // std::optional<int64_t> since it can only return one error code.
   int64_t ret = objecter->with_osdmap(std::mem_fn(&OSDMap::lookup_pg_pool_name),
 				      name);
   if (-ENOENT == ret) {
     objecter->wait_for_latest_osdmap(
-      [name = std::move(name), c = std::move(c), objecter]
+      [name = std::string(name), c = std::move(c), objecter]
       (boost::system::error_code ec) mutable {
 	int64_t ret =
 	  objecter->with_osdmap(std::mem_fn(&OSDMap::lookup_pg_pool_name),

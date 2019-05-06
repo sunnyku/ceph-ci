@@ -432,10 +432,10 @@ public:
 			     std::int64_t);
   using LookupPoolComp = ceph::async::Completion<LookupPoolSig>;
   template<typename CompletionToken>
-  auto lookup_pool(std::string name,
+  auto lookup_pool(std::string_view name,
 		   CompletionToken&& token) {
     boost::asio::async_completion<CompletionToken, LookupPoolSig> init(token);
-    lookup_pool(std::move(name),
+    lookup_pool(name,
 		LookupPoolComp::create(get_executor(),
 				       std::move(init.completion_handler)));
     return init.result.get();
@@ -763,7 +763,7 @@ private:
 	       std::optional<std::string_view> key,
 	       version_t* objver);
 
-  void lookup_pool(std::string name, std::unique_ptr<LookupPoolComp> c);
+  void lookup_pool(std::string_view name, std::unique_ptr<LookupPoolComp> c);
   void create_pool_snap(int64_t pool, std::string_view snapName,
 			std::unique_ptr<SimpleOpComp> c);
   void allocate_selfmanaged_snap(int64_t pool, std::unique_ptr<SMSnapComp> c);
