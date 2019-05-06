@@ -171,9 +171,6 @@ public:
   };
 
   boost::system::error_code create_pool(const rgw_pool& p, optional_yield y);
-  boost::system::error_code create_pools(const std::vector<rgw_pool>& p,
-                                         std::vector<boost::system::error_code>* e,
-                                         optional_yield y);
 
   void watch_flush(optional_yield y);
 

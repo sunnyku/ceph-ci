@@ -297,26 +297,6 @@ boost::system::error_code RGWSI_RADOS::create_pool(const rgw_pool& p,
   return {};
 }
 
-boost::system::error_code
-RGWSI_RADOS::create_pools(const std::vector<rgw_pool>& pools,
-                          std::vector<boost::system::error_code>* e,
-                          optional_yield y) {
-  // TODO: Figure out how to queue up a whole bunch of operations on a
-  // single coroutine rather than serializing them.
-  boost::system::error_code tec;
-
-  if (e)
-    e->clear();
-  for (const auto& p : pools) {
-    auto ec = create_pool(p, y);
-    if (ec)
-      tec = ec;
-    if (e)
-      e->push_back(ec);
-  }
-  return tec;
-}
-
 RGWSI_RADOS::Pool::List RGWSI_RADOS::Pool::list(RGWAccessListFilter filter) {
   return List(*this, std::move(filter));
 }
