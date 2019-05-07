@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -28,7 +29,8 @@ inline auto RGWAccessListFilterPrefix(std::string prefix) {
          };
 }
 
-class RGWSI_RADOS : public RGWServiceInstance
+class RGWSI_RADOS : public RGWServiceInstance,
+		    public md_config_obs_t 
 {
   RADOS::RADOS rados;
 
@@ -74,11 +76,20 @@ public:
 private:
 
   tl::expected<std::int64_t, boost::system::error_code>
-  open_pool(std::string_view pool, bool create, optional_yield y);
+  open_pool(std::string_view pool, bool create, optional_yield y,
+	    bool mostly_omap);
+
+  void set_omap_heavy(std::string_view pool, optional_yield y);
+
+  std::atomic<double> pg_autoscale_bias;
+  std::atomic<uint64_t> pg_num_min;
 
 public:
-  RGWSI_RADOS(CephContext *cct, boost::asio::io_context& ioc)
-    : RGWServiceInstance(cct, ioc), rados(ioc, cct) {}
+  RGWSI_RADOS(CephContext *cct, boost::asio::io_context& ioc);
+  ~RGWSI_RADOS();
+  const char** get_tracked_conf_keys() const override;
+  void handle_conf_change(const ConfigProxy& conf,
+			  const std::set<std::string>& changed) override;
 
   void init() {}
 
@@ -170,7 +181,8 @@ public:
                                          optional_yield y);
   };
 
-  boost::system::error_code create_pool(const rgw_pool& p, optional_yield y);
+  boost::system::error_code create_pool(const rgw_pool& p, optional_yield y,
+					bool mostly_omap = false);
 
   void watch_flush(optional_yield y);
 
@@ -180,7 +192,7 @@ public:
   obj(const Pool& p, std::string_view oid, std::string_view loc);
 
   tl::expected<Pool, boost::system::error_code>
-  pool(const rgw_pool& p, optional_yield y);
+  pool(const rgw_pool& p, optional_yield y, bool mostly_omap = false);
 
   friend Obj;
   friend Pool;

@@ -1,6 +1,8 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 
+#include <fmt/format.h>
+
 #include "svc_rados.h"
 
 #include "common/errno.h"
@@ -11,7 +13,8 @@
 #define dout_subsys ceph_subsys_rgw
 
 tl::expected<std::int64_t, boost::system::error_code>
-RGWSI_RADOS::open_pool(std::string_view pool, bool create, optional_yield y) {
+RGWSI_RADOS::open_pool(std::string_view pool, bool create, optional_yield y,
+		       bool mostly_omap) {
 #ifdef HAVE_BOOST_CONTEXT
   if (y) {
     auto& yield = y.get_yield_context();
@@ -38,6 +41,8 @@ RGWSI_RADOS::open_pool(std::string_view pool, bool create, optional_yield y) {
       if (ec && ec != boost::system::errc::operation_not_supported) {
         return tl::unexpected(ec);
       }
+      if (mostly_omap)
+	set_omap_heavy(pool, y);
     }
     if (ec)
       return tl::unexpected(ec);
@@ -88,10 +93,113 @@ RGWSI_RADOS::open_pool(std::string_view pool, bool create, optional_yield y) {
     if (ec && ec != boost::system::errc::operation_not_supported) {
       return tl::unexpected(ec);
     }
+    if (mostly_omap)
+      set_omap_heavy(pool, y);
   }
   if (ec)
     return tl::unexpected(ec);
   return id;
+}
+
+// Alternatively, instead of having a bool on the open/create
+// functions, we could just expose this function.
+
+// Also we swallow our errors since the version in rgw_tools.cc does.
+
+void RGWSI_RADOS::set_omap_heavy(std::string_view pool, optional_yield y) {
+  using namespace std::literals;
+  static constexpr auto pool_set =
+    "{\"prefix\": \"osd pool set\", "
+    "\"pool\": \"{}\" "
+    "\"var\": \"{}\", "
+    "\"val\": \"{}\"}"sv;
+
+  auto autoscale =
+    fmt::format(pool_set, pool, "pg_autoscale_bias"sv,
+		pg_autoscale_bias.load(std::memory_order_consume));
+  auto num_min =
+    fmt::format(pool_set, pool, "pg_num_min"sv,
+		pg_num_min.load(std::memory_order_consume));
+#ifdef HAVE_BOOST_CONTEXT
+  if (y) {
+    auto& yield = y.get_yield_context();
+    boost::system::error_code ec;
+    rados.mon_command({ autoscale },
+		      {}, nullptr, nullptr, yield[ec]);
+    if (ec) {
+      ldout(cct, 10) << __func__ << " warning: failed to set pg_autoscale_bias on "
+		     << pool << dendl;
+    }
+    rados.mon_command({ num_min },
+		      {}, nullptr, nullptr, yield[ec]);
+    if (ec) {
+      ldout(cct, 10) << __func__ << " warning: failed to set pg_num_min on "
+		     << pool << dendl;
+    }
+  }
+  // work on asio threads should be asynchronous, so warn when they block
+  if (is_asio_thread) {
+    ldout(cct, 20) << "WARNING: blocking librados call" << dendl;
+  }
+#endif
+  {
+    ceph::waiter<boost::system::error_code> w;
+    rados.mon_command({ autoscale },
+		      {}, nullptr, nullptr, w.ref());
+    auto ec = w.wait();
+    if (ec) {
+      ldout(cct, 10) << __func__ << " warning: failed to set pg_autoscale_bias on "
+		     << pool << dendl;
+    }
+  }
+  {
+    ceph::waiter<boost::system::error_code> w;
+    rados.mon_command({ num_min },
+		      {}, nullptr, nullptr, w.ref());
+    auto ec = w.wait();
+    if (ec) {
+      ldout(cct, 10) << __func__ << " warning: failed to set pg_num_min on "
+		     << pool << dendl;
+    }
+  }
+}
+
+RGWSI_RADOS::RGWSI_RADOS(CephContext *cct, boost::asio::io_context& ioc)
+  : RGWServiceInstance(cct, ioc), rados(ioc, cct) {
+  cct->_conf.add_observer(this);
+  pg_autoscale_bias.store(
+    cct->_conf.get_val<double>("rgw_rados_pool_autoscale_bias"),
+    std::memory_order_release);
+  pg_num_min.store(
+    cct->_conf.get_val<uint64_t>("rgw_rados_pool_pg_num_min"),
+    std::memory_order_release);
+}
+
+RGWSI_RADOS::~RGWSI_RADOS() {
+  cct->_conf.remove_observer(this);
+}
+
+const char** RGWSI_RADOS::get_tracked_conf_keys() const {
+  static const char* keys[] = {
+    "rgw_rados_pool_autoscale_bias",
+    "rgw_rados_pool_pg_num_min",
+    nullptr
+  };
+  return keys;
+}
+
+void RGWSI_RADOS::handle_conf_change(const ConfigProxy& conf,
+				     const std::set<std::string>& changed) {
+  if (changed.find("rgw_rados_pool_autoscale_bias") != changed.end()) {
+    pg_autoscale_bias.store(
+      cct->_conf.get_val<double>("rgw_rados_pool_autoscale_bias"),
+      std::memory_order_release);
+  }
+  if (changed.find("rgw_rados_pool_pg_num_min") != changed.end()) {
+    pg_num_min.store(
+      cct->_conf.get_val<uint64_t>("rgw_rados_pool_pg_num_min"),
+      std::memory_order_release);
+  }
 }
 
 uint64_t RGWSI_RADOS::instance_id()
@@ -237,7 +345,8 @@ RGWSI_RADOS::Obj::notify_ack(uint64_t notify_id, uint64_t cookie,
 }
 
 boost::system::error_code RGWSI_RADOS::create_pool(const rgw_pool& p,
-                                                   optional_yield y)
+                                                   optional_yield y,
+						   bool mostly_omap)
 {
 #ifdef HAVE_BOOST_CONTEXT
   if (y) {
@@ -260,6 +369,8 @@ boost::system::error_code RGWSI_RADOS::create_pool(const rgw_pool& p,
     if (ec && ec != boost::system::errc::operation_not_supported) {
       return ec;
     }
+    if (mostly_omap)
+      set_omap_heavy(p.name, y);
     return {};
   }
   // work on asio threads should be asynchronous, so warn when they block
@@ -290,6 +401,8 @@ boost::system::error_code RGWSI_RADOS::create_pool(const rgw_pool& p,
                              w.ref());
     ec = w.wait();
   }
+  if (mostly_omap)
+    set_omap_heavy(p.name, y);
   if (ec && ec != boost::system::errc::operation_not_supported) {
     return ec;
   }
@@ -354,7 +467,7 @@ RGWSI_RADOS::Pool::List::get_next(int max,
 
 tl::expected<RGWSI_RADOS::Obj, boost::system::error_code>
 RGWSI_RADOS::obj(const rgw_raw_obj& o, optional_yield y) {
-  auto r = open_pool(o.pool.name, true, y);
+  auto r = open_pool(o.pool.name, true, y, false);
   if (r)
     return Obj(cct, rados, *r, o.pool.ns, o.oid, o.loc, o.pool.name);
   else
@@ -367,8 +480,8 @@ RGWSI_RADOS::obj(const RGWSI_RADOS::Pool& p, std::string_view oid,
 }
 
 tl::expected<RGWSI_RADOS::Pool, boost::system::error_code>
-RGWSI_RADOS::pool(const rgw_pool& p, optional_yield y) {
-  auto r = open_pool(p.name, true, y);
+RGWSI_RADOS::pool(const rgw_pool& p, optional_yield y, bool mostly_omap) {
+  auto r = open_pool(p.name, true, y, mostly_omap);
   if (r)
     return Pool(cct, rados, *r, p.ns, p.name);
   else
