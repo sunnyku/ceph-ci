@@ -144,8 +144,6 @@ public:
       return std::string_view(obj);
     }
 
-    boost::system::system_error open(optional_yield y);
-
     boost::system::error_code operate(RADOS::WriteOp&& op, optional_yield y,
                                       version_t* objver = nullptr);
     boost::system::error_code operate(RADOS::ReadOp&& op,
