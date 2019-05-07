@@ -1341,6 +1341,24 @@ void RADOS::enable_application(std::string_view pool, std::string_view app_name,
   }
 }
 
+void RADOS::mon_command(std::vector<std::string> command,
+			const ceph::buffer::list& bl,
+			std::string* outs, ceph::buffer::list* outbl,
+			std::unique_ptr<SimpleOpComp> c) {
+  auto rados = reinterpret_cast<_::RADOS*>(&impl);
+
+  rados->monclient.start_mon_command(
+    command, bl,
+    [c = std::move(c), outs, outbl](boost::system::error_code e,
+				    std::string s, ceph::buffer::list bl) mutable {
+      if (outs)
+	*outs = std::move(s);
+      if (outbl)
+	*outbl = std::move(bl);
+      ceph::async::post(std::move(c), e);
+    });
+}
+
 uint64_t RADOS::instance_id() const {
   auto rados = reinterpret_cast<const _::RADOS*>(&impl);
   return rados->get_instance_id();
