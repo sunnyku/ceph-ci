@@ -39,7 +39,7 @@ namespace RADOS {
   class RADOS;
 namespace _ {
 
-class RADOS
+class RADOS : public Dispatcher
 {
   friend ::RADOS::RADOS;
   struct MsgDeleter {
@@ -70,7 +70,6 @@ class RADOS
   };
 
   boost::asio::io_context& ioctx;
-  boost::intrusive_ptr<CephContext> cct;
   ceph::mutex lock = ceph::make_mutex("RADOS_unleashed::_::RADOSImpl");
   int instance_id = -1;
 
@@ -89,6 +88,11 @@ public:
 
   RADOS(boost::asio::io_context& ioctx, boost::intrusive_ptr<CephContext> cct);
   ~RADOS();
+  bool ms_dispatch(Message *m) override;
+  void ms_handle_connect(Connection *con) override;
+  bool ms_handle_reset(Connection *con) override;
+  void ms_handle_remote_reset(Connection *con) override;
+  bool ms_handle_refused(Connection *con) override;
   mon_feature_t get_required_monitor_features() const {
     return monclient.with_monmap(std::mem_fn(&MonMap::get_required_features));
   }

@@ -26,23 +26,24 @@ namespace _ {
 
 RADOS::RADOS(boost::asio::io_context& ioctx,
 	     boost::intrusive_ptr<CephContext> _cct)
-  : ioctx(ioctx), cct(std::move(_cct)),
-    monclient(cct.get(), ioctx),
+  : Dispatcher(_cct.detach()),
+    ioctx(ioctx),
+    monclient(cct, ioctx),
     moncsd(monclient),
-    mgrclient(cct.get(), nullptr),
+    mgrclient(cct, nullptr),
     mgrcsd(mgrclient) {
   {
-    MonClient mc_bootstrap(cct.get(), ioctx);
+    MonClient mc_bootstrap(cct, ioctx);
     auto err = mc_bootstrap.get_monmap_and_config();
     if (err < 0)
       throw std::system_error(ceph::to_error_code(err));
   }
-  common_init_finish(cct.get());
+  common_init_finish(cct);
   auto err = monclient.build_initial_monmap();
   if (err < 0)
     throw std::system_error(ceph::to_error_code(err));
 
-  messenger.reset(Messenger::create_client_messenger(cct.get(), "radosclient"));
+  messenger.reset(Messenger::create_client_messenger(cct, "radosclient"));
   if (!messenger)
     throw std::bad_alloc();
 
@@ -52,7 +53,7 @@ RADOS::RADOS(boost::asio::io_context& ioctx,
   messenger->set_default_policy(
     Messenger::Policy::lossy_client(CEPH_FEATURE_OSDREPLYMUX));
 
-  objecter.reset(new Objecter(cct.get(), messenger.get(), &monclient,
+  objecter.reset(new Objecter(cct, messenger.get(), &monclient,
 			      ioctx,
 			      cct->_conf->rados_mon_op_timeout,
 			      cct->_conf->rados_osd_op_timeout));
@@ -91,8 +92,30 @@ RADOS::RADOS(boost::asio::io_context& ioctx,
   objecter->set_client_incarnation(0);
   objecter->start();
 
+  messenger->add_dispatcher_tail(this);
+
   std::unique_lock l(lock);
   instance_id = monclient.get_global_id();
+}
+
+bool RADOS::ms_dispatch(Message *m)
+{
+  switch (m->get_type()) {
+  // OSD
+  case CEPH_MSG_OSD_MAP:
+    m->put();
+    return true;
+  }
+  return false;
+}
+
+void RADOS::ms_handle_connect(Connection *con) {}
+bool RADOS::ms_handle_reset(Connection *con) {
+  return false;
+}
+void RADOS::ms_handle_remote_reset(Connection *con) {}
+bool RADOS::ms_handle_refused(Connection *con) {
+  return false;
 }
 
 RADOS::~RADOS() = default;
