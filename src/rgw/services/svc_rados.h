@@ -30,11 +30,15 @@ inline auto RGWAccessListFilterPrefix(std::string prefix) {
 }
 
 class RGWSI_RADOS : public RGWServiceInstance,
-		    public md_config_obs_t 
+		    public md_config_obs_t
 {
   RADOS::RADOS rados;
 
 public:
+
+  explicit operator RADOS::RADOS&() {
+    return rados;
+  }
 
   class Pool {
     friend class RGWSI_RADOS;
