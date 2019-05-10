@@ -21,6 +21,7 @@
 #include "Filer.h"
 
 #include "mon/MonClient.h"
+#include "mon/error_code.h"
 
 #include "msg/Messenger.h"
 #include "msg/Message.h"
@@ -53,6 +54,8 @@
 #include "include/str_list.h"
 #include "common/errno.h"
 #include "common/EventTrace.h"
+#include "error_code.h"
+
 
 using std::list;
 using std::make_pair;
@@ -83,6 +86,8 @@ using ceph::shunique_lock;
 using ceph::acquire_shared;
 using ceph::acquire_unique;
 using boost::asio::dispatch;
+
+namespace bs = boost::system;
 
 
 #define dout_subsys ceph_subsys_objecter
@@ -574,11 +579,12 @@ void Objecter::_linger_commit(LingerOp *info, int r, ceph::buffer::list& outbl)
   std::unique_lock wl(info->watch_lock);
   ldout(cct, 10) << "_linger_commit " << info->linger_id << dendl;
   if (info->on_reg_commit) {
-    std::move(info->on_reg_commit)(ceph::to_error_code(r), {});
+    std::move(info->on_reg_commit)(
+      (r < 0) ? bs::error_code(-r, osd_category()) : bs::error_code(), {});
     info->on_reg_commit = nullptr;
   }
   if (r < 0 && info->on_notify_finish) {
-    std::move(info->on_notify_finish)(ceph::to_error_code(r), {});
+    std::move(info->on_notify_finish)(bs::error_code(-r, osd_category()), {});
     info->on_notify_finish = nullptr;
   }
 
@@ -599,10 +605,11 @@ void Objecter::_linger_commit(LingerOp *info, int r, ceph::buffer::list& outbl)
   }
 }
 
-struct CB_DoWatchError {
+class CB_DoWatchError {
   Objecter *objecter;
   Objecter::LingerOp *info;
   int err;
+public:
   CB_DoWatchError(Objecter *o, Objecter::LingerOp *i, int r)
     : objecter(o), info(i), err(r) {
     info->get();
@@ -614,7 +621,9 @@ struct CB_DoWatchError {
     wl.unlock();
 
     if (!canceled) {
-      info->handle(ceph::to_error_code(err), 0, info->get_cookie(), 0, {});
+      info->handle(err < 0
+		 ? bs::error_code(-err, osd_category())
+		 : bs::error_code(), 0, info->get_cookie(), 0, {});
     }
 
     info->finished_async();
@@ -907,8 +916,10 @@ void Objecter::handle_watch_notify(MWatchNotify *m)
       ldout(cct, 10) << __func__ << " reply notify " << m->notify_id
 		     << " != " << info->notify_id << ", ignoring" << dendl;
     } else if (info->on_notify_finish) {
-      std::move(info->on_notify_finish)(ceph::to_error_code(m->return_code),
-					std::move(m->get_data()));
+      std::move(info->on_notify_finish)(
+	m->return_code < 0
+      ? bs::error_code(-m->return_code, osd_category())
+      : bs::error_code(), std::move(m->get_data()));
 
       // if we race with reconnect we might get a second notify; only
       // notify the caller once!
@@ -1523,7 +1534,7 @@ void Objecter::_check_op_pool_dne(Op *op, unique_lock *sl)
 		     << " dne" << dendl;
       if (op->onfinish) {
 	num_in_flight--;
-	std::move(op->onfinish)(ceph::to_error_code(ENOENT), -ENOENT);
+	std::move(op->onfinish)(osdc_errc::pool_dne, -ENOENT);
       }
 
       OSDSession *s = op->session;
@@ -1627,11 +1638,11 @@ void Objecter::_check_linger_pool_dne(LingerOp *op, bool *need_unregister)
     if (osdmap->get_epoch() >= op->map_dne_bound) {
       std::unique_lock wl{op->watch_lock};
       if (op->on_reg_commit) {
-	std::move(op->on_reg_commit)(ceph::to_error_code(ENOENT), {});
+	std::move(op->on_reg_commit)(osdc_errc::pool_dne, {});
 	op->on_reg_commit = nullptr;
       }
       if (op->on_notify_finish) {
-	std::move(op->on_notify_finish)(ceph::to_error_code(ENOENT), {});
+	std::move(op->on_notify_finish)(osdc_errc::pool_dne, {});
         op->on_notify_finish = nullptr;
       }
       *need_unregister = true;
@@ -1707,8 +1718,11 @@ void Objecter::_check_command_map_dne(CommandOp *c)
 		 << dendl;
   if (c->map_dne_bound > 0) {
     if (osdmap->get_epoch() >= c->map_dne_bound) {
-      _finish_command(c, ceph::to_error_code(c->map_check_error),
-		      std::move(c->map_check_error_str), {});
+      _finish_command(
+	c,
+	c->map_check_error < 0
+      ? bs::error_code(-c->map_check_error, osd_category())
+      : bs::error_code(), std::move(c->map_check_error_str), {});
     }
   } else {
     _send_command_map_check(c);
@@ -2440,7 +2454,9 @@ int Objecter::op_cancel(OSDSession *s, ceph_tid_t tid, int r)
   Op *op = p->second;
   if (op->onfinish) {
     num_in_flight--;
-    std::move(op->onfinish)(ceph::to_error_code(r), r);
+    std::move(op->onfinish)(
+      r < 0 ? bs::error_code(-r, osd_category()) : bs::error_code(),
+      r);
   }
   _op_cancel_map_check(op);
   _finish_op(op, r);
@@ -3473,7 +3489,8 @@ void Objecter::handle_osd_op_reply(MOSDOpReply *m)
     if (*pr)
       **pr = ceph_to_hostos_errno(p->rval);
     if (*pe)
-      **pe = boost::system::error_code(-p->rval, osd_category());
+      **pe = p->rval < 0 ? bs::error_code(-p->rval, osd_category()) :
+	bs::error_code();
     if (*ph) {
       std::move((*ph))(boost::system::error_code(-p->rval, osd_category()),
 		       p->rval, p->outdata);
@@ -3506,7 +3523,8 @@ void Objecter::handle_osd_op_reply(MOSDOpReply *m)
 
   // do callbacks
   if (onfinish) {
-    std::move(onfinish)(ceph::to_error_code(rc), rc);
+    std::move(onfinish)(
+      rc < 0 ? bs::error_code(-rc, osd_category()) : bs::error_code(), rc);
   }
   if (completion_lock.mutex()) {
     completion_lock.unlock();
@@ -3809,13 +3827,9 @@ void Objecter::create_pool_snap(int64_t pool, std::string_view snap_name,
 
   const pg_pool_t *p = osdmap->get_pg_pool(pool);
   if (!p)
-    std::move(onfinish)(boost::system::error_code(EINVAL,
-				       boost::system::system_category()),
-			bufferlist{});
+    std::move(onfinish)(osdc_errc::pool_dne, bufferlist{});
   if (p->snap_exists(snap_name))
-    std::move(onfinish)(boost::system::error_code(EEXIST,
-				       boost::system::system_category()),
-			bufferlist{});
+    std::move(onfinish)(osdc_errc::snapshot_exists, bufferlist{});
 
   PoolOp *op = new PoolOp;
   op->tid = ++last_tid;
@@ -3875,15 +3889,11 @@ void Objecter::delete_pool_snap(
 
   const pg_pool_t *p = osdmap->get_pg_pool(pool);
   if (!p)
-    std::move(onfinish)(boost::system::error_code(
-			  EINVAL,
-			  boost::system::system_category()), ceph::buffer::list{});
+    std::move(onfinish)(osdc_errc::pool_dne, ceph::buffer::list{});
 
 
   if (!p->snap_exists(snap_name))
-    std::move(onfinish)(boost::system::error_code(
-			  ENOENT,
-			  boost::system::system_category()), ceph::buffer::list{});
+    std::move(onfinish)(osdc_errc::snapshot_dne, ceph::buffer::list{});
 
   PoolOp *op = new PoolOp;
   op->tid = ++last_tid;
@@ -3925,9 +3935,7 @@ void Objecter::create_pool(std::string_view name,
   ldout(cct, 10) << "create_pool name=" << name << dendl;
 
   if (osdmap->lookup_pg_pool_name(name) >= 0)
-    std::move(onfinish)(
-      boost::system::error_code(EEXIST, boost::system::system_category()),
-      bufferlist{});
+    std::move(onfinish)(osdc_errc::pool_exists, bufferlist{});
 
   PoolOp *op = new PoolOp;
   op->tid = ++last_tid;
@@ -3950,9 +3958,7 @@ void Objecter::delete_pool(int64_t pool,
   ldout(cct, 10) << "delete_pool " << pool << dendl;
 
   if (!osdmap->have_pg_pool(pool))
-    std::move(onfinish)(
-      boost::system::error_code(ENOENT, boost::system::system_category()),
-      bufferlist{});
+    std::move(onfinish)(osdc_errc::pool_dne, bufferlist{});
 
   _do_delete_pool(pool, std::move(onfinish));
 }
@@ -3967,9 +3973,8 @@ void Objecter::delete_pool(std::string_view pool_name,
 
   int64_t pool = osdmap->lookup_pg_pool_name(pool_name);
   if (pool < 0)
-    std::move(onfinish)(
-      boost::system::error_code(-pool, boost::system::system_category()),
-      bufferlist{});
+    // This only returns one error: -ENOENT.
+    std::move(onfinish)(osdc_errc::pool_dne, bufferlist{});
 
   _do_delete_pool(pool, std::move(onfinish));
 }
@@ -4025,6 +4030,8 @@ void Objecter::_pool_op_submit(PoolOp *op)
  */
 void Objecter::handle_pool_op_reply(MPoolOpReply *m)
 {
+  int rc = m->replyCode;
+  auto ec = rc < 0 ? bs::error_code(-rc, mon_category()) : bs::error_code();
   FUNCTRACE(cct);
   shunique_lock sul(rwlock, acquire_shared);
   if (!initialized) {
@@ -4063,17 +4070,17 @@ void Objecter::handle_pool_op_reply(MPoolOpReply *m)
 			      std::move(o)(ec, bl);
 			    }),
 			  m->epoch,
-			  ceph::to_error_code(m->replyCode));
+			  ec);
       } else {
 	// map epoch changed, probably because a MOSDMap message
 	// sneaked in. Do caller-specified callback now or else
 	// we lose it forever.
 	ceph_assert(op->onfinish);
-	std::move(op->onfinish)(ceph::to_error_code(m->replyCode), bl);
+	std::move(op->onfinish)(ec, bl);
       }
     } else {
       ceph_assert(op->onfinish);
-      std::move(op->onfinish)(ceph::to_error_code(m->replyCode), bl);
+      std::move(op->onfinish)(ec, bl);
     }
     op->onfinish = nullptr;
     if (!sul.owns_lock()) {
@@ -4112,7 +4119,8 @@ int Objecter::pool_op_cancel(ceph_tid_t tid, int r)
 
   PoolOp *op = it->second;
   if (op->onfinish)
-    std::move(op->onfinish)(ceph::to_error_code(r), bufferlist{});
+    std::move(op->onfinish)(r < 0 ? bs::error_code(-r, osd_category()) :
+			    bs::error_code(), bufferlist{});
 
   _finish_pool_op(op, r);
   return 0;
@@ -4218,7 +4226,8 @@ int Objecter::pool_stat_op_cancel(ceph_tid_t tid, int r)
 
   PoolStatOp *op = it->second;
   if (op->onfinish)
-    std::move(op->onfinish)(ceph::to_error_code(r), {}, {});
+    std::move(op->onfinish)(r < 0 ? bs::error_code(-r, osd_category()) :
+			    bs::error_code(), {}, {});
   _finish_pool_stat_op(op, r);
   return 0;
 }
@@ -4317,7 +4326,8 @@ int Objecter::statfs_op_cancel(ceph_tid_t tid, int r)
 
   StatfsOp *op = it->second;
   if (op->onfinish)
-    std::move(op->onfinish)(ceph::to_error_code(r), {});
+    std::move(op->onfinish)(r < 0 ? bs::error_code(-r, osd_category())
+			    : bs::error_code(), {});
   _finish_statfs_op(op, r);
   return 0;
 }
@@ -4741,7 +4751,8 @@ void Objecter::handle_command_reply(MCommandReply *m)
   sl.unlock();
 
   OSDSession::unique_lock sul(s->lock);
-  _finish_command(c, ceph::to_error_code(m->r), std::move(m->rs),
+  _finish_command(c, m->r < 0 ? bs::error_code(-m->r, osd_category()) :
+		  bs::error_code(), std::move(m->rs),
 		  std::move(m->get_data()));
   sul.unlock();
 
@@ -4768,7 +4779,7 @@ void Objecter::submit_command(CommandOp *c, ceph_tid_t *ptid)
 				   [this, c, tid]() {
 				     command_op_cancel(
 				       c->session, tid,
-				       ceph::to_error_code(-ETIMEDOUT)); });
+				       osdc_errc::timed_out); });
   }
 
   if (!c->session->is_homeless()) {
@@ -5033,17 +5044,13 @@ void Objecter::enumerate_objects(
 			    hobject_t&&) &&> on_finish) {
   if (!end.is_max() && start > end) {
     lderr(cct) << __func__ << ": start " << start << " > end " << end << dendl;
-    std::move(on_finish)(
-      boost::system::error_code(
-	EINVAL, boost::system::system_category()), {}, {});
+    std::move(on_finish)(osdc_errc::precondition_violated, {}, {});
     return;
   }
 
   if (max < 1) {
     lderr(cct) << __func__ << ": result size may not be zero" << dendl;
-    std::move(on_finish)(boost::system::error_code(
-			   EINVAL, boost::system::system_category()),
-      {}, {});
+    std::move(on_finish)(osdc_errc::precondition_violated, {}, {});
     return;
   }
 
@@ -5057,9 +5064,7 @@ void Objecter::enumerate_objects(
   if (!osdmap->test_flag(CEPH_OSDMAP_SORTBITWISE)) {
     rl.unlock();
     lderr(cct) << __func__ << ": SORTBITWISE cluster flag not set" << dendl;
-    std::move(on_finish)(boost::system::error_code(
-			   EOPNOTSUPP, boost::system::system_category()),
-      {}, {});
+    std::move(on_finish)(osdc_errc::not_supported, {}, {});
     return;
   }
   const pg_pool_t *p = osdmap->get_pg_pool(pool_id);
@@ -5067,9 +5072,7 @@ void Objecter::enumerate_objects(
     lderr(cct) << __func__ << ": pool " << pool_id << " DNE in osd epoch "
 	       << osdmap->get_epoch() << dendl;
     rl.unlock();
-    std::move(on_finish)(boost::system::error_code(
-			   ENOENT, boost::system::system_category()),
-      {}, {});
+    std::move(on_finish)(osdc_errc::pool_dne, {}, {});
     return;
   } else {
     rl.unlock();
@@ -5138,8 +5141,7 @@ void Objecter::_enumerate_reply(
     if (!pool) {
       // pool is gone, drop any results which are now meaningless.
       rl.unlock();
-      std::move(on_finish)(boost::system::error_code(
-			     ENOENT, boost::system::system_category()), {}, {});
+      std::move(on_finish)(osdc_errc::pool_dne, {}, {});
       return;
     }
     while (!response.entries.empty()) {
