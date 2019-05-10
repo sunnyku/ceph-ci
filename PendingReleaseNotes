@@ -53,3 +53,9 @@
   data block object. The librbd IO scheduler policy can be
   controlled via a new "rbd_io_scheduler" configuration
   option.
+
+* In the Zabbix Mgr Module there was a typo in the key being send
+  to Zabbix for PGs in backfill_wait state. The key that was sent
+  was 'wait_backfill' and the correct name is 'backfill_wait'.
+  Update your Zabbix template accordingly so that it accepts the
+  new key being send to Zabbix.
