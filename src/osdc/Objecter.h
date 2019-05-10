@@ -456,8 +456,7 @@ struct ObjectOperation {
         } else if (prval) {
           *prval = -EIO;
 	  if (pec)
-	    *pec = boost::system::error_code(EIO,
-					     boost::system::system_category());
+	    *pec = buffer::errc::end_of_buffer;
 	}
       }
     }
