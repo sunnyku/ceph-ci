@@ -45,6 +45,7 @@
 #include "common/LogClient.h"
 
 #include "MonClient.h"
+#include "error_code.h"
 #include "MonMap.h"
 
 #include "auth/Auth.h"
@@ -57,6 +58,7 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "monclient" << (_hunting() ? "(hunting)":"") << ": "
 
+namespace bs = boost::system;
 using std::string;
 
 MonClient::MonClient(CephContext *cct_, boost::asio::io_context& service) :
@@ -1112,7 +1114,9 @@ void MonClient::handle_mon_command_ack(MMonCommandAck *ack)
   }
 
   ldout(cct, 10) << __func__ << " " << r->tid << " " << r->cmd << dendl;
-  _finish_command(r, ceph::to_error_code(ack->r), std::move(ack->rs),
+  auto ec = ack->r < 0 ? bs::error_code(-ack->r, mon_category())
+    : bs::error_code();
+  _finish_command(r, ec, std::move(ack->rs),
 		  std::move(ack->get_data()));
   ack->put();
 }
@@ -1130,12 +1134,12 @@ int MonClient::_cancel_mon_command(uint64_t tid)
   ldout(cct, 10) << __func__ << " tid " << tid << dendl;
 
   MonCommand *cmd = it->second;
-  _finish_command(cmd, ceph::to_error_code(-ETIMEDOUT),
+  _finish_command(cmd, monc_errc::timed_out,
 		  string("timed out"), {});
   return 0;
 }
 
-void MonClient::_finish_command(MonCommand *r, boost::system::error_code ret, string&& rs,
+void MonClient::_finish_command(MonCommand *r, bs::error_code ret, string&& rs,
 				bufferlist&& bl)
 {
   ldout(cct, 10) << __func__ << " " << r->tid << " = " << ret << " " << rs
@@ -1159,7 +1163,7 @@ void MonClient::handle_get_version_reply(MMonGetVersionReply* m)
     ldout(cct, 10) << __func__ << " finishing " << iter->first << " version "
 		   << m->version << dendl;
     version_requests.erase(iter);
-    ceph::async::defer(std::move(req), boost::system::error_code(),
+    ceph::async::defer(std::move(req), bs::error_code(),
 		       m->version, m->oldest_version);
   }
   m->put();
@@ -1684,9 +1688,9 @@ public:
   monc_error_category(){}
   const char* name() const noexcept override;
   std::string message(int ev) const noexcept override;
-  boost::system::error_condition default_error_condition(int ev) const noexcept
+  bs::error_condition default_error_condition(int ev) const noexcept
     override;
-  bool equivalent(int ev, const boost::system::error_condition& c) const
+  bool equivalent(int ev, const bs::error_condition& c) const
     noexcept override;
   using ceph::converting_category::equivalent;
   int from_code(int ev) const noexcept override;
@@ -1719,28 +1723,28 @@ std::string monc_error_category::message(int ev) const noexcept {
   return "Unknown error";
 }
 
-boost::system::error_condition monc_error_category::default_error_condition(int ev) const noexcept {
+bs::error_condition monc_error_category::default_error_condition(int ev) const noexcept {
   using namespace ::monc_errc;
   switch (ev) {
   case shutting_down:
-    return boost::system::errc::operation_canceled;
+    return bs::errc::operation_canceled;
   case session_reset:
-    return boost::system::errc::resource_unavailable_try_again;
+    return bs::errc::resource_unavailable_try_again;
   case rank_dne:
   case mon_dne:
     return ceph::errc::not_in_map;
   case timed_out:
-    return boost::system::errc::timed_out;
+    return bs::errc::timed_out;
   }
   return { ev, *this };
 }
 
-bool monc_error_category::equivalent(int ev, const boost::system::error_condition& c) const noexcept {
+bool monc_error_category::equivalent(int ev, const bs::error_condition& c) const noexcept {
   using namespace ::monc_errc;
   switch (ev) {
   case rank_dne:
   case mon_dne:
-      return c == boost::system::errc::no_such_file_or_directory;
+      return c == bs::errc::no_such_file_or_directory;
   }
   return default_error_condition(ev) == c;
 }
@@ -1764,7 +1768,7 @@ int monc_error_category::from_code(int ev) const noexcept {
   return -EDOM;
 }
 
-const boost::system::error_category& monc_category() noexcept {
+const bs::error_category& monc_category() noexcept {
   static const monc_error_category c;
   return c;
 }
