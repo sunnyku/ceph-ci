@@ -340,6 +340,7 @@ set(libcommon_files
   log/Log.cc
   mon/MonCap.cc
   mon/MonClient.cc
+  mon/error_code.cc
   mon/MonMap.cc
   mon/MonSub.cc
   mgr/MgrClient.cc
@@ -355,6 +356,7 @@ set(libcommon_files
   osd/OpRequest.cc
   osdc/Striper.cc
   osdc/Objecter.cc
+  osdc/error_code.cc
   librbd/Features.cc
   ${mds_files})
 set_source_files_properties(ceph_ver.c
