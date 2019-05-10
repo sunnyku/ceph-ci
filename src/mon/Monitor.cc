@@ -550,10 +550,12 @@ void Monitor::handle_conf_change(const ConfigProxy& conf,
   if (changed.count("mon_health_to_clog") ||
       changed.count("mon_health_to_clog_interval") ||
       changed.count("mon_health_to_clog_tick_interval")) {
+    std::lock_guard l(lock);
     health_to_clog_update_conf(changed);
   }
 
   if (changed.count("mon_scrub_interval")) {
+    std::lock_guard l(lock);
     scrub_update_interval(conf->mon_scrub_interval);
   }
 }
