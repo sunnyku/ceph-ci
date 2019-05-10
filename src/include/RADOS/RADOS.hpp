@@ -324,6 +324,7 @@ public:
   static EnumerationCursor begin();
   static EnumerationCursor end();
 
+  EnumerationCursor();
   EnumerationCursor(const EnumerationCursor&);
   EnumerationCursor& operator =(const EnumerationCursor&);
   EnumerationCursor(EnumerationCursor&&);
@@ -346,7 +347,8 @@ public:
   std::string to_str() const;
 
 private:
-  EnumerationCursor();
+  struct end_magic_t {};
+  EnumerationCursor(end_magic_t);
   friend RADOS;
   static constexpr std::size_t impl_size = 16 * 8;
   std::aligned_storage_t<impl_size> impl;

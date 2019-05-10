@@ -1155,19 +1155,22 @@ void RADOS::notify(const Object& o, std::int64_t pool, bufferlist&& bl,
 // Enumeration
 
 EnumerationCursor::EnumerationCursor() {
+  static_assert(impl_size >= sizeof(hobject_t));
+  new (&impl) hobject_t();
 };
+
+EnumerationCursor::EnumerationCursor(end_magic_t) {
+  static_assert(impl_size >= sizeof(hobject_t));
+  new (&impl) hobject_t(hobject_t::get_max());
+}
 
 EnumerationCursor EnumerationCursor::begin() {
   EnumerationCursor e;
-  static_assert(impl_size >= sizeof(hobject_t));
-  new (&e.impl) hobject_t();
   return e;
 }
 
 EnumerationCursor EnumerationCursor::end() {
-  EnumerationCursor e;
-  static_assert(impl_size >= sizeof(hobject_t));
-  new (&e.impl) hobject_t(hobject_t::get_max());
+  EnumerationCursor e(end_magic_t{});
   return e;
 }
 
