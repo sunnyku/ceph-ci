@@ -59,3 +59,8 @@
   bucket reshard in earlier versions of RGW. One subcommand lists such
   objects and the other deletes them. Read the troubleshooting section
   of the dynamic resharding docs for details.
+
+* zabbix plugin for ceph manager now includes osd and pool
+  discovery. Update of zabbix_template.xml is needed
+  to receive per-pool (read/write throughput, diskspace usage)
+  and per-osd (latency, status, pgs) statistics
