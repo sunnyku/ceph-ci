@@ -3460,6 +3460,7 @@ public:
   void _enumerate_reply(
     ceph::buffer::list&& bl,
     boost::system::error_code ec,
+    bool eof,
     const hobject_t& end,
     const int64_t pool_id,
     int budget,

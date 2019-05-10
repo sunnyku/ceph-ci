@@ -5013,9 +5013,11 @@ struct CB_EnumerateReply {
     objecter(objecter), end(end), pool_id(pool_id),
     on_finish(std::move(on_finish)) {}
 
-  void operator()(boost::system::error_code ec) {
-    objecter->_enumerate_reply(std::move(bl), ec, end, pool_id, budget, epoch,
-			       std::move(on_finish));
+  void operator()(boost::system::error_code ec, int rc) {
+    if (rc == 1) // returns 1 on eof
+      ec.clear();
+    objecter->_enumerate_reply(std::move(bl), ec, (rc == 1), end, pool_id, budget,
+			       epoch, std::move(on_finish));
   }
 };
 
@@ -5088,15 +5090,14 @@ void Objecter::enumerate_objects(
   pg_read(start.get_hash(), oloc, op, pbl, 0,
 	  [c = std::move(on_ack)]
 	  (boost::system::error_code ec, int rc) mutable {
-            if (rc == 1) // returns 1 on eof
-              ec.clear();
-	    (*c)(ec);
+	    (*c)(ec, rc);
 	  }, epoch, budget);
 }
 
 void Objecter::_enumerate_reply(
   ceph::buffer::list&& bl,
   boost::system::error_code ec,
+  bool eof,
   const hobject_t& end,
   const int64_t pool_id,
   int budget,
@@ -5126,7 +5127,7 @@ void Objecter::_enumerate_reply(
   }
 
   hobject_t next;
-  if (response.handle <= end) {
+  if ((response.handle <= end) && !eof) {
     next = response.handle;
   } else {
     next = end;
