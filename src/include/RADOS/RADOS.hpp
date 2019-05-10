@@ -448,7 +448,18 @@ public:
   }
 
   std::optional<uint64_t> get_pool_alignment(int64_t pool_id);
-  std::vector<std::pair<std::int64_t, std::string>> list_pools();
+
+  using LSPoolsSig = void(std::vector<std::pair<std::int64_t, std::string>>);
+  using LSPoolsComp = ceph::async::Completion<LSPoolsSig>;
+  template<typename CompletionToken>
+  auto list_pools(CompletionToken&& token) {
+    boost::asio::async_completion<CompletionToken, LSPoolsSig> init(token);
+    list_pools(LSPoolsComp::create(get_executor(),
+				   std::move(init.completion_handler)));
+    return init.result.get();
+  }
+
+
 
   using SimpleOpSig = void(boost::system::error_code);
   using SimpleOpComp = ceph::async::Completion<SimpleOpSig>;
@@ -783,6 +794,7 @@ private:
 	       version_t* objver);
 
   void lookup_pool(std::string_view name, std::unique_ptr<LookupPoolComp> c);
+  void list_pools(std::unique_ptr<LSPoolsComp> c);
   void create_pool_snap(int64_t pool, std::string_view snapName,
 			std::unique_ptr<SimpleOpComp> c);
   void allocate_selfmanaged_snap(int64_t pool, std::unique_ptr<SMSnapComp> c);
