@@ -288,7 +288,6 @@ void IOContext::write_snap_context(
   }
 }
 
-
 // RADOS
 
 namespace {

@@ -165,6 +165,8 @@ private:
   std::aligned_storage_t<impl_size> impl;
 };
 
+inline constexpr std::string_view all_nspaces("\001"sv);
+
 enum class cmpxattr_op : std::uint8_t {
   eq  = 1,
   ne  = 2,
