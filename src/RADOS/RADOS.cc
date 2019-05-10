@@ -1228,6 +1228,13 @@ bool operator >(const EnumerationCursor& lhs, const EnumerationCursor& rhs) {
 	  *reinterpret_cast<const hobject_t*>(&rhs.impl));
 }
 
+std::string EnumerationCursor::to_str() const {
+  using namespace std::literals;
+  auto& h = *reinterpret_cast<const hobject_t*>(&impl);
+
+  return h.is_max() ? "END"s : h.to_str();
+}
+
 void RADOS::enumerate_objects(const IOContext& _ioc,
 			      const EnumerationCursor& begin,
 			      const EnumerationCursor& end,

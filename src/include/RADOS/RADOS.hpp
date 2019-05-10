@@ -343,6 +343,8 @@ public:
   friend bool operator >(const EnumerationCursor& lhs,
 			 const EnumerationCursor& rhs);
 
+  std::string to_str() const;
+
 private:
   EnumerationCursor();
   friend RADOS;
