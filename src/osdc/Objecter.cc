@@ -5002,41 +5002,62 @@ hobject_t Objecter::enumerate_objects_end()
   return hobject_t::get_max();
 }
 
+struct EnumerationContext {
+  Objecter* objecter;
+  const hobject_t end;
+  const ceph::buffer::list filter;
+  uint32_t max;
+  const object_locator_t oloc;
+  std::vector<librados::ListObjectImpl> ls;
+private:
+  fu2::unique_function<void(bs::error_code,
+			    std::vector<librados::ListObjectImpl>&&,
+			    hobject_t&&) &&> on_finish;
+public:
+  epoch_t epoch = 0;
+  int budget = -1;
+
+  EnumerationContext(Objecter* objecter,
+		     hobject_t end, ceph::buffer::list filter,
+		     uint32_t max, object_locator_t oloc,
+		     decltype(on_finish) on_finish)
+    : objecter(objecter), end(std::move(end)), filter(std::move(filter)),
+      max(max), oloc(std::move(oloc)), on_finish(std::move(on_finish)) {}
+
+  void operator()(bs::error_code ec,
+		  std::vector<librados::ListObjectImpl>&& v,
+		  hobject_t&& h) && {
+    if (budget >= 0) {
+      objecter->put_op_budget_bytes(budget);
+      budget = -1;
+    }
+
+    std::move(on_finish)(ec, std::move(v), std::move(h));
+  }
+};
+
 struct CB_EnumerateReply {
   ceph::buffer::list bl;
 
   Objecter *objecter;
-  const hobject_t end;
-  const int64_t pool_id;
-  fu2::unique_function<void(boost::system::error_code,
-			    std::vector<librados::ListObjectImpl>&&,
-			    hobject_t&&) &&> on_finish;
+  std::unique_ptr<EnumerationContext> ctx;
 
-  epoch_t epoch = 0;
-  int budget = -1;
-
-  CB_EnumerateReply(Objecter *objecter, const hobject_t end,
-		    const int64_t pool_id,
-		    fu2::unique_function<void(
-		      boost::system::error_code,
-		      std::vector<librados::ListObjectImpl>&&,
-		      hobject_t&&) &&> on_finish) :
-    objecter(objecter), end(end), pool_id(pool_id),
-    on_finish(std::move(on_finish)) {}
+  CB_EnumerateReply(Objecter *objecter,
+		    std::unique_ptr<EnumerationContext>&& ctx) :
+    objecter(objecter), ctx(std::move(ctx)) {}
 
   void operator()(boost::system::error_code ec, int rc) {
     if (rc == 1) // returns 1 on eof
       ec.clear();
-    objecter->_enumerate_reply(std::move(bl), ec, (rc == 1), end, pool_id, budget,
-			       epoch, std::move(on_finish));
+    objecter->_enumerate_reply(std::move(bl), ec, (rc == 1), std::move(ctx));
   }
 };
 
 void Objecter::enumerate_objects(
   int64_t pool_id,
   std::string_view ns,
-  const hobject_t& start,
-  const hobject_t& end,
+  hobject_t start,
+  hobject_t end,
   const uint32_t max,
   const bufferlist& filter_bl,
   fu2::unique_function<void(boost::system::error_code,
@@ -5078,19 +5099,28 @@ void Objecter::enumerate_objects(
     rl.unlock();
   }
 
+  _issue_enumerate(start,
+		   std::make_unique<EnumerationContext>(
+		     this, std::move(end), filter_bl,
+		     max, object_locator_t{pool_id, ns},
+		     std::move(on_finish)));
+}
+
+void Objecter::_issue_enumerate(hobject_t start,
+				std::unique_ptr<EnumerationContext> ctx) {
   ObjectOperation op;
-  op.pg_nls(max, filter_bl, start, 0);
-
-  auto on_ack = std::make_unique<CB_EnumerateReply>(this, end, pool_id, std::move(on_finish));
-  auto epoch = &on_ack->epoch;
-  auto budget = &on_ack->budget;
-
-  // Issue.  See you later in _enumerate_reply
-  object_locator_t oloc(pool_id, ns);
+  auto c = ctx.get();
+  op.pg_nls(c->max, c->filter, start, osdmap->get_epoch());
+  auto on_ack = std::make_unique<CB_EnumerateReply>(this, std::move(ctx));
   // I hate having to do this. Try to find a cleaner way
   // later.
+  auto epoch = &c->epoch;
+  auto budget = &c->budget;
   bufferlist* pbl = &on_ack->bl;
-  pg_read(start.get_hash(), oloc, op, pbl, 0,
+
+  // Issue.  See you later in _enumerate_reply
+  pg_read(start.get_hash(),
+	  c->oloc, op, pbl, 0,
 	  [c = std::move(on_ack)]
 	  (boost::system::error_code ec, int rc) mutable {
 	    (*c)(ec, rc);
@@ -5101,20 +5131,10 @@ void Objecter::_enumerate_reply(
   ceph::buffer::list&& bl,
   boost::system::error_code ec,
   bool eof,
-  const hobject_t& end,
-  const int64_t pool_id,
-  int budget,
-  epoch_t reply_epoch,
-  fu2::unique_function<void(boost::system::error_code,
-			    std::vector<librados::ListObjectImpl>&&,
-			    hobject_t&&) &&> on_finish)
+  std::unique_ptr<EnumerationContext>&& ctx)
 {
-  if (budget >= 0) {
-    put_op_budget_bytes(budget);
-  }
-
   if (ec) {
-    std::move(on_finish)(ec, {}, {});
+    std::move(*ctx)(ec, {}, {});
     return;
   }
 
@@ -5122,28 +5142,24 @@ void Objecter::_enumerate_reply(
   auto iter = bl.cbegin();
   pg_nls_response_t response;
 
-  // XXX extra_info doesn't seem used anywhere?
-  ceph::buffer::list extra_info;
   decode(response, iter);
-  if (!iter.end()) {
-    decode(extra_info, iter);
+
+  shared_lock rl(rwlock);
+  const pg_pool_t *pool = osdmap->get_pg_pool(ctx->oloc.get_pool());
+  if (!pool) {
+    // pool is gone, drop any results which are now meaningless.
+    rl.unlock();
+    std::move(*ctx)(osdc_errc::pool_dne, {}, {});
+    return;
   }
 
   hobject_t next;
-  if ((response.handle <= end) && !eof) {
+  if ((response.handle <= ctx->end)) {
     next = response.handle;
   } else {
-    next = end;
+    next = ctx->end;
 
     // drop anything after 'end'
-    shared_lock rl(rwlock);
-    const pg_pool_t *pool = osdmap->get_pg_pool(pool_id);
-    if (!pool) {
-      // pool is gone, drop any results which are now meaningless.
-      rl.unlock();
-      std::move(on_finish)(osdc_errc::pool_dne, {}, {});
-      return;
-    }
     while (!response.entries.empty()) {
       uint32_t hash = response.entries.back().locator.empty() ?
 	pool->hash_key(response.entries.back().oid,
@@ -5154,24 +5170,44 @@ void Objecter::_enumerate_reply(
 		     response.entries.back().locator,
 		     CEPH_NOSNAP,
 		     hash,
-		     pool_id,
+		     ctx->oloc.get_pool(),
 		     response.entries.back().nspace);
-      if (last < end)
+      if (last < ctx->end)
 	break;
       response.entries.pop_back();
     }
     rl.unlock();
   }
 
-  // release the listing context's budget once all
-  // OPs (in the session) are finished
-#if 0
-  put_nlist_context_budget(list_context);
-#endif
-  std::move(on_finish)(ec, std::move(response.entries), std::move(next));
-  return;
-}
+  if (response.entries.size() < ctx->max) {
+    ctx->max -= response.entries.size();
+    std::move(response.entries.begin(), response.entries.end(),
+	      std::back_inserter(ctx->ls));
+  } else {
+    auto i = response.entries.begin();
+    while (ctx->max > 0) {
+      ctx->ls.push_back(std::move(*i));
+      --(ctx->max);
+      ++i;
+    }
+    uint32_t hash =
+      i->locator.empty() ?
+      pool->hash_key(i->oid, i->nspace) :
+      pool->hash_key(i->locator, i->nspace);
 
+    next = hobject_t{i->oid, i->locator,
+		     CEPH_NOSNAP,
+		     hash,
+		     ctx->oloc.get_pool(),
+		     i->nspace};
+  }
+
+  if (next == ctx->end || ctx->max == 0) {
+    std::move(*ctx)(ec, std::move(ctx->ls), std::move(next));
+  } else {
+    _issue_enumerate(next, std::move(ctx));
+  }
+}
 
 namespace {
   using namespace librados;

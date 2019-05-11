@@ -63,6 +63,8 @@ class MCommandReply;
 class MWatchNotify;
 
 class PerfCounters;
+struct EnumerationContext;
+
 
 // -----------------------------------------
 
@@ -1446,7 +1448,6 @@ struct ObjectOperation {
 
 
 // ----------------
-
 
 class Objecter : public md_config_obs_t, public Dispatcher {
 public:
@@ -3444,29 +3445,25 @@ public:
   hobject_t enumerate_objects_begin();
   hobject_t enumerate_objects_end();
 
+  friend EnumerationContext;
   friend struct CB_EnumerateReply;
-
   void enumerate_objects(
     int64_t pool_id,
     std::string_view ns,
-    const hobject_t& start,
-    const hobject_t& end,
+    hobject_t start,
+    hobject_t end,
     const uint32_t max,
     const ceph::buffer::list& filter_bl,
     fu2::unique_function<void(boost::system::error_code,
 			     std::vector<librados::ListObjectImpl>&&,
 			     hobject_t&&) &&> on_finish);
+  void _issue_enumerate(hobject_t start,
+			std::unique_ptr<EnumerationContext>);
   void _enumerate_reply(
     ceph::buffer::list&& bl,
     boost::system::error_code ec,
     bool eof,
-    const hobject_t& end,
-    const int64_t pool_id,
-    int budget,
-    epoch_t reply_epoch,
-    fu2::unique_function<void(boost::system::error_code,
-			     std::vector<librados::ListObjectImpl>&&,
-			     hobject_t&&) &&> on_finish);
+    std::unique_ptr<EnumerationContext>&& ectx);
 
   // -------------------------
   // pool ops
