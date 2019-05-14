@@ -176,6 +176,19 @@ enum class cmpxattr_op : std::uint8_t {
   lte = 6
 };
 
+enum class alloc_hint : uint32_t {
+  sequential_write = 1,
+  random_write = 2,
+  sequential_read = 4,
+  random_read = 8,
+  append_only = 16,
+  immutable = 32,
+  shortlived = 64,
+  longlived = 128,
+  compressible = 256,
+  incompressible = 512
+};
+
 class Op {
   friend RADOS;
 
@@ -314,7 +327,7 @@ public:
   void rm_omap_keys(const boost::container::flat_set<std::string>& to_rm);
   void set_alloc_hint(uint64_t expected_object_size,
 		      uint64_t expected_write_size,
-		      uint32_t flags);
+		      alloc_hint flags);
   void exec(std::string_view cls, std::string_view method,
 	    const bufferlist& inbl, boost::system::error_code* ec = nullptr);
 };

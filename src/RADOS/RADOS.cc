@@ -560,10 +560,10 @@ void WriteOp::rm_omap_keys(
 
 void WriteOp::set_alloc_hint(uint64_t expected_object_size,
 			     uint64_t expected_write_size,
-			     uint32_t flags) {
-  reinterpret_cast<OpImpl*>(&impl)->op.set_alloc_hint(expected_object_size,
-						      expected_write_size,
-						      flags);
+			     alloc_hint flags) {
+  reinterpret_cast<OpImpl*>(&impl)->op.set_alloc_hint(
+    expected_object_size, expected_write_size,
+ static_cast<uint32_t>(flags));
 }
 
 void WriteOp::exec(std::string_view cls, std::string_view method,
