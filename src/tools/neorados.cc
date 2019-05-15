@@ -13,203 +13,123 @@
  *
  */
 
+#include <algorithm>
+#include <atomic>
 #include <iostream>
-#include <initializer_list>
-#include <optional>
-#include <thread>
-#include <tuple>
-#include <string_view>
 #include <vector>
 
-#include <sys/param.h>
-
-#include <unistd.h>
-
+#include <boost/asio.hpp>
 #include <boost/system/system_error.hpp>
-
-#include <fmt/format.h>
 
 #include "include/RADOS/RADOS.hpp"
 
-#include "include/scope_guard.h"
-
-#include "common/asio_misc.h"
-#include "common/ceph_time.h"
-#include "common/ceph_argparse.h"
-#include "common/waiter.h"
-
-#include "global/global_init.h"
-
 namespace bs = boost::system;
+namespace R = RADOS;
+
+std::atomic<std::size_t> pending = 0;
+
+template<typename F>
+struct Callback {
+  F f;
+  Callback(F&& f) : f(std::forward<F>(f)) {
+    ++pending;
+  }
+
+  template<typename... Args>
+  void operator()(Args&&... args) {
+    --pending;
+    std::move(f)(std::forward<Args>(args)...);
+  }
+};
 
 template<typename V>
 std::ostream& printseq(const V& v, std::ostream& m) {
-  std::cout << "[";
-  auto o = v.cbegin();
-  while (o != v.cend()) {
-    std::cout << *o;
-    if (++o != v.cend())
-      std::cout << " ";
-  }
-  std::cout << "]" << std::endl;
+  std::for_each(v.cbegin(), v.cend(),
+		[&m](const auto& e) {
+		  m << e << std::endl;
+		});
   return m;
 }
 
 template<typename V, typename F>
 std::ostream& printseq(const V& v, std::ostream& m, F&& f) {
-  std::cout << "[";
-  auto o = v.cbegin();
-  while (o != v.cend()) {
-    std::cout << f(*o);
-    if (++o != v.cend())
-      std::cout << " ";
-  }
-  std::cout << "]" << std::endl;
+  std::for_each(v.cbegin(), v.cend(),
+		[&m, &f](const auto& e) {
+		  m << f(e) << std::endl;
+		});
   return m;
 }
 
-std::int64_t lookup_pool(RADOS::RADOS& r, const std::string& pname) {
-  int64_t pool;
-  ceph::waiter<boost::system::error_code, std::int64_t> w;
-  r.lookup_pool(pname, w.ref());
-  boost::system::error_code ec;
-  std::tie(ec, pool) = w.wait();
-  if (ec)
-    throw bs::system_error(ec);
-  return pool;
+template<typename F>
+void lookup_pool(R::RADOS& r, const std::string& pname, F&& f) {
+  ++pending;
+  r.lookup_pool(pname,
+		[f = std::move(f)](bs::error_code ec, std::int64_t p) {
+		  --pending;
+		  if (ec)
+		    throw bs::system_error(ec);
+		  std::move(f)(p);
+		});
 }
 
 
-#if 0
-
-boost::system::error_code create_several(RADOS::RADOS& r,
-                                         const RADOS::IOContext& i,
-                                         std::initializer_list<std::string> l) {
-  for (const auto& o : l) {
-    ceph::waiter<boost::system::error_code> w;
-    RADOS::WriteOp op;
-    std::cout << "Creating " << o << std::endl;
-    ceph::bufferlist bl;
-    bl.append("My bologna has no name.");
-    op.write_full(std::move(bl));
-    r.execute(o, i, std::move(op), w.ref());
-    auto ec = w.wait();
-    if (ec) {
-      std::cerr << "RADOS::execute: " << ec << std::endl;
-      return ec;
-    }
-  }
-  return {};
+void lspools(R::RADOS& r) {
+  ++pending;
+  r.list_pools([](std::vector<std::pair<std::int64_t, std::string>>&& l) {
+		 --pending;
+		 printseq(l,
+			  std::cout, [](const auto& p) -> const std::string& {
+				       return p.second;
+				     });
+	       });
 }
 
-#endif
-
-void lspools(RADOS::RADOS& r) {
-  ceph::waiter<std::vector<std::pair<std::int64_t, std::string>>> w;
-  r.list_pools(w.ref());
-  auto pools = w.wait();
-
-  printseq(pools, std::cout, [](const auto& p) -> const std::string& {
-                               return p.second;
-                             });
-}
-
-void ls(RADOS::RADOS& r, const std::string& pname) {
-  std::int64_t pool = lookup_pool(r, pname);
-
-  ceph::waiter<boost::system::error_code> w;
-  RADOS::EnumerationCursor next;
-  std::vector<RADOS::EnumeratedObject> v;
-
-  r.enumerate_objects(pool,
-                      RADOS::EnumerationCursor::begin(),
-                      RADOS::EnumerationCursor::end(),
-                      1000, {}, &v, &next, w.ref(),
-                      RADOS::all_nspaces);
-  auto ec = w.wait();
-  if (ec)
-    throw bs::system_error(ec);
-
-  printseq(v, std::cout);
+void ls(R::RADOS& r, const std::string& pname) {
+  ++pending;
+  lookup_pool(r, pname,
+	      [&r](std::int64_t p) {
+		--pending;
+		auto next = std::make_unique<R::EnumerationCursor>();
+		auto v = std::make_unique<std::vector<R::EnumeratedObject>>();
+		++pending;
+		r.enumerate_objects(
+		  p, R::EnumerationCursor::begin(),
+		  R::EnumerationCursor::end(), 1000, {}, v.get(), next.get(),
+		  [v = std::move(v), next = std::move(next)]
+		  (bs::error_code ec) {
+		    --pending;
+		    printseq(*v, std::cout);
+		  }, R::all_nspaces);
+	      });
 }
 
 int main(int argc, char** argv)
 {
-  using namespace std::literals;
-
-  std::vector<const char*> args;
-  argv_to_vec(argc, const_cast<const char**>(argv), args);
-
-  auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
-                         CODE_ENVIRONMENT_UTILITY, 0);
-  common_init_finish(cct.get());
-
-  ceph::io_context_pool p(cct.get());
-  RADOS::RADOS r(p, cct.get());
+  boost::asio::io_context c;
+  auto r = RADOS::RADOS::Builder{}.build(c);
 
   // Do this properly later.
 
   try {
-    if (args.size() == 0) {
+    if (argc == 0) {
       return 1;
     }
-    if (args[0] == "lspools"sv) {
+    if (argv[1] == "lspools"sv) {
       lspools(r);
-    } else if (args[0] == "ls"sv) {
-      if (args.size() < 2)
+    } else if (argv[1] == "ls"sv) {
+      if (argc < 2)
         return 1;
-      ls(r, args[1]);
-    }
-
-    else {
+      ls(r, argv[2]);
+    } else {
       return 1;
+    }
+    while (pending) {
+      c.run();
     }
   } catch (const std::exception& e) {
     std::cerr << e.what() << std::endl;
     return 1;
   }
-
-
-#if 0
-
-
-  {
-    ceph::waiter<boost::system::error_code> w;
-    r.create_pool(pool_name, std::nullopt, w.ref());
-    auto ec = w.wait();
-    if (ec) {
-      std::cerr << "RADOS::create_pool: " << ec << std::endl;
-      return 1;
-    }
-  }
-
-  auto pd = make_scope_guard(
-    [&pool_name, &r]() {
-      ceph::waiter<boost::system::error_code> w;
-      r.delete_pool(pool_name, w.ref());
-      auto ec = w.wait();
-      if (ec)
-        std::cerr << "RADOS::delete_pool: " << ec << std::endl;
-    });
-
-
-  RADOS::IOContext i(pool);
-
-  if (noisy_list(r, pool)) {
-    return 1;
-  }
-
-  if (create_several(r, i, {"meow", "woof", "squeak"})) {
-    return 1;
-  }
-
-  std::this_thread::sleep_for(5s);
-
-  if (noisy_list(r, pool)) {
-    return 1;
-  }
-
-#endif
 
   return 0;
 }
