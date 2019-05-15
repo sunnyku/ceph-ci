@@ -572,30 +572,64 @@ void WriteOp::exec(std::string_view cls, std::string_view method,
 }
 
 
-RADOS::RADOS(boost::asio::io_context& ioctx) {
-  static_assert(impl_size >= sizeof(_::RADOS));
-  CephInitParameters iparams(CEPH_ENTITY_TYPE_CLIENT);
-  auto cct = create_cct(nullopt, iparams);
-  new (&impl) _::RADOS(ioctx, cct);
+void RADOS::Builder::add_conf_file(std::string_view f) {
+  if (conf_files)
+    *conf_files += (", " + std::string(f));
+  else
+    conf_files = std::string(f);
 }
 
-RADOS::RADOS(boost::asio::io_context& ioctx, std::string_view id) {
-  static_assert(impl_size >= sizeof(_::RADOS));
-  CephInitParameters iparams(CEPH_ENTITY_TYPE_CLIENT);
-  iparams.name.set(CEPH_ENTITY_TYPE_CLIENT, id);
-  auto cct = create_cct(nullopt, iparams);
-  new (&impl) _::RADOS(ioctx, cct);
-}
+RADOS RADOS::Builder::build(boost::asio::io_context& ioctx) {
+  constexpr auto env = CODE_ENVIRONMENT_LIBRARY;
+  CephInitParameters ci(env);
+  if (name)
+    ci.name.set(CEPH_ENTITY_TYPE_CLIENT, *name);
+  uint32_t flags = 0;
+  if (no_default_conf)
+    flags |= CINIT_FLAG_NO_DEFAULT_CONFIG_FILE;
+  if (no_mon_conf)
+    flags |= CINIT_FLAG_NO_MON_CONFIG;
 
-RADOS::RADOS(boost::asio::io_context& ioctx, std::string_view name,
-	     std::string_view cluster) {
-  static_assert(impl_size >= sizeof(_::RADOS));
-  CephInitParameters iparams(CEPH_ENTITY_TYPE_CLIENT);
-  if (!iparams.name.from_str(name)) {
-    throw boost::system::system_error(EINVAL, boost::system::system_category());
+  CephContext *cct = common_preinit(ci, env, flags);
+  if (cluster)
+    cct->_conf->cluster = *cluster;
+
+  if (no_mon_conf)
+    cct->_conf->no_mon_config = true;
+
+  // TODO: Come up with proper error codes here. Maybe augment the
+  // functions with a default boost::system::error_code* parameter to
+  // pass back.
+  {
+    std::ostringstream ss;
+    auto r = cct->_conf.parse_config_files(conf_files ? conf_files->data() : nullptr,
+					   &ss, flags);
+    if (r < 0)
+      throw std::runtime_error(ss.str());
   }
-  auto cct = create_cct(cluster, iparams);
-  new (&impl) _::RADOS(ioctx, cct);
+
+  cct->_conf.parse_env(cct->get_module_type());
+
+  for (const auto& [n, v] : configs) {
+    std::stringstream ss;
+    auto r = cct->_conf.set_val(n, v, &ss);
+    if (r < 0)
+      throw std::runtime_error(ss.str());
+  }
+
+  if (!no_mon_conf) {
+    MonClient mc_bootstrap(cct, ioctx);
+    // TODO This function should return an error code.
+    auto err = mc_bootstrap.get_monmap_and_config();
+    if (err < 0)
+      throw std::system_error(ceph::to_error_code(err));
+  }
+  if (!cct->_log->is_started()) {
+    cct->_log->start();
+  }
+  common_init_finish(cct);
+
+  return RADOS(ioctx, cct);
 }
 
 RADOS::RADOS(boost::asio::io_context& ioctx, CephContext* cct) {

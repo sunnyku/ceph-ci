@@ -32,13 +32,6 @@ RADOS::RADOS(boost::asio::io_context& ioctx,
     moncsd(monclient),
     mgrclient(cct, nullptr),
     mgrcsd(mgrclient) {
-  {
-    MonClient mc_bootstrap(cct, ioctx);
-    auto err = mc_bootstrap.get_monmap_and_config();
-    if (err < 0)
-      throw std::system_error(ceph::to_error_code(err));
-  }
-  common_init_finish(cct);
   auto err = monclient.build_initial_monmap();
   if (err < 0)
     throw std::system_error(ceph::to_error_code(err));

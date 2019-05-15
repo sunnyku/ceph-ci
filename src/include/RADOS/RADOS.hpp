@@ -376,10 +376,35 @@ public:
     return {0, 0, 1};
   }
 
-  RADOS(boost::asio::io_context& ioctx);
-  RADOS(boost::asio::io_context& ioctx, std::string_view id);
-  RADOS(boost::asio::io_context& ioctx, std::string_view name,
-	std::string_view cluster);
+  class Builder {
+    std::optional<std::string> conf_files;
+    std::optional<std::string> cluster;
+    std::optional<std::string> name;
+    std::vector<std::pair<std::string, std::string>> configs;
+    bool no_default_conf = false;
+    bool no_mon_conf = false;
+
+  public:
+    Builder() = default;
+    void add_conf_file(std::string_view v);
+    void set_cluster(std::string_view c) {
+      cluster = std::string(c);
+    }
+    void set_name(std::string_view n) {
+      name = std::string(n);
+    }
+    void set_no_default_conf() {
+      no_default_conf = true;
+    }
+    void set_no_mon_conf() {
+      no_mon_conf = true;
+    }
+    void set_conf_option(std::string_view opt, std::string_view val) {
+      configs.emplace_back(std::string(opt), std::string(val));
+    }
+    RADOS build(boost::asio::io_context& ioctx);
+  };
+
   RADOS(boost::asio::io_context& ioctx, CephContext* cct);
 
   RADOS(const RADOS&) = delete;
