@@ -48,6 +48,7 @@
 
 #include "include/ceph_fs.h"
 #include "include/rados/rados_types.hpp"
+#include "include/rados.h"
 #include "include/buffer.h"
 #include "include/object.h"
 
@@ -176,18 +177,20 @@ enum class cmpxattr_op : std::uint8_t {
   lte = 6
 };
 
-enum class alloc_hint : uint32_t {
-  sequential_write = 1,
-  random_write = 2,
-  sequential_read = 4,
-  random_read = 8,
-  append_only = 16,
-  immutable = 32,
-  shortlived = 64,
-  longlived = 128,
-  compressible = 256,
-  incompressible = 512
+namespace alloc_hint {
+enum alloc_hint_t {
+  sequential_write = CEPH_OSD_ALLOC_HINT_FLAG_SEQUENTIAL_WRITE,
+  random_write = CEPH_OSD_ALLOC_HINT_FLAG_RANDOM_WRITE,
+  sequential_read = CEPH_OSD_ALLOC_HINT_FLAG_SEQUENTIAL_READ,
+  random_read = CEPH_OSD_ALLOC_HINT_FLAG_RANDOM_READ,
+  append_only = CEPH_OSD_ALLOC_HINT_FLAG_APPEND_ONLY,
+  immutable = CEPH_OSD_ALLOC_HINT_FLAG_IMMUTABLE,
+  shortlived = CEPH_OSD_ALLOC_HINT_FLAG_SHORTLIVED,
+  longlived = CEPH_OSD_ALLOC_HINT_FLAG_LONGLIVED,
+  compressible = CEPH_OSD_ALLOC_HINT_FLAG_COMPRESSIBLE,
+  incompressible = CEPH_OSD_ALLOC_HINT_FLAG_INCOMPRESSIBLE
 };
+}
 
 class Op {
   friend RADOS;
@@ -327,7 +330,7 @@ public:
   void rm_omap_keys(const boost::container::flat_set<std::string>& to_rm);
   void set_alloc_hint(uint64_t expected_object_size,
 		      uint64_t expected_write_size,
-		      alloc_hint flags);
+		      alloc_hint::alloc_hint_t flags);
   void exec(std::string_view cls, std::string_view method,
 	    const bufferlist& inbl, boost::system::error_code* ec = nullptr);
 };
