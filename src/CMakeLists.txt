@@ -362,7 +362,8 @@ set(ceph_common_deps
   ${CRYPTO_LIBS}
   ${GSSAPI_LIBRARIES}
   ${CMAKE_THREAD_LIBS_INIT}
-  ${CMAKE_DL_LIBS})
+  ${CMAKE_DL_LIBS}
+  ${ALLOC_LIBS})
 if(HAVE_UDEV)
   list(APPEND ceph_common_deps ${UDEV_LIBRARIES})
 endif()
