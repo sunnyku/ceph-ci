@@ -367,6 +367,7 @@ public:
 private:
   struct end_magic_t {};
   EnumerationCursor(end_magic_t);
+  EnumerationCursor(void*);
   friend RADOS;
   static constexpr std::size_t impl_size = 16 * 8;
   std::aligned_storage_t<impl_size> impl;
@@ -768,6 +769,39 @@ public:
     return init.result.get();
   }
 
+  // The versions with pointers are fine for coroutines, but
+  // extraordinarily unappealing for callback-oriented programming.
+  using EnumerateSig = void(boost::system::error_code,
+			    std::vector<EnumeratedObject>,
+			    EnumerationCursor);
+  using EnumerateComp = ceph::async::Completion<EnumerateSig>;
+  template<typename CompletionToken>
+  auto enumerate_objects(const IOContext& ioc, const EnumerationCursor& begin,
+			 const EnumerationCursor& end, const std::uint32_t max,
+			 const bufferlist& filter,
+			 CompletionToken&& token) {
+    boost::asio::async_completion<CompletionToken, EnumerateSig> init(token);
+    enumerate_objects(ioc, begin, end, max, filter,
+		      EnumerateComp::create(get_executor(),
+					    std::move(init.completion_handler)));
+    return init.result.get();
+  }
+
+  template<typename CompletionToken>
+  auto enumerate_objects(std::int64_t pool, const EnumerationCursor& begin,
+			 const EnumerationCursor& end, const std::uint32_t max,
+			 const bufferlist& filter,
+			 CompletionToken&& token,
+			 std::optional<std::string_view> ns = {},
+			 std::optional<std::string_view> key = {}) {
+    boost::asio::async_completion<CompletionToken, EnumerateSig> init(token);
+    enumerate_objects(pool, begin, end, max, filter,
+		      EnumerateComp::create(get_executor(),
+					    std::move(init.completion_handler)),
+		      ns, key);
+    return init.result.get();
+  }
+
   using CommandSig = void(boost::system::error_code,
 			  std::string, ceph::bufferlist);
   using CommandComp = ceph::async::Completion<CommandSig>;
@@ -905,6 +939,16 @@ private:
 			 std::vector<EnumeratedObject>* ls,
 			 EnumerationCursor* cursor,
 			 std::unique_ptr<SimpleOpComp> c,
+			 std::optional<std::string_view> ns,
+			 std::optional<std::string_view> key);
+  void enumerate_objects(const IOContext& ioc, const EnumerationCursor& begin,
+			 const EnumerationCursor& end, const std::uint32_t max,
+			 const bufferlist& filter,
+			 std::unique_ptr<EnumerateComp> c);
+  void enumerate_objects(std::int64_t pool, const EnumerationCursor& begin,
+			 const EnumerationCursor& end, const std::uint32_t max,
+			 const bufferlist& filter,
+			 std::unique_ptr<EnumerateComp> c,
 			 std::optional<std::string_view> ns,
 			 std::optional<std::string_view> key);
   void osd_command(int osd, std::vector<std::string>&& cmd,

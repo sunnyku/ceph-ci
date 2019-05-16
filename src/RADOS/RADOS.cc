@@ -1201,6 +1201,11 @@ EnumerationCursor::EnumerationCursor(end_magic_t) {
   new (&impl) hobject_t(hobject_t::get_max());
 }
 
+EnumerationCursor::EnumerationCursor(void* p) {
+  static_assert(impl_size >= sizeof(hobject_t));
+  new (&impl) hobject_t(std::move(*reinterpret_cast<hobject_t*>(p)));
+}
+
 EnumerationCursor EnumerationCursor::begin() {
   EnumerationCursor e;
   return e;
@@ -1299,8 +1304,7 @@ void RADOS::enumerate_objects(const IOContext& _ioc,
       if (ls)
 	*ls = std::move(v);
       if (cursor) {
-	EnumerationCursor next;
-	new (&next.impl) hobject_t(std::move(n));
+	EnumerationCursor next(static_cast<void*>(&n));
 	*cursor = std::move(next);
       }
       ceph::async::dispatch(std::move(c), ec);
@@ -1331,13 +1335,61 @@ void RADOS::enumerate_objects(std::int64_t pool,
       if (ls)
 	*ls = std::move(v);
       if (cursor) {
-	EnumerationCursor next;
-	new (&next.impl) hobject_t(std::move(n));
+	EnumerationCursor next(static_cast<void*>(&n));
 	*cursor = std::move(next);
       }
       ceph::async::dispatch(std::move(c), ec);
     });
 }
+
+void RADOS::enumerate_objects(const IOContext& _ioc,
+			      const EnumerationCursor& begin,
+			      const EnumerationCursor& end,
+			      const std::uint32_t max,
+			      const bufferlist& filter,
+			      std::unique_ptr<EnumerateComp> c) {
+  auto rados = reinterpret_cast<_::RADOS*>(&impl);
+  auto ioc = reinterpret_cast<const IOContextImpl*>(&_ioc.impl);
+
+  rados->objecter->enumerate_objects(
+    ioc->oloc.pool,
+    ioc->oloc.nspace,
+    *reinterpret_cast<const hobject_t*>(&begin.impl),
+    *reinterpret_cast<const hobject_t*>(&end.impl),
+    max,
+    filter,
+    [c = std::move(c)]
+    (boost::system::error_code ec, std::vector<EnumeratedObject>&& v,
+     hobject_t&& n) mutable {
+      ceph::async::dispatch(std::move(c), ec, std::move(v),
+			    EnumerationCursor(static_cast<void*>(&n)));
+    });
+}
+
+void RADOS::enumerate_objects(std::int64_t pool,
+			      const EnumerationCursor& begin,
+			      const EnumerationCursor& end,
+			      const std::uint32_t max,
+			      const bufferlist& filter,
+			      std::unique_ptr<EnumerateComp> c,
+			      std::optional<std::string_view> ns,
+			      std::optional<std::string_view> key) {
+  auto rados = reinterpret_cast<_::RADOS*>(&impl);
+  rados->objecter->enumerate_objects(
+    pool,
+    ns ? *ns : std::string_view{},
+    *reinterpret_cast<const hobject_t*>(&begin.impl),
+    *reinterpret_cast<const hobject_t*>(&end.impl),
+    max,
+    filter,
+    [c = std::move(c)]
+    (boost::system::error_code ec, std::vector<EnumeratedObject>&& v,
+     hobject_t&& n) mutable {
+      ceph::async::dispatch(std::move(c), ec, std::move(v),
+			    EnumerationCursor(static_cast<void*>(&n)));
+    });
+}
+
 
 void RADOS::osd_command(int osd, std::vector<std::string>&& cmd,
 			ceph::bufferlist&& in, std::unique_ptr<CommandComp> c) {
