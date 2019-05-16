@@ -584,6 +584,8 @@ RADOS RADOS::Builder::build(boost::asio::io_context& ioctx) {
   CephInitParameters ci(env);
   if (name)
     ci.name.set(CEPH_ENTITY_TYPE_CLIENT, *name);
+  else
+    ci.name.set(CEPH_ENTITY_TYPE_CLIENT, "RADOS-client");
   uint32_t flags = 0;
   if (no_default_conf)
     flags |= CINIT_FLAG_NO_DEFAULT_CONFIG_FILE;
