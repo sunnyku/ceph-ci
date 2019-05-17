@@ -1,18 +1,21 @@
 import json
 import errno
+import cephfs
 import logging
 import orchestrator
+
+from pathspec import SubvolumeSpec
+from subvolume import SubVolume
 
 log = logging.getLogger(__name__)
 
 class VolumeClient(object):
     def __init__(self, mgr):
-        """
-        """
         self.mgr = mgr
 
     def gen_pool_names(self, volname):
         """
+        return metadata and data pool name (from a filesystem/volume name) as a tuple
         """
         return "cephfs.{}.meta".format(volname), "cephfs.{}.data".format(volname)
 
@@ -92,8 +95,6 @@ class VolumeClient(object):
     ### volume operations -- create, rm, ls
 
     def create_volume(self, volname, size=None):
-        """
-        """
         metadata_pool, data_pool = self.gen_pool_names(volname)
         # create pools
         r, outs, outb = self.create_pool(metadata_pool, 16, pg_num_min=16, pg_autoscale_factor=4.0)
@@ -110,8 +111,6 @@ class VolumeClient(object):
         return self.create_mds(volname)
 
     def delete_volume(self, volname):
-        """
-        """
         # Tear down MDS daemons
         try:
             completion = self.mgr.remove_stateless_service("mds", volname)
@@ -149,3 +148,207 @@ class VolumeClient(object):
         for f in fs_map['filesystems']:
             result.append({'name': f['mdsmap']['fs_name']})
         return 0, json.dumps(result, indent=2), ""
+
+    ### subvolume operations
+
+    def create_subvolume(self, volname, subvolname, groupname, size):
+        if not self.volume_exists(volname):
+            return -errno.ENOENT, "", \
+                "Volume '{0}' not found, create it with `ceph fs volume create` " \
+                "before trying to create subvolumes".format(volname)
+
+        # TODO: validate that subvol size fits in volume size
+        with SubVolume(self.mgr, fs_name=volname) as sv:
+            spec = SubvolumeSpec(subvolname, groupname)
+            if not sv.get_group_path(spec, create_default=True):
+                return -errno.ENOENT, "", \
+                    "Subvolume group '{0}' not found, create it with `ceph fs subvolumegroup create` " \
+                    "before creating subvolumes".format(groupname)
+            return sv.create_subvolume(spec, size)
+
+    def remove_subvolume(self, volname, subvolname, groupname, force):
+        fs = self.get_fs(volname)
+        if not fs:
+            if force:
+                return 0, "", ""
+            else:
+                return -errno.ENOENT, "", \
+                    "Volume '{0}' not found, cannot remove subvolume '{1}'".format(volname, subvolname)
+
+        with SubVolume(self.mgr, fs_name=volname) as sv:
+            spec = SubvolumeSpec(subvolname, groupname)
+            if not sv.get_group_path(spec, create_default=True):
+                if force:
+                    return 0, "", ""
+                else:
+                    return -errno.ENOENT, "", \
+                        "Subvolume group '{0}' not found, cannot remove subvolume '{1}'".format(groupname, subvolname)
+            try:
+                sv.remove_subvolume(spec)
+            except cephfs.ObjectNotFound:
+                if force:
+                    return 0, "", ""
+                else:
+                    return -errno.ENOENT, "", \
+                        "Subvolume '{0}' not found, cannot remove it".format(subvolname)
+            sv.purge_subvolume(spec)
+            return 0, "", ""
+
+    def list_subvolumes(self, volname, groupname):
+        if not self.volume_exists(volname):
+            return -errno.ENOENT, "", \
+                "Volume '{0}' not found".format(volname)
+
+        with SubVolume(self.mgr, fs_name=volname) as sv:
+            spec = SubvolumeSpec("", groupname)
+            if not sv.get_group_path(spec, create_default=True):
+                return -errno.ENOENT, "", "Subvolume group '{0}' not found".format(groupname)
+            result = sv.list_subvolumes(spec)
+        return 0, json.dumps(result, indent=2), ""
+
+    def subvolume_getpath(self, volname, subvolname, groupname):
+        if not self.volume_exists(volname):
+            return -errno.ENOENT, "", "Volume '{0}' not found".format(volname)
+
+        with SubVolume(self.mgr, fs_name=volname) as sv:
+            spec = SubvolumeSpec(subvolname, groupname)
+            if not sv.get_group_path(spec, create_default=True):
+                return -errno.ENOENT, "", "Subvolume group '{0}' not found".format(groupname)
+            path = sv.get_subvolume_path(spec)
+            if not path:
+                return -errno.ENOENT, "", "Subvolume group '{0}' not found".format(groupname)
+            return 0, path, ""
+
+    ### subvolume snaphot
+
+    def create_subvolume_snapshot(self, volname, subvolname, snapname, groupname):
+        if not self.volume_exists(volname):
+            return -errno.ENOENT, "", \
+                   "Volume '{0}' not found, cannot create snapshot '{1}'".format(volname, snapname)
+
+        with SubVolume(self.mgr, fs_name=volname) as sv:
+            spec = SubvolumeSpec(subvolname, groupname)
+            if not sv.get_group_path(spec, create_default=True):
+                return -errno.ENOENT, "", \
+                    "Subvolume group '{0}' not found, cannot create snapshot '{1}'".format(groupname, snapname)
+            if not sv.get_subvolume_path(spec):
+                return -errno.ENOENT, "", \
+                       "Subvolume '{0}' not found, cannot create snapshot '{1}'".format(subvolname, snapname)
+            sv.create_subvolume_snapshot(spec, snapname)
+        return 0, "", ""
+
+    def remove_subvolume_snapshot(self, volname, subvolname, snapname, groupname, force):
+        if not self.volume_exists(volname):
+            if force:
+                return 0, "", ""
+            else:
+                return -errno.ENOENT, "", \
+                    "Volume '{0}' not found, cannot remove subvolumegroup snapshot '{1}'".format(volname, snapname)
+
+        with SubVolume(self.mgr, fs_name=volname) as sv:
+            spec = SubvolumeSpec(subvolname, groupname)
+            if not sv.get_group_path(spec, create_default=True):
+                if force:
+                    return 0, "", ""
+                else:
+                    return -errno.ENOENT, "", \
+                        "Subvolume group '{0}' already removed, cannot remove subvolume snapshot '{1}'".format(groupname, snapname)
+            if not sv.get_subvolume_path(spec):
+                if force:
+                    return 0, "", ""
+                else:
+                    return -errno.ENOENT, "", \
+                        "Subvolume '{0}' not found, cannot remove subvolume snapshot '{1}'".format(subvolname, snapname)
+            try:
+                sv.remove_subvolume_snapshot(spec, snapname)
+            except cephfs.ObjectNotFound:
+                if force:
+                    return 0, "", ""
+                else:
+                    return -errno.ENOENT, "", \
+                        "Subvolume group snapshot '{0}' not found, cannot remove it".format(snapname)
+        return 0, "", ""
+
+    ### group operations
+
+    def create_subvolume_group(self, volname, groupname):
+        if not self.volume_exists(volname):
+            return -errno.ENOENT, "", \
+                   "Volume '{0}' not found, create it with `ceph fs volume create` " \
+                   "before trying to create subvolume groups".format(volname)
+
+        # TODO: validate that subvol size fits in volume size
+        with SubVolume(self.mgr, fs_name=volname) as sv:
+            spec = SubvolumeSpec("", groupname)
+            sv.create_group(spec)
+        return 0, "", ""
+
+    def remove_subvolume_group(self, volname, groupname, force):
+        if not self.volume_exists(volname):
+            if force:
+                return 0, "", ""
+            else:
+                return -errno.ENOENT, "", \
+                    "Volume '{0}' not found, cannot remove subvolume group '{0}'".format(volname, groupname)
+
+        with SubVolume(self.mgr, fs_name=volname) as sv:
+            # TODO: check whether there are no subvolumes in the group
+            spec = SubvolumeSpec("", groupname)
+            try:
+                sv.remove_group(spec)
+            except cephfs.ObjectNotFound:
+                if force:
+                    return 0, "", ""
+                else:
+                    return -errno.ENOENT, "", \
+                        "Subvolume group '{0}' not found".format(groupname)
+        return 0, "", ""
+
+    def list_subvolume_groups(self, volname):
+        if not self.volume_exists(volname):
+            return -errno.ENOENT, "", "Volume '{0}' not found".format(volname)
+
+        with SubVolume(self.mgr, fs_name=volname) as sv:
+            result = sv.list_groups()
+        return 0, json.dumps(result, indent=2), ""
+
+    ### group snapshot
+
+    def create_subvolume_group_snapshot(self, volname, groupname, snapname):
+        if not self.volume_exists(volname):
+            return -errno.ENOENT, "", \
+                   "Volume '{0}' not found, cannot create snapshot '{1}'".format(volname, snapname)
+
+        with SubVolume(self.mgr, fs_name=volname) as sv:
+            spec = SubvolumeSpec("", groupname)
+            if not sv.get_group_path(spec, create_default=True):
+                return -errno.ENOENT, "", \
+                    "Subvolume group '{0}' not found, cannot create snapshot '{1}'".format(groupname, snapname)
+            sv.create_group_snapshot(spec, snapname)
+        return 0, "", ""
+
+    def remove_subvolume_group_snapshot(self, volname, groupname, snapname, force):
+        if not self.volume_exists(volname):
+            if force:
+                return 0, "", ""
+            else:
+                return -errno.ENOENT, "", \
+                    "Volume '{0}' not found, cannot remove subvolumegroup snapshot '{1}'".format(volname, snapname)
+
+        with SubVolume(self.mgr, fs_name=volname) as sv:
+            spec = SubvolumeSpec("", groupname)
+            if not sv.get_group_path(spec, create_default=True):
+                if force:
+                    return 0, "", ""
+                else:
+                    return -errno.ENOENT, "", \
+                        "Subvolume group snapshot '{0}' not found, cannot remove it".format(groupname)
+            try:
+                sv.remove_group_snapshot(spec, snapname)
+            except:
+                if force:
+                    return 0, "", ""
+                else:
+                    return -errno.ENOENT, "", \
+                        "Subvolume group snapshot '{0}' not found, cannot remove it".format(snapname)
+        return 0, "", ""
