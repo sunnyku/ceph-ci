@@ -116,6 +116,8 @@ void ls(R::RADOS& r, const std::string& pname) {
 
 int main(int argc, char* argv[])
 {
+  std::atomic<bool> stop = false;
+
   namespace po = boost::program_options;
   try {
     std::string command;
@@ -162,7 +164,16 @@ int main(int argc, char* argv[])
     }
 
     boost::asio::io_context c;
+    std::thread t([&stop, &c] {
+		    while (!stop) {
+		      c.run();
+		    }
+		    std::this_thread::yield();
+		  });
+
     auto r = RADOS::RADOS::Builder{}.build(c);
+    stop = true;
+    t.join();
 
     // Do this properly later.
 
