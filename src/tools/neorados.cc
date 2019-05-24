@@ -14,8 +14,6 @@
  */
 
 #include <algorithm>
-#include <atomic>
-#include <functional>
 #include <iostream>
 #include <vector>
 
@@ -27,22 +25,6 @@
 
 namespace bs = boost::system;
 namespace R = RADOS;
-
-std::atomic<std::size_t> pending = 0;
-
-template<typename F>
-struct Pending {
-  F f;
-  Pending(F&& f) : f(std::forward<F>(f)) {
-    ++pending;
-  }
-
-  template<typename... Args>
-  void operator()(Args&&... args) {
-    std::move(f)(std::forward<Args>(args)...);
-    --pending;
-  }
-};
 
 template<typename V>
 std::ostream& printseq(const V& v, std::ostream& m) {
@@ -65,31 +47,29 @@ std::ostream& printseq(const V& v, std::ostream& m, F&& f) {
 template<typename F>
 void lookup_pool(R::RADOS& r, const std::string& pname, F&& f) {
   r.lookup_pool(pname,
-		Pending([f = std::move(f)](bs::error_code ec, std::int64_t p)
-			mutable {
-			  if (ec)
-			    throw bs::system_error(ec);
-			  std::move(f)(p);
-			}));
+		[f = std::move(f)](bs::error_code ec, std::int64_t p) mutable {
+		  if (ec)
+		    throw bs::system_error(ec);
+		  std::move(f)(p);
+		});
 }
 
 
 void lspools(R::RADOS& r) {
   r.list_pools(
-    Pending([](std::vector<std::pair<std::int64_t, std::string>>&& l) {
-	      printseq(l,
-		       std::cout, [](const auto& p) -> const std::string& {
-				    return p.second;
-				  });
-	    }));
+    [](std::vector<std::pair<std::int64_t, std::string>>&& l) {
+      printseq(l, std::cout, [](const auto& p) -> const std::string& {
+			       return p.second;
+			     });
+    });
 }
 
-struct Ls : public Pending<std::reference_wrapper<Ls>> {
+struct Ls  {
   R::RADOS& r;
   std::int64_t p;
 
   Ls(R::RADOS& r, std::int64_t p)
-    : Pending(std::ref(*this)), r(r),  p(p) {}
+    : r(r), p(p) {}
 
   void operator()(bs::error_code ec, std::vector<R::EnumeratedObject> ls,
 		  R::EnumerationCursor next) {
@@ -105,19 +85,16 @@ struct Ls : public Pending<std::reference_wrapper<Ls>> {
 
 void ls(R::RADOS& r, const std::string& pname) {
   lookup_pool(r, pname,
-	      Pending(
-		[&r](std::int64_t p) {
-		  r.enumerate_objects(
-		    p, R::EnumerationCursor::begin(),
-		    R::EnumerationCursor::end(), 1000, {},
-		    Ls(r, p), R::all_nspaces);
-		}));
+	      [&r](std::int64_t p) {
+		r.enumerate_objects(
+		  p, R::EnumerationCursor::begin(),
+		  R::EnumerationCursor::end(), 1000, {},
+		  Ls(r, p), R::all_nspaces);
+	      });
 }
 
 int main(int argc, char* argv[])
 {
-  std::atomic<bool> stop = false;
-
   namespace po = boost::program_options;
   try {
     std::string command;
@@ -164,18 +141,7 @@ int main(int argc, char* argv[])
     }
 
     boost::asio::io_context c;
-    std::thread t([&stop, &c] {
-		    while (!stop) {
-		      c.run();
-		    }
-		    std::this_thread::yield();
-		  });
-
     auto r = RADOS::RADOS::Builder{}.build(c);
-    stop = true;
-    t.join();
-
-    // Do this properly later.
 
     if (command == "lspools"sv) {
       if (!parameters.empty()) {
@@ -198,9 +164,7 @@ int main(int argc, char* argv[])
       std::cerr << "unknown command: " << command << std::endl;
       return 1;
     }
-    while (pending) {
-      c.run();
-    }
+    c.run();
   } catch (const std::exception& e) {
     std::cerr << e.what() << std::endl;
     return 1;
