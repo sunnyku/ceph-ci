@@ -30,6 +30,7 @@
 #include "global/global_init.h"
 
 #include "osd/osd_types.h"
+#include "osdc/error_code.h"
 
 #include "RADOS/RADOSImpl.h"
 #include "include/RADOS/RADOS.hpp"
@@ -730,7 +731,7 @@ void RADOS::lookup_pool(std::string_view name,
   // std::optional<int64_t> since it can only return one error code.
   int64_t ret = objecter->with_osdmap(std::mem_fn(&OSDMap::lookup_pg_pool_name),
 				      name);
-  if (-ENOENT == ret) {
+  if (ret < 0) {
     objecter->wait_for_latest_osdmap(
       [name = std::string(name), c = std::move(c), objecter]
       (boost::system::error_code ec) mutable {
@@ -738,15 +739,13 @@ void RADOS::lookup_pool(std::string_view name,
 	  objecter->with_osdmap(std::mem_fn(&OSDMap::lookup_pg_pool_name),
 				name);
 	if (ret < 0)
-	  ceph::async::dispatch(std::move(c), ceph::to_error_code(ret),
+	  ceph::async::dispatch(std::move(c), osdc_errc::pool_dne,
 				std::int64_t(0));
 	else
 	  ceph::async::dispatch(std::move(c), boost::system::error_code{}, ret);
       });
-    ret = objecter->with_osdmap(std::mem_fn(&OSDMap::lookup_pg_pool_name),
-                                 name);
   } else if (ret < 0) {
-    ceph::async::dispatch(std::move(c), ceph::to_error_code(ret),
+    ceph::async::dispatch(std::move(c), osdc_errc::pool_dne,
 			  std::int64_t(0));
   } else {
     ceph::async::dispatch(std::move(c), boost::system::error_code{}, ret);
