@@ -288,24 +288,6 @@ void IOContext::write_snap_context(
   }
 }
 
-// RADOS
-
-namespace {
-auto create_cct(std::optional<std::string_view> clustername,
-                const CephInitParameters& iparams)
-{
-  boost::intrusive_ptr<CephContext> cct(common_preinit(iparams,
-						       CODE_ENVIRONMENT_LIBRARY,
-						       0),
-					false);
-  if (clustername)
-    cct->_conf->cluster = *clustername;
-  cct->_conf.parse_env(cct->get_module_type()); // environment variables override
-  cct->_conf.apply_changes(nullptr);
-  return cct;
-}
-}
-
 // Op
 
 struct OpImpl {
@@ -571,6 +553,7 @@ void WriteOp::exec(std::string_view cls, std::string_view method,
   reinterpret_cast<OpImpl*>(&impl)->op.call(cls, method, inbl, ec);
 }
 
+// RADOS
 
 void RADOS::Builder::add_conf_file(std::string_view f) {
   if (conf_files)
@@ -585,7 +568,7 @@ RADOS RADOS::Builder::build(boost::asio::io_context& ioctx) {
   if (name)
     ci.name.set(CEPH_ENTITY_TYPE_CLIENT, *name);
   else
-    ci.name.set(CEPH_ENTITY_TYPE_CLIENT, "RADOS-client");
+    ci.name.set(CEPH_ENTITY_TYPE_CLIENT, "admin");
   uint32_t flags = 0;
   if (no_default_conf)
     flags |= CINIT_FLAG_NO_DEFAULT_CONFIG_FILE;
