@@ -14,6 +14,7 @@
  */
 
 #include <algorithm>
+#include <cassert>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -26,6 +27,8 @@
 
 #include <fmt/format.h>
 #include <fmt/ostream.h>
+
+#include "include/buffer.h" // :(
 
 #include "include/RADOS/RADOS.hpp"
 
@@ -111,24 +114,195 @@ void ls(R::RADOS& r, const std::vector<std::string>& p) {
 	      });
 }
 
+class Thrower {
+private:
+  std::string what;
+
+public:
+  Thrower(std::string&& what)
+    : what(std::move(what)) {}
+
+  void operator ()(bs::error_code ec) {
+    if (ec)
+      throw bs::system_error(ec, std::move(what));
+  }
+};
+
 void mkpool(R::RADOS& r, const std::vector<std::string>& p) {
   auto pname = p[0];
   r.create_pool(pname, std::nullopt,
-		[pname](bs::error_code ec) {
-		  if (ec)
-		    throw bs::system_error(
-		      ec, fmt::format("when creating '{}'", pname));
-		});
+		Thrower(fmt::format("when creating pool '{}'", pname)));
 }
 
 void rmpool(R::RADOS& r, const std::vector<std::string>& p) {
   auto pname = p[0];
   r.delete_pool(pname,
-		[pname](bs::error_code ec) {
-		  if (ec)
-		    throw bs::system_error(
-		      ec, fmt::format("when removing '{}'", pname));
-		});
+		Thrower(fmt::format("when removing pool '{}'", pname)));
+}
+
+void create(R::RADOS& r, const std::vector<std::string>& p) {
+  auto pname = p[0];
+  auto oname = p[1];
+  lookup_pool(r, pname,
+	      [&r, pname, oname = std::move(oname)](std::int64_t pool) mutable {
+		RADOS::WriteOp op;
+		op.create(true);
+		r.execute(oname, pool, std::move(op),
+		Thrower(
+		  fmt::format(
+		    "when creating object '{}' in pool '{}'",
+		    oname, pname)));
+    });
+}
+
+static constexpr std::size_t io_size = 4 << 20;
+
+class Writer {
+  RADOS::RADOS& r;
+  std::unique_ptr<char[]> buf = std::make_unique<char[]>(io_size);
+  const std::int64_t pool;
+  const std::string pname;
+  const RADOS::Object obj;
+  std::size_t off = 0;
+  std::ios_base::iostate old_ex = cin.exceptions();
+
+public:
+
+  Writer(RADOS::RADOS& r, std::int64_t pool, std::string&& pname,
+	 std::string&& obj)
+    : r(r), pool(pool), pname(pname), obj(std::move(obj)) {
+    std::cin.exceptions(std::istream::badbit);
+    std::cin.clear();
+  }
+
+  ~Writer() {
+    std::cin.exceptions(old_ex);
+  }
+
+  void write(std::unique_ptr<Writer> me) {
+    auto curoff = off;
+    std::cin.read(buf.get(), io_size);
+    auto len = std::cin.gcount();
+    off += len;
+    if (len == 0)
+      return; // Nothin' to do.
+
+    ceph::buffer::list bl;
+    bl.append(buffer::create_static(len, buf.get()));
+    RADOS::WriteOp op;
+    op.write(curoff, std::move(bl));
+    r.execute(obj, pool, std::move(op),
+	      [me = std::move(me),
+	       eof = std::cin.eof()](bs::error_code ec) mutable {
+		if (ec)
+		  throw bs::system_error(
+		    ec,
+		    fmt::format("when writing object '{}' in pool '{}'",
+				me->obj, me->pname));
+		if (!eof) {
+		  auto u = me.get();
+		  u->write(std::move(me));
+		}
+	      });
+  }
+};
+
+void write(R::RADOS& r, const std::vector<std::string>& p) {
+  auto pname = p[0];
+  auto oname = p[1];
+  lookup_pool(r, pname,
+	      [&r, pname, oname = std::move(oname)](std::int64_t pool) mutable {
+		auto w = std::make_unique<Writer>(r, pool, std::move(pname),
+						  std::move(oname));
+		auto u = w.get();
+		u->write(std::move(w));
+    });
+}
+
+class Reader {
+  RADOS::RADOS& r;
+  ceph::buffer::list bl;
+  const std::int64_t pool;
+  const std::string pname;
+  const RADOS::Object obj;
+  std::size_t off = 0;
+  std::size_t len;
+
+public:
+
+  Reader(RADOS::RADOS& r, std::int64_t pool, std::string&& pname,
+	 std::string&& obj)
+    : r(r), pool(pool), pname(pname), obj(std::move(obj)) {
+  }
+
+  void start_read(std::unique_ptr<Reader> me) {
+    RADOS::ReadOp op;
+    op.stat(&len, nullptr);
+    r.execute(obj, pool, std::move(op),
+	      nullptr,
+	      [me = std::move(me)](bs::error_code ec) mutable {
+		if (ec)
+		  throw bs::system_error(
+		    ec,
+		    fmt::format("when getting length of object '{}' in pool '{}'",
+				me->obj, me->pname));
+
+		if (me->len) {
+		  auto u = me.get();
+		  u->read(std::move(me));
+		}
+	      });
+  }
+
+  void read(std::unique_ptr<Reader> me) {
+    bl.clear();
+    auto toread = std::max(len - off, io_size);
+    if (toread == 0)
+      return;
+    RADOS::ReadOp op;
+    op.read(off, toread, &bl);
+    r.execute(obj, pool, std::move(op), nullptr,
+	      [me = std::move(me)](bs::error_code ec) mutable {
+		if (ec)
+		  throw bs::system_error(
+		    ec,
+		    fmt::format("when reading from object '{}' in pool '{}'",
+				me->obj, me->pool));
+		me->off += me->bl.length();
+		me->bl.write_stream(std::cout);
+		if (me->off != me->len) {
+		  auto u = me.get();
+		  u->read(std::move(me));
+		}
+	      });
+  }
+};
+
+void read(R::RADOS& r, const std::vector<std::string>& p) {
+  auto pname = p[0];
+  auto oname = p[1];
+  lookup_pool(r, pname,
+	      [&r, pname, oname = std::move(oname)](std::int64_t pool) mutable {
+		auto d = std::make_unique<Reader>(r, pool, std::move(pname),
+						  std::move(oname));
+		auto u = d.get();
+		u->start_read(std::move(d));
+    });
+}
+
+void rm(R::RADOS& r, const std::vector<std::string>& p) {
+  auto pname = p[0];
+  auto oname = p[1];
+  lookup_pool(r, pname,
+	      [&r, pname, oname = std::move(oname)](std::int64_t pool) mutable {
+		RADOS::WriteOp op;
+		op.remove();
+		r.execute(oname, pool, std::move(op),
+			  Thrower(
+		  fmt::format(
+		    "when removing object '{}' in pool '{}'",
+		    oname, pname)));
+	      });
 }
 
 static constexpr auto version = std::make_tuple(0ul, 0ul, 1ul);
@@ -164,7 +338,26 @@ const std::array commands = {
   cmdesc{ "rmpool"sv,
 	  1, &rmpool,
 	  "POOL"sv,
-	  "remove POOL"sv }
+	  "remove POOL"sv },
+
+  // Object operations
+
+  cmdesc{ "create"sv,
+	  2, &create,
+	  "POOL OBJECT"sv,
+	  "exclusively create OBJECT in POOL"sv },
+  cmdesc{ "write"sv,
+	  2, &write,
+	  "POOL OBJECT"sv,
+	  "write to OBJECT in POOL from standard input"sv },
+  cmdesc{ "read"sv,
+	  2, &read,
+	  "POOL OBJECT"sv,
+	  "read contents of OBJECT in POOL to standard out"sv },
+  cmdesc{ "rm"sv,
+	  2, &rm,
+	  "POOL OBJECT"sv,
+	  "remove OBJECT in POOL"sv }
 };
 
 int main(int argc, char* argv[])
