@@ -89,6 +89,7 @@ RADOS::RADOS(boost::asio::io_context& ioctx,
 
   std::unique_lock l(lock);
   instance_id = monclient.get_global_id();
+  objecter->wait_for_osd_map();
 }
 
 bool RADOS::ms_dispatch(Message *m)

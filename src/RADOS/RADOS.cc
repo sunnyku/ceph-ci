@@ -772,16 +772,12 @@ std::optional<uint64_t> RADOS::get_pool_alignment(int64_t pool_id)
 
 void RADOS::list_pools(std::unique_ptr<LSPoolsComp> c) {
   auto objecter = reinterpret_cast<_::RADOS*>(&impl)->objecter.get();
-  objecter->wait_for_latest_osdmap(
-    [c = std::move(c), objecter]
-    (boost::system::error_code ec) mutable {
-      objecter->with_osdmap(
-	[&](OSDMap& o) {
-	  std::vector<std::pair<std::int64_t, std::string>> v;
-	  for (auto p : o.get_pools())
-	    v.push_back(std::make_pair(p.first, o.get_pool_name(p.first)));
-	  ceph::async::dispatch(std::move(c), std::move(v));
-	});
+  objecter->with_osdmap(
+    [&](OSDMap& o) {
+      std::vector<std::pair<std::int64_t, std::string>> v;
+      for (auto p : o.get_pools())
+	v.push_back(std::make_pair(p.first, o.get_pool_name(p.first)));
+      ceph::async::dispatch(std::move(c), std::move(v));
     });
 }
 
