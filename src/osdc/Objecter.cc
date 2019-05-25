@@ -3826,10 +3826,14 @@ void Objecter::create_pool_snap(int64_t pool, std::string_view snap_name,
 		 << snap_name << dendl;
 
   const pg_pool_t *p = osdmap->get_pg_pool(pool);
-  if (!p)
+  if (!p) {
     std::move(onfinish)(osdc_errc::pool_dne, bufferlist{});
-  if (p->snap_exists(snap_name))
+    return;
+  }
+  if (p->snap_exists(snap_name)) {
     std::move(onfinish)(osdc_errc::snapshot_exists, bufferlist{});
+    return;
+  }
 
   PoolOp *op = new PoolOp;
   op->tid = ++last_tid;
@@ -3888,12 +3892,15 @@ void Objecter::delete_pool_snap(
 		 << snap_name << dendl;
 
   const pg_pool_t *p = osdmap->get_pg_pool(pool);
-  if (!p)
+  if (!p) {
     std::move(onfinish)(osdc_errc::pool_dne, ceph::buffer::list{});
+    return;
+  }
 
-
-  if (!p->snap_exists(snap_name))
+  if (!p->snap_exists(snap_name)) {
     std::move(onfinish)(osdc_errc::snapshot_dne, ceph::buffer::list{});
+    return;
+  }
 
   PoolOp *op = new PoolOp;
   op->tid = ++last_tid;
@@ -3934,8 +3941,10 @@ void Objecter::create_pool(std::string_view name,
   unique_lock wl(rwlock);
   ldout(cct, 10) << "create_pool name=" << name << dendl;
 
-  if (osdmap->lookup_pg_pool_name(name) >= 0)
+  if (osdmap->lookup_pg_pool_name(name) >= 0) {
     std::move(onfinish)(osdc_errc::pool_exists, bufferlist{});
+    return;
+  }
 
   PoolOp *op = new PoolOp;
   op->tid = ++last_tid;
@@ -3959,8 +3968,8 @@ void Objecter::delete_pool(int64_t pool,
 
   if (!osdmap->have_pg_pool(pool))
     std::move(onfinish)(osdc_errc::pool_dne, bufferlist{});
-
-  _do_delete_pool(pool, std::move(onfinish));
+  else
+    _do_delete_pool(pool, std::move(onfinish));
 }
 
 void Objecter::delete_pool(std::string_view pool_name,
@@ -3975,8 +3984,8 @@ void Objecter::delete_pool(std::string_view pool_name,
   if (pool < 0)
     // This only returns one error: -ENOENT.
     std::move(onfinish)(osdc_errc::pool_dne, bufferlist{});
-
-  _do_delete_pool(pool, std::move(onfinish));
+  else
+    _do_delete_pool(pool, std::move(onfinish));
 }
 
 void Objecter::_do_delete_pool(int64_t pool,
