@@ -5188,7 +5188,7 @@ void Objecter::_enumerate_reply(
     rl.unlock();
   }
 
-  if (response.entries.size() < ctx->max) {
+  if (response.entries.size() <= ctx->max) {
     ctx->max -= response.entries.size();
     std::move(response.entries.begin(), response.entries.end(),
 	      std::back_inserter(ctx->ls));
