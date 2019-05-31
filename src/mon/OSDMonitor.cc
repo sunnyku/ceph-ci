@@ -3586,6 +3586,12 @@ bool OSDMonitor::preprocess_remove_snaps(MonOpRequestRef op)
     }
   }
 
+  if (HAVE_FEATURE(m->get_connection()->get_features(), SERVER_OCTOPUS)) {
+    auto reply = make_message<MRemoveSnaps>();
+    reply->snaps = m->snaps;
+    mon->send_reply(op, reply.detach());
+  }
+
  ignore:
   return true;
 }
@@ -3630,6 +3636,13 @@ bool OSDMonitor::prepare_remove_snaps(MonOpRequestRef op)
       }
     }
   }
+
+  if (HAVE_FEATURE(m->get_connection()->get_features(), SERVER_OCTOPUS)) {
+    auto reply = make_message<MRemoveSnaps>();
+    reply->snaps = m->snaps;
+    wait_for_finished_proposal(op, new C_ReplyOp(this, op, reply));
+  }
+
   return true;
 }
 
