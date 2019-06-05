@@ -1654,7 +1654,7 @@ public:
       
       explicit Delete(RGWRados::Object *_target) : target(_target) {}
 
-      int delete_obj();
+      int delete_obj(optional_yield y);
     };
 
     struct Stat {

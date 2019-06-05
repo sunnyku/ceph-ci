@@ -5413,7 +5413,7 @@ void RGWRados::cls_obj_check_mtime(ObjectOperation& op, const real_time& mtime, 
  * obj: name of the object to delete
  * Returns: 0 on success, -ERR# otherwise.
  */
-int RGWRados::Object::Delete::delete_obj()
+int RGWRados::Object::Delete::delete_obj(optional_yield y)
 {
   RGWRados *store = target->get_store();
   rgw_obj& src_obj = target->get_obj();
@@ -5560,7 +5560,7 @@ int RGWRados::Object::Delete::delete_obj()
   index_op.set_zones_trace(params.zones_trace);
   index_op.set_bilog_flags(params.bilog_flags);
 
-  r = index_op.prepare(CLS_RGW_OP_DEL, &state->write_tag, null_yield);
+  r = index_op.prepare(CLS_RGW_OP_DEL, &state->write_tag, y);
   if (r < 0)
     return r;
 
@@ -5621,7 +5621,7 @@ int RGWRados::delete_obj(RGWObjectCtx& obj_ctx,
   del_op.params.expiration_time = expiration_time;
   del_op.params.zones_trace = zones_trace;
 
-  return del_op.delete_obj();
+  return del_op.delete_obj(null_yield);
 }
 
 int RGWRados::delete_raw_obj(const rgw_raw_obj& obj)
