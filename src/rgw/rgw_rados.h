@@ -2029,7 +2029,8 @@ public:
 
   int set_attrs(void *ctx, const RGWBucketInfo& bucket_info, rgw_obj& obj,
                         map<string, bufferlist>& attrs,
-                        map<string, bufferlist>* rmattrs);
+                        map<string, bufferlist>* rmattrs,
+                        optional_yield y);
 
   int get_obj_state(RGWObjectCtx *rctx, const RGWBucketInfo& bucket_info, const rgw_obj& obj, RGWObjState **state,
                     bool follow_olh, bool assume_noent = false);
@@ -2354,7 +2355,8 @@ public:
 
   int delete_raw_obj_aio(const rgw_raw_obj& obj, list<librados::AioCompletion *>& handles);
   int delete_obj_aio(const rgw_obj& obj, RGWBucketInfo& info, RGWObjState *astate,
-                     list<librados::AioCompletion *>& handles, bool keep_index_consistent);
+                     list<librados::AioCompletion *>& handles, bool keep_index_consistent,
+                     optional_yield y);
 
   /* mfa/totp stuff */
  private:
