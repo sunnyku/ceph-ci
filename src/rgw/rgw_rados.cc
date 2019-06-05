@@ -3687,7 +3687,7 @@ int RGWRados::Object::Write::_do_write_meta(uint64_t size, uint64_t accounted_si
 
   if (!index_op->is_prepared()) {
     tracepoint(rgw_rados, prepare_enter, req_id.c_str());
-    r = index_op->prepare(CLS_RGW_OP_ADD, &state->write_tag);
+    r = index_op->prepare(CLS_RGW_OP_ADD, &state->write_tag, null_yield);
     tracepoint(rgw_rados, prepare_exit, req_id.c_str());
     if (r < 0)
       return r;
@@ -5560,7 +5560,7 @@ int RGWRados::Object::Delete::delete_obj()
   index_op.set_zones_trace(params.zones_trace);
   index_op.set_bilog_flags(params.bilog_flags);
 
-  r = index_op.prepare(CLS_RGW_OP_DEL, &state->write_tag);
+  r = index_op.prepare(CLS_RGW_OP_DEL, &state->write_tag, null_yield);
   if (r < 0)
     return r;
 
@@ -6245,7 +6245,7 @@ int RGWRados::set_attrs(void *ctx, const RGWBucketInfo& bucket_info, rgw_obj& sr
     string tag;
     append_rand_alpha(cct, tag, tag, 32);
     state->write_tag = tag;
-    r = index_op.prepare(CLS_RGW_OP_ADD, &state->write_tag);
+    r = index_op.prepare(CLS_RGW_OP_ADD, &state->write_tag, null_yield);
 
     if (r < 0)
       return r;
@@ -6467,7 +6467,7 @@ int RGWRados::Bucket::UpdateIndex::guard_reshard(BucketShard **pbs, std::functio
   return 0;
 }
 
-int RGWRados::Bucket::UpdateIndex::prepare(RGWModifyOp op, const string *write_tag)
+int RGWRados::Bucket::UpdateIndex::prepare(RGWModifyOp op, const string *write_tag, optional_yield y)
 {
   if (blind) {
     return 0;
@@ -6483,7 +6483,7 @@ int RGWRados::Bucket::UpdateIndex::prepare(RGWModifyOp op, const string *write_t
   }
 
   int r = guard_reshard(nullptr, [&](BucketShard *bs) -> int {
-				   return store->cls_obj_prepare_op(*bs, op, optag, obj, bilog_flags, zones_trace);
+				   return store->cls_obj_prepare_op(*bs, op, optag, obj, bilog_flags, y, zones_trace);
 				 });
 
   if (r < 0) {
@@ -8995,7 +8995,7 @@ bool RGWRados::process_expire_objects()
 }
 
 int RGWRados::cls_obj_prepare_op(BucketShard& bs, RGWModifyOp op, string& tag,
-                                 rgw_obj& obj, uint16_t bilog_flags, rgw_zone_set *_zones_trace)
+                                 rgw_obj& obj, uint16_t bilog_flags, optional_yield y, rgw_zone_set *_zones_trace)
 {
   rgw_zone_set zones_trace;
   if (_zones_trace) {
@@ -9007,7 +9007,7 @@ int RGWRados::cls_obj_prepare_op(BucketShard& bs, RGWModifyOp op, string& tag,
   cls_rgw_obj_key key(obj.key.get_index_key_name(), obj.key.instance);
   cls_rgw_guard_bucket_resharding(o, -ERR_BUSY_RESHARDING);
   cls_rgw_bucket_prepare_op(o, op, tag, key, obj.key.get_loc(), svc.zone->get_zone().log_data, bilog_flags, zones_trace);
-  return bs.index_ctx.operate(bs.bucket_obj, &o);
+  return rgw_rados_operate(bs.index_ctx, bs.bucket_obj, &o, y);
 }
 
 int RGWRados::cls_obj_complete_op(BucketShard& bs, const rgw_obj& obj, RGWModifyOp op, string& tag,
@@ -10122,7 +10122,7 @@ int RGWRados::delete_obj_aio(const rgw_obj& obj,
     RGWRados::Bucket bop(this, bucket_info);
     RGWRados::Bucket::UpdateIndex index_op(&bop, obj);
 
-    ret = index_op.prepare(CLS_RGW_OP_DEL, &astate->write_tag);
+    ret = index_op.prepare(CLS_RGW_OP_DEL, &astate->write_tag, null_yield);
     if (ret < 0) {
       lderr(cct) << "ERROR: failed to prepare index op with ret=" << ret << dendl;
       return ret;
