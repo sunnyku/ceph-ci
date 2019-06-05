@@ -3415,7 +3415,8 @@ int RGWRados::swift_versioning_copy(RGWObjectCtx& obj_ctx,
                NULL, /* string *petag */
                NULL, /* void (*progress_cb)(off_t, void *) */
                NULL, /* void *progress_data */
-               dpp); 
+               dpp,
+               null_yield); 
   if (r == -ECANCELED || r == -ENOENT) {
     /* Has already been overwritten, meaning another rgw process already
      * copied it out */
@@ -3509,7 +3510,8 @@ int RGWRados::swift_versioning_restore(RGWSysObjectCtx& sysobj_ctx,
                        nullptr,       /* string *petag */
                        nullptr,       /* void (*progress_cb)(off_t, void *) */
                        nullptr,       /* void *progress_data */
-                       dpp);      
+                       dpp,
+                       null_yield);      
     if (ret == -ECANCELED || ret == -ENOENT) {
       /* Has already been overwritten, meaning another rgw process already
        * copied it out */
@@ -3538,7 +3540,7 @@ int RGWRados::swift_versioning_restore(RGWSysObjectCtx& sysobj_ctx,
 int RGWRados::Object::Write::_do_write_meta(uint64_t size, uint64_t accounted_size,
                                            map<string, bufferlist>& attrs,
                                            bool assume_noent, bool modify_tail,
-                                           void *_index_op)
+                                           void *_index_op, optional_yield y)
 {
   RGWRados::Bucket::UpdateIndex *index_op = static_cast<RGWRados::Bucket::UpdateIndex *>(_index_op);
   RGWRados *store = target->get_store();
@@ -3687,7 +3689,7 @@ int RGWRados::Object::Write::_do_write_meta(uint64_t size, uint64_t accounted_si
 
   if (!index_op->is_prepared()) {
     tracepoint(rgw_rados, prepare_enter, req_id.c_str());
-    r = index_op->prepare(CLS_RGW_OP_ADD, &state->write_tag, null_yield);
+    r = index_op->prepare(CLS_RGW_OP_ADD, &state->write_tag, y);
     tracepoint(rgw_rados, prepare_exit, req_id.c_str());
     if (r < 0)
       return r;
@@ -3808,7 +3810,7 @@ done_cancel:
 }
 
 int RGWRados::Object::Write::write_meta(uint64_t size, uint64_t accounted_size,
-                                           map<string, bufferlist>& attrs)
+                                           map<string, bufferlist>& attrs, optional_yield y)
 {
   RGWBucketInfo& bucket_info = target->get_bucket_info();
 
@@ -3819,13 +3821,13 @@ int RGWRados::Object::Write::write_meta(uint64_t size, uint64_t accounted_size,
   bool assume_noent = (meta.if_match == NULL && meta.if_nomatch == NULL);
   int r;
   if (assume_noent) {
-    r = _do_write_meta(size, accounted_size, attrs, assume_noent, meta.modify_tail, (void *)&index_op);
+    r = _do_write_meta(size, accounted_size, attrs, assume_noent, meta.modify_tail, (void *)&index_op, y);
     if (r == -EEXIST) {
       assume_noent = false;
     }
   }
   if (!assume_noent) {
-    r = _do_write_meta(size, accounted_size, attrs, assume_noent, meta.modify_tail, (void *)&index_op);
+    r = _do_write_meta(size, accounted_size, attrs, assume_noent, meta.modify_tail, (void *)&index_op, y);
   }
   return r;
 }
@@ -4584,7 +4586,8 @@ int RGWRados::copy_obj(RGWObjectCtx& obj_ctx,
                string *petag,
                void (*progress_cb)(off_t, void *),
                void *progress_data,
-               const DoutPrefixProvider *dpp)
+               const DoutPrefixProvider *dpp,
+               optional_yield y)
 {
   int ret;
   uint64_t obj_size;
@@ -4822,7 +4825,7 @@ int RGWRados::copy_obj(RGWObjectCtx& obj_ctx,
   write_op.meta.delete_at = delete_at;
   write_op.meta.modify_tail = !copy_itself;
 
-  ret = write_op.write_meta(obj_size, astate->accounted_size, attrs);
+  ret = write_op.write_meta(obj_size, astate->accounted_size, attrs, null_yield);
   if (ret < 0) {
     goto done_ret;
   }

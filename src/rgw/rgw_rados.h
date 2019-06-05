@@ -1616,9 +1616,9 @@ public:
       int _do_write_meta(uint64_t size, uint64_t accounted_size,
                      map<std::string, bufferlist>& attrs,
                      bool modify_tail, bool assume_noent,
-                     void *index_op);
+                     void *index_op, optional_yield y);
       int write_meta(uint64_t size, uint64_t accounted_size,
-                     map<std::string, bufferlist>& attrs);
+                     map<std::string, bufferlist>& attrs, optional_yield y);
       int write_data(const char *data, uint64_t ofs, uint64_t len, bool exclusive);
       const req_state* get_req_state() {
         return (req_state *)target->get_ctx().get_private();
@@ -1961,7 +1961,8 @@ public:
                string *petag,
                void (*progress_cb)(off_t, void *),
                void *progress_data,
-               const DoutPrefixProvider *dpp);
+               const DoutPrefixProvider *dpp,
+               optional_yield y);
 
   int copy_obj_data(RGWObjectCtx& obj_ctx,
                RGWBucketInfo& dest_bucket_info,

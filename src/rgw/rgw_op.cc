@@ -4987,7 +4987,8 @@ void RGWCopyObj::execute()
 			   &s->req_id, /* use req_id as tag */
 			   &etag,
 			   copy_obj_progress_cb, (void *)this, 
-                           this);
+                           this,
+                           s->yield);
 }
 
 int RGWGetACLs::verify_permission()
@@ -5616,7 +5617,7 @@ void RGWInitMultipart::execute()
     encode(upload_info, bl);
     obj_op.meta.data = &bl;
 
-    op_ret = obj_op.write_meta(bl.length(), 0, attrs);
+    op_ret = obj_op.write_meta(bl.length(), 0, attrs, s->yield);
   } while (op_ret == -EEXIST);
 }
 
@@ -5911,7 +5912,7 @@ void RGWCompleteMultipart::execute()
   obj_op.meta.modify_tail = true;
   obj_op.meta.completeMultipart = true;
   obj_op.meta.olh_epoch = olh_epoch;
-  op_ret = obj_op.write_meta(ofs, accounted_size, attrs);
+  op_ret = obj_op.write_meta(ofs, accounted_size, attrs, s->yield);
   if (op_ret < 0)
     return;
 
