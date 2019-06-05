@@ -554,7 +554,7 @@ static int remove_expired_obj(lc_op_ctx& oc, bool remove_indeed)
   del_op.params.obj_owner = obj_owner;
   del_op.params.unmod_since = meta.mtime;
 
-  return del_op.delete_obj();
+  return del_op.delete_obj(null_yield);
 }
 
 class LCOpAction {
