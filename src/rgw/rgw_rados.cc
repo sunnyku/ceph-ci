@@ -6167,12 +6167,13 @@ int RGWRados::set_attr(void *ctx, const RGWBucketInfo& bucket_info, rgw_obj& obj
 {
   map<string, bufferlist> attrs;
   attrs[name] = bl;
-  return set_attrs(ctx, bucket_info, obj, attrs, NULL);
+  return set_attrs(ctx, bucket_info, obj, attrs, NULL, null_yield);
 }
 
 int RGWRados::set_attrs(void *ctx, const RGWBucketInfo& bucket_info, rgw_obj& src_obj,
                         map<string, bufferlist>& attrs,
-                        map<string, bufferlist>* rmattrs)
+                        map<string, bufferlist>* rmattrs,
+                        optional_yield y)
 {
   rgw_obj obj = src_obj;
   if (obj.key.instance == "null") {
@@ -6245,7 +6246,7 @@ int RGWRados::set_attrs(void *ctx, const RGWBucketInfo& bucket_info, rgw_obj& sr
     string tag;
     append_rand_alpha(cct, tag, tag, 32);
     state->write_tag = tag;
-    r = index_op.prepare(CLS_RGW_OP_ADD, &state->write_tag, null_yield);
+    r = index_op.prepare(CLS_RGW_OP_ADD, &state->write_tag, y);
 
     if (r < 0)
       return r;
@@ -10109,7 +10110,8 @@ int RGWRados::delete_raw_obj_aio(const rgw_raw_obj& obj, list<librados::AioCompl
 
 int RGWRados::delete_obj_aio(const rgw_obj& obj,
                              RGWBucketInfo& bucket_info, RGWObjState *astate,
-                             list<librados::AioCompletion *>& handles, bool keep_index_consistent)
+                             list<librados::AioCompletion *>& handles, bool keep_index_consistent,
+                             optional_yield y)
 {
   rgw_rados_ref ref;
   int ret = get_obj_head_ref(bucket_info, obj, &ref);
@@ -10122,7 +10124,7 @@ int RGWRados::delete_obj_aio(const rgw_obj& obj,
     RGWRados::Bucket bop(this, bucket_info);
     RGWRados::Bucket::UpdateIndex index_op(&bop, obj);
 
-    ret = index_op.prepare(CLS_RGW_OP_DEL, &astate->write_tag, null_yield);
+    ret = index_op.prepare(CLS_RGW_OP_DEL, &astate->write_tag, y);
     if (ret < 0) {
       lderr(cct) << "ERROR: failed to prepare index op with ret=" << ret << dendl;
       return ret;
