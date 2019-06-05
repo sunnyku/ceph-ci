@@ -316,7 +316,7 @@ int AtomicObjectProcessor::complete(size_t accounted_size,
   obj_op.meta.zones_trace = zones_trace;
   obj_op.meta.modify_tail = true;
 
-  r = obj_op.write_meta(actual_size, accounted_size, attrs);
+  r = obj_op.write_meta(actual_size, accounted_size, attrs, null_yield);
   if (r < 0) {
     return r;
   }
@@ -441,7 +441,7 @@ int MultipartObjectProcessor::complete(size_t accounted_size,
   obj_op.meta.zones_trace = zones_trace;
   obj_op.meta.modify_tail = true;
 
-  r = obj_op.write_meta(actual_size, accounted_size, attrs);
+  r = obj_op.write_meta(actual_size, accounted_size, attrs, null_yield);
   if (r < 0)
     return r;
 
@@ -649,7 +649,7 @@ int AppendObjectProcessor::complete(size_t accounted_size, const string &etag, c
     etag_bl.append(final_etag_str, strlen(final_etag_str) + 1);
     attrs[RGW_ATTR_ETAG] = etag_bl;
   }
-  r = obj_op.write_meta(actual_size + cur_size, accounted_size + *cur_accounted_size, attrs);
+  r = obj_op.write_meta(actual_size + cur_size, accounted_size + *cur_accounted_size, attrs, null_yield);
   if (r < 0) {
     return r;
   }
