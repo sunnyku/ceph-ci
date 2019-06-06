@@ -3973,7 +3973,8 @@ void RGWPutObj::execute()
   tracepoint(rgw_op, processor_complete_enter, s->req_id.c_str());
   op_ret = processor->complete(s->obj_size, etag, &mtime, real_time(), attrs,
                                (delete_at ? *delete_at : real_time()), if_match, if_nomatch,
-                               (user_data.empty() ? nullptr : &user_data), nullptr, nullptr);
+                               (user_data.empty() ? nullptr : &user_data), nullptr, nullptr,
+                               s->yield);
   tracepoint(rgw_op, processor_complete_exit, s->req_id.c_str());
 
   /* produce torrent */
@@ -4212,7 +4213,8 @@ void RGWPostObj::execute()
 
     op_ret = processor.complete(s->obj_size, etag, nullptr, real_time(), attrs,
                                 (delete_at ? *delete_at : real_time()),
-                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                nullptr, nullptr, nullptr, nullptr, nullptr,
+                                null_yield);
     if (op_ret < 0) {
       return;
     }
@@ -6947,7 +6949,8 @@ int RGWBulkUploadOp::handle_file(const boost::string_ref path,
   /* Complete the transaction. */
   op_ret = processor.complete(size, etag, nullptr, ceph::real_time(),
                               attrs, ceph::real_time() /* delete_at */,
-                              nullptr, nullptr, nullptr, nullptr, nullptr);
+                              nullptr, nullptr, nullptr, nullptr, nullptr,
+                              s->yield);
   if (op_ret < 0) {
     ldpp_dout(this, 20) << "processor::complete returned op_ret=" << op_ret << dendl;
   }

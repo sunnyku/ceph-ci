@@ -6034,7 +6034,7 @@ next:
     }
 
     map<string, bufferlist> attrs;
-    ret = obj->put(bl, attrs, dpp());
+    ret = obj->put(bl, attrs, dpp(), null_yield);
     if (ret < 0) {
       cerr << "ERROR: put object returned error: " << cpp_strerror(-ret) << std::endl;
     }
