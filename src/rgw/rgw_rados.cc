@@ -4007,7 +4007,7 @@ static void set_copy_attrs(map<string, bufferlist>& src_attrs,
   }
 }
 
-int RGWRados::rewrite_obj(RGWBucketInfo& dest_bucket_info, const rgw_obj& obj, const DoutPrefixProvider *dpp)
+int RGWRados::rewrite_obj(RGWBucketInfo& dest_bucket_info, const rgw_obj& obj, const DoutPrefixProvider *dpp, optional_yield y)
 {
   map<string, bufferlist> attrset;
 
@@ -4031,7 +4031,7 @@ int RGWRados::rewrite_obj(RGWBucketInfo& dest_bucket_info, const rgw_obj& obj, c
 
   return copy_obj_data(rctx, dest_bucket_info, dest_bucket_info.placement_rule,
                        read_op, obj_size - 1, obj, NULL, mtime, attrset,
-                       0, real_time(), NULL, dpp);
+                       0, real_time(), NULL, dpp, y);
 }
 
 struct obj_time_weight {
@@ -4739,7 +4739,7 @@ int RGWRados::copy_obj(RGWObjectCtx& obj_ctx,
   if (copy_data) { /* refcounting tail wouldn't work here, just copy the data */
     attrs.erase(RGW_ATTR_TAIL_TAG);
     return copy_obj_data(obj_ctx, dest_bucket_info, dest_placement, read_op, obj_size - 1, dest_obj,
-                         mtime, real_time(), attrs, olh_epoch, delete_at, petag, dpp);
+                         mtime, real_time(), attrs, olh_epoch, delete_at, petag, dpp, y);
   }
 
   RGWObjManifest::obj_iterator miter = astate->manifest.obj_begin();
@@ -4864,7 +4864,8 @@ int RGWRados::copy_obj_data(RGWObjectCtx& obj_ctx,
                uint64_t olh_epoch,
 	       real_time delete_at,
                string *petag,
-               const DoutPrefixProvider *dpp)
+               const DoutPrefixProvider *dpp,
+               optional_yield y)
 {
   string tag;
   append_rand_alpha(cct, tag, tag, 32);
@@ -4927,7 +4928,7 @@ int RGWRados::copy_obj_data(RGWObjectCtx& obj_ctx,
   }
 
   return processor.complete(accounted_size, etag, mtime, set_mtime, attrs, delete_at,
-                            nullptr, nullptr, nullptr, nullptr, nullptr, null_yield);
+                            nullptr, nullptr, nullptr, nullptr, nullptr, y);
 }
 
 int RGWRados::transition_obj(RGWObjectCtx& obj_ctx,
@@ -4936,7 +4937,8 @@ int RGWRados::transition_obj(RGWObjectCtx& obj_ctx,
                              const rgw_placement_rule& placement_rule,
                              const real_time& mtime,
                              uint64_t olh_epoch,
-                             const DoutPrefixProvider *dpp)
+                             const DoutPrefixProvider *dpp,
+                             optional_yield y)
 {
   map<string, bufferlist> attrs;
   real_time read_mtime;
@@ -4971,7 +4973,8 @@ int RGWRados::transition_obj(RGWObjectCtx& obj_ctx,
                       olh_epoch,
                       real_time(),
                       nullptr /* petag */,
-                      dpp);
+                      dpp,
+                      y);
   if (ret < 0) {
     return ret;
   }
