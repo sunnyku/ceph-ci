@@ -4461,7 +4461,7 @@ int RGWRados::fetch_remote_obj(RGWObjectCtx& obj_ctx,
     bool canceled = false;
     ret = processor.complete(cb.get_data_len(), etag, mtime, set_mtime,
                              attrs, delete_at, nullptr, nullptr, nullptr,
-                             zones_trace, &canceled);
+                             zones_trace, &canceled, null_yield);
     if (ret < 0) {
       goto set_err_state;
     }
@@ -4927,7 +4927,7 @@ int RGWRados::copy_obj_data(RGWObjectCtx& obj_ctx,
   }
 
   return processor.complete(accounted_size, etag, mtime, set_mtime, attrs, delete_at,
-                            nullptr, nullptr, nullptr, nullptr, nullptr);
+                            nullptr, nullptr, nullptr, nullptr, nullptr, null_yield);
 }
 
 int RGWRados::transition_obj(RGWObjectCtx& obj_ctx,

@@ -420,7 +420,8 @@ int RGWDataAccess::Bucket::get_object(const rgw_obj_key& key,
 
 int RGWDataAccess::Object::put(bufferlist& data,
 			       map<string, bufferlist>& attrs,
-                               const DoutPrefixProvider *dpp)
+                               const DoutPrefixProvider *dpp,
+                               optional_yield y)
 {
   RGWRados *store = sd->store;
   CephContext *cct = store->ctx();
@@ -526,7 +527,8 @@ int RGWDataAccess::Object::put(bufferlist& data,
 			    attrs, delete_at,
                             nullptr, nullptr,
                             puser_data,
-                            nullptr, nullptr);
+                            nullptr, nullptr,
+                            y);
 }
 
 void RGWDataAccess::Object::set_policy(const RGWAccessControlPolicy& policy)
