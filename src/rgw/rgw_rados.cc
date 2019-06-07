@@ -4874,7 +4874,7 @@ int RGWRados::copy_obj_data(RGWObjectCtx& obj_ctx,
   using namespace rgw::putobj;
   AtomicObjectProcessor processor(&aio, this, dest_bucket_info, &dest_placement,
                                   dest_bucket_info.owner, obj_ctx,
-                                  dest_obj, olh_epoch, tag, dpp, y);
+                                  dest_obj, olh_epoch, tag, dpp, null_yield);
   int ret = processor.prepare();
   if (ret < 0)
     return ret;
