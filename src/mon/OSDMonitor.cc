@@ -96,6 +96,8 @@ static const string OSD_SNAP_PREFIX("osd_snap");
   OSD snapshot metadata
   ---------------------
 
+  -- starting with mimic --
+
   "removed_epoch_%llu_%08lx" % (pool, epoch)
    -> interval_set<snapid_t>
 
@@ -109,6 +111,12 @@ static const string OSD_SNAP_PREFIX("osd_snap");
     that we can use forward iteration only to search for an epoch in an
     interval.  e.g., to test if epoch N is removed/purged, we'll find a key
     >= N that either does or doesn't contain the given snap.
+
+
+  -- starting with octopus --
+
+  "purged_epoch_%08lx" % epoch
+  -> map<int64_t,interval_set<snapid_t>>
 
   */
 
