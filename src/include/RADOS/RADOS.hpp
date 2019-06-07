@@ -96,6 +96,7 @@ public:
 
   operator std::string_view() const;
 
+  friend std::ostream& operator <<(std::ostream& m, const Object& o);
   friend bool operator <(const Object& lhs, const Object& rhs);
   friend bool operator <=(const Object& lhs, const Object& rhs);
   friend bool operator >=(const Object& lhs, const Object& rhs);
@@ -223,6 +224,8 @@ public:
   std::size_t size() const;
   using Signature = void(boost::system::error_code);
   using Completion = ceph::async::Completion<Signature>;
+
+  friend std::ostream& operator <<(std::ostream& m, const Op& o);
 protected:
   Op();
   static constexpr std::size_t impl_size = 20 * 8;

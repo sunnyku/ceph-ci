@@ -106,6 +106,10 @@ bool operator !=(const Object& lhs, const Object& rhs) {
 	  *reinterpret_cast<const object_t*>(&rhs.impl));
 }
 
+std::ostream& operator <<(std::ostream& m, const Object& o) {
+  return (m << *reinterpret_cast<const object_t*>(&o.impl));
+}
+
 // IOContext
 
 struct IOContextImpl {
@@ -382,6 +386,11 @@ void Op::cmp_omap(const boost::container::flat_map<
 std::size_t Op::size() const {
   return reinterpret_cast<const OpImpl*>(&impl)->op.size();
 }
+
+std::ostream& operator <<(std::ostream& m, const Op& o) {
+  return m << reinterpret_cast<const OpImpl*>(&o.impl)->op;
+}
+
 
 // ---
 

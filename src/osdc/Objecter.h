@@ -1446,6 +1446,19 @@ struct ObjectOperation {
   }
 };
 
+inline std::ostream& operator <<(std::ostream& m, const ObjectOperation& oo) {
+  auto i = oo.ops.cbegin();
+  m << '[';
+  while (i != oo.ops.cend()) {
+    if (i != oo.ops.cbegin())
+      m << ' ';
+    m << *i;
+    ++i;
+  }
+  m << ']';
+  return m;
+}
+
 
 // ----------------
 
