@@ -4214,7 +4214,7 @@ void RGWPostObj::execute()
     op_ret = processor.complete(s->obj_size, etag, nullptr, real_time(), attrs,
                                 (delete_at ? *delete_at : real_time()),
                                 nullptr, nullptr, nullptr, nullptr, nullptr,
-                                null_yield);
+                                s->yield);
     if (op_ret < 0) {
       return;
     }
