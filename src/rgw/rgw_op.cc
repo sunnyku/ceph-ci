@@ -590,6 +590,65 @@ int rgw_build_object_policies(RGWRados *store, struct req_state *s,
   return ret;
 }
 
+void rgw_add_to_iam_environment(rgw::IAM::Environment& e,
+				boost::string_view key, boost::string_view val){
+  // This variant just adds non empty key pairs to IAM env., values can be empty
+  // in certain cases like tagging
+  if (!key.empty())
+    e.emplace(key,val);
+}
+
+static int rgw_iam_add_tags_from_bl(struct req_state* s, bufferlist& bl){
+  RGWObjTags& tagset = s->tagset;
+  try {
+    auto bliter = bl.begin();
+    tagset.decode(bliter);
+  } catch (buffer::error& err) {
+    ldout(s->cct, 0) << "ERROR: caught buffer::error, couldn't decode TagSet"
+		     << dendl;
+    return -EIO;
+  }
+
+  for (const auto& tag: tagset.get_tags()){
+    rgw_add_to_iam_environment(s->env, "s3:ExistingObjectTag/" + tag.first, tag.second);
+  }
+  return 0;
+}
+
+static int rgw_iam_add_existing_objtags(RGWRados* store, struct req_state* s, rgw_obj& obj, std::uint64_t action){
+  map <string, bufferlist> attrs;
+  store->set_atomic(s->obj_ctx, obj);
+  int op_ret = get_obj_attrs(store, s, obj, attrs);
+  if (op_ret < 0)
+    return op_ret;
+  auto tags = attrs.find(RGW_ATTR_TAGS);
+  if (tags != attrs.end()){
+    return rgw_iam_add_tags_from_bl(s, tags->second);
+  }
+  return 0;
+}
+
+static void rgw_add_grant_to_iam_environment(rgw::IAM::Environment& e, struct req_state *s){
+
+  using header_pair_t = std::pair <const char*, const char*>;
+  static const std::initializer_list <header_pair_t> acl_header_conditionals {
+    {"HTTP_X_AMZ_GRANT_READ", "s3:x-amz-grant-read"},
+    {"HTTP_X_AMZ_GRANT_WRITE", "s3:x-amz-grant-write"},
+    {"HTTP_X_AMZ_GRANT_READ_ACP", "s3:x-amz-grant-read-acp"},
+    {"HTTP_X_AMZ_GRANT_WRITE_ACP", "s3:x-amz-grant-write-acp"},
+    {"HTTP_X_AMZ_GRANT_FULL_CONTROL", "s3:x-amz-grant-full-control"}
+  };
+
+  if (s->has_acl_header){
+    for (const auto& c: acl_header_conditionals){
+      auto hdr = s->info.env->get(c.first);
+      if(hdr) {
+	e[c.second] = hdr;
+      }
+    }
+  }
+}
+
 rgw::IAM::Environment rgw_build_iam_environment(RGWRados* store,
 						struct req_state* s)
 {
@@ -1636,6 +1695,22 @@ static bool object_is_expired(map<string, bufferlist>& attrs) {
   return false;
 }
 
+static inline void rgw_cond_decode_objtags(
+  struct req_state *s,
+  /* const */ std::map<std::string, buffer::list> &attrs)
+{
+  map<string, bufferlist>::iterator tags = attrs.find(RGW_ATTR_TAGS);
+  if (tags != attrs.end()) {
+    try {
+      bufferlist::iterator iter{&tags->second};
+      s->tagset.decode(iter);
+    } catch (buffer::error& err) {
+      ldout(s->cct, 0)
+	<< "ERROR: caught buffer::error, couldn't decode TagSet" << dendl;
+    }
+  }
+}
+
 void RGWGetObj::execute()
 {
   utime_t start_time = s->time;
@@ -1767,6 +1842,9 @@ void RGWGetObj::execute()
     op_ret = -ENOENT;
     goto done_err;
   }
+
+  /* Decode S3 objtags, if any */
+  rgw_cond_decode_objtags(s, attrs);
 
   start = ofs;
 
@@ -3643,6 +3721,7 @@ void RGWPutObj::execute()
   }
   encode_delete_at_attr(delete_at, attrs);
   encode_obj_tags_attr(obj_tags.get(), attrs);
+  rgw_cond_decode_objtags(s, attrs);
 
   /* Add a custom metadata to expose the information whether an object
    * is an SLO or not. Appending the attribute must be performed AFTER
@@ -4855,18 +4934,6 @@ void RGWPutACLs::execute()
   }
 }
 
-static void get_lc_oid(struct req_state *s, string& oid)
-{
-  string shard_id = s->bucket.name + ':' +s->bucket.bucket_id;
-  int max_objs = (s->cct->_conf->rgw_lc_max_objs > HASH_PRIME)?HASH_PRIME:s->cct->_conf->rgw_lc_max_objs;
-  int index = ceph_str_hash_linux(shard_id.c_str(), shard_id.size()) % HASH_PRIME % max_objs;
-  oid = lc_oid_prefix;
-  char buf[32];
-  snprintf(buf, 32, ".%d", index);
-  oid.append(buf);
-  return;
-}
-
 void RGWPutLC::execute()
 {
   bufferlist bl;
@@ -4945,42 +5012,9 @@ void RGWPutLC::execute()
     new_config.to_xml(*_dout);
     *_dout << dendl;
   }
-  
-  new_config.encode(bl);
-  map<string, bufferlist> attrs;
-  attrs = s->bucket_attrs;
-  attrs[RGW_ATTR_LC] = bl;
-  op_ret = rgw_bucket_set_attrs(store, s->bucket_info, attrs, &s->bucket_info.objv_tracker);
-  if (op_ret < 0)
-    return;
-  string shard_id = s->bucket.tenant + ':' + s->bucket.name + ':' + s->bucket.bucket_id;  
-  string oid; 
-  get_lc_oid(s, oid);
-  pair<string, int> entry(shard_id, lc_uninitial);
-  int max_lock_secs = s->cct->_conf->rgw_lc_lock_max_time;
-  rados::cls::lock::Lock l(lc_index_lock_name); 
-  utime_t time(max_lock_secs, 0);
-  l.set_duration(time);
-  l.set_cookie(cookie);
-  librados::IoCtx *ctx = store->get_lc_pool_ctx();
-  do {
-    op_ret = l.lock_exclusive(ctx, oid);
-    if (op_ret == -EBUSY) {
-      dout(0) << "RGWLC::RGWPutLC() failed to acquire lock on, sleep 5, try again" << oid << dendl;
-      sleep(5);
-      continue;
-    }
-    if (op_ret < 0) {
-      dout(0) << "RGWLC::RGWPutLC() failed to acquire lock " << oid << op_ret << dendl;
-      break;
-    }
-    op_ret = cls_rgw_lc_set_entry(*ctx, oid, entry);
-    if (op_ret < 0) {
-      dout(0) << "RGWLC::RGWPutLC() failed to set entry " << oid << op_ret << dendl;     
-    }
-    break;
-  }while(1);
-  l.unlock(ctx, oid);
+
+  op_ret = store->get_lc()->set_bucket_config(s->bucket_info, s->bucket_attrs, &new_config);
+
   return;
 }
 
@@ -4993,46 +5027,12 @@ void RGWDeleteLC::execute()
   store->get_bucket_instance_obj(s->bucket, obj);
   store->set_prefetch_data(s->obj_ctx, obj);
   op_ret = get_system_obj_attrs(store, s, obj, orig_attrs, NULL, &s->bucket_info.objv_tracker);
-  if (op_ret < 0)
+  if (op_ret < 0) {    
     return;
-    
-  for (iter = orig_attrs.begin(); iter != orig_attrs.end(); ++iter) {
-      const string& name = iter->first;
-      dout(10) << "DeleteLC : attr: " << name << dendl;
-      if (name.compare(0, (sizeof(RGW_ATTR_LC) - 1), RGW_ATTR_LC) != 0) {
-        if (attrs.find(name) == attrs.end()) {
-        attrs[name] = iter->second;
-        }
-      }
-    }
-  op_ret = rgw_bucket_set_attrs(store, s->bucket_info, attrs, &s->bucket_info.objv_tracker);
-  string shard_id = s->bucket.tenant + ':' + s->bucket.name + ':' + s->bucket.bucket_id;
-  pair<string, int> entry(shard_id, lc_uninitial);
-  string oid; 
-  get_lc_oid(s, oid);
-  int max_lock_secs = s->cct->_conf->rgw_lc_lock_max_time;
-  librados::IoCtx *ctx = store->get_lc_pool_ctx();
-  rados::cls::lock::Lock l(lc_index_lock_name);
-  utime_t time(max_lock_secs, 0);
-  l.set_duration(time);
-  do {
-    op_ret = l.lock_exclusive(ctx, oid);
-    if (op_ret == -EBUSY) {
-      dout(0) << "RGWLC::RGWDeleteLC() failed to acquire lock on, sleep 5, try again" << oid << dendl;
-      sleep(5);
-      continue;
-    }
-    if (op_ret < 0) {
-      dout(0) << "RGWLC::RGWDeleteLC() failed to acquire lock " << oid << op_ret << dendl;
-      break;
-    }
-    op_ret = cls_rgw_lc_rm_entry(*ctx, oid, entry);
-    if (op_ret < 0) {
-      dout(0) << "RGWLC::RGWDeleteLC() failed to set entry " << oid << op_ret << dendl;
-    }
-    break;
-  }while(1);
-  l.unlock(ctx, oid);
+  }
+
+  op_ret = store->get_lc()->remove_bucket_config(s->bucket_info, s->bucket_attrs);
+
   return;
 }
 

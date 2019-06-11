@@ -133,7 +133,6 @@ set_source_files_properties(rgw_iam_policy.cc PROPERTIES
   OBJECT_DEPENDS ${CMAKE_BINARY_DIR}/src/rgw/rgw_iam_policy_keywords.frag.cc
   COMPILE_FLAGS -I${CMAKE_BINARY_DIR}/src/rgw)
 
-
 if (WITH_RADOSGW_FCGI_FRONTEND)
   list(APPEND rgw_a_srcs rgw_fcgi.cc)
 endif()
