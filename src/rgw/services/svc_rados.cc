@@ -10,8 +10,6 @@
 #include "osd/osd_types.h"
 #include "rgw/rgw_tools.h"
 
-#define dout_subsys ceph_subsys_rgw
-
 tl::expected<std::int64_t, boost::system::error_code>
 RGWSI_RADOS::open_pool(std::string_view pool, bool create, optional_yield y,
 		       bool mostly_omap) {
@@ -211,6 +209,7 @@ boost::system::error_code RGWSI_RADOS::Obj::operate(RADOS::WriteOp&& op,
                                                     optional_yield y,
                                                     version_t* objver)
 {
+  ldout(cct, 20) << __func__ << " " << obj << " " << op << dendl;
 #ifdef HAVE_BOOST_CONTEXT
   if (y) {
     auto& yield = y.get_yield_context();
@@ -233,6 +232,7 @@ boost::system::error_code RGWSI_RADOS::Obj::operate(RADOS::ReadOp&& op,
                                                     optional_yield y,
                                                     version_t* objver)
 {
+  ldout(cct, 20) << __func__ << " " << obj << " " << op << dendl;
 #ifdef HAVE_BOOST_CONTEXT
   if (y) {
     auto& yield = y.get_yield_context();
@@ -252,6 +252,7 @@ boost::system::error_code RGWSI_RADOS::Obj::operate(RADOS::ReadOp&& op,
 
 tl::expected<uint64_t, boost::system::error_code>
 RGWSI_RADOS::Obj::watch(RADOS::RADOS::WatchCB&& f, optional_yield y) {
+  ldout(cct, 20) << __func__ << " " << obj << dendl;
 #ifdef HAVE_BOOST_CONTEXT
   if (y) {
     auto& yield = y.get_yield_context();
@@ -280,6 +281,7 @@ RGWSI_RADOS::Obj::watch(RADOS::RADOS::WatchCB&& f, optional_yield y) {
 boost::system::error_code RGWSI_RADOS::Obj::unwatch(uint64_t handle,
                                                     optional_yield y)
 {
+  ldout(cct, 20) << __func__ << " " << obj << dendl;
 #ifdef HAVE_BOOST_CONTEXT
   if (y) {
     auto& yield = y.get_yield_context();
@@ -301,6 +303,7 @@ boost::system::error_code
 RGWSI_RADOS::Obj::notify(bufferlist&& bl,
                          std::optional<std::chrono::milliseconds> timeout,
                          bufferlist* pbl, optional_yield y) {
+  ldout(cct, 20) << __func__ << " " << obj << " " << bl << dendl;
 #ifdef HAVE_BOOST_CONTEXT
   if (y) {
     auto& yield = y.get_yield_context();
@@ -327,6 +330,7 @@ boost::system::error_code
 RGWSI_RADOS::Obj::notify_ack(uint64_t notify_id, uint64_t cookie,
                              bufferlist&& bl,
                              optional_yield y) {
+  ldout(cct, 20) << __func__ << " " << obj << " " << bl << dendl;
 #ifdef HAVE_BOOST_CONTEXT
   if (y) {
     auto& yield = y.get_yield_context();

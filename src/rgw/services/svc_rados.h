@@ -32,6 +32,8 @@ inline auto RGWAccessListFilterPrefix(std::string prefix) {
 class RGWSI_RADOS : public RGWServiceInstance,
 		    public md_config_obs_t
 {
+  static constexpr auto dout_subsys = ceph_subsys_rgw;
+
   RADOS::RADOS rados;
 
 public:
@@ -156,12 +158,15 @@ public:
                                       version_t* objver = nullptr);
     template<typename CompletionToken>
     auto aio_operate(RADOS::WriteOp&& op, CompletionToken&& token) {
+      ldout(cct, 20) << __func__ << " " << obj << " " << op << dendl;
+
       return rados.execute(obj, ioc, std::move(op),
                            std::forward<CompletionToken>(token));
     }
     template<typename CompletionToken>
     auto aio_operate(RADOS::ReadOp&& op, ceph::buffer::list* bl,
                      CompletionToken&& token) {
+      ldout(cct, 20) << __func__ << " " << obj << " " << op << dendl;
       return rados.execute(obj, ioc, std::move(op), bl,
                            std::forward<CompletionToken>(token));
     }
@@ -170,6 +175,7 @@ public:
     watch(RADOS::RADOS::WatchCB&& f, optional_yield y);
     template<typename CompletionToken>
     auto aio_watch(RADOS::RADOS::WatchCB&& f, CompletionToken&& token) {
+      ldout(cct, 20) << __func__ << " " << obj << dendl;
       return rados.watch(obj, ioc, nullopt, std::move(f),
                          std::forward<CompletionToken>(token));
     }
