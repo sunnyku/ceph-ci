@@ -21,7 +21,7 @@ set(neorados_srcs
 add_executable(neorados ${neorados_srcs})
 
 target_link_libraries(neorados libRADOS global ${CMAKE_DL_LIBS})
-install(TARGETS neorados DESTINATION bin)
+#install(TARGETS neorados DESTINATION bin)
 
 
 if(WITH_TESTS)
