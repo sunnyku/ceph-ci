@@ -3133,6 +3133,7 @@ void pg_history_t::encode(ceph::buffer::list &bl) const
   encode(last_interval_started, bl);
   encode(last_interval_clean, bl);
   encode(epoch_pool_created, bl);
+  encode(prior_readable_until_ub, bl);
   ENCODE_FINISH(bl);
 }
 
@@ -3183,6 +3184,9 @@ void pg_history_t::decode(ceph::buffer::list::const_iterator &bl)
   } else {
     epoch_pool_created = epoch_created;
   }
+  if (struct_v >= 8) {
+    decode(prior_readable_until_ub, bl);
+  }
   DECODE_FINISH(bl);
 }
 
@@ -3204,6 +3208,9 @@ void pg_history_t::dump(Formatter *f) const
   f->dump_stream("last_deep_scrub") << last_deep_scrub;
   f->dump_stream("last_deep_scrub_stamp") << last_deep_scrub_stamp;
   f->dump_stream("last_clean_scrub_stamp") << last_clean_scrub_stamp;
+  f->dump_float(
+    "prior_readable_until_ub",
+    std::chrono::duration<double>(prior_readable_until_ub).count());
 }
 
 void pg_history_t::generate_test_instances(list<pg_history_t*>& o)
@@ -3217,6 +3224,7 @@ void pg_history_t::generate_test_instances(list<pg_history_t*>& o)
   o.back()->last_epoch_clean = 3;
   o.back()->last_interval_clean = 2;
   o.back()->last_epoch_split = 4;
+  o.back()->prior_readable_until_ub = make_timespan(3.1415);
   o.back()->same_up_since = 5;
   o.back()->same_interval_since = 6;
   o.back()->same_primary_since = 7;
