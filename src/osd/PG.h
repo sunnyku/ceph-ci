@@ -168,7 +168,7 @@ class PGRecoveryStats {
  *
  */
 
-class PG : public DoutPrefixProvider, public PeeringState::PeeringListener {
+class PG : public DoutPrefixProvider, public PeeringListener {
   friend class NamedState;
   friend class PeeringState;
 
@@ -385,6 +385,13 @@ public:
 
   void reg_next_scrub();
   void unreg_next_scrub();
+
+  void _get() override {
+    get("PeeringListenerRef");
+  }
+  void _put() override {
+    put("PeeringListenerRef");
+  }
 
   void queue_want_pg_temp(const vector<int> &wanted) override;
   void clear_want_pg_temp() override;
