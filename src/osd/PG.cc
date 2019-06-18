@@ -1752,6 +1752,11 @@ void PG::send_pg_created(pg_t pgid)
   osd->send_pg_created(pgid);
 }
 
+HeartbeatStampsRef PG::get_hb_stamps(int peer)
+{
+  return osd->get_hb_stamps(peer);
+}
+
 void PG::rebuild_missing_set_with_deletes(PGLog &pglog)
 {
   pglog.rebuild_missing_set_with_deletes(
