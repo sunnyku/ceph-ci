@@ -432,6 +432,18 @@ void OSDService::need_heartbeat_peer_update()
   osd->need_heartbeat_peer_update();
 }
 
+HeartbeatStampsRef OSDService::get_hb_stamps(unsigned peer)
+{
+  std::lock_guard l(hb_stamp_lock);
+  if (peer >= hb_stamps.size()) {
+    hb_stamps.resize(peer + 1);
+  }
+  if (!hb_stamps[peer]) {
+    hb_stamps[peer].reset(new HeartbeatStamps(peer));
+  }
+  return hb_stamps[peer];
+}
+
 void OSDService::start_shutdown()
 {
   {
@@ -4327,24 +4339,31 @@ void OSD::_add_heartbeat_peer(int p)
     pair<ConnectionRef,ConnectionRef> cons = service.get_con_osd_hb(p, osdmap->get_epoch());
     if (!cons.first)
       return;
+    assert(cons.second);
+
     hi = &heartbeat_peers[p];
     hi->peer = p;
-    RefCountedPtr s{new HeartbeatSession{p}, false};
+
+    auto stamps = service.get_hb_stamps(p);
+
+    Session *sb = new Session(cct, cons.first.get());
+    sb->peer = p;
+    sb->stamps = stamps;
+    RefCountedPtr sbref{sb, false};
     hi->con_back = cons.first.get();
-    hi->con_back->set_priv(s);
-    if (cons.second) {
-      hi->con_front = cons.second.get();
-      hi->con_front->set_priv(s);
-      dout(10) << "_add_heartbeat_peer: new peer osd." << p
-	       << " " << hi->con_back->get_peer_addr()
-	       << " " << hi->con_front->get_peer_addr()
-	       << dendl;
-    } else {
-      hi->con_front.reset(NULL);
-      dout(10) << "_add_heartbeat_peer: new peer osd." << p
-	       << " " << hi->con_back->get_peer_addr()
-	       << dendl;
-    }
+    hi->con_back->set_priv(sbref);
+
+    Session *sf = new Session(cct, cons.second.get());
+    sf->peer = p;
+    sf->stamps = stamps;
+    RefCountedPtr sfref{sf, false};
+    hi->con_front = cons.second.get();
+    hi->con_front->set_priv(sfref);
+
+    dout(10) << "_add_heartbeat_peer: new peer osd." << p
+	     << " " << hi->con_back->get_peer_addr()
+	     << " " << hi->con_front->get_peer_addr()
+	     << dendl;
   } else {
     hi = &i->second;
   }
@@ -4501,7 +4520,8 @@ void OSD::handle_osd_ping(MOSDPing *m)
 {
   if (superblock.cluster_fsid != m->fsid) {
     dout(20) << "handle_osd_ping from " << m->get_source_inst()
-	     << " bad fsid " << m->fsid << " != " << superblock.cluster_fsid << dendl;
+	     << " bad fsid " << m->fsid << " != " << superblock.cluster_fsid
+	     << dendl;
     m->put();
     return;
   }
@@ -4522,6 +4542,17 @@ void OSD::handle_osd_ping(MOSDPing *m)
     heartbeat_lock.Unlock();
     m->put();
     return;
+  }
+
+  auto sref = con->get_priv();
+  Session *s = static_cast<Session*>(sref.get());
+  if (!s) {
+    m->put();
+    return;
+  }
+  if (!s->stamps) {
+    s->peer = from;
+    s->stamps = service.get_hb_stamps(from);
   }
 
   switch (m->op) {
@@ -4551,6 +4582,9 @@ void OSD::handle_osd_ping(MOSDPing *m)
 	  break;
 	}
       }
+
+      set<PeeringListenerRef> wake_pgs;
+      s->stamps->got_ping(now, m->consumed_epoch, &wake_pgs);
 
       if (!cct->get_heartbeat_map()->is_healthy()) {
 	dout(10) << "internal heartbeat not healthy, dropping ping request"
@@ -4676,6 +4710,9 @@ void OSD::handle_osd_ping(MOSDPing *m)
 	  }
 	}
       }
+
+      set<PeeringListenerRef> wake_pgs;
+      s->stamps->got_ping_reply(m->stamp, m->consumed_epoch, &wake_pgs);
     }
     break;
 
@@ -4688,6 +4725,7 @@ void OSD::handle_osd_ping(MOSDPing *m)
 
   heartbeat_lock.Unlock();
   m->put();
+  s->put();
 }
 
 void OSD::heartbeat_entry()
@@ -4857,8 +4895,8 @@ bool OSD::heartbeat_reset(Connection *con)
     if (is_stopping()) {
       return true;
     }
-    auto heartbeat_session = static_cast<HeartbeatSession*>(s.get());
-    auto p = heartbeat_peers.find(heartbeat_session->peer);
+    auto session = static_cast<Session*>(s.get());
+    auto p = heartbeat_peers.find(session->peer);
     if (p != heartbeat_peers.end() &&
 	(p->second.con_back == con ||
 	 p->second.con_front == con)) {
