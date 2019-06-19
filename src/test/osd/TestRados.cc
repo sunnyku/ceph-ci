@@ -66,10 +66,10 @@ public:
     if (m_op <= m_objects && !m_set_redirect && !m_set_chunk ) {
       stringstream oid;
       oid << m_op;
-      if (m_op % 2) {
+      /*if (m_op % 2) {
 	// make it a long name
 	oid << " " << string(300, 'o');
-      }
+	}*/
       cout << m_op << ": write initial oid " << oid.str() << std::endl;
       context.oid_not_flushing.insert(oid.str());
       if (m_ec_pool) {
