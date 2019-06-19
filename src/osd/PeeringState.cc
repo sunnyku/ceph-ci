@@ -735,6 +735,8 @@ void PeeringState::on_new_interval()
     pg_log.get_missing().may_include_deletes ==
     !perform_deletes_during_peering());
 
+  init_hb_stamps();
+
   pl->on_new_interval();
 }
 
@@ -742,7 +744,8 @@ void PeeringState::init_primary_up_acting(
   const vector<int> &newup,
   const vector<int> &newacting,
   int new_up_primary,
-  int new_acting_primary) {
+  int new_acting_primary)
+{
   actingset.clear();
   acting = newacting;
   for (uint8_t i = 0; i < acting.size(); ++i) {
@@ -762,27 +765,52 @@ void PeeringState::init_primary_up_acting(
 	  pool.info.is_erasure() ? shard_id_t(i) : shard_id_t::NO_SHARD));
   }
   if (!pool.info.is_erasure()) {
+    // replicated
     up_primary = pg_shard_t(new_up_primary, shard_id_t::NO_SHARD);
     primary = pg_shard_t(new_acting_primary, shard_id_t::NO_SHARD);
-    return;
-  }
-  up_primary = pg_shard_t();
-  primary = pg_shard_t();
-  for (uint8_t i = 0; i < up.size(); ++i) {
-    if (up[i] == new_up_primary) {
-      up_primary = pg_shard_t(up[i], shard_id_t(i));
-      break;
+  } else {
+    // erasure
+    up_primary = pg_shard_t();
+    primary = pg_shard_t();
+    for (uint8_t i = 0; i < up.size(); ++i) {
+      if (up[i] == new_up_primary) {
+	up_primary = pg_shard_t(up[i], shard_id_t(i));
+	break;
+      }
     }
-  }
-  for (uint8_t i = 0; i < acting.size(); ++i) {
-    if (acting[i] == new_acting_primary) {
-      primary = pg_shard_t(acting[i], shard_id_t(i));
-      break;
+    for (uint8_t i = 0; i < acting.size(); ++i) {
+      if (acting[i] == new_acting_primary) {
+	primary = pg_shard_t(acting[i], shard_id_t(i));
+	break;
+      }
     }
+    ceph_assert(up_primary.osd == new_up_primary);
+    ceph_assert(primary.osd == new_acting_primary);
   }
-  ceph_assert(up_primary.osd == new_up_primary);
-  ceph_assert(primary.osd == new_acting_primary);
 }
+
+void PeeringState::init_hb_stamps()
+{
+  if (is_primary()) {
+    // we care about all other osds in the acting set
+    hb_stamps.resize(acting.size() - 1);
+    unsigned i = 0;
+    for (auto p : acting) {
+      if (p == CRUSH_ITEM_NONE || p == get_primary().osd) {
+	continue;
+      }
+      hb_stamps[i++] = pl->get_hb_stamps(p);
+    }
+    hb_stamps.resize(i);
+  } else if (is_replica()) {
+    // we care about just the primary
+    hb_stamps.resize(1);
+    hb_stamps[0] = pl->get_hb_stamps(get_primary().osd);
+  } else {
+    hb_stamps.clear();
+  }
+}
+
 
 void PeeringState::clear_recovery_state()
 {

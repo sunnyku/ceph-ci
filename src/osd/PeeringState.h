@@ -95,179 +95,299 @@ struct PeeringCtx {
 };
 
 
-  /* Encapsulates PG recovery process */
+struct PeeringListener;
+typedef boost::intrusive_ptr<PeeringListener> PeeringListenerRef;
+
+
+struct HeartbeatStamps : public RefCountedObject {
+  mutable ceph::mutex lock = ceph::make_mutex("HeartbeatStamps::lock");
+
+  const int osd;
+
+  /// last ack we send to this peer (aka last reply we sent)
+  utime_t last_reply;
+
+  /// the ping tx time for the most recent ping reply we recieved
+  /// from this peer.
+  utime_t last_acked_ping;
+
+  /// highest up_from we've seen from this rank
+  epoch_t up_from = 0;
+
+  /// lower bound on consumed epochs for peer's PGs
+  epoch_t consumed_epoch = 0;
+
+  /// PGs we should kick if we reply to a ping
+  set<PeeringListenerRef> waiting_pgs_last_reply;
+
+  /// PGs we should kick if we get a reply (acking our ping)
+  set<PeeringListenerRef> waiting_pgs_last_acked_ping;
+
+  HeartbeatStamps(int o) : osd(o) {}
+
+  void print(ostream& out) const {
+    std::lock_guard l(lock);
+    out << "hbstamp(osd." << osd
+	<< " lr " << last_reply
+	<< " lap " << last_acked_ping
+	<< " up_from" << up_from
+	<< " consumed " << consumed_epoch
+	<< " wait_lr " << waiting_pgs_last_reply.size()
+	<< " wait_lap " << waiting_pgs_last_acked_ping.size()
+	<< ")";
+  }
+
+  void got_ping(utime_t now, epoch_t consumed,
+		set<PeeringListenerRef> *wake_pgs) {
+    std::lock_guard l(lock);
+    if (consumed < consumed_epoch)
+      return;
+    if (consumed > consumed_epoch)
+      consumed_epoch = consumed;
+    if (now > last_reply) {
+      last_reply = now;
+      wake_pgs->swap(waiting_pgs_last_reply);
+    }
+  }
+
+  void got_ping_reply(utime_t stamp, epoch_t consumed,
+		      set<PeeringListenerRef> *wake_pgs) {
+    std::lock_guard l(lock);
+    if (consumed < consumed_epoch) {
+      return;
+    }
+    if (consumed > consumed_epoch) {
+      consumed_epoch = consumed;
+    }
+    if (stamp > last_acked_ping) {
+      last_acked_ping = stamp;
+      wake_pgs->swap(waiting_pgs_last_acked_ping);
+    }
+  }
+
+  utime_t sample_last_acked_ping() {
+    std::lock_guard l(lock);
+    return last_acked_ping;
+  }
+  utime_t sample_last_reply() {
+    std::lock_guard l(lock);
+    return last_reply;
+  }
+
+  /// safely sample last_acked_ping; queue pg if it's old
+  utime_t sample_last_acked_ping_or_queue(utime_t cutoff, PeeringListener *p) {
+    std::lock_guard l(lock);
+    if (last_acked_ping <= cutoff) {
+      waiting_pgs_last_acked_ping.insert(p);
+    }
+    return last_acked_ping;
+  }
+
+  /// safely sample last_reply; queue pg if it's old
+  utime_t sample_last_reply_or_queue(utime_t cutoff, PeeringListener *p) {
+    std::lock_guard l(lock);
+    if (last_reply <= cutoff) {
+      waiting_pgs_last_reply.insert(p);
+    }
+    return last_reply;
+  }
+};
+typedef boost::intrusive_ptr<HeartbeatStamps> HeartbeatStampsRef;
+
+inline ostream& operator<<(ostream& out, const HeartbeatStamps& hb)
+{
+  hb.print(out);
+  return out;
+}
+
+
+struct PeeringListener : public EpochSource
+{
+  /// Prepare t with written information
+  virtual void prepare_write(
+    pg_info_t &info,
+    pg_info_t &last_written_info,
+    PastIntervals &past_intervals,
+    PGLog &pglog,
+    bool dirty_info,
+    bool dirty_big_info,
+    bool need_write_epoch,
+    ObjectStore::Transaction &t) = 0;
+
+  /// Notify that info/history changed (generally to update scrub registration)
+  virtual void on_info_history_change() = 0;
+  /// Notify that a scrub has been requested
+  virtual void scrub_requested(bool deep, bool repair) = 0;
+
+  /// Return current snap_trimq size
+  virtual uint64_t get_snap_trimq_size() const = 0;
+
+  /// Send cluster message to osd
+  virtual void send_cluster_message(
+    int osd, Message *m, epoch_t epoch, bool share_map_update=false) = 0;
+  /// Send pg_created to mon
+  virtual void send_pg_created(pg_t pgid) = 0;
+
+  virtual HeartbeatStampsRef get_hb_stamps(int peer) = 0;
+
+  // ============ Flush state ==================
+  /**
+   * try_flush_or_schedule_async()
+   *
+   * If true, caller may assume all past operations on this pg
+   * have been flushed.  Else, caller will receive an on_flushed()
+   * call once the flush has completed.
+   */
+  virtual bool try_flush_or_schedule_async() = 0;
+  /// Arranges for a commit on t to call on_flushed() once flushed.
+  virtual void start_flush_on_transaction(
+    ObjectStore::Transaction &t) = 0;
+  /// Notification that all outstanding flushes for interval have completed
+  virtual void on_flushed() = 0;
+
+  //============= Recovery ====================
+  /// Arrange for even to be queued after delay
+  virtual void schedule_event_after(
+    PGPeeringEventRef event,
+    float delay) = 0;
+  /**
+   * request_local_background_io_reservation
+   *
+   * Request reservation at priority with on_grant queued on grant
+   * and on_preempt on preempt
+   */
+  virtual void request_local_background_io_reservation(
+    unsigned priority,
+    PGPeeringEventRef on_grant,
+    PGPeeringEventRef on_preempt) = 0;
+  /// Modify pending local background reservation request priority
+  virtual void update_local_background_io_priority(
+    unsigned priority) = 0;
+  /// Cancel pending local background reservation request
+  virtual void cancel_local_background_io_reservation() = 0;
+
+  /**
+   * request_remote_background_io_reservation
+   *
+   * Request reservation at priority with on_grant queued on grant
+   * and on_preempt on preempt
+   */
+  virtual void request_remote_recovery_reservation(
+    unsigned priority,
+    PGPeeringEventRef on_grant,
+    PGPeeringEventRef on_preempt) = 0;
+  /// Cancel pending remote background reservation request
+  virtual void cancel_remote_recovery_reservation() = 0;
+
+  /// Arrange for on_commit to be queued upon commit of t
+  virtual void schedule_event_on_commit(
+    ObjectStore::Transaction &t,
+    PGPeeringEventRef on_commit) = 0;
+
+  //============================ HB =============================
+  /// Update hb set to peers
+  virtual void update_heartbeat_peers(set<int> peers) = 0;
+
+  /// Set targets being probed in this interval
+  virtual void set_probe_targets(const set<pg_shard_t> &probe_set) = 0;
+  /// Clear targets being probed in this interval
+  virtual void clear_probe_targets() = 0;
+
+  /// Queue for a pg_temp of wanted
+  virtual void queue_want_pg_temp(const vector<int> &wanted) = 0;
+  /// Clear queue for a pg_temp of wanted
+  virtual void clear_want_pg_temp() = 0;
+
+  /// Arrange for stats to be shipped to mon to be updated for this pg
+  virtual void publish_stats_to_osd() = 0;
+  /// Clear stats to be shipped to mon for this pg
+  virtual void clear_publish_stats() = 0;
+
+  /// Notification to check outstanding operation targets
+  virtual void check_recovery_sources(const OSDMapRef& newmap) = 0;
+  /// Notification to check outstanding blacklist
+  virtual void check_blacklisted_watchers() = 0;
+  /// Notification to clear state associated with primary
+  virtual void clear_primary_state() = 0;
+
+  // =================== Event notification ====================
+  virtual void on_pool_change() = 0;
+  virtual void on_role_change() = 0;
+  virtual void on_change(ObjectStore::Transaction &t) = 0;
+  virtual void on_activate(interval_set<snapid_t> to_trim) = 0;
+  virtual void on_activate_complete() = 0;
+  virtual void on_new_interval() = 0;
+  virtual Context *on_clean() = 0;
+  virtual void on_activate_committed() = 0;
+  virtual void on_active_exit() = 0;
+
+  // ====================== PG deletion =======================
+  /// Notification of removal complete, t must be populated to complete removal
+  virtual void on_removal(ObjectStore::Transaction &t) = 0;
+  /// Perform incremental removal work
+  virtual void do_delete_work(ObjectStore::Transaction &t) = 0;
+
+  // ======================= PG Merge =========================
+  virtual void clear_ready_to_merge() = 0;
+  virtual void set_not_ready_to_merge_target(pg_t pgid, pg_t src) = 0;
+  virtual void set_not_ready_to_merge_source(pg_t pgid) = 0;
+  virtual void set_ready_to_merge_target(eversion_t lu, epoch_t les, epoch_t lec) = 0;
+  virtual void set_ready_to_merge_source(eversion_t lu) = 0;
+
+  // ==================== Map notifications ===================
+  virtual void on_active_actmap() = 0;
+  virtual void on_active_advmap(const OSDMapRef &osdmap) = 0;
+  virtual epoch_t oldest_stored_osdmap() = 0;
+
+  // ============ recovery reservation notifications ==========
+  virtual void on_backfill_reserved() = 0;
+  virtual void on_backfill_canceled() = 0;
+  virtual void on_recovery_reserved() = 0;
+
+  // ================recovery space accounting ================
+  virtual bool try_reserve_recovery_space(
+    int64_t primary_num_bytes, int64_t local_num_bytes) = 0;
+  virtual void unreserve_recovery_space() = 0;
+
+  // ================== Peering log events ====================
+  /// Get handler for rolling forward/back log entries
+  virtual PGLog::LogEntryHandlerRef get_log_handler(
+    ObjectStore::Transaction &t) = 0;
+
+  // ============ On disk representation changes ==============
+  virtual void rebuild_missing_set_with_deletes(PGLog &pglog) = 0;
+
+  // ======================= Logging ==========================
+  virtual PerfCounters &get_peering_perf() = 0;
+  virtual PerfCounters &get_perf_logger() = 0;
+  virtual void log_state_enter(const char *state) = 0;
+  virtual void log_state_exit(
+    const char *state_name, utime_t enter_time,
+    uint64_t events, utime_t event_dur) = 0;
+  virtual void dump_recovery_info(Formatter *f) const = 0;
+
+  virtual OstreamTemp get_clog_info() = 0;
+  virtual OstreamTemp get_clog_error() = 0;
+  virtual OstreamTemp get_clog_debug() = 0;
+
+  virtual ~PeeringListener() {}
+
+  // ===================== Ref counting =====================
+  virtual void _get() = 0;
+  virtual void _put() = 0;
+
+  friend void intrusive_ptr_add_ref(PeeringListener *pl) {
+    pl->_get();
+  }
+  friend void intrusive_ptr_release(PeeringListener *pl) {
+    pl->_put();
+  }
+};
+
+
+
+/* Encapsulates PG recovery process */
 class PeeringState : public MissingLoc::MappingInfo {
-public:
-  struct PeeringListener : public EpochSource {
-    /// Prepare t with written information
-    virtual void prepare_write(
-      pg_info_t &info,
-      pg_info_t &last_written_info,
-      PastIntervals &past_intervals,
-      PGLog &pglog,
-      bool dirty_info,
-      bool dirty_big_info,
-      bool need_write_epoch,
-      ObjectStore::Transaction &t) = 0;
-
-    /// Notify that info/history changed (generally to update scrub registration)
-    virtual void on_info_history_change() = 0;
-    /// Notify that a scrub has been requested
-    virtual void scrub_requested(bool deep, bool repair) = 0;
-
-    /// Return current snap_trimq size
-    virtual uint64_t get_snap_trimq_size() const = 0;
-
-    /// Send cluster message to osd
-    virtual void send_cluster_message(
-      int osd, Message *m, epoch_t epoch, bool share_map_update=false) = 0;
-    /// Send pg_created to mon
-    virtual void send_pg_created(pg_t pgid) = 0;
-
-    // ============ Flush state ==================
-    /**
-     * try_flush_or_schedule_async()
-     *
-     * If true, caller may assume all past operations on this pg
-     * have been flushed.  Else, caller will receive an on_flushed()
-     * call once the flush has completed.
-     */
-    virtual bool try_flush_or_schedule_async() = 0;
-    /// Arranges for a commit on t to call on_flushed() once flushed.
-    virtual void start_flush_on_transaction(
-      ObjectStore::Transaction &t) = 0;
-    /// Notification that all outstanding flushes for interval have completed
-    virtual void on_flushed() = 0;
-
-    //============= Recovery ====================
-    /// Arrange for even to be queued after delay
-    virtual void schedule_event_after(
-      PGPeeringEventRef event,
-      float delay) = 0;
-    /**
-     * request_local_background_io_reservation
-     *
-     * Request reservation at priority with on_grant queued on grant
-     * and on_preempt on preempt
-     */
-    virtual void request_local_background_io_reservation(
-      unsigned priority,
-      PGPeeringEventRef on_grant,
-      PGPeeringEventRef on_preempt) = 0;
-    /// Modify pending local background reservation request priority
-    virtual void update_local_background_io_priority(
-      unsigned priority) = 0;
-    /// Cancel pending local background reservation request
-    virtual void cancel_local_background_io_reservation() = 0;
-
-    /**
-     * request_remote_background_io_reservation
-     *
-     * Request reservation at priority with on_grant queued on grant
-     * and on_preempt on preempt
-     */
-    virtual void request_remote_recovery_reservation(
-      unsigned priority,
-      PGPeeringEventRef on_grant,
-      PGPeeringEventRef on_preempt) = 0;
-    /// Cancel pending remote background reservation request
-    virtual void cancel_remote_recovery_reservation() = 0;
-
-    /// Arrange for on_commit to be queued upon commit of t
-    virtual void schedule_event_on_commit(
-      ObjectStore::Transaction &t,
-      PGPeeringEventRef on_commit) = 0;
-
-    //============================ HB =============================
-    /// Update hb set to peers
-    virtual void update_heartbeat_peers(set<int> peers) = 0;
-
-    /// Set targets being probed in this interval
-    virtual void set_probe_targets(const set<pg_shard_t> &probe_set) = 0;
-    /// Clear targets being probed in this interval
-    virtual void clear_probe_targets() = 0;
-
-    /// Queue for a pg_temp of wanted
-    virtual void queue_want_pg_temp(const vector<int> &wanted) = 0;
-    /// Clear queue for a pg_temp of wanted
-    virtual void clear_want_pg_temp() = 0;
-
-    /// Arrange for stats to be shipped to mon to be updated for this pg
-    virtual void publish_stats_to_osd() = 0;
-    /// Clear stats to be shipped to mon for this pg
-    virtual void clear_publish_stats() = 0;
-
-    /// Notification to check outstanding operation targets
-    virtual void check_recovery_sources(const OSDMapRef& newmap) = 0;
-    /// Notification to check outstanding blacklist
-    virtual void check_blacklisted_watchers() = 0;
-    /// Notification to clear state associated with primary
-    virtual void clear_primary_state() = 0;
-
-    // =================== Event notification ====================
-    virtual void on_pool_change() = 0;
-    virtual void on_role_change() = 0;
-    virtual void on_change(ObjectStore::Transaction &t) = 0;
-    virtual void on_activate(interval_set<snapid_t> to_trim) = 0;
-    virtual void on_activate_complete() = 0;
-    virtual void on_new_interval() = 0;
-    virtual Context *on_clean() = 0;
-    virtual void on_activate_committed() = 0;
-    virtual void on_active_exit() = 0;
-
-    // ====================== PG deletion =======================
-    /// Notification of removal complete, t must be populated to complete removal
-    virtual void on_removal(ObjectStore::Transaction &t) = 0;
-    /// Perform incremental removal work
-    virtual void do_delete_work(ObjectStore::Transaction &t) = 0;
-
-    // ======================= PG Merge =========================
-    virtual void clear_ready_to_merge() = 0;
-    virtual void set_not_ready_to_merge_target(pg_t pgid, pg_t src) = 0;
-    virtual void set_not_ready_to_merge_source(pg_t pgid) = 0;
-    virtual void set_ready_to_merge_target(eversion_t lu, epoch_t les, epoch_t lec) = 0;
-    virtual void set_ready_to_merge_source(eversion_t lu) = 0;
-
-    // ==================== Map notifications ===================
-    virtual void on_active_actmap() = 0;
-    virtual void on_active_advmap(const OSDMapRef &osdmap) = 0;
-    virtual epoch_t oldest_stored_osdmap() = 0;
-
-    // ============ recovery reservation notifications ==========
-    virtual void on_backfill_reserved() = 0;
-    virtual void on_backfill_canceled() = 0;
-    virtual void on_recovery_reserved() = 0;
-
-    // ================recovery space accounting ================
-    virtual bool try_reserve_recovery_space(
-      int64_t primary_num_bytes, int64_t local_num_bytes) = 0;
-    virtual void unreserve_recovery_space() = 0;
-
-    // ================== Peering log events ====================
-    /// Get handler for rolling forward/back log entries
-    virtual PGLog::LogEntryHandlerRef get_log_handler(
-      ObjectStore::Transaction &t) = 0;
-
-    // ============ On disk representation changes ==============
-    virtual void rebuild_missing_set_with_deletes(PGLog &pglog) = 0;
-
-    // ======================= Logging ==========================
-    virtual PerfCounters &get_peering_perf() = 0;
-    virtual PerfCounters &get_perf_logger() = 0;
-    virtual void log_state_enter(const char *state) = 0;
-    virtual void log_state_exit(
-      const char *state_name, utime_t enter_time,
-      uint64_t events, utime_t event_dur) = 0;
-    virtual void dump_recovery_info(Formatter *f) const = 0;
-
-    virtual OstreamTemp get_clog_info() = 0;
-    virtual OstreamTemp get_clog_error() = 0;
-    virtual OstreamTemp get_clog_debug() = 0;
-
-    virtual ~PeeringListener() {}
-  };
-
-private:
   /**
    * Wraps PeeringCtx to hide the difference between buffering messages to
    * be sent after flush or immediately.
@@ -1235,6 +1355,8 @@ public:
   /// union of acting, recovery, and backfill targets
   set<pg_shard_t> acting_recovery_backfill;
 
+  vector<HeartbeatStampsRef> hb_stamps;
+
   bool send_notify = false; ///< True if a notify needs to be sent to the primary
 
   bool dirty_info = false;          ///< small info structu on disk out of date
@@ -1521,6 +1643,7 @@ public:
     const vector<int> &newacting,
     int new_up_primary,
     int new_acting_primary);
+  void init_hb_stamps();
 
   /// Set initial role
   void set_role(int r) {

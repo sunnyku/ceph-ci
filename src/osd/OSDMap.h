@@ -92,16 +92,17 @@ struct osd_xinfo_t {
   __u32 laggy_interval;    ///< average interval between being marked laggy and recovering
   uint64_t features;       ///< features supported by this osd we should know about
   __u32 old_weight;        ///< weight prior to being auto marked out
+  epoch_t dead_epoch = 0;  ///< last epoch we were confirmed dead (not just down)
 
   osd_xinfo_t() : laggy_probability(0), laggy_interval(0),
                   features(0), old_weight(0) {}
 
   void dump(ceph::Formatter *f) const;
-  void encode(ceph::buffer::list& bl) const;
+  void encode(ceph::buffer::list& bl, uint64_t features) const;
   void decode(ceph::buffer::list::const_iterator& bl);
   static void generate_test_instances(std::list<osd_xinfo_t*>& o);
 };
-WRITE_CLASS_ENCODER(osd_xinfo_t)
+WRITE_CLASS_ENCODER_FEATURES(osd_xinfo_t)
 
 std::ostream& operator<<(std::ostream& out, const osd_xinfo_t& xi);
 
@@ -540,7 +541,8 @@ private:
     CEPH_FEATUREMASK_CRUSH_CHOOSE_ARGS |
     CEPH_FEATUREMASK_SERVER_LUMINOUS |
     CEPH_FEATUREMASK_SERVER_MIMIC |
-    CEPH_FEATUREMASK_SERVER_NAUTILUS;
+    CEPH_FEATUREMASK_SERVER_NAUTILUS |
+    CEPH_FEATUREMASK_SERVER_OCTOPUS;
 
   struct addrs_s {
     mempool::osdmap::vector<std::shared_ptr<entity_addrvec_t> > client_addrs;
