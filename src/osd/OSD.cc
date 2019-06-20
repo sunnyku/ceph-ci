@@ -124,6 +124,9 @@
 #include "messages/MOSDPGPushReply.h"
 #include "messages/MOSDPGPull.h"
 
+#include "messages/MMonGetPurgedSnaps.h"
+#include "messages/MMonGetPurgedSnapsReply.h"
+
 #include "common/perf_counters.h"
 #include "common/Timer.h"
 #include "common/LogClient.h"
@@ -198,6 +201,7 @@ CompatSet OSD::get_osd_initial_compat_set() {
   ceph_osd_feature_incompat.insert(CEPH_OSD_FEATURE_INCOMPAT_MISSING);
   ceph_osd_feature_incompat.insert(CEPH_OSD_FEATURE_INCOMPAT_FASTINFO);
   ceph_osd_feature_incompat.insert(CEPH_OSD_FEATURE_INCOMPAT_RECOVERY_DELETES);
+  ceph_osd_feature_incompat.insert(CEPH_OSD_FEATURE_INCOMPAT_SNAPMAPPER2);
   return CompatSet(ceph_osd_feature_compat, ceph_osd_feature_ro_compat,
 		   ceph_osd_feature_incompat);
 }
@@ -2839,6 +2843,17 @@ int OSD::init()
   initial = get_osd_initial_compat_set();
   diff = superblock.compat_features.unsupported(initial);
   if (superblock.compat_features.merge(initial)) {
+    // Are we adding SNAPMAPPER2?
+    if (diff.incompat.contains(CEPH_OSD_FEATURE_INCOMPAT_SNAPMAPPER2)) {
+      dout(1) << __func__ << " upgrade snap_mapper (first start as octopus)"
+	      << dendl;
+      auto ch = service.meta_ch;
+      auto hoid = make_snapmapper_oid();
+      unsigned max = cct->_conf->osd_target_transaction_size;
+      r = SnapMapper::convert_legacy(cct, store, ch, hoid, max);
+      if (r < 0)
+	goto out;
+    }
     // We need to persist the new compat_set before we
     // do anything else
     dout(5) << "Upgrading superblock adding: " << diff << dendl;
@@ -5399,6 +5414,8 @@ void OSD::_preboot(epoch_t oldest, epoch_t newest)
     heartbeat();
   }
 
+  const auto& monmap = monc->monmap;
+
   // if our map within recent history, try to add ourselves to the osdmap.
   if (osdmap->get_epoch() == 0) {
     derr << "waiting for initial osdmap" << dendl;
@@ -5420,6 +5437,11 @@ void OSD::_preboot(epoch_t oldest, epoch_t newest)
   } else if (service.need_fullness_update()) {
     derr << "osdmap fullness state needs update" << dendl;
     send_full_update();
+  } else if (monmap.min_mon_release >= ceph_release_t::octopus &&
+	     superblock.purged_snaps_last < superblock.current_epoch) {
+    dout(10) << __func__ << " purged_snaps_last " << superblock.purged_snaps_last
+	     << " < newest_map " << superblock.current_epoch << dendl;
+    _get_purged_snaps();
   } else if (osdmap->get_epoch() >= oldest - 1 &&
 	     osdmap->get_epoch() + cct->_conf->osd_map_message_max > newest) {
 
@@ -5451,6 +5473,45 @@ void OSD::_preboot(epoch_t oldest, epoch_t newest)
     osdmap_subscribe(osdmap->get_epoch() + 1, false);
   else
     osdmap_subscribe(oldest - 1, true);
+}
+
+void OSD::_get_purged_snaps()
+{
+  // NOTE: this is a naive, stateless implementaiton.  it may send multiple
+  // overlapping requests to the mon, which will be somewhat inefficient, but
+  // it should be reliable.
+  dout(10) << __func__ << " purged_snaps_last " << superblock.purged_snaps_last
+	   << ", newest_map " << superblock.current_epoch << dendl;
+  MMonGetPurgedSnaps *m = new MMonGetPurgedSnaps(
+    superblock.purged_snaps_last + 1,
+    superblock.current_epoch + 1);
+  monc->send_mon_message(m);
+}
+
+void OSD::handle_get_purged_snaps_reply(MMonGetPurgedSnapsReply *m)
+{
+  dout(10) << __func__ << " " << *m << dendl;
+  ObjectStore::Transaction t;
+  if (!is_preboot() ||
+      m->last < superblock.purged_snaps_last) {
+    goto out;
+  }
+  SnapMapper::record_purged_snaps(cct, store, service.meta_ch,
+				  make_snapmapper_oid(), &t,
+				  m->purged_snaps);
+  superblock.purged_snaps_last = m->last;
+  write_superblock(t);
+  store->queue_transaction(
+    service.meta_ch,
+    std::move(t));
+  service.publish_superblock(superblock);
+  if (m->last < superblock.current_epoch) {
+    _get_purged_snaps();
+  } else {
+    start_boot();
+  }
+out:
+  m->put();
 }
 
 void OSD::send_full_update()
@@ -5990,6 +6051,9 @@ COMMAND("cache status",
 COMMAND("send_beacon",
         "Send OSD beacon to mon immediately",
         "osd", "r")
+COMMAND("scrub_purged_snaps",
+	"Scrub purged_snaps vs snapmapper index",
+	"osd", "r")
 };
 
 void OSD::do_command(
@@ -6519,6 +6583,36 @@ int OSD::_do_command(
     if (is_active()) {
       send_beacon(ceph::coarse_mono_clock::now());
     }
+  } else if (prefix == "scrub_purged_snaps") {
+    SnapMapper::Scrubber s(cct, store, service.meta_ch,
+			   make_snapmapper_oid());
+    s.run();
+    set<pair<spg_t,snapid_t>> queued;
+    for (auto& [pool, snap, hash, shard] : s.stray) {
+      const pg_pool_t *pi = get_osdmap()->get_pg_pool(pool);
+      if (!pi) {
+	dout(20) << __func__ << " pool " << pool << " dne" << dendl;
+	continue;
+      }
+      pg_t pgid(pi->raw_hash_to_pg(hash), pool);
+      spg_t spgid(pgid, shard);
+      pair<spg_t,snapid_t> p(spgid, snap);
+      if (queued.count(p)) {
+	dout(20) << __func__ << " pg " << spgid << " snap " << snap
+		 << " already queued" << dendl;
+	continue;
+      }
+      PGRef pg = lookup_lock_pg(spgid);
+      if (!pg) {
+	dout(20) << __func__ << " pg " << spgid << " not found" << dendl;
+	continue;
+      }
+      queued.insert(p);
+      dout(10) << __func__ << " requeue pg " << spgid << " " << pg << " snap "
+	       << snap << dendl;
+      pg->queue_snap_retrim(snap);
+      pg->unlock();
+    }
   } else {
     ss << "unrecognized command '" << prefix << "'";
     r = -EINVAL;
@@ -6872,6 +6966,9 @@ void OSD::_dispatch(Message *m)
     // map and replication
   case CEPH_MSG_OSD_MAP:
     handle_osd_map(static_cast<MOSDMap*>(m));
+    break;
+  case MSG_MON_GET_PURGED_SNAPS_REPLY:
+    handle_get_purged_snaps_reply(static_cast<MMonGetPurgedSnapsReply*>(m));
     break;
 
     // osd
@@ -7477,6 +7574,8 @@ void OSD::handle_osd_map(MOSDMap *m)
   ObjectStore::Transaction t;
   uint64_t txn_size = 0;
 
+  map<epoch_t,mempool::osdmap::map<int64_t,snap_interval_set_t>> purged_snaps;
+
   // store new maps: queue for disk and put in the osdmap cache
   epoch_t start = std::max(superblock.newest_map + 1, first);
   for (epoch_t e = start; e <= last; e++) {
@@ -7493,6 +7592,8 @@ void OSD::handle_osd_map(MOSDMap *m)
       bufferlist& bl = p->second;
 
       o->decode(bl);
+
+      purged_snaps[e] = o->get_new_purged_snaps();
 
       ghobject_t fulloid = get_osdmap_pobject_name(e);
       t.write(coll_t::meta(), fulloid, 0, bl.length(), bl);
@@ -7553,6 +7654,7 @@ void OSD::handle_osd_map(MOSDMap *m)
 	break;
       }
       got_full_map(e);
+      purged_snaps[e] = o->get_new_purged_snaps();
 
       ghobject_t fulloid = get_osdmap_pobject_name(e);
       t.write(coll_t::meta(), fulloid, 0, fbl.length(), fbl);
@@ -7645,6 +7747,18 @@ void OSD::handle_osd_map(MOSDMap *m)
     ::encode(pg_num_history, bl);
     t.write(coll_t::meta(), make_pg_num_history_oid(), 0, bl.length(), bl);
     dout(20) << __func__ << " pg_num_history " << pg_num_history << dendl;
+  }
+
+  // record new purged_snaps
+  if (superblock.purged_snaps_last == start - 1) {
+    SnapMapper::record_purged_snaps(cct, store, service.meta_ch,
+				    make_snapmapper_oid(), &t,
+				    purged_snaps);
+    superblock.purged_snaps_last = last;
+  } else {
+    dout(10) << __func__ << " superblock purged_snaps_last is "
+	     << superblock.purged_snaps_last
+	     << ", not recording new purged_snaps" << dendl;
   }
 
   // superblock and commit

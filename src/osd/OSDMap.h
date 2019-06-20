@@ -349,10 +349,6 @@ class OSDMap {
 public:
   MEMPOOL_CLASS_HELPERS();
 
-  typedef interval_set<
-    snapid_t,
-    mempool::osdmap::flat_map<snapid_t,snapid_t>> snap_interval_set_t;
-
   class Incremental {
   public:
     MEMPOOL_CLASS_HELPERS();
@@ -503,6 +499,13 @@ public:
       return true;
     }
 
+    bool in_new_removed_snaps(int64_t pool, snapid_t snap) const {
+      auto p = new_removed_snaps.find(pool);
+      if (p == new_removed_snaps.end()) {
+	return false;
+      }
+      return p->second.contains(snap);
+    }
   };
   
 private:
@@ -1263,6 +1266,14 @@ public:
       return true;
     }
     return false;
+  }
+
+  bool in_removed_snaps_queue(int64_t pool, snapid_t snap) const {
+    auto p = removed_snaps_queue.find(pool);
+    if (p == removed_snaps_queue.end()) {
+      return false;
+    }
+    return p->second.contains(snap);
   }
 
   const mempool::osdmap::map<int64_t,snap_interval_set_t>&
