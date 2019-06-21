@@ -329,7 +329,7 @@ boost::system::error_code RGWSI_Zone::replace_region_with_zonegroup()
     ldout(cct, 0) << __func__ << " failed to read converted: ret "<< ret << " "
                   << dendl;
     return ret;
-  } else if (ret != boost::system::errc::no_such_file_or_directory) {
+  } else if (ret == boost::system::errc::no_such_file_or_directory) {
     ldout(cct, 20) << "System already converted " << dendl;
     return {};
   }
