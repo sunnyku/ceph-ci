@@ -40,7 +40,7 @@ def download(ctx, config):
             default_branch = cconf.get('default-branch', None)
             ceph_branch = ctx.config.get('branch')
             suite_branch = ctx.config.get('suite_branch', ceph_branch)
-            ragweed_repo = ctx.config.get('ragweed_repo', teuth_config.ceph_git_base_url + 'ragweed.git')
+            ragweed_repo = "https://github.com/soumyakoduri/ragweed.git"
             if suite_branch in s3_branches:
                 branch = cconf.get('branch', 'ceph-' + suite_branch)
 	    else:
