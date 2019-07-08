@@ -518,6 +518,7 @@ void OSDService::request_osdmap_update(epoch_t e)
   osd->osdmap_subscribe(e, false);
 }
 
+
 class AgentTimeoutCB : public Context {
   PGRef pg;
 public:
@@ -2831,6 +2832,8 @@ int OSD::init()
     r = -EINVAL;
     goto out;
   }
+
+  startup_time = ceph::mono_clock::now();
 
   // load up "current" osdmap
   assert_warn(!osdmap);
