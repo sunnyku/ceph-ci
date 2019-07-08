@@ -255,6 +255,7 @@ struct rgw_pubsub_sub_dest {
   }
 
   void dump(Formatter *f) const;
+  void dump_xml(Formatter *f) const;
 };
 WRITE_CLASS_ENCODER(rgw_pubsub_sub_dest)
 
@@ -323,6 +324,7 @@ struct rgw_pubsub_topic {
   }
 
   void dump(Formatter *f) const;
+  void dump_xml(Formatter *f) const;
 
   bool operator<(const rgw_pubsub_topic& t) const {
     return to_str().compare(t.to_str());
@@ -411,6 +413,7 @@ struct rgw_pubsub_user_topics {
   }
 
   void dump(Formatter *f) const;
+  void dump_xml(Formatter *f) const;
 };
 WRITE_CLASS_ENCODER(rgw_pubsub_user_topics)
 

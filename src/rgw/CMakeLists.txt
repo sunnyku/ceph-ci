@@ -97,6 +97,8 @@ set(librgw_common_srcs
   rgw_rest_conn.cc
   rgw_rest_log.cc
   rgw_rest_metadata.cc
+  rgw_rest_pubsub.cc
+  rgw_rest_pubsub_common.cc
   rgw_rest_realm.cc
   rgw_rest_role.cc
   rgw_rest_s3.cc

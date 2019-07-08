@@ -9625,7 +9625,7 @@ int RGWRados::cls_bucket_head_async(const RGWBucketInfo& bucket_info, int shard_
 int RGWRados::cls_user_get_header(const string& user_id, cls_user_header *header)
 {
   string buckets_obj_id;
-  rgw_get_buckets_obj(user_id, buckets_obj_id);
+  rgw_get_buckets_obj(rgw_user(user_id), buckets_obj_id);
   rgw_raw_obj obj(svc.zone->get_zone_params().user_uid_pool, buckets_obj_id);
 
   rgw_rados_ref ref;
@@ -9650,7 +9650,7 @@ int RGWRados::cls_user_get_header(const string& user_id, cls_user_header *header
 int RGWRados::cls_user_reset_stats(const string& user_id)
 {
   string buckets_obj_id;
-  rgw_get_buckets_obj(user_id, buckets_obj_id);
+  rgw_get_buckets_obj(rgw_user(user_id), buckets_obj_id);
   rgw_raw_obj obj(svc.zone->get_zone_params().user_uid_pool, buckets_obj_id);
 
   rgw_rados_ref ref;
@@ -9667,7 +9667,7 @@ int RGWRados::cls_user_reset_stats(const string& user_id)
 int RGWRados::cls_user_get_header_async(const string& user_id, RGWGetUserHeader_CB *ctx)
 {
   string buckets_obj_id;
-  rgw_get_buckets_obj(user_id, buckets_obj_id);
+  rgw_get_buckets_obj(rgw_user(user_id), buckets_obj_id);
   rgw_raw_obj obj(svc.zone->get_zone_params().user_uid_pool, buckets_obj_id);
 
   rgw_rados_ref ref;
