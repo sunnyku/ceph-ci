@@ -1,0 +1,68 @@
+# Fill the top level branch items as appropriate
+branch: monCachePriority
+repo: https://github.com/ceph/ceph-ci
+suite_repo: https://github.com/sseshasa/ceph
+suite_branch: wip-sseshasa2-testing
+suite_path: /home/sseshasa/src/github.com_sseshasa_ceph_monCachePriority/qa
+interactive-on-error: true
+roles:
+- - mon.a
+  - mgr.x
+  - osd.0
+  - osd.1
+  - osd.2
+  - osd.3
+  - client.0
+openstack:
+  - volumes: # attached to each instance
+      count: 4
+      size: 1 # GB
+overrides:
+  ceph:
+    conf:
+      mon:
+        mon memory target: 1073741824 # reduced to 1.0_G
+      osd:
+        osd memory target: 1610612736 # reduced to 1.5_G
+        osd objectstore: bluestore
+        debug bluestore: 20
+tasks:
+- install:
+    branch: monCachePriority # change as appropriate
+- ceph:
+    create_rbd_pool: false
+    log-whitelist:
+      - overall HEALTH_
+      - \(OSDMAP_FLAGS\)
+      - \(OSD_
+      - \(PG_
+      - \(POOL_
+      - \(CACHE_POOL_
+      - \(OBJECT_
+      - \(SLOW_OPS\)
+      - \(REQUEST_SLOW\)
+      - \(TOO_FEW_PGS\)
+      - slow requests
+- parallel:
+    - benchload
+    - thrashit
+- exec:
+    client.0:
+      - "ceph_test_mon_memory_target 1073741824" # mon memory target
+    mon.a:
+      - "ceph_test_mon_memory_target 1073741824"
+benchload:
+- sequential:
+  - radosbench:
+      clients: [client.0]
+      time: 90
+  - radosbench:
+      clients: [client.0]
+      time: 90
+  - radosbench:
+      clients: [client.0]
+      time: 90
+thrashit:
+- thrashosds:
+    bdev_inject_crash: 2
+    bdev_inject_crash_probability: .5
