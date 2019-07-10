@@ -58,6 +58,7 @@
 #include "messages/MClientRequestForward.h"
 #include "messages/MClientSession.h"
 #include "messages/MClientSnap.h"
+#include "messages/MClientMetrics.h"
 #include "messages/MCommandReply.h"
 #include "messages/MFSMap.h"
 #include "messages/MFSMapUser.h"
@@ -6235,7 +6236,63 @@ void Client::tick()
     check_caps(in, CHECK_CAPS_NODELAY);
   }
 
+  collect_and_send_metrics();
+
   trim_cache(true);
+}
+
+void Client::collect_and_send_metrics() {
+  ldout(cct, 20) << __func__ << dendl;
+
+  ceph_assert(ceph_mutex_is_locked_by_me(client_lock));
+
+  bool send_global_metrics = true;
+  for (auto &p : mds_sessions) {
+    ClientMetricMessage metric;
+    std::vector<ClientMetricMessage> message;
+
+    ldout(cct, 20) << __func__ << ": rank=" << p.first << dendl;
+
+    if (send_global_metrics) {
+      send_global_metrics = false;
+      collect_global_metrics(&message);
+    }
+
+    metric = collect_cap_metric(p.second);
+    message.push_back(metric);
+
+    p.second.con->send_message2(make_message<MClientMetrics>(std::move(message)));
+  }
+}
+
+void Client::collect_global_metrics(std::vector<ClientMetricMessage> *message) {
+  ldout(cct, 20) << __func__ << dendl;
+
+  ceph_assert(ceph_mutex_is_locked_by_me(client_lock));
+
+  ClientMetricMessage metric;
+  // read latency
+  metric = ClientMetricMessage(ReadLatencyPayload(logger->tget(l_c_read)));
+  message->push_back(metric);
+
+  // write latency
+  metric = ClientMetricMessage(WriteLatencyPayload(logger->tget(l_c_wrlat)));
+  message->push_back(metric);
+
+  // metadata latency
+  metric = ClientMetricMessage(MetadataLatencyPayload(logger->tget(l_c_lat)));
+  message->push_back(metric);
+}
+
+ClientMetricMessage Client::collect_cap_metric(MetaSession &session) {
+  ldout(cct, 20) << __func__ << dendl;
+
+  ceph_assert(ceph_mutex_is_locked_by_me(client_lock));
+
+  auto [cap_hits, cap_misses] = session.get_cap_hit_rates();
+  session.reset_cap_hit_rates();
+
+  return ClientMetricMessage(CapInfoPayload(cap_hits, cap_misses, session.caps.size()));
 }
 
 void Client::renew_caps()
