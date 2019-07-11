@@ -183,7 +183,7 @@ void OpHistory::dump_slow_ops(utime_t now, Formatter *f, set<string> filters)
   cleanup(now);
   f->open_object_section("OpHistory slow ops");
   f->dump_int("num to keep", history_slow_op_size);
-  f->dump_int("threshold to keep", history_slow_op_threshold);
+  f->dump_float("threshold to keep", history_slow_op_threshold);
   {
     f->open_array_section("Ops");
     for (set<pair<utime_t, TrackedOpRef> >::const_iterator i =
