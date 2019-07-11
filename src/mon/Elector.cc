@@ -151,6 +151,8 @@ void Elector::reset_timer(double plus)
    */
   expire_event = mon->timer.add_event_after(
     g_conf()->mon_election_timeout + plus,
+    // TODO: uh, this means when we _defer_to() above that we give them a whole
+    // new election period; is that intentional?
     new C_MonContext(mon, [this](int) {
 	logic.end_election_period();
       }));
