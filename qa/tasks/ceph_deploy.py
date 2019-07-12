@@ -512,19 +512,7 @@ def build_ceph_cluster(ctx, config):
         if config.get('keep_running'):
             return
         log.info('Stopping ceph...')
-        ctx.cluster.run(args=['sudo', 'stop', 'ceph-all', run.Raw('||'),
-                              'sudo', 'service', 'ceph', 'stop', run.Raw('||'),
-                              'sudo', 'systemctl', 'stop', 'ceph.target'])
-
-        # Are you really not running anymore?
-        # try first with the init tooling
-        # ignoring the status so this becomes informational only
-        ctx.cluster.run(
-            args=[
-                'sudo', 'status', 'ceph-all', run.Raw('||'),
-                'sudo', 'service', 'ceph', 'status', run.Raw('||'),
-                'sudo', 'systemctl', 'status', 'ceph.target'],
-            check_status=False)
+        ctx.cluster.run(args=['sudo', 'systemctl', 'stop', 'ceph.target'])
 
         # and now just check for the processes themselves, as if upstart/sysvinit
         # is lying to us. Ignore errors if the grep fails
@@ -710,9 +698,7 @@ def cli_test(ctx, config):
         yield
     finally:
         log.info("cleaning up")
-        ctx.cluster.run(args=['sudo', 'stop', 'ceph-all', run.Raw('||'),
-                              'sudo', 'service', 'ceph', 'stop', run.Raw('||'),
-                              'sudo', 'systemctl', 'stop', 'ceph.target'],
+        ctx.cluster.run(args=['sudo', 'systemctl', 'stop', 'ceph.target'],
                         check_status=False)
         time.sleep(4)
         for i in range(3):
