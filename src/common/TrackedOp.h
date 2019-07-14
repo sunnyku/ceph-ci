@@ -62,7 +62,7 @@ class OpHistory {
   uint32_t history_size;
   uint32_t history_duration;
   uint32_t history_slow_op_size;
-  uint32_t history_slow_op_threshold;
+  double history_slow_op_threshold;
   std::atomic_bool shutdown;
   OpHistoryServiceThread opsvc;
   friend class OpHistoryServiceThread;
@@ -95,7 +95,7 @@ public:
     history_size = new_size;
     history_duration = new_duration;
   }
-  void set_slow_op_size_and_threshold(uint32_t new_size, uint32_t new_threshold) {
+  void set_slow_op_size_and_threshold(uint32_t new_size, double new_threshold) {
     history_slow_op_size = new_size;
     history_slow_op_threshold = new_threshold;
   }
@@ -124,7 +124,7 @@ public:
   void set_history_size_and_duration(uint32_t new_size, uint32_t new_duration) {
     history.set_size_and_duration(new_size, new_duration);
   }
-  void set_history_slow_op_size_and_threshold(uint32_t new_size, uint32_t new_threshold) {
+  void set_history_slow_op_size_and_threshold(uint32_t new_size, double new_threshold) {
     history.set_slow_op_size_and_threshold(new_size, new_threshold);
   }
   bool is_tracking() const {
