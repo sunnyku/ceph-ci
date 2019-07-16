@@ -1156,7 +1156,9 @@ void MonClient::start_mon_command(const std::vector<string>& cmd,
 {
   std::lock_guard l(monc_lock);
   if (!initialized || stopping) {
-    onfinish->complete(-ECANCELED);
+    if (onfinish) {
+      onfinish->complete(-ECANCELED);
+    }
     return;
   }
   MonCommand *r = new MonCommand(++last_mon_command_tid);
@@ -1191,7 +1193,9 @@ void MonClient::start_mon_command(const string &mon_name,
 {
   std::lock_guard l(monc_lock);
   if (!initialized || stopping) {
-    onfinish->complete(-ECANCELED);
+    if (onfinish) {
+      onfinish->complete(-ECANCELED);
+    }
     return;
   }
   MonCommand *r = new MonCommand(++last_mon_command_tid);
@@ -1213,7 +1217,9 @@ void MonClient::start_mon_command(int rank,
 {
   std::lock_guard l(monc_lock);
   if (!initialized || stopping) {
-    onfinish->complete(-ECANCELED);
+    if (onfinish) {
+      onfinish->complete(-ECANCELED);
+    }
     return;
   }
   MonCommand *r = new MonCommand(++last_mon_command_tid);
