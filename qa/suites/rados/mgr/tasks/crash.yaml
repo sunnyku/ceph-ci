@@ -9,6 +9,7 @@ tasks:
         - overall HEALTH_
         - \(MGR_DOWN\)
         - \(PG_
+	- \(RECENT_RECENT\)
         - replacing it with standby
         - No standby daemons available
   - cephfs_test_runner:
