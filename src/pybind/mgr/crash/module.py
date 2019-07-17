@@ -160,11 +160,11 @@ class Module(MgrModule):
         return 0, '', ''
 
     def do_ls(self, cmd, inbuf):
-        if cmd['prefix'] == 'crash ls':
-            r = self.crashes.values()
-        else:
+        if cmd.get('prefix', 'crash ls-new'):
             r = [crash for crashid, crash in self.crashes.items()
                  if 'archived' not in crash]
+        else:
+            r = self.crashes.values()
         if cmd.get('format') == 'json' or cmd.get('format') == 'json-pretty':
             return 0, json.dumps(r, indent=2), ''
         else:
