@@ -214,10 +214,4 @@ class TestInsights(MgrTestCase):
         self.assertFalse(report["errors"])
         log.warning("{}".format(json.dumps(report["crashes"], indent=2)))
 
-        # handling of comm. error with crash module
-        self._add_crash(1, True)
-        report = self._insights()
-        self.assertFalse(report["crashes"]["summary"])
-        self.assertTrue(report["errors"])
-
         self._clear_crashes()
