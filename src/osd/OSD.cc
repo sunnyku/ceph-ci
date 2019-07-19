@@ -6960,6 +6960,8 @@ void OSD::ms_fast_dispatch(Message *m)
   case MSG_OSD_PG_TRIM:
   case MSG_OSD_BACKFILL_RESERVE:
   case MSG_OSD_RECOVERY_RESERVE:
+  case MSG_OSD_PG_LEASE:
+  case MSG_OSD_PG_LEASE_ACK:
     {
       MOSDPeeringOp *pm = static_cast<MOSDPeeringOp*>(m);
       if (require_osd_peer(pm)) {

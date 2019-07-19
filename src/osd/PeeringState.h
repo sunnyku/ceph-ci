@@ -813,7 +813,8 @@ public:
       boost::statechart::custom_reaction< UnfoundBackfill >,
       boost::statechart::custom_reaction< RemoteReservationRevokedTooFull>,
       boost::statechart::custom_reaction< RemoteReservationRevoked>,
-      boost::statechart::custom_reaction< DoRecovery>
+      boost::statechart::custom_reaction< DoRecovery>,
+      boost::statechart::custom_reaction< MLeaseAck>
       > reactions;
     boost::statechart::result react(const QueryState& q);
     boost::statechart::result react(const ActMap&);
@@ -827,6 +828,7 @@ public:
     }
     boost::statechart::result react(const ActivateCommitted&);
     boost::statechart::result react(const AllReplicasActivated&);
+    boost::statechart::result react(const MLeaseAck&);
     boost::statechart::result react(const DeferRecovery& evt) {
       return discard_event();
     }
@@ -979,7 +981,8 @@ public:
       boost::statechart::custom_reaction< RemoteBackfillPreempted >,
       boost::statechart::custom_reaction< RemoteRecoveryPreempted >,
       boost::statechart::custom_reaction< RecoveryDone >,
-      boost::statechart::transition<DeleteStart, ToDelete>
+      boost::statechart::transition<DeleteStart, ToDelete>,
+      boost::statechart::custom_reaction< MLease >
       > reactions;
     boost::statechart::result react(const QueryState& q);
     boost::statechart::result react(const MInfoRec& infoevt);
@@ -989,6 +992,7 @@ public:
     boost::statechart::result react(const MQuery&);
     boost::statechart::result react(const Activate&);
     boost::statechart::result react(const ActivateCommitted&);
+    boost::statechart::result react(const MLease&);
     boost::statechart::result react(const RecoveryDone&) {
       return discard_event();
     }
@@ -1948,8 +1952,17 @@ public:
     }
   }
 
+  void schedule_renew_lease();
+
   pg_lease_t get_lease() {
     return pg_lease_t(readable_until, readable_until_ub_sent, readable_interval);
+  }
+
+  void proc_lease(const pg_lease_t& l);
+  void proc_lease_ack(int from, const pg_lease_ack_t& la);
+
+  pg_lease_ack_t get_lease_ack() {
+    return pg_lease_ack_t(readable_until_ub_from_primary);
   }
 
   /// [primary] recalc readable_until[_ub] for the current interval
