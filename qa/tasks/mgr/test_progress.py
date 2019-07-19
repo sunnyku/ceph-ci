@@ -112,18 +112,18 @@ class TestProgress(MgrTestCase):
         
         return ev
 
-    def _simulate_back_in(self,osd_ids, ev1):
-
+    def _simulate_back_in(self, osd_ids=None, initial_event):
+        
+        # If no osd_ids specified we create new one
         if osd_ids is None:
             osd_ids = [0]
 
         for osd_id in osd_ids:
             self.mgr_cluster.mon_manager.raw_cluster_cmd(
                     'osd', 'in', str(osd_id))
-            
         
         # First Event should complete promptly
-        self.wait_until_true(lambda: self._is_complete(ev1['id']),
+        self.wait_until_true(lambda: self._is_complete(initial_event['id']),
                              timeout=self.EVENT_CREATION_PERIOD)
 
             
@@ -131,9 +131,9 @@ class TestProgress(MgrTestCase):
         self.wait_until_equal(lambda: len(self._events_in_progress()), 1,
                               timeout=self.EVENT_CREATION_PERIOD)
 
-        ev = self._all_events()[0]
-        log.info(json.dumps(ev, indent=1))
-        self.assertIn("Rebalancing after osd.0 marked in", ev['message'])    
+        new_event = self._all_events()[0]
+        log.info(json.dumps(new_event, indent=1))
+        self.assertIn("Rebalancing after osd.0 marked in", new_event['message'])    
         
         return ev
 
