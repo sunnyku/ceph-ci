@@ -694,9 +694,6 @@ void PeeringState::on_new_interval()
   acting_readable_until_ub.clear();
   if (is_primary()) {
     acting_readable_until_ub.resize(acting.size(), ceph::signedspan::zero());
-
-    // start lease here, so that we get acks during peering
-    renew_lease(pl->get_mnow());
   }
 
   pl->on_new_interval();
@@ -1023,6 +1020,27 @@ bool PeeringState::set_force_backfill(bool b)
     pl->update_local_background_io_priority(get_backfill_priority());
   }
   return did;
+}
+
+void PeeringState::schedule_renew_lease()
+{
+  pl->schedule_renew_lease(
+    last_peering_reset,
+    readable_interval / 2);
+}
+
+void PeeringState::send_lease()
+{
+  epoch_t epoch = pl->get_osdmap_epoch();
+  for (auto peer : acting) {
+    if (peer == pg_whoami.osd) {
+      continue;
+    }
+    pl->send_cluster_message(
+      peer,
+      new MOSDPGLease(epoch, spgid, get_lease()),
+      epoch);
+  }
 }
 
 void PeeringState::proc_lease(const pg_lease_t& l)
@@ -2375,6 +2393,10 @@ void PeeringState::activate(
 		   << " missing " << pm << dendl;
       }
     }
+
+    renew_lease(pl->get_mnow());
+    send_lease();
+    schedule_renew_lease();
 
     // Set up missing_loc
     set<pg_shard_t> complete_shards;
@@ -5626,6 +5648,15 @@ boost::statechart::result PeeringState::Active::react(const AllReplicasActivated
 
   pl->on_activate_complete();
 
+  return discard_event();
+}
+
+boost::statechart::result PeeringState::Active::react(const RenewLease& rl)
+{
+  DECLARE_LOCALS
+  ps->renew_lease(pl->get_mnow());
+  ps->send_lease();
+  ps->schedule_renew_lease();
   return discard_event();
 }
 
