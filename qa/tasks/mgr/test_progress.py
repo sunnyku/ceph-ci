@@ -112,12 +112,8 @@ class TestProgress(MgrTestCase):
         
         return ev
 
-    def _simulate_back_in(self, osd_ids=None, initial_event):
+    def _simulate_back_in(self, osd_ids, initial_event):
         
-        # If no osd_ids specified we create new one
-        if osd_ids is None:
-            osd_ids = [0]
-
         for osd_id in osd_ids:
             self.mgr_cluster.mon_manager.raw_cluster_cmd(
                     'osd', 'in', str(osd_id))
@@ -203,7 +199,7 @@ class TestProgress(MgrTestCase):
         """
         ev1 = self._simulate_failure()
 
-        ev2 = self._simulate_back_in(None, ev1)
+        ev2 = self._simulate_back_in([0], ev1)
         
         # Wait for progress event to ultimately complete
         self.wait_until_true(lambda: self._is_complete(ev2['id']),
