@@ -73,6 +73,7 @@ const string PREFIX_COLL = "C";        // collection name -> cnode_t
 const string PREFIX_OBJ = "O";         // object name -> onode_t
 const string PREFIX_OMAP = "M";        // u64 + keyname -> value
 const string PREFIX_PGMETA_OMAP = "P"; // u64 + keyname -> value(for meta coll)
+const string PREFIX_PERPOOL_OMAP = "m"; // s64 + u64 + keyname -> value
 const string PREFIX_DEFERRED = "L";    // id -> deferred_transaction_t
 const string PREFIX_ALLOC = "B";       // u64 offset -> u64 length (freelist)
 const string PREFIX_ALLOC_BITMAP = "b";// (see BitmapFreelistManager)
@@ -3196,8 +3197,13 @@ void BlueStore::Onode::dump(Formatter* f) const
 
 const string& BlueStore::Onode::get_omap_prefix()
 {
-  return onode.is_pgmeta_omap() ? PREFIX_PGMETA_OMAP
-    : PREFIX_OMAP;
+  if (onode.is_pgmeta_omap()) {
+    return PREFIX_PGMETA_OMAP;
+  }
+  if (onode.is_perpool_omap()) {
+    return PREFIX_PERPOOL_OMAP;
+  }
+  return PREFIX_OMAP;
 }
 
 // '-' < '.' < '~'
@@ -3210,6 +3216,9 @@ void BlueStore::Onode::get_omap_header(string *out)
 
 void BlueStore::Onode::get_omap_key(const string& key, string *out)
 {
+  if (onode.is_perpool_omap()) {
+    _key_encode_u64(oid.hobj.pool, out);
+  }
   _key_encode_u64(onode.nid, out);
   out->push_back('.');
   out->append(key);
@@ -3229,7 +3238,11 @@ void BlueStore::Onode::get_omap_tail(string *out)
 
 void BlueStore::Onode::decode_omap_key(const string& key, string *user_key)
 {
-  *user_key = key.substr(sizeof(uint64_t) + 1);
+  if (onode.is_perpool_omap()) {
+    *user_key = key.substr(sizeof(uint64_t)*2 + 1);
+  } else {
+    *user_key = key.substr(sizeof(uint64_t) + 1);
+  }
 }
 
 
@@ -8117,7 +8130,9 @@ void BlueStore::_get_statfs_overall(struct store_statfs_t *buf)
 {
   buf->reset();
 
-  buf->omap_allocated = db->estimate_prefix_size(PREFIX_OMAP, string());
+  buf->omap_allocated =
+    db->estimate_prefix_size(PREFIX_OMAP, string()) +
+    db->estimate_prefix_size(PREFIX_PERPOOL_OMAP, string());
 
   uint64_t bfree = alloc->get_free();
 
@@ -13024,7 +13039,7 @@ int BlueStore::_omap_setkeys(TransContext *txc,
   auto p = bl.cbegin();
   __u32 num;
   if (!o->onode.has_omap()) {
-    o->onode.set_omap_flag();
+    o->onode.set_omap_flags();
     if (o->oid.is_pgmeta()) {
       o->onode.flags |= bluestore_onode_t::FLAG_PGMETA_OMAP;
     }
@@ -13068,7 +13083,7 @@ int BlueStore::_omap_setheader(TransContext *txc,
   int r;
   string key;
   if (!o->onode.has_omap()) {
-    o->onode.set_omap_flag();
+    o->onode.set_omap_flags();
     if (o->oid.is_pgmeta()) {
       o->onode.flags |= bluestore_onode_t::FLAG_PGMETA_OMAP;
     }
@@ -13223,7 +13238,7 @@ int BlueStore::_clone(TransContext *txc,
   }
   if (oldo->onode.has_omap()) {
     dout(20) << __func__ << " copying omap data" << dendl;
-    newo->onode.set_omap_flag();
+    newo->onode.set_omap_flags();
     if (newo->oid.is_pgmeta()) {
       newo->onode.flags |= bluestore_onode_t::FLAG_PGMETA_OMAP;
     }
