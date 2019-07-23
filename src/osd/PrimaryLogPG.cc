@@ -799,6 +799,21 @@ bool PrimaryLogPG::check_laggy_requeue(OpRequestRef& op)
   return false;
 }
 
+void PrimaryLogPG::recheck_readable()
+{
+  if (is_laggy()) {
+    auto ru = recovery_state.get_readable_until();
+    auto mnow = osd->get_mnow();
+    if (ru > mnow) {
+      dout(10) << __func__ << " no longer laggy (ru " << ru << " > mnow " << mnow
+	       << ")" << dendl;
+      state_clear(PG_STATE_LAGGY);
+      publish_stats_to_osd();
+      requeue_ops(waiting_for_readable);
+    }
+  }
+}
+
 class PGLSPlainFilter : public PGLSFilter {
   string val;
 public:
