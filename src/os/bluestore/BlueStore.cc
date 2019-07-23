@@ -13159,15 +13159,15 @@ int BlueStore::_omap_setkeys(TransContext *txc,
   }
   const string& prefix = o->get_omap_prefix();
   string final_key;
-  _key_encode_u64(o->onode.nid, &final_key);
-  final_key.push_back('.');
+  o->get_omap_key(string(), &final_key);
+  size_t base_key_len = final_key.size();
   decode(num, p);
   while (num--) {
     string key;
     bufferlist value;
     decode(key, p);
     decode(value, p);
-    final_key.resize(9); // keep prefix
+    final_key.resize(base_key_len); // keep prefix
     final_key += key;
     dout(20) << __func__ << "  " << pretty_binary_string(final_key)
 	     << " <- " << key << dendl;
