@@ -1348,11 +1348,15 @@ public:
 
   /// how long we can service reads in this interval
   ceph::signedspan readable_until = ceph::signedspan::zero();
-  /// upper bound on any acting OSDs readable_until in this interval
+
+  /// upper bound on any acting OSDs' readable_until in this interval
   ceph::signedspan readable_until_ub = ceph::signedspan::zero();
 
   /// [replica] upper bound we got from the primary (primary's clock)
   ceph::signedspan readable_until_ub_from_primary = ceph::signedspan::zero();
+
+  /// [primary] last upper bound shared by primary to replicas
+  ceph::signedspan readable_until_ub_sent = ceph::signedspan::zero();
 
   /// [primary] readable ub acked by acting set members
   vector<ceph::signedspan> acting_readable_until_ub;
@@ -1938,18 +1942,14 @@ public:
 
   void renew_lease(ceph::signedspan now) {
     bool was_min = (readable_until_ub == readable_until);
-    readable_until_ub = now + readable_interval;
+    readable_until_ub_sent = now + readable_interval;
     if (was_min) {
       recalc_readable_until();
     }
   }
 
   pg_lease_t get_lease() {
-    return pg_lease_t(readable_until, readable_until_ub, readable_interval);
-  }
-
-  pg_lease_t get_lease(ceph::signedspan now) {
-    return pg_lease_t(readable_until, readable_until_ub, readable_interval);
+    return pg_lease_t(readable_until, readable_until_ub_sent, readable_interval);
   }
 
   /// [primary] recalc readable_until[_ub] for the current interval
