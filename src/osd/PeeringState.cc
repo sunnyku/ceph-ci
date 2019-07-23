@@ -1026,7 +1026,7 @@ bool PeeringState::set_force_backfill(bool b)
 void PeeringState::recalc_readable_until()
 {
   assert(is_primary());
-  ceph::signedspan min = readable_until_ub;
+  ceph::signedspan min = readable_until_ub_sent;
   for (unsigned i = 0; i < acting.size(); ++i) {
     if (acting[i] == pg_whoami.osd) {
       continue;
@@ -1036,8 +1036,8 @@ void PeeringState::recalc_readable_until()
     }
   }
   readable_until = min;
-  dout(20) << __func__ << " readable_until " << readable_until
-	   << " readable_until_ub " << readable_until_ub << dendl;
+  readable_until_ub = min;
+  dout(20) << __func__ << " readable_until[_ub] " << readable_until << dendl;
 }
 
 bool PeeringState::adjust_need_up_thru(const OSDMapRef osdmap)
