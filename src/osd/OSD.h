@@ -668,6 +668,9 @@ public:
     _queue_for_recovery(make_pair(queued, pg), reserved_pushes);
   }
 
+  void queue_check_readable(spg_t spgid,
+			    ceph::signedspan delay = ceph::signedspan::zero());
+
   // osd map cache (past osd maps)
   ceph::mutex map_cache_lock = ceph::make_mutex("OSDService::map_cache_lock");
   SharedLRU<epoch_t, const OSDMap> map_cache;
