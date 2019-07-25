@@ -3467,8 +3467,14 @@ int OSD::shutdown()
   heartbeat_lock.Lock();
   heartbeat_stop = true;
   heartbeat_cond.Signal();
+  heartbeat_peers.clear();
   heartbeat_lock.Unlock();
   heartbeat_thread.join();
+
+  hb_back_server_messenger->mark_down_all();
+  hb_front_server_messenger->mark_down_all();
+  hb_front_client_messenger->mark_down_all();
+  hb_back_client_messenger->mark_down_all();
 
   osd_op_tp.drain();
   osd_op_tp.stop();
@@ -4964,6 +4970,7 @@ bool OSD::heartbeat_reset(Connection *con)
 {
   std::lock_guard l(heartbeat_lock);
   auto s = con->get_priv();
+  dout(20) << __func__ << " con " << con << " s " << s.get() << dendl;
   con->set_priv(nullptr);
   if (s) {
     if (is_stopping()) {
