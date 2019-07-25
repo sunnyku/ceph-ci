@@ -926,3 +926,31 @@ To re-enable telemetry (and make this warning go away),::
 To disable telemetry (and make this warning go away),::
 
   ceph telemetry off
+
+
+TELEMETRY_NAG
+_____________
+
+The Ceph developers would really like to you consider enabling
+telemetry.  This nag may reappear once a year or so, with each major
+upgrade of Ceph.
+
+To review the contents of the telemetry report,::
+
+  ceph telemetry show
+
+Note that the telemetry report consists of several optional channels
+that may independently enabled or disabled.  For more information, see
+:ref:`telemetry`.
+
+To enable telemetry (and make this warning go away),::
+
+  ceph telemetry on
+
+To leave telemetry off and make this warning go away,::
+
+  ceph telemetry off
+
+To prevent the cluster from ever nagging you about this in the future,::
+
+  ceph config set mgr mgr/telemetry/nag false

@@ -18,6 +18,11 @@ from mgr_module import MgrModule
 
 ALL_CHANNELS = ['basic', 'ident', 'crash', 'device']
 
+# If the telemetry revision has changed since this point, re-nag the
+# user about opting in.  For example, we might do this every major
+# Ceph release.
+LAST_REVISION_NAG = 2
+
 # If the telemetry revision has changed since this point, re-require
 # an opt-in.  This should happen each time we add new information to
 # the telemetry report.
@@ -69,6 +74,11 @@ class Module(MgrModule):
             'name': 'last_opt_revision',
             'type': 'int',
             'default': 1,
+        },
+        {
+            'name': 'nag',
+            'type': 'bool',
+            'default': True,
         },
         {
             'name': 'leaderboard',
@@ -403,6 +413,14 @@ class Module(MgrModule):
                 'summary': 'Telemetry requires re-opt-in',
                 'detail': [
                     'telemetry report includes new information; must re-opt-in (or out)'
+                ]
+            }
+        if self.nag and not self.enabled and self.last_opt_revision < LAST_REVISION_NAG:
+            health_checks['TELEMETRY_NAG'] = {
+                'severity': 'warning',
+                'summary': 'Please consider enabling telemetry',
+                'detail': [
+                    'telemetry can share valuable information with developers without divulging identifying or sensitive information; please consider enabling'
                 ]
             }
         self.set_health_checks(health_checks)
