@@ -19,6 +19,33 @@ from mgr_module import MgrModule
 
 ALL_CHANNELS = ['basic', 'ident', 'crash', 'device']
 
+# If the telemetry revision has changed since this point, re-nag the
+# user about opting in.  For example, we might do this every major
+# Ceph release.
+LAST_REVISION_NAG = 2
+
+# If the telemetry revision has changed since this point, re-require
+# an opt-in.  This should happen each time we add new information to
+# the telemetry report.
+LAST_REVISION_RE_OPT_IN = 2
+
+# Latest revision of the telemetry report.  Bump this each time we make
+# *any* change.
+REVISION = 2
+
+# History of revisions
+# --------------------
+#
+# Version 1:
+#   Mimic and/or nautilus are lumped together here, since
+#   we didn't track revisions yet.
+#
+# Version 2:
+#   - added revision tracking, nagging, etc.
+#   - added config option changes
+#   - added channels
+#   - added explicit license acknowledgement to the opt-in process
+
 class Module(MgrModule):
     config = dict()
 
@@ -43,6 +70,16 @@ class Module(MgrModule):
             'name': 'enabled',
             'type': 'bool',
             'default': False
+        },
+        {
+            'name': 'last_opt_revision',
+            'type': 'int',
+            'default': 1,
+        },
+        {
+            'name': 'nag',
+            'type': 'bool',
+            'default': True,
         },
         {
             'name': 'leaderboard',
@@ -149,6 +186,8 @@ class Module(MgrModule):
                     opt['name'],
                     self.get_module_option(opt['name']))
             self.log.debug(' %s = %s', opt['name'], getattr(self, opt['name']))
+        # wake up serve() thread
+        self.event.set()
 
     def load(self):
         self.last_upload = self.get_store('last_upload', None)
@@ -341,9 +380,11 @@ class Module(MgrModule):
             return 0, json.dumps(r, indent=4), ''
         elif command['prefix'] == 'telemetry on':
             self.set_module_option('enabled', True)
+            self.set_module_option('last_opt_revision', REVISION)
             return 0, '', ''
         elif command['prefix'] == 'telemetry off':
             self.set_module_option('enabled', False)
+            self.set_module_option('last_opt_revision', REVISION)
             return 0, '', ''
         elif command['prefix'] == 'telemetry send':
             self.last_report = self.compile_report()
@@ -378,6 +419,26 @@ class Module(MgrModule):
         self.run = False
         self.event.set()
 
+    def refresh_health_checks(self):
+        health_checks = {}
+        if self.enabled and self.last_opt_revision < LAST_REVISION_RE_OPT_IN:
+            health_checks['TELEMETRY_CHANGED'] = {
+                'severity': 'warning',
+                'summary': 'Telemetry requires re-opt-in',
+                'detail': [
+                    'telemetry report includes new information; must re-opt-in (or out)'
+                ]
+            }
+        if self.nag and not self.enabled and self.last_opt_revision < LAST_REVISION_NAG:
+            health_checks['TELEMETRY_NAG'] = {
+                'severity': 'warning',
+                'summary': 'Please consider enabling telemetry',
+                'detail': [
+                    'telemetry can share valuable information with developers without divulging identifying or sensitive information; please consider enabling'
+                ]
+            }
+        self.set_health_checks(health_checks)
+
     def serve(self):
         self.load()
         self.config_notify()
@@ -387,8 +448,14 @@ class Module(MgrModule):
         self.event.wait(10)
 
         while self.run:
+            self.refresh_health_checks()
+
+            if self.last_opt_revision < LAST_REVISION_RE_OPT_IN:
+                self.log.debug('Not sending report until user re-opts-in')
+                self.event.wait(1800)
+                continue
             if not self.enabled:
-                self.log.info('Not sending report until configured to do so')
+                self.log.debug('Not sending report until configured to do so')
                 self.event.wait(1800)
                 continue
 
@@ -413,7 +480,7 @@ class Module(MgrModule):
                 except:
                     self.log.exception('Exception while sending report:')
             else:
-                self.log.info('Interval for sending new report has not expired')
+                self.log.debug('Interval for sending new report has not expired')
 
             sleep = 3600
             self.log.debug('Sleeping for %d seconds', sleep)
