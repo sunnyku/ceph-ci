@@ -354,6 +354,20 @@ def valgrind_post(ctx, config):
 
 
 @contextlib.contextmanager
+def assimilate_conf(ctx, config):
+    cluster_name = config['cluster']
+    first_mon = teuthology.get_first_mon(ctx, config, cluster_name)
+    (mon_remote,) = ctx.cluster.only(first_mon).remotes.iterkeys()
+
+    mon_remote.run(
+        args=['sudo', 'ceph', '--cluster', cluster_name,
+              'config', 'assimilate-conf',
+              '-i', '/etc/ceph/%s.conf' % cluster_name],
+        check_status=False,
+    )
+    yield
+
+@contextlib.contextmanager
 def crush_setup(ctx, config):
     cluster_name = config['cluster']
     first_mon = teuthology.get_first_mon(ctx, config, cluster_name)
@@ -1903,6 +1917,7 @@ def task(ctx, config):
             mon_bind_addrvec=config.get('mon_bind_addrvec', True),
         )),
         lambda: run_daemon(ctx=ctx, config=config, type_='mon'),
+        lambda: assimilate_conf(ctx=ctx, config=config),
         lambda: run_daemon(ctx=ctx, config=config, type_='mgr'),
         lambda: crush_setup(ctx=ctx, config=config),
         lambda: run_daemon(ctx=ctx, config=config, type_='osd'),
