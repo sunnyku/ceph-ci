@@ -118,7 +118,11 @@ class MgrModuleTelemetryTest(MgrModuleTestCase):
                     'leaderboard': JLeaf(bool),
                     'organization': JLeaf(str),
                     'proxy': JLeaf(str),
-                    'url': JLeaf(str)
+                    'url': JLeaf(str),
+                    'config': JObj(sub_elements={
+                        'cluster_changed': JList(str),
+                        'active_changed': JList(str),
+                        },
                 }))
 
     def test_put(self):
