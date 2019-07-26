@@ -1080,6 +1080,13 @@ public:
       if (--nref == 0)
 	delete this;
     }
+
+    const string& get_omap_prefix();
+    void get_omap_header(string *out);
+    void get_omap_key(const string& key, string *out);
+    void rewrite_omap_key(const string& old, string *out);
+    void get_omap_tail(string *out);
+    void decode_omap_key(const string& key, string *user_key);
   };
   typedef boost::intrusive_ptr<Onode> OnodeRef;
 
@@ -1981,6 +1988,8 @@ private:
 		std::numeric_limits<decltype(min_alloc_size)>::digits,
 		"not enough bits for min_alloc_size");
 
+  bool per_pool_omap = false;
+
   ///< maximum allocation unit (power of 2)
   std::atomic<uint64_t> max_alloc_size = {0};
 
@@ -2365,9 +2374,9 @@ private:
 
   // -- ondisk version ---
 public:
-  const int32_t latest_ondisk_format = 2;        ///< our version
+  const int32_t latest_ondisk_format = 3;        ///< our version
   const int32_t min_readable_ondisk_format = 1;  ///< what we can read
-  const int32_t min_compat_ondisk_format = 2;    ///< who can read us
+  const int32_t min_compat_ondisk_format = 3;    ///< who can read us
 
 private:
   int32_t ondisk_format = 0;  ///< value detected on mount
@@ -2502,7 +2511,8 @@ public:
 public:
   int statfs(struct store_statfs_t *buf,
              osd_alert_list_t* alerts = nullptr) override;
-  int pool_statfs(uint64_t pool_id, struct store_statfs_t *buf) override;
+  int pool_statfs(uint64_t pool_id, struct store_statfs_t *buf,
+		  bool *per_pool_omap) override;
 
   void collect_metadata(map<string,string> *pm) override;
 
@@ -2961,7 +2971,7 @@ private:
   int _rmattrs(TransContext *txc,
 	       CollectionRef& c,
 	       OnodeRef& o);
-  void _do_omap_clear(TransContext *txc, const string& prefix, uint64_t id);
+  void _do_omap_clear(TransContext *txc, OnodeRef &o);
   int _omap_clear(TransContext *txc,
 		  CollectionRef& c,
 		  OnodeRef& o);
