@@ -4431,8 +4431,10 @@ void OSD::_remove_heartbeat_peer(int n)
 	   << " " << (q->second.con_front ? q->second.con_front->get_peer_addr() : entity_addr_t())
 	   << dendl;
   q->second.con_back->mark_down();
+  q->second.con_back->clear_priv();
   if (q->second.con_front) {
     q->second.con_front->mark_down();
+    q->second.con_front->clear_priv();
   }
   heartbeat_peers.erase(q);
 }

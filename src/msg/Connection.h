@@ -101,6 +101,11 @@ public:
     return priv;
   }
 
+  void clear_priv() {
+    Mutex::Locker l(lock);
+    priv.reset(nullptr);
+  }
+
   /**
    * Used to judge whether this connection is ready to send. Usually, the
    * implementation need to build a own shakehand or sesson then it can be
