@@ -1556,6 +1556,8 @@ std::string s3_expiration_header(
 
   boost::optional<ceph::real_time> expiration_date;
   boost::optional<std::string> rule_id;
+  /* return the first rule to be deleted */
+  boost::optional<std::string> earliest_rule_id;
 
   const auto& rule_map = config.get_rule_map();
   for (const auto& ri : rule_map) {
@@ -1639,22 +1641,23 @@ std::string s3_expiration_header(
     // update earliest expiration
     if (rule_expiration_date) {
       if ((! expiration_date) ||
-	  (*expiration_date < *rule_expiration_date)) {
+	  (*expiration_date > *rule_expiration_date)) {
       expiration_date =
 	boost::optional<ceph::real_time>(rule_expiration_date);
+      earliest_rule_id = rule_id;
       }
     }
   }
 
   // cond format header
-  if (expiration_date && rule_id) {
+  if (expiration_date && earliest_rule_id) {
     // Fri, 23 Dec 2012 00:00:00 GMT
     char exp_buf[100];
     time_t exp = ceph::real_clock::to_time_t(*expiration_date);
     if (std::strftime(exp_buf, sizeof(exp_buf),
 		      "%a, %d %b %Y %T %Z", std::gmtime(&exp))) {
       hdr = fmt::format("expiry-date=\"{0}\", rule-id=\"{1}\"", exp_buf,
-			*rule_id);
+			*earliest_rule_id);
     } else {
       ldpp_dout(dpp, 0) << __func__ <<
 	"() strftime of life cycle expiration header failed"
