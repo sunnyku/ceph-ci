@@ -141,6 +141,8 @@ public:
     }
   }
 
+  ceph::signedspan get_mnow();
+
 private:
   // -- superblock --
   ceph::mutex publish_lock, pre_publish_lock; // pre-publish orders before publish
@@ -850,6 +852,15 @@ public:
 
   void request_osdmap_update(epoch_t e);
 
+  // -- heartbeats --
+  ceph::mutex hb_stamp_lock = ceph::make_mutex("OSDServce::hb_stamp_lock");
+
+  /// osd -> heartbeat stamps
+  vector<HeartbeatStampsRef> hb_stamps;
+
+  /// get or create a ref for a peer's HeartbeatStamps
+  HeartbeatStampsRef get_hb_stamps(unsigned osd);
+
   // -- stopping --
   ceph::mutex is_stopping_lock = ceph::make_mutex("OSDService::is_stopping_lock");
   ceph::condition_variable is_stopping_cond;
@@ -1435,12 +1446,21 @@ private:
       }
       return !is_unhealthy(now);
     }
+
+    void clear_mark_down(Connection *except = nullptr) {
+      if (con_back && con_back != except) {
+	con_back->mark_down();
+	con_back->clear_priv();
+	con_back.reset(nullptr);
+      }
+      if (con_front && con_front != except) {
+	con_front->mark_down();
+	con_front->clear_priv();
+	con_front.reset(nullptr);
+      }
+    }
   };
-  /// state attached to outgoing heartbeat connections
-  struct HeartbeatSession : public RefCountedObject {
-    int peer;
-    explicit HeartbeatSession(int p) : peer(p) {}
-  };
+
   Mutex heartbeat_lock;
   map<int, int> debug_heartbeat_drops_remaining;
   Cond heartbeat_cond;
@@ -1454,7 +1474,8 @@ private:
   Messenger *hb_back_server_messenger;
   utime_t last_heartbeat_resample;   ///< last time we chose random peers in waiting-for-healthy state
   double daily_loadavg;
-  
+  ceph::mono_time startup_time;
+
   void _add_heartbeat_peer(int p);
   void _remove_heartbeat_peer(int p);
   bool heartbeat_reset(Connection *con);
