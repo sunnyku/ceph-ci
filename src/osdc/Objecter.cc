@@ -5160,9 +5160,9 @@ void Objecter::_enumerate_reply(
 
   shared_lock rl(rwlock);
   const pg_pool_t *pool = osdmap->get_pg_pool(ctx->oloc.get_pool());
+  rl.unlock();
   if (!pool) {
     // pool is gone, drop any results which are now meaningless.
-    rl.unlock();
     std::move(*ctx)(osdc_errc::pool_dne, {}, {});
     return;
   }
@@ -5190,7 +5190,6 @@ void Objecter::_enumerate_reply(
 	break;
       response.entries.pop_back();
     }
-    rl.unlock();
   }
 
   if (response.entries.size() <= ctx->max) {
