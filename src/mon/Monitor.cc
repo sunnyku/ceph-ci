@@ -2886,6 +2886,9 @@ health_status_t Monitor::get_health_status(
 	      *plain += "0s";
 	    }
 	  }
+	  if (q->second.sticky) {
+	    *plain += ", STICKY";
+	  }
 	  *plain += ") ";
 	}
 	*plain += "["s + short_health_string(p.second.severity) + "] " +
