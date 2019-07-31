@@ -25,7 +25,6 @@
 #include <string_view>
 #include <type_traits>
 
-#include <boost/thread/shared_mutex.hpp>
 #include <boost/asio.hpp>
 
 #include "include/ceph_assert.h"
@@ -37,6 +36,7 @@
 #include "common/admin_socket.h"
 #include "common/async/completion.h"
 #include "common/ceph_time.h"
+#include "common/ceph_mutex.h"
 #include "common/ceph_timer.h"
 #include "common/config_obs.h"
 #include "common/shunique_lock.h"
@@ -1516,7 +1516,8 @@ private:
                : epoch(epoch), up(up), up_primary(up_primary),
                  acting(acting), acting_primary(acting_primary) {}
   };
-  std::shared_mutex pg_mapping_lock;
+  ceph::shared_mutex pg_mapping_lock =
+    ceph::make_shared_mutex("Objecter::pg_mapping_lock");
   // pool -> pg mapping
   std::map<int64_t, std::vector<pg_mapping_t>> pg_mappings;
 
@@ -1571,11 +1572,8 @@ private:
   version_t last_seen_osdmap_version = 0;
   version_t last_seen_pgmap_version = 0;
 
-  mutable std::shared_mutex rwlock;
-  using lock_guard = std::lock_guard<decltype(rwlock)>;
-  using unique_lock = std::unique_lock<decltype(rwlock)>;
-  using shared_lock = boost::shared_lock<decltype(rwlock)>;
-  using shunique_lock = ceph::shunique_lock<decltype(rwlock)>;
+  mutable ceph::shared_mutex rwlock =
+	   ceph::make_shared_mutex("Objecter::rwlock");
   ceph::timer<ceph::coarse_mono_clock> timer;
 
   PerfCounters* logger = nullptr;
@@ -2067,8 +2065,10 @@ public:
   };
 
   void submit_command(CommandOp *c, ceph_tid_t *ptid);
-  int _calc_command_target(CommandOp *c, shunique_lock &sul);
-  void _assign_command_session(CommandOp *c, shunique_lock &sul);
+  int _calc_command_target(CommandOp *c,
+			   ceph::shunique_lock<ceph::shared_mutex> &sul);
+  void _assign_command_session(CommandOp *c,
+			       ceph::shunique_lock<ceph::shared_mutex> &sul);
   void _send_command(CommandOp *c);
   int command_op_cancel(OSDSession *s, ceph_tid_t tid,
 			boost::system::error_code ec);
@@ -2094,7 +2094,8 @@ public:
     bool is_watch{false};
     ceph::coarse_mono_time watch_valid_thru; ///< send time for last acked ping
     int last_error{0};  ///< error from last failed ping|reconnect, if any
-    std::shared_mutex watch_lock;
+    ceph::shared_mutex watch_lock =
+      ceph::make_shared_mutex("LingerOp::watch_lock");
 
     // queue of pending async operations, with the timestamp of
     // when they were queued.
@@ -2204,11 +2205,8 @@ public:
   };
 
   struct OSDSession : public RefCountedObject {
-    std::shared_mutex lock;
-    using lock_guard = std::lock_guard<decltype(lock)>;
-    using unique_lock = std::unique_lock<decltype(lock)>;
-    using shared_lock = boost::shared_lock<decltype(lock)>;
-    using shunique_lock = ceph::shunique_lock<decltype(lock)>;
+    ceph::shared_mutex lock =
+      ceph::make_shared_mutex("OSDSession::lock");
 
     // pending ops
     std::map<ceph_tid_t,Op*> ops;
@@ -2224,9 +2222,6 @@ public:
     ConnectionRef con;
     int num_locks;
     std::unique_ptr<std::mutex[]> completion_locks;
-    using unique_completion_lock = std::unique_lock<
-      decltype(completion_locks)::element_type>;
-
 
     OSDSession(CephContext *cct, int o) :
       osd(o), incarnation(0), con(NULL),
@@ -2237,7 +2232,7 @@ public:
 
     bool is_homeless() { return (osd == -1); }
 
-    unique_completion_lock get_lock(object_t& oid);
+    std::unique_lock<std::mutex> get_lock(object_t& oid);
   };
   std::map<int,OSDSession*> osd_sessions;
 
@@ -2309,7 +2304,7 @@ public:
   int _calc_target(op_target_t *t, Connection *con,
 		   bool any_change = false);
   int _map_session(op_target_t *op, OSDSession **s,
-		   shunique_lock& lc);
+		   ceph::shunique_lock<ceph::shared_mutex>& lc);
 
   void _session_op_assign(OSDSession *s, Op *op);
   void _session_op_remove(OSDSession *s, Op *op);
@@ -2318,13 +2313,16 @@ public:
   void _session_command_op_assign(OSDSession *to, CommandOp *op);
   void _session_command_op_remove(OSDSession *from, CommandOp *op);
 
-  int _assign_op_target_session(Op *op, shunique_lock& lc,
+  int _assign_op_target_session(Op *op, ceph::shunique_lock<ceph::shared_mutex>& lc,
 				bool src_session_locked,
 				bool dst_session_locked);
-  int _recalc_linger_op_target(LingerOp *op, shunique_lock& lc);
+  int _recalc_linger_op_target(LingerOp *op,
+			       ceph::shunique_lock<ceph::shared_mutex>& lc);
 
-  void _linger_submit(LingerOp *info, shunique_lock& sul);
-  void _send_linger(LingerOp *info, shunique_lock& sul);
+  void _linger_submit(LingerOp *info,
+		      ceph::shunique_lock<ceph::shared_mutex>& sul);
+  void _send_linger(LingerOp *info,
+		    ceph::shunique_lock<ceph::shared_mutex>& sul);
   void _linger_commit(LingerOp *info, int r, ceph::buffer::list& outbl);
   void _linger_reconnect(LingerOp *info, int r);
   void _send_linger_ping(LingerOp *info);
@@ -2340,7 +2338,7 @@ public:
   }
 
 private:
-  void _check_op_pool_dne(Op *op, unique_lock *sl);
+  void _check_op_pool_dne(Op *op, std::unique_lock<ceph::shared_mutex> *sl);
   void _send_op_map_check(Op *op);
   void _op_cancel_map_check(Op *op);
   void _check_linger_pool_dne(LingerOp *op, bool *need_unregister);
@@ -2351,9 +2349,11 @@ private:
   void _command_cancel_map_check(CommandOp *op);
 
   void _kick_requests(OSDSession *session, std::map<uint64_t, LingerOp *>& lresend);
-  void _linger_ops_resend(std::map<uint64_t, LingerOp *>& lresend, unique_lock& ul);
+  void _linger_ops_resend(std::map<uint64_t, LingerOp *>& lresend,
+			  std::unique_lock<ceph::shared_mutex>& ul);
 
-  int _get_session(int osd, OSDSession **session, shunique_lock& sul);
+  int _get_session(int osd, OSDSession **session,
+		   ceph::shunique_lock<ceph::shared_mutex>& sul);
   void put_session(OSDSession *s);
   void get_session(OSDSession *s);
   void _reopen_session(OSDSession *session);
@@ -2371,8 +2371,9 @@ private:
    * If throttle_op needs to throttle it will unlock client_lock.
    */
   int calc_op_budget(const std::vector<OSDOp>& ops);
-  void _throttle_op(Op *op, shunique_lock& sul, int op_size = 0);
-  int _take_op_budget(Op *op, shunique_lock& sul) {
+  void _throttle_op(Op *op, ceph::shunique_lock<ceph::shared_mutex>& sul,
+		    int op_size = 0);
+  int _take_op_budget(Op *op, ceph::shunique_lock<ceph::shared_mutex>& sul) {
     ceph_assert(sul && sul.mutex() == &rwlock);
     int op_budget = calc_op_budget(op->ops);
     if (keep_balanced_budget) {
@@ -2452,7 +2453,7 @@ private:
     std::map<ceph_tid_t, Op*>& need_resend,
     std::list<LingerOp*>& need_resend_linger,
     std::map<ceph_tid_t, CommandOp*>& need_resend_command,
-    shunique_lock& sul);
+    ceph::shunique_lock<ceph::shared_mutex>& sul);
 
   int64_t get_object_hash_position(int64_t pool, const std::string& key,
 				   const std::string& ns);
@@ -2510,15 +2511,17 @@ private:
                              const OSDMap &new_osd_map);
 
   // low-level
-  void _op_submit(Op *op, shunique_lock& lc, ceph_tid_t *ptid);
-  void _op_submit_with_budget(Op *op, shunique_lock& lc,
+  void _op_submit(Op *op, ceph::shunique_lock<ceph::shared_mutex>& lc,
+		  ceph_tid_t *ptid);
+  void _op_submit_with_budget(Op *op,
+			      ceph::shunique_lock<ceph::shared_mutex>& lc,
 			      ceph_tid_t *ptid,
 			      int *ctx_budget = NULL);
   // public interface
 public:
   void op_submit(Op *op, ceph_tid_t *ptid = NULL, int *ctx_budget = NULL);
   bool is_active() {
-    shared_lock l(rwlock);
+    std::shared_lock l(rwlock);
     return !((!inflight_ops) && linger_ops.empty() &&
 	     poolstat_ops.empty() && statfs_ops.empty());
   }
@@ -2611,7 +2614,7 @@ public:
   auto get_latest_version(epoch_t oldest, epoch_t newest,
 			  CompletionToken&& token) {
     boost::asio::async_completion<CompletionToken, OpSignature> init(token);
-    unique_lock wl(rwlock);
+    std::unique_lock wl(rwlock);
     _get_latest_version(oldest, newest,
 			OpCompletion::create(
 			  service.get_executor(),
@@ -2622,7 +2625,7 @@ public:
 
   void _get_latest_version(epoch_t oldest, epoch_t neweset,
 			   std::unique_ptr<OpCompletion> fin,
-			   std::unique_lock<std::shared_mutex>&& ul);
+			   std::unique_lock<ceph::shared_mutex>&& ul);
 
   /** Get the current set of global op flags */
   int get_global_op_flags() const { return global_op_flags; }

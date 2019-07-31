@@ -190,18 +190,16 @@ public:
 	    std::string_view format, ceph::buffer::list& out) override;
 };
 
-Objecter::OSDSession::unique_completion_lock Objecter::OSDSession::get_lock(
-  object_t& oid)
+std::unique_lock<std::mutex> Objecter::OSDSession::get_lock(object_t& oid)
 {
   if (oid.name.empty())
-    return unique_completion_lock();
+    return {};
 
   static constexpr uint32_t HASH_PRIME = 1021;
   uint32_t h = ceph_str_hash_linux(oid.name.c_str(), oid.name.size())
     % HASH_PRIME;
 
-  return unique_completion_lock(completion_locks[h % num_locks],
-				std::defer_lock);
+  return {completion_locks[h % num_locks], std::defer_lock};
 }
 
 const char** Objecter::get_tracked_conf_keys() const
@@ -457,7 +455,7 @@ void Objecter::shutdown()
     ldout(cct, 10) << " linger_op " << i->first << dendl;
     LingerOp *lop = i->second;
     {
-      OSDSession::unique_lock swl(homeless_session->lock);
+      std::unique_lock swl(homeless_session->lock);
       _session_linger_op_remove(homeless_session, lop);
     }
     linger_ops.erase(lop->linger_id);
@@ -470,7 +468,7 @@ void Objecter::shutdown()
     ldout(cct, 10) << " op " << i->first << dendl;
     Op *op = i->second;
     {
-      OSDSession::unique_lock swl(homeless_session->lock);
+      std::unique_lock swl(homeless_session->lock);
       _session_op_remove(homeless_session, op);
     }
     op->put();
@@ -482,7 +480,7 @@ void Objecter::shutdown()
     ldout(cct, 10) << " command_op " << i->first << dendl;
     CommandOp *cop = i->second;
     {
-      OSDSession::unique_lock swl(homeless_session->lock);
+      std::unique_lock swl(homeless_session->lock);
       _session_command_op_remove(homeless_session, cop);
     }
     cop->put();
@@ -516,7 +514,7 @@ void Objecter::shutdown()
 }
 
 void Objecter::_send_linger(LingerOp *info,
-			    shunique_lock& sul)
+			    ceph::shunique_lock<ceph::shared_mutex>& sul)
 {
   ceph_assert(sul.owns_lock() && sul.mutex() == &rwlock);
 
@@ -562,7 +560,7 @@ void Objecter::_send_linger(LingerOp *info,
 
   if (info->register_tid) {
     // repeat send.  cancel old registration op, if any.
-    OSDSession::unique_lock sl(info->session->lock);
+    std::unique_lock sl(info->session->lock);
     if (info->session->ops.count(info->register_tid)) {
       Op *o = info->session->ops[info->register_tid];
       _op_cancel_map_check(o);
@@ -618,7 +616,7 @@ public:
     info->_queued_async();
   }
   void operator()() {
-    Objecter::unique_lock wl(objecter->rwlock);
+    std::unique_lock wl(objecter->rwlock);
     bool canceled = info->canceled;
     wl.unlock();
 
@@ -755,7 +753,7 @@ void Objecter::_linger_cancel(LingerOp *info)
   ldout(cct, 20) << __func__ << " linger_id=" << info->linger_id << dendl;
   if (!info->canceled) {
     OSDSession *s = info->session;
-    OSDSession::unique_lock sl(s->lock);
+    std::unique_lock sl(s->lock);
     _session_linger_op_remove(s, info);
     sl.unlock();
 
@@ -853,7 +851,8 @@ ceph_tid_t Objecter::linger_notify(LingerOp *info,
   return info->linger_id;
 }
 
-void Objecter::_linger_submit(LingerOp *info, shunique_lock& sul)
+void Objecter::_linger_submit(LingerOp *info,
+			      ceph::shunique_lock<ceph::shared_mutex>& sul)
 {
   ceph_assert(sul.owns_lock() && sul.mutex() == &rwlock);
   ceph_assert(info->linger_id);
@@ -866,7 +865,7 @@ void Objecter::_linger_submit(LingerOp *info, shunique_lock& sul)
   // Create LingerOp<->OSDSession relation
   int r = _get_session(info->target.osd, &s, sul);
   ceph_assert(r == 0);
-  OSDSession::unique_lock sl(s->lock);
+  unique_lock sl(s->lock);
   _session_linger_op_assign(s, info);
   sl.unlock();
   put_session(s);
@@ -1019,13 +1018,13 @@ void Objecter::_scan_requests(
   map<ceph_tid_t, Op*>& need_resend,
   list<LingerOp*>& need_resend_linger,
   map<ceph_tid_t, CommandOp*>& need_resend_command,
-  shunique_lock& sul)
+  ceph::shunique_lock<ceph::shared_mutex>& sul)
 {
   ceph_assert(sul.owns_lock() && sul.mutex() == &rwlock);
 
   list<LingerOp*> unregister_lingers;
 
-  OSDSession::unique_lock sl(s->lock);
+  std::unique_lock sl(s->lock);
 
   // check for changed linger mappings (_before_ regular ops)
   map<ceph_tid_t,LingerOp*>::iterator lp = s->linger_ops.begin();
@@ -1133,7 +1132,7 @@ void Objecter::_scan_requests(
 
 void Objecter::handle_osd_map(MOSDMap *m)
 {
-  shunique_lock sul(rwlock, acquire_unique);
+  ceph::shunique_lock sul(rwlock, acquire_unique);
   if (!initialized)
     return;
 
@@ -1308,7 +1307,7 @@ void Objecter::handle_osd_map(MOSDMap *m)
     } else {
       get_session(s);
     }
-    OSDSession::unique_lock sl(s->lock);
+    std::unique_lock sl(s->lock);
     if (mapped_session) {
       _session_op_assign(s, op);
     }
@@ -1429,7 +1428,7 @@ void Objecter::CB_Op_Map_Latest::operator()(boost::system::error_code e,
     << "op_map_latest r=" << e << " tid=" << tid
     << " latest " << latest << dendl;
 
-  Objecter::unique_lock wl(objecter->rwlock);
+  unique_lock wl(objecter->rwlock);
 
   map<ceph_tid_t, Op*>::iterator iter =
     objecter->check_latest_map_ops.find(tid);
@@ -1448,7 +1447,7 @@ void Objecter::CB_Op_Map_Latest::operator()(boost::system::error_code e,
   if (op->map_dne_bound == 0)
     op->map_dne_bound = latest;
 
-  OSDSession::unique_lock sl(op->session->lock, defer_lock);
+  unique_lock sl(op->session->lock, defer_lock);
   objecter->_check_op_pool_dne(op, &sl);
 
   op->put();
@@ -1511,7 +1510,7 @@ int Objecter::pool_snap_list(int64_t poolid, vector<uint64_t> *snaps)
 }
 
 // sl may be unlocked.
-void Objecter::_check_op_pool_dne(Op *op, unique_lock *sl)
+void Objecter::_check_op_pool_dne(Op *op, std::unique_lock<ceph::shared_mutex> *sl)
 {
   // rwlock is locked unique
 
@@ -1702,7 +1701,7 @@ void Objecter::CB_Command_Map_Latest::operator()(boost::system::error_code e,
   if (c->map_dne_bound == 0)
     c->map_dne_bound = latest;
 
-  OSDSession::unique_lock sul(c->session->lock);
+  unique_lock sul(c->session->lock);
   objecter->_check_command_map_dne(c);
   sul.unlock();
 
@@ -1764,7 +1763,8 @@ void Objecter::_command_cancel_map_check(CommandOp *c)
  * @returns 0 on success, or -EAGAIN if the lock context requires
  * promotion to write.
  */
-int Objecter::_get_session(int osd, OSDSession **session, shunique_lock& sul)
+int Objecter::_get_session(int osd, OSDSession **session,
+			   shunique_lock<ceph::shared_mutex>& sul)
 {
   ceph_assert(sul && sul.mutex() == &rwlock);
 
@@ -1849,7 +1849,7 @@ void Objecter::close_session(OSDSession *s)
     s->con->mark_down();
     logger->inc(l_osdc_osd_session_close);
   }
-  OSDSession::unique_lock sl(s->lock);
+  unique_lock sl(s->lock);
 
   std::list<LingerOp*> homeless_lingers;
   std::list<CommandOp*> homeless_commands;
@@ -1882,7 +1882,7 @@ void Objecter::close_session(OSDSession *s)
 
   // Assign any leftover ops to the homeless session
   {
-    OSDSession::unique_lock hsl(homeless_session->lock);
+    unique_lock hsl(homeless_session->lock);
     for (std::list<LingerOp*>::iterator i = homeless_lingers.begin();
 	 i != homeless_lingers.end(); ++i) {
       _session_linger_op_assign(homeless_session, *i);
@@ -1922,7 +1922,7 @@ void Objecter::wait_for_osd_map()
 
 void Objecter::_get_latest_version(epoch_t oldest, epoch_t newest,
 				   std::unique_ptr<OpCompletion> fin,
-				   std::unique_lock<std::shared_mutex>&& l)
+				   std::unique_lock<ceph::shared_mutex>&& l)
 {
   ceph_assert(fin);
   if (osdmap->get_epoch() >= newest) {
@@ -2045,7 +2045,7 @@ void Objecter::_kick_requests(OSDSession *session,
 }
 
 void Objecter::_linger_ops_resend(map<uint64_t, LingerOp *>& lresend,
-				  unique_lock& ul)
+				  unique_lock<ceph::shared_mutex>& ul)
 {
   ceph_assert(ul.owns_lock());
   shunique_lock sul(std::move(ul));
@@ -2095,7 +2095,7 @@ void Objecter::tick()
   for (map<int,OSDSession*>::iterator siter = osd_sessions.begin();
        siter != osd_sessions.end(); ++siter) {
     OSDSession *s = siter->second;
-    OSDSession::lock_guard l(s->lock);
+    scoped_lock l(s->lock);
     bool found = false;
     for (map<ceph_tid_t,Op*>::iterator p = s->ops.begin();
 	p != s->ops.end();
@@ -2209,7 +2209,8 @@ void Objecter::op_submit(Op *op, ceph_tid_t *ptid, int *ctx_budget)
   _op_submit_with_budget(op, rl, ptid, ctx_budget);
 }
 
-void Objecter::_op_submit_with_budget(Op *op, shunique_lock& sul,
+void Objecter::_op_submit_with_budget(Op *op,
+				      shunique_lock<ceph::shared_mutex>& sul,
 				      ceph_tid_t *ptid,
 				      int *ctx_budget)
 {
@@ -2313,7 +2314,7 @@ void Objecter::_send_op_account(Op *op)
   }
 }
 
-void Objecter::_op_submit(Op *op, shunique_lock& sul, ceph_tid_t *ptid)
+void Objecter::_op_submit(Op *op, shunique_lock<ceph::shared_mutex>& sul, ceph_tid_t *ptid)
 {
   // rwlock is locked
 
@@ -2399,7 +2400,7 @@ void Objecter::_op_submit(Op *op, shunique_lock& sul, ceph_tid_t *ptid)
     _maybe_request_map();
   }
 
-  OSDSession::unique_lock sl(s->lock);
+  unique_lock sl(s->lock);
   if (op->tid == 0)
     op->tid = ++last_tid;
 
@@ -2435,7 +2436,7 @@ int Objecter::op_cancel(OSDSession *s, ceph_tid_t tid, int r)
 {
   ceph_assert(initialized);
 
-  OSDSession::unique_lock sl(s->lock);
+  unique_lock sl(s->lock);
 
   map<ceph_tid_t, Op*>::iterator p = s->ops.find(tid);
   if (p == s->ops.end()) {
@@ -2500,7 +2501,7 @@ start:
   for (map<int, OSDSession *>::iterator siter = osd_sessions.begin();
        siter != osd_sessions.end(); ++siter) {
     OSDSession *s = siter->second;
-    OSDSession::shared_lock sl(s->lock);
+    shared_lock sl(s->lock);
     if (s->ops.find(tid) != s->ops.end()) {
       sl.unlock();
       ret = op_cancel(s, tid, r);
@@ -2516,7 +2517,7 @@ start:
 		<< " not found in live sessions" << dendl;
 
   // Handle case where the op is in homeless session
-  OSDSession::shared_lock sl(homeless_session->lock);
+  shared_lock sl(homeless_session->lock);
   if (homeless_session->ops.find(tid) != homeless_session->ops.end()) {
     sl.unlock();
     ret = op_cancel(homeless_session, tid, r);
@@ -2547,7 +2548,7 @@ epoch_t Objecter::op_cancel_writes(int r, int64_t pool)
   for (map<int, OSDSession *>::iterator siter = osd_sessions.begin();
        siter != osd_sessions.end(); ++siter) {
     OSDSession *s = siter->second;
-    OSDSession::shared_lock sl(s->lock);
+    shared_lock sl(s->lock);
     for (map<ceph_tid_t, Op*>::iterator op_i = s->ops.begin();
 	 op_i != s->ops.end(); ++op_i) {
       if (op_i->second->target.flags & CEPH_OSD_FLAG_WRITE
@@ -2952,7 +2953,7 @@ int Objecter::_calc_target(op_target_t *t, Connection *con, bool any_change)
 }
 
 int Objecter::_map_session(op_target_t *target, OSDSession **s,
-			   shunique_lock& sul)
+			   shunique_lock<ceph::shared_mutex>& sul)
 {
   _calc_target(target, nullptr);
   return _get_session(target->osd, s, sul);
@@ -3059,7 +3060,7 @@ void Objecter::_session_command_op_assign(OSDSession *to, CommandOp *op)
 }
 
 int Objecter::_recalc_linger_op_target(LingerOp *linger_op,
-				       shunique_lock& sul)
+				       shunique_lock<ceph::shared_mutex>& sul)
 {
   // rwlock is locked unique
 
@@ -3078,7 +3079,7 @@ int Objecter::_recalc_linger_op_target(LingerOp *linger_op,
       // same time here is only safe because we are the only one that
       // takes two, and we are holding rwlock for write.  Disable
       // lockdep because it doesn't know that.
-      OSDSession::unique_lock sl(s->lock);
+      unique_lock sl(s->lock);
       _session_linger_op_remove(linger_op->session, linger_op);
       _session_linger_op_assign(s, linger_op);
     }
@@ -3277,7 +3278,7 @@ int Objecter::calc_op_budget(const vector<OSDOp>& ops)
 }
 
 void Objecter::_throttle_op(Op *op,
-			    shunique_lock& sul,
+			    shunique_lock<ceph::shared_mutex>& sul,
 			    int op_budget)
 {
   ceph_assert(sul && sul.mutex() == &rwlock);
@@ -3331,7 +3332,7 @@ void Objecter::handle_osd_op_reply(MOSDOpReply *m)
     return;
   }
 
-  OSDSession::unique_lock sl(s->lock);
+  unique_lock sl(s->lock);
 
   map<ceph_tid_t, Op *>::iterator iter = s->ops.find(tid);
   if (iter == s->ops.end()) {
@@ -3556,7 +3557,7 @@ void Objecter::handle_osd_backoff(MOSDBackoff *m)
 
   get_session(s);
 
-  OSDSession::unique_lock sl(s->lock);
+  unique_lock sl(s->lock);
 
   switch (m->op) {
   case CEPH_OSD_BACKOFF_OP_BLOCK:
@@ -4421,7 +4422,7 @@ bool Objecter::ms_handle_reset(Connection *con)
 	return false;
       }
       map<uint64_t, LingerOp *> lresend;
-      OSDSession::unique_lock sl(session->lock);
+      unique_lock sl(session->lock);
       _reopen_session(session);
       _kick_requests(session, lresend);
       sl.unlock();
@@ -4487,7 +4488,7 @@ void Objecter::_dump_active()
   for (map<int, OSDSession *>::iterator siter = osd_sessions.begin();
        siter != osd_sessions.end(); ++siter) {
     OSDSession *s = siter->second;
-    OSDSession::shared_lock sl(s->lock);
+    shared_lock sl(s->lock);
     _dump_active(s);
     sl.unlock();
   }
@@ -4548,7 +4549,7 @@ void Objecter::dump_ops(Formatter *fmt)
   for (map<int, OSDSession *>::const_iterator siter = osd_sessions.begin();
        siter != osd_sessions.end(); ++siter) {
     OSDSession *s = siter->second;
-    OSDSession::shared_lock sl(s->lock);
+    shared_lock sl(s->lock);
     _dump_ops(s, fmt);
     sl.unlock();
   }
@@ -4578,7 +4579,7 @@ void Objecter::dump_linger_ops(Formatter *fmt)
   for (map<int, OSDSession *>::const_iterator siter = osd_sessions.begin();
        siter != osd_sessions.end(); ++siter) {
     OSDSession *s = siter->second;
-    OSDSession::shared_lock sl(s->lock);
+    shared_lock sl(s->lock);
     _dump_linger_ops(s, fmt);
     sl.unlock();
   }
@@ -4615,7 +4616,7 @@ void Objecter::dump_command_ops(Formatter *fmt)
   for (map<int, OSDSession *>::const_iterator siter = osd_sessions.begin();
        siter != osd_sessions.end(); ++siter) {
     OSDSession *s = siter->second;
-    OSDSession::shared_lock sl(s->lock);
+    shared_lock sl(s->lock);
     _dump_command_ops(s, fmt);
     sl.unlock();
   }
@@ -4738,7 +4739,7 @@ void Objecter::handle_command_reply(MCommandReply *m)
     return;
   }
 
-  OSDSession::shared_lock sl(s->lock);
+  shared_lock sl(s->lock);
   map<ceph_tid_t,CommandOp*>::iterator p = s->command_ops.find(m->get_tid());
   if (p == s->command_ops.end()) {
     ldout(cct, 10) << "handle_command_reply tid " << m->get_tid()
@@ -4762,7 +4763,7 @@ void Objecter::handle_command_reply(MCommandReply *m)
 
   sl.unlock();
 
-  OSDSession::unique_lock sul(s->lock);
+  unique_lock sul(s->lock);
   _finish_command(c, m->r < 0 ? bs::error_code(-m->r, osd_category()) :
 		  bs::error_code(), std::move(m->rs),
 		  std::move(m->get_data()));
@@ -4780,7 +4781,7 @@ void Objecter::submit_command(CommandOp *c, ceph_tid_t *ptid)
   c->tid = tid;
 
   {
-    OSDSession::unique_lock hs_wl(homeless_session->lock);
+    unique_lock hs_wl(homeless_session->lock);
     _session_command_op_assign(homeless_session, c);
   }
 
@@ -4807,7 +4808,8 @@ void Objecter::submit_command(CommandOp *c, ceph_tid_t *ptid)
   logger->inc(l_osdc_command_active);
 }
 
-int Objecter::_calc_command_target(CommandOp *c, shunique_lock& sul)
+int Objecter::_calc_command_target(CommandOp *c,
+				   shunique_lock<ceph::shared_mutex>& sul)
 {
   ceph_assert(sul.owns_lock() && sul.mutex() == &rwlock);
 
@@ -4863,7 +4865,7 @@ int Objecter::_calc_command_target(CommandOp *c, shunique_lock& sul)
 }
 
 void Objecter::_assign_command_session(CommandOp *c,
-				       shunique_lock& sul)
+				       shunique_lock<ceph::shared_mutex>& sul)
 {
   ceph_assert(sul.owns_lock() && sul.mutex() == &rwlock);
 
@@ -4874,11 +4876,11 @@ void Objecter::_assign_command_session(CommandOp *c,
   if (c->session != s) {
     if (c->session) {
       OSDSession *cs = c->session;
-      OSDSession::unique_lock csl(cs->lock);
+      unique_lock csl(cs->lock);
       _session_command_op_remove(c->session, c);
       csl.unlock();
     }
-    OSDSession::unique_lock sl(s->lock);
+    unique_lock sl(s->lock);
     _session_command_op_assign(s, c);
   }
 
@@ -4915,7 +4917,7 @@ int Objecter::command_op_cancel(OSDSession *s, ceph_tid_t tid,
 
   CommandOp *op = it->second;
   _command_cancel_map_check(op);
-  OSDSession::unique_lock sl(op->session->lock);
+  unique_lock sl(op->session->lock);
   _finish_command(op, ec, {}, {});
   sl.unlock();
   return 0;
