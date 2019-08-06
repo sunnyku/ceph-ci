@@ -2295,6 +2295,9 @@ void PeeringState::activate(
     purged.intersection_of(to_trim, info.purged_snaps);
     to_trim.subtract(purged);
 
+    renew_lease(pl->get_mnow());
+    schedule_renew_lease();
+
     // adjust purged_snaps: PG may have been inactive while snaps were pruned
     // from the removed_snaps_queue in the osdmap.  update local purged_snaps
     // reflect only those snaps that we thought were pruned and were still in
@@ -2443,10 +2446,6 @@ void PeeringState::activate(
 		   << " missing " << pm << dendl;
       }
     }
-
-    renew_lease(pl->get_mnow());
-    send_lease();
-    schedule_renew_lease();
 
     // Set up missing_loc
     set<pg_shard_t> complete_shards;
@@ -5762,6 +5761,8 @@ void PeeringState::Active::all_activated_and_committed()
   ceph_assert(ps->peer_activated.size() == ps->acting_recovery_backfill.size());
   ceph_assert(!ps->acting_recovery_backfill.empty());
   ceph_assert(ps->blocked_by.empty());
+
+  ps->send_lease();
 
   // Degraded?
   ps->update_calc_stats();
