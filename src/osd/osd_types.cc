@@ -3369,19 +3369,20 @@ void pg_info_t::generate_test_instances(list<pg_info_t*>& o)
 // -- pg_notify_t --
 void pg_notify_t::encode(ceph::buffer::list &bl) const
 {
-  ENCODE_START(3, 2, bl);
+  ENCODE_START(4, 2, bl);
   encode(query_epoch, bl);
   encode(epoch_sent, bl);
   encode(info, bl);
   encode(to, bl);
   encode(from, bl);
   encode(past_intervals, bl);
+  encode(lease, bl);
   ENCODE_FINISH(bl);
 }
 
 void pg_notify_t::decode(ceph::buffer::list::const_iterator &bl)
 {
-  DECODE_START(3, bl);
+  DECODE_START(4, bl);
   decode(query_epoch, bl);
   decode(epoch_sent, bl);
   decode(info, bl);
@@ -3389,6 +3390,9 @@ void pg_notify_t::decode(ceph::buffer::list::const_iterator &bl)
   decode(from, bl);
   if (struct_v >= 3) {
     decode(past_intervals, bl);
+  }
+  if (struct_v >= 4) {
+    decode(lease, bl);
   }
   DECODE_FINISH(bl);
 }
@@ -3405,6 +3409,12 @@ void pg_notify_t::dump(Formatter *f) const
     f->close_section();
   }
   f->dump_object("past_intervals", past_intervals);
+  if (lease) {
+    f->dump_object("lease", *lease);
+  }
+  if (lease_ack) {
+    f->dump_object("lease_ack", *lease_ack);
+  }
 }
 
 void pg_notify_t::generate_test_instances(list<pg_notify_t*>& o)
@@ -3425,6 +3435,12 @@ ostream &operator<<(ostream &lhs, const pg_notify_t &notify)
     lhs << " " << (unsigned)notify.from
 	<< "->" << (unsigned)notify.to;
   lhs << " " << notify.past_intervals;
+  if (notify.lease) {
+    lhs << " " << *notify.lease;
+  }
+  if (notify.lease_ack) {
+    lhs << " " << *notify.lease_ack;
+  }
   return lhs << ")";
 }
 
