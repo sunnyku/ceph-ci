@@ -4101,7 +4101,7 @@ void PeeringState::update_hset(const pg_hit_set_history_t &hset_history)
   PeeringState *ps = context< PeeringMachine >().state; \
   std::ignore = ps;                                     \
   PeeringListener *pl = context< PeeringMachine >().pl; \
-  std::ignore = pl;
+  std::ignore = pl
 
 
 /*------Crashed-------*/
@@ -4124,7 +4124,7 @@ PeeringState::Initial::Initial(my_context ctx)
 
 boost::statechart::result PeeringState::Initial::react(const MNotifyRec& notify)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->proc_replica_info(
     notify.from, notify.notify.info, notify.notify.epoch_sent);
   ps->set_last_peering_reset();
@@ -4133,7 +4133,7 @@ boost::statechart::result PeeringState::Initial::react(const MNotifyRec& notify)
 
 boost::statechart::result PeeringState::Initial::react(const MInfoRec& i)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ceph_assert(!ps->is_primary());
   post_event(i);
   return transit< Stray >();
@@ -4141,7 +4141,7 @@ boost::statechart::result PeeringState::Initial::react(const MInfoRec& i)
 
 boost::statechart::result PeeringState::Initial::react(const MLogRec& i)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ceph_assert(!ps->is_primary());
   post_event(i);
   return transit< Stray >();
@@ -4150,7 +4150,7 @@ boost::statechart::result PeeringState::Initial::react(const MLogRec& i)
 void PeeringState::Initial::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_initial_latency, dur);
 }
@@ -4173,7 +4173,7 @@ PeeringState::Started::react(const IntervalFlush&)
 
 boost::statechart::result PeeringState::Started::react(const AdvMap& advmap)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "Started advmap" << dendl;
   ps->check_full_transition(advmap.lastmap, advmap.osdmap);
   if (ps->should_restart_peering(
@@ -4204,7 +4204,7 @@ boost::statechart::result PeeringState::Started::react(const QueryState& q)
 void PeeringState::Started::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_started_latency, dur);
 }
@@ -4215,7 +4215,7 @@ PeeringState::Reset::Reset(my_context ctx)
     NamedState(context< PeeringMachine >().state_history, "Reset")
 {
   context< PeeringMachine >().log_enter(state_name);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   ps->flushes_in_progress = 0;
   ps->set_last_peering_reset();
@@ -4231,7 +4231,7 @@ PeeringState::Reset::react(const IntervalFlush&)
 
 boost::statechart::result PeeringState::Reset::react(const AdvMap& advmap)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "Reset advmap" << dendl;
 
   ps->check_full_transition(advmap.lastmap, advmap.osdmap);
@@ -4258,7 +4258,7 @@ boost::statechart::result PeeringState::Reset::react(const AdvMap& advmap)
 
 boost::statechart::result PeeringState::Reset::react(const ActMap&)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   if (ps->should_send_notify() && ps->get_primary().osd >= 0) {
     ps->info.history.refresh_prior_readable_until_ub(
       pl->get_mnow(),
@@ -4290,7 +4290,7 @@ boost::statechart::result PeeringState::Reset::react(const QueryState& q)
 void PeeringState::Reset::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_reset_latency, dur);
 }
@@ -4302,7 +4302,7 @@ PeeringState::Start::Start(my_context ctx)
 {
   context< PeeringMachine >().log_enter(state_name);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   if (ps->is_primary()) {
     psdout(1) << "transitioning to Primary" << dendl;
     post_event(MakePrimary());
@@ -4315,7 +4315,7 @@ PeeringState::Start::Start(my_context ctx)
 void PeeringState::Start::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_start_latency, dur);
 }
@@ -4326,7 +4326,7 @@ PeeringState::Primary::Primary(my_context ctx)
     NamedState(context< PeeringMachine >().state_history, "Started/Primary")
 {
   context< PeeringMachine >().log_enter(state_name);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ceph_assert(ps->want_acting.empty());
 
   // set CREATING bit until we have peered for the first time.
@@ -4351,7 +4351,7 @@ PeeringState::Primary::Primary(my_context ctx)
 
 boost::statechart::result PeeringState::Primary::react(const MNotifyRec& notevt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(7) << "handle_pg_notify from osd." << notevt.from << dendl;
   ps->proc_replica_info(
     notevt.from, notevt.notify.info, notevt.notify.epoch_sent);
@@ -4360,7 +4360,7 @@ boost::statechart::result PeeringState::Primary::react(const MNotifyRec& notevt)
 
 boost::statechart::result PeeringState::Primary::react(const ActMap&)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(7) << "handle ActMap primary" << dendl;
   pl->publish_stats_to_osd();
   return discard_event();
@@ -4369,7 +4369,7 @@ boost::statechart::result PeeringState::Primary::react(const ActMap&)
 boost::statechart::result PeeringState::Primary::react(
   const SetForceRecovery&)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->set_force_recovery(true);
   return discard_event();
 }
@@ -4377,7 +4377,7 @@ boost::statechart::result PeeringState::Primary::react(
 boost::statechart::result PeeringState::Primary::react(
   const UnsetForceRecovery&)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->set_force_recovery(false);
   return discard_event();
 }
@@ -4385,7 +4385,7 @@ boost::statechart::result PeeringState::Primary::react(
 boost::statechart::result PeeringState::Primary::react(
   const RequestScrub& evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   if (ps->is_primary()) {
     pl->scrub_requested(evt.deep, evt.repair);
     psdout(10) << "marking for scrub" << dendl;
@@ -4396,7 +4396,7 @@ boost::statechart::result PeeringState::Primary::react(
 boost::statechart::result PeeringState::Primary::react(
   const SetForceBackfill&)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->set_force_backfill(true);
   return discard_event();
 }
@@ -4404,7 +4404,7 @@ boost::statechart::result PeeringState::Primary::react(
 boost::statechart::result PeeringState::Primary::react(
   const UnsetForceBackfill&)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->set_force_backfill(false);
   return discard_event();
 }
@@ -4412,7 +4412,7 @@ boost::statechart::result PeeringState::Primary::react(
 void PeeringState::Primary::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->want_acting.clear();
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_primary_latency, dur);
@@ -4427,7 +4427,7 @@ PeeringState::Peering::Peering(my_context ctx)
     history_les_bound(false)
 {
   context< PeeringMachine >().log_enter(state_name);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   ceph_assert(!ps->is_peered());
   ceph_assert(!ps->is_peering());
@@ -4437,7 +4437,7 @@ PeeringState::Peering::Peering(my_context ctx)
 
 boost::statechart::result PeeringState::Peering::react(const AdvMap& advmap)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "Peering advmap" << dendl;
   if (prior_set.affected_by_map(*(advmap.osdmap), ps->dpp)) {
     psdout(1) << "Peering, affected_by_map, going to Reset" << dendl;
@@ -4453,7 +4453,7 @@ boost::statechart::result PeeringState::Peering::react(const AdvMap& advmap)
 
 boost::statechart::result PeeringState::Peering::react(const QueryState& q)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   q.f->open_object_section("state");
   q.f->dump_string("name", state_name);
@@ -4507,7 +4507,7 @@ boost::statechart::result PeeringState::Peering::react(const QueryState& q)
 void PeeringState::Peering::exit()
 {
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "Leaving Peering" << dendl;
   context< PeeringMachine >().log_exit(state_name, enter_time);
   ps->state_clear(PG_STATE_PEERING);
@@ -4526,7 +4526,7 @@ PeeringState::Backfilling::Backfilling(my_context ctx)
   context< PeeringMachine >().log_enter(state_name);
 
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->backfill_reserved = true;
   pl->on_backfill_reserved();
   ps->state_clear(PG_STATE_BACKFILL_TOOFULL);
@@ -4537,7 +4537,7 @@ PeeringState::Backfilling::Backfilling(my_context ctx)
 
 void PeeringState::Backfilling::backfill_release_reservations()
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   pl->cancel_local_background_io_reservation();
   for (set<pg_shard_t>::iterator it = ps->backfill_targets.begin();
        it != ps->backfill_targets.end();
@@ -4555,7 +4555,7 @@ void PeeringState::Backfilling::backfill_release_reservations()
 
 void PeeringState::Backfilling::cancel_backfill()
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   backfill_release_reservations();
   pl->on_backfill_canceled();
 }
@@ -4570,7 +4570,7 @@ PeeringState::Backfilling::react(const Backfilled &c)
 boost::statechart::result
 PeeringState::Backfilling::react(const DeferBackfill &c)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   psdout(10) << "defer backfill, retry delay " << c.delay << dendl;
   ps->state_set(PG_STATE_BACKFILL_WAIT);
@@ -4589,7 +4589,7 @@ PeeringState::Backfilling::react(const DeferBackfill &c)
 boost::statechart::result
 PeeringState::Backfilling::react(const UnfoundBackfill &c)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "backfill has unfound, can't continue" << dendl;
   ps->state_set(PG_STATE_BACKFILL_UNFOUND);
   ps->state_clear(PG_STATE_BACKFILLING);
@@ -4600,7 +4600,7 @@ PeeringState::Backfilling::react(const UnfoundBackfill &c)
 boost::statechart::result
 PeeringState::Backfilling::react(const RemoteReservationRevokedTooFull &)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   ps->state_set(PG_STATE_BACKFILL_TOOFULL);
   ps->state_clear(PG_STATE_BACKFILLING);
@@ -4619,7 +4619,7 @@ PeeringState::Backfilling::react(const RemoteReservationRevokedTooFull &)
 boost::statechart::result
 PeeringState::Backfilling::react(const RemoteReservationRevoked &)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->state_set(PG_STATE_BACKFILL_WAIT);
   cancel_backfill();
   if (ps->needs_backfill()) {
@@ -4633,7 +4633,7 @@ PeeringState::Backfilling::react(const RemoteReservationRevoked &)
 void PeeringState::Backfilling::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->backfill_reserved = false;
   ps->state_clear(PG_STATE_BACKFILLING);
   ps->state_clear(PG_STATE_FORCED_BACKFILL | PG_STATE_FORCED_RECOVERY);
@@ -4649,7 +4649,7 @@ PeeringState::WaitRemoteBackfillReserved::WaitRemoteBackfillReserved(my_context 
     backfill_osd_it(context< Active >().remote_shards_to_reserve_backfill.begin())
 {
   context< PeeringMachine >().log_enter(state_name);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   ps->state_set(PG_STATE_BACKFILL_WAIT);
   pl->publish_stats_to_osd();
@@ -4659,7 +4659,7 @@ PeeringState::WaitRemoteBackfillReserved::WaitRemoteBackfillReserved(my_context 
 boost::statechart::result
 PeeringState::WaitRemoteBackfillReserved::react(const RemoteBackfillReserved &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   int64_t num_bytes = ps->info.stats.stats.sum.num_bytes;
   psdout(10) << __func__ << " num_bytes " << num_bytes << dendl;
@@ -4688,7 +4688,7 @@ PeeringState::WaitRemoteBackfillReserved::react(const RemoteBackfillReserved &ev
 void PeeringState::WaitRemoteBackfillReserved::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_waitremotebackfillreserved_latency, dur);
@@ -4696,7 +4696,7 @@ void PeeringState::WaitRemoteBackfillReserved::exit()
 
 void PeeringState::WaitRemoteBackfillReserved::retry()
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   pl->cancel_local_background_io_reservation();
 
   // Send CANCEL to all previously acquired reservations
@@ -4748,7 +4748,7 @@ PeeringState::WaitLocalBackfillReserved::WaitLocalBackfillReserved(my_context ct
     NamedState(context< PeeringMachine >().state_history, "Started/Primary/Active/WaitLocalBackfillReserved")
 {
   context< PeeringMachine >().log_enter(state_name);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   ps->state_set(PG_STATE_BACKFILL_WAIT);
   pl->request_local_background_io_reservation(
@@ -4767,7 +4767,7 @@ PeeringState::WaitLocalBackfillReserved::WaitLocalBackfillReserved(my_context ct
 void PeeringState::WaitLocalBackfillReserved::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_waitlocalbackfillreserved_latency, dur);
 }
@@ -4778,7 +4778,7 @@ PeeringState::NotBackfilling::NotBackfilling(my_context ctx)
     NamedState(context< PeeringMachine >().state_history, "Started/Primary/Active/NotBackfilling")
 {
   context< PeeringMachine >().log_enter(state_name);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->state_clear(PG_STATE_REPAIR);
   pl->publish_stats_to_osd();
 }
@@ -4799,7 +4799,7 @@ void PeeringState::NotBackfilling::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->state_clear(PG_STATE_BACKFILL_UNFOUND);
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_notbackfilling_latency, dur);
@@ -4811,7 +4811,7 @@ PeeringState::NotRecovering::NotRecovering(my_context ctx)
     NamedState(context< PeeringMachine >().state_history, "Started/Primary/Active/NotRecovering")
 {
   context< PeeringMachine >().log_enter(state_name);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   pl->publish_stats_to_osd();
 }
 
@@ -4819,7 +4819,7 @@ void PeeringState::NotRecovering::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->state_clear(PG_STATE_RECOVERY_UNFOUND);
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_notrecovering_latency, dur);
@@ -4836,7 +4836,7 @@ PeeringState::RepNotRecovering::RepNotRecovering(my_context ctx)
 boost::statechart::result
 PeeringState::RepNotRecovering::react(const RejectRemoteReservation &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->reject_reservation();
   post_event(RemoteReservationRejected());
   return discard_event();
@@ -4845,7 +4845,7 @@ PeeringState::RepNotRecovering::react(const RejectRemoteReservation &evt)
 void PeeringState::RepNotRecovering::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_repnotrecovering_latency, dur);
 }
@@ -4861,7 +4861,7 @@ PeeringState::RepWaitRecoveryReserved::RepWaitRecoveryReserved(my_context ctx)
 boost::statechart::result
 PeeringState::RepWaitRecoveryReserved::react(const RemoteRecoveryReserved &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   pl->send_cluster_message(
     ps->primary.osd,
     new MRecoveryReserve(
@@ -4876,7 +4876,7 @@ boost::statechart::result
 PeeringState::RepWaitRecoveryReserved::react(
   const RemoteReservationCanceled &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   pl->unreserve_recovery_space();
 
   pl->cancel_remote_recovery_reservation();
@@ -4886,7 +4886,7 @@ PeeringState::RepWaitRecoveryReserved::react(
 void PeeringState::RepWaitRecoveryReserved::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_repwaitrecoveryreserved_latency, dur);
 }
@@ -4903,7 +4903,7 @@ boost::statechart::result
 PeeringState::RepNotRecovering::react(const RequestBackfillPrio &evt)
 {
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   if (!pl->try_reserve_recovery_space(
 	evt.primary_num_bytes, evt.local_num_bytes)) {
@@ -4931,7 +4931,7 @@ PeeringState::RepNotRecovering::react(const RequestBackfillPrio &evt)
 boost::statechart::result
 PeeringState::RepNotRecovering::react(const RequestRecoveryPrio &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   // fall back to a local reckoning of priority of primary doesn't pass one
   // (pre-mimic compat)
@@ -4959,7 +4959,7 @@ PeeringState::RepNotRecovering::react(const RequestRecoveryPrio &evt)
 void PeeringState::RepWaitBackfillReserved::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_repwaitbackfillreserved_latency, dur);
 }
@@ -4967,7 +4967,7 @@ void PeeringState::RepWaitBackfillReserved::exit()
 boost::statechart::result
 PeeringState::RepWaitBackfillReserved::react(const RemoteBackfillReserved &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
 
   pl->send_cluster_message(
@@ -4984,7 +4984,7 @@ boost::statechart::result
 PeeringState::RepWaitBackfillReserved::react(
   const RejectRemoteReservation &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->reject_reservation();
   post_event(RemoteReservationRejected());
   return discard_event();
@@ -4994,7 +4994,7 @@ boost::statechart::result
 PeeringState::RepWaitBackfillReserved::react(
   const RemoteReservationRejected &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   pl->unreserve_recovery_space();
 
   pl->cancel_remote_recovery_reservation();
@@ -5005,7 +5005,7 @@ boost::statechart::result
 PeeringState::RepWaitBackfillReserved::react(
   const RemoteReservationCanceled &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   pl->unreserve_recovery_space();
 
   pl->cancel_remote_recovery_reservation();
@@ -5023,7 +5023,7 @@ PeeringState::RepRecovering::RepRecovering(my_context ctx)
 boost::statechart::result
 PeeringState::RepRecovering::react(const RemoteRecoveryPreempted &)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
 
   pl->unreserve_recovery_space();
@@ -5040,7 +5040,7 @@ PeeringState::RepRecovering::react(const RemoteRecoveryPreempted &)
 boost::statechart::result
 PeeringState::RepRecovering::react(const BackfillTooFull &)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
 
   pl->unreserve_recovery_space();
@@ -5057,7 +5057,7 @@ PeeringState::RepRecovering::react(const BackfillTooFull &)
 boost::statechart::result
 PeeringState::RepRecovering::react(const RemoteBackfillPreempted &)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
 
   pl->unreserve_recovery_space();
@@ -5074,7 +5074,7 @@ PeeringState::RepRecovering::react(const RemoteBackfillPreempted &)
 void PeeringState::RepRecovering::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   pl->unreserve_recovery_space();
 
   pl->cancel_remote_recovery_reservation();
@@ -5093,7 +5093,7 @@ PeeringState::Activating::Activating(my_context ctx)
 void PeeringState::Activating::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_activating_latency, dur);
 }
@@ -5103,7 +5103,7 @@ PeeringState::WaitLocalRecoveryReserved::WaitLocalRecoveryReserved(my_context ct
     NamedState(context< PeeringMachine >().state_history, "Started/Primary/Active/WaitLocalRecoveryReserved")
 {
   context< PeeringMachine >().log_enter(state_name);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   // Make sure all nodes that part of the recovery aren't full
   if (!ps->cct->_conf->osd_debug_skip_full_check_in_recovery &&
@@ -5130,7 +5130,7 @@ PeeringState::WaitLocalRecoveryReserved::WaitLocalRecoveryReserved(my_context ct
 boost::statechart::result
 PeeringState::WaitLocalRecoveryReserved::react(const RecoveryTooFull &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->state_set(PG_STATE_RECOVERY_TOOFULL);
   pl->schedule_event_after(
     std::make_shared<PGPeeringEvent>(
@@ -5144,7 +5144,7 @@ PeeringState::WaitLocalRecoveryReserved::react(const RecoveryTooFull &evt)
 void PeeringState::WaitLocalRecoveryReserved::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_waitlocalrecoveryreserved_latency, dur);
 }
@@ -5160,7 +5160,7 @@ PeeringState::WaitRemoteRecoveryReserved::WaitRemoteRecoveryReserved(my_context 
 
 boost::statechart::result
 PeeringState::WaitRemoteRecoveryReserved::react(const RemoteRecoveryReserved &evt) {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   if (remote_recovery_reservation_it !=
       context< Active >().remote_shards_to_reserve_recovery.end()) {
@@ -5184,7 +5184,7 @@ PeeringState::WaitRemoteRecoveryReserved::react(const RemoteRecoveryReserved &ev
 void PeeringState::WaitRemoteRecoveryReserved::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_waitremoterecoveryreserved_latency, dur);
 }
@@ -5195,7 +5195,7 @@ PeeringState::Recovering::Recovering(my_context ctx)
 {
   context< PeeringMachine >().log_enter(state_name);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->state_clear(PG_STATE_RECOVERY_WAIT);
   ps->state_clear(PG_STATE_RECOVERY_TOOFULL);
   ps->state_set(PG_STATE_RECOVERING);
@@ -5206,7 +5206,7 @@ PeeringState::Recovering::Recovering(my_context ctx)
 
 void PeeringState::Recovering::release_reservations(bool cancel)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ceph_assert(cancel || !ps->pg_log.get_missing().have_missing());
 
   // release remote reservations
@@ -5229,7 +5229,7 @@ void PeeringState::Recovering::release_reservations(bool cancel)
 boost::statechart::result
 PeeringState::Recovering::react(const AllReplicasRecovered &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->state_clear(PG_STATE_FORCED_RECOVERY);
   release_reservations();
   pl->cancel_local_background_io_reservation();
@@ -5239,7 +5239,7 @@ PeeringState::Recovering::react(const AllReplicasRecovered &evt)
 boost::statechart::result
 PeeringState::Recovering::react(const RequestBackfill &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   release_reservations();
 
@@ -5253,7 +5253,7 @@ PeeringState::Recovering::react(const RequestBackfill &evt)
 boost::statechart::result
 PeeringState::Recovering::react(const DeferRecovery &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   if (!ps->state_test(PG_STATE_RECOVERING)) {
     // we may have finished recovery and have an AllReplicasRecovered
     // event queued to move us to the next state.
@@ -5276,7 +5276,7 @@ PeeringState::Recovering::react(const DeferRecovery &evt)
 boost::statechart::result
 PeeringState::Recovering::react(const UnfoundRecovery &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "recovery has unfound, can't continue" << dendl;
   ps->state_set(PG_STATE_RECOVERY_UNFOUND);
   pl->cancel_local_background_io_reservation();
@@ -5288,7 +5288,7 @@ void PeeringState::Recovering::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   ps->state_clear(PG_STATE_RECOVERING);
   pl->get_peering_perf().tinc(rs_recovering_latency, dur);
@@ -5302,7 +5302,7 @@ PeeringState::Recovered::Recovered(my_context ctx)
 
   context< PeeringMachine >().log_enter(state_name);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   ceph_assert(!ps->needs_recovery());
 
@@ -5332,7 +5332,7 @@ PeeringState::Recovered::Recovered(my_context ctx)
 void PeeringState::Recovered::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_recovered_latency, dur);
@@ -5344,7 +5344,7 @@ PeeringState::Clean::Clean(my_context ctx)
 {
   context< PeeringMachine >().log_enter(state_name);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   if (ps->info.last_complete != ps->info.last_update) {
     ceph_abort();
@@ -5361,7 +5361,7 @@ void PeeringState::Clean::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->state_clear(PG_STATE_CLEAN);
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_clean_latency, dur);
@@ -5400,7 +5400,7 @@ PeeringState::Active::Active(my_context ctx)
   context< PeeringMachine >().log_enter(state_name);
 
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   ceph_assert(!ps->backfill_reserved);
   ceph_assert(ps->is_primary());
@@ -5427,7 +5427,7 @@ PeeringState::Active::Active(my_context ctx)
 
 boost::statechart::result PeeringState::Active::react(const AdvMap& advmap)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   if (ps->should_restart_peering(
 	advmap.up_primary,
@@ -5492,7 +5492,7 @@ boost::statechart::result PeeringState::Active::react(const AdvMap& advmap)
 
 boost::statechart::result PeeringState::Active::react(const ActMap&)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "Active: handling ActMap" << dendl;
   ceph_assert(ps->is_primary());
 
@@ -5522,7 +5522,7 @@ boost::statechart::result PeeringState::Active::react(const ActMap&)
 boost::statechart::result PeeringState::Active::react(const MNotifyRec& notevt)
 {
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ceph_assert(ps->is_primary());
   if (ps->peer_info.count(notevt.from)) {
     psdout(10) << "Active: got notify from " << notevt.from
@@ -5547,7 +5547,7 @@ boost::statechart::result PeeringState::Active::react(const MNotifyRec& notevt)
 
 boost::statechart::result PeeringState::Active::react(const MTrim& trim)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ceph_assert(ps->is_primary());
 
   // peer is informing us of their last_complete_ondisk
@@ -5561,7 +5561,7 @@ boost::statechart::result PeeringState::Active::react(const MTrim& trim)
 
 boost::statechart::result PeeringState::Active::react(const MInfoRec& infoevt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ceph_assert(ps->is_primary());
 
   ceph_assert(!ps->acting_recovery_backfill.empty());
@@ -5587,7 +5587,7 @@ boost::statechart::result PeeringState::Active::react(const MInfoRec& infoevt)
 
 boost::statechart::result PeeringState::Active::react(const MLogRec& logevt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "searching osd." << logevt.from
 		     << " log for unfound items" << dendl;
   ps->proc_replica_log(
@@ -5606,7 +5606,7 @@ boost::statechart::result PeeringState::Active::react(const MLogRec& logevt)
 
 boost::statechart::result PeeringState::Active::react(const QueryState& q)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   q.f->open_object_section("state");
   q.f->dump_string("name", state_name);
@@ -5650,7 +5650,7 @@ boost::statechart::result PeeringState::Active::react(const QueryState& q)
 boost::statechart::result PeeringState::Active::react(
   const ActivateCommitted &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ceph_assert(!ps->peer_activated.count(ps->pg_whoami));
   ps->peer_activated.insert(ps->pg_whoami);
   psdout(10) << "_activate_committed " << evt.epoch
@@ -5671,7 +5671,7 @@ boost::statechart::result PeeringState::Active::react(
 boost::statechart::result PeeringState::Active::react(const AllReplicasActivated &evt)
 {
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   pg_t pgid = context< PeeringMachine >().spgid.pgid;
 
   all_replicas_activated = true;
@@ -5731,7 +5731,7 @@ boost::statechart::result PeeringState::Active::react(const AllReplicasActivated
 
 boost::statechart::result PeeringState::Active::react(const RenewLease& rl)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->renew_lease(pl->get_mnow());
   ps->send_lease();
   ps->schedule_renew_lease();
@@ -5740,7 +5740,7 @@ boost::statechart::result PeeringState::Active::react(const RenewLease& rl)
 
 boost::statechart::result PeeringState::Active::react(const MLeaseAck& la)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->proc_lease_ack(la.from, la.lease_ack);
   return discard_event();
 }
@@ -5748,7 +5748,7 @@ boost::statechart::result PeeringState::Active::react(const MLeaseAck& la)
 
 boost::statechart::result PeeringState::Active::react(const CheckReadable &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   pl->recheck_readable();
   return discard_event();
 }
@@ -5760,7 +5760,7 @@ boost::statechart::result PeeringState::Active::react(const CheckReadable &evt)
  */
 void PeeringState::Active::all_activated_and_committed()
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "all_activated_and_committed" << dendl;
   ceph_assert(ps->is_primary());
   ceph_assert(ps->peer_activated.size() == ps->acting_recovery_backfill.size());
@@ -5784,7 +5784,7 @@ void PeeringState::Active::exit()
   context< PeeringMachine >().log_exit(state_name, enter_time);
 
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   pl->cancel_local_background_io_reservation();
 
   ps->blocked_by.clear();
@@ -5808,14 +5808,14 @@ PeeringState::ReplicaActive::ReplicaActive(my_context ctx)
 {
   context< PeeringMachine >().log_enter(state_name);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->start_flush(context< PeeringMachine >().get_cur_transaction());
 }
 
 
 boost::statechart::result PeeringState::ReplicaActive::react(
   const Activate& actevt) {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "In ReplicaActive, about to call activate" << dendl;
   map<int, map<spg_t, pg_query_t> > query_map;
   ps->activate(
@@ -5831,7 +5831,7 @@ boost::statechart::result PeeringState::ReplicaActive::react(
 boost::statechart::result PeeringState::ReplicaActive::react(
   const ActivateCommitted &evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "_activate_committed " << evt.epoch
 	   << " telling primary" << dendl;
   MOSDPGInfo *m = new MOSDPGInfo(evt.epoch);
@@ -5863,7 +5863,7 @@ boost::statechart::result PeeringState::ReplicaActive::react(
 
 boost::statechart::result PeeringState::ReplicaActive::react(const MLease& l)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   spg_t spgid = context< PeeringMachine >().spgid;
   epoch_t epoch = pl->get_osdmap_epoch();
 
@@ -5877,7 +5877,7 @@ boost::statechart::result PeeringState::ReplicaActive::react(const MLease& l)
 
 boost::statechart::result PeeringState::ReplicaActive::react(const MInfoRec& infoevt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->proc_primary_info(context<PeeringMachine>().get_cur_transaction(),
 			infoevt.info);
   return discard_event();
@@ -5885,7 +5885,7 @@ boost::statechart::result PeeringState::ReplicaActive::react(const MInfoRec& inf
 
 boost::statechart::result PeeringState::ReplicaActive::react(const MLogRec& logevt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "received log from " << logevt.from << dendl;
   ObjectStore::Transaction &t = context<PeeringMachine>().get_cur_transaction();
   ps->merge_log(t, logevt.msg->info, logevt.msg->log, logevt.from);
@@ -5896,7 +5896,7 @@ boost::statechart::result PeeringState::ReplicaActive::react(const MLogRec& loge
 
 boost::statechart::result PeeringState::ReplicaActive::react(const MTrim& trim)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   // primary is instructing us to trim
   ps->pg_log.trim(trim.trim_to, ps->info);
   ps->dirty_info = true;
@@ -5905,7 +5905,7 @@ boost::statechart::result PeeringState::ReplicaActive::react(const MTrim& trim)
 
 boost::statechart::result PeeringState::ReplicaActive::react(const ActMap&)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   if (ps->should_send_notify() && ps->get_primary().osd >= 0) {
     ps->info.history.refresh_prior_readable_until_ub(
       pl->get_mnow(), ps->prior_readable_until_ub);
@@ -5924,7 +5924,7 @@ boost::statechart::result PeeringState::ReplicaActive::react(const ActMap&)
 boost::statechart::result PeeringState::ReplicaActive::react(
   const MQuery& query)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->fulfill_query(query, context<PeeringMachine>().get_recovery_ctx());
   return discard_event();
 }
@@ -5941,7 +5941,7 @@ boost::statechart::result PeeringState::ReplicaActive::react(const QueryState& q
 void PeeringState::ReplicaActive::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   pl->unreserve_recovery_space();
 
   pl->cancel_remote_recovery_reservation();
@@ -5957,7 +5957,7 @@ PeeringState::Stray::Stray(my_context ctx)
   context< PeeringMachine >().log_enter(state_name);
 
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ceph_assert(!ps->is_peered());
   ceph_assert(!ps->is_peering());
   ceph_assert(!ps->is_primary());
@@ -5972,7 +5972,7 @@ PeeringState::Stray::Stray(my_context ctx)
 
 boost::statechart::result PeeringState::Stray::react(const MLogRec& logevt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   MOSDPGLog *msg = logevt.msg.get();
   psdout(10) << "got info+log from osd." << logevt.from << " " << msg->info << " " << msg->log << dendl;
 
@@ -6000,7 +6000,7 @@ boost::statechart::result PeeringState::Stray::react(const MLogRec& logevt)
 
 boost::statechart::result PeeringState::Stray::react(const MInfoRec& infoevt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "got info from osd." << infoevt.from << " " << infoevt.info << dendl;
 
   if (ps->info.last_update > infoevt.info.last_update) {
@@ -6024,14 +6024,14 @@ boost::statechart::result PeeringState::Stray::react(const MInfoRec& infoevt)
 
 boost::statechart::result PeeringState::Stray::react(const MQuery& query)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->fulfill_query(query, context<PeeringMachine>().get_recovery_ctx());
   return discard_event();
 }
 
 boost::statechart::result PeeringState::Stray::react(const ActMap&)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   if (ps->should_send_notify() && ps->get_primary().osd >= 0) {
     ps->info.history.refresh_prior_readable_until_ub(
       pl->get_mnow(), ps->prior_readable_until_ub);
@@ -6050,7 +6050,7 @@ boost::statechart::result PeeringState::Stray::react(const ActMap&)
 void PeeringState::Stray::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_stray_latency, dur);
 }
@@ -6062,14 +6062,14 @@ PeeringState::ToDelete::ToDelete(my_context ctx)
     NamedState(context< PeeringMachine >().state_history, "Started/ToDelete")
 {
   context< PeeringMachine >().log_enter(state_name);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   pl->get_perf_logger().inc(l_osd_pg_removing);
 }
 
 void PeeringState::ToDelete::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   // note: on a successful removal, this path doesn't execute. see
   // _delete_some().
   pl->get_perf_logger().dec(l_osd_pg_removing);
@@ -6084,7 +6084,7 @@ PeeringState::WaitDeleteReserved::WaitDeleteReserved(my_context ctx)
 	       "Started/ToDelete/WaitDeleteReseved")
 {
   context< PeeringMachine >().log_enter(state_name);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   context< ToDelete >().priority = ps->get_delete_priority();
 
   pl->cancel_local_background_io_reservation();
@@ -6103,7 +6103,7 @@ PeeringState::WaitDeleteReserved::WaitDeleteReserved(my_context ctx)
 boost::statechart::result PeeringState::ToDelete::react(
   const ActMap& evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   if (ps->get_delete_priority() != priority) {
     psdout(10) << __func__ << " delete priority changed, resetting"
 		   << dendl;
@@ -6123,7 +6123,7 @@ PeeringState::Deleting::Deleting(my_context ctx)
     NamedState(context< PeeringMachine >().state_history, "Started/ToDelete/Deleting")
 {
   context< PeeringMachine >().log_enter(state_name);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->deleting = true;
   ObjectStore::Transaction &t = context<PeeringMachine>().get_cur_transaction();
 
@@ -6142,7 +6142,7 @@ PeeringState::Deleting::Deleting(my_context ctx)
 boost::statechart::result PeeringState::Deleting::react(
   const DeleteSome& evt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   pl->do_delete_work(context<PeeringMachine>().get_cur_transaction());
   return discard_event();
 }
@@ -6150,7 +6150,7 @@ boost::statechart::result PeeringState::Deleting::react(
 void PeeringState::Deleting::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->deleting = false;
   pl->cancel_local_background_io_reservation();
 }
@@ -6163,7 +6163,7 @@ PeeringState::GetInfo::GetInfo(my_context ctx)
   context< PeeringMachine >().log_enter(state_name);
 
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ps->check_past_interval_bounds();
   PastIntervals::PriorSet &prior_set = context< Peering >().prior_set;
 
@@ -6183,7 +6183,7 @@ PeeringState::GetInfo::GetInfo(my_context ctx)
 
 void PeeringState::GetInfo::get_infos()
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   PastIntervals::PriorSet &prior_set = context< Peering >().prior_set;
 
   ps->blocked_by.clear();
@@ -6223,7 +6223,7 @@ void PeeringState::GetInfo::get_infos()
 boost::statechart::result PeeringState::GetInfo::react(const MNotifyRec& infoevt)
 {
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   set<pg_shard_t>::iterator p = peer_info_requested.find(infoevt.from);
   if (p != peer_info_requested.end()) {
@@ -6272,7 +6272,7 @@ boost::statechart::result PeeringState::GetInfo::react(const MNotifyRec& infoevt
 
 boost::statechart::result PeeringState::GetInfo::react(const QueryState& q)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   q.f->open_object_section("state");
   q.f->dump_string("name", state_name);
   q.f->dump_stream("enter_time") << enter_time;
@@ -6300,7 +6300,7 @@ void PeeringState::GetInfo::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_getinfo_latency, dur);
   ps->blocked_by.clear();
@@ -6316,7 +6316,7 @@ PeeringState::GetLog::GetLog(my_context ctx)
 {
   context< PeeringMachine >().log_enter(state_name);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   // adjust acting?
   if (!ps->choose_acting(auth_log_shard, false,
@@ -6406,7 +6406,7 @@ boost::statechart::result PeeringState::GetLog::react(const MLogRec& logevt)
 boost::statechart::result PeeringState::GetLog::react(const GotLog&)
 {
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "leaving GetLog" << dendl;
   if (msg) {
     psdout(10) << "processing master log" << dendl;
@@ -6432,7 +6432,7 @@ void PeeringState::GetLog::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_getlog_latency, dur);
   ps->blocked_by.clear();
@@ -6448,7 +6448,7 @@ PeeringState::WaitActingChange::WaitActingChange(my_context ctx)
 
 boost::statechart::result PeeringState::WaitActingChange::react(const AdvMap& advmap)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   OSDMapRef osdmap = advmap.osdmap;
 
   psdout(10) << "verifying no want_acting " << ps->want_acting << " targets didn't go down" << dendl;
@@ -6493,7 +6493,7 @@ boost::statechart::result PeeringState::WaitActingChange::react(const QueryState
 void PeeringState::WaitActingChange::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_waitactingchange_latency, dur);
 }
@@ -6504,7 +6504,7 @@ PeeringState::Down::Down(my_context ctx)
     NamedState(context< PeeringMachine >().state_history, "Started/Primary/Peering/Down")
 {
   context< PeeringMachine >().log_enter(state_name);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   ps->state_clear(PG_STATE_PEERING);
   ps->state_set(PG_STATE_DOWN);
@@ -6519,7 +6519,7 @@ void PeeringState::Down::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   ps->state_clear(PG_STATE_DOWN);
   utime_t dur = ceph_clock_now() - enter_time;
@@ -6541,7 +6541,7 @@ boost::statechart::result PeeringState::Down::react(const QueryState& q)
 
 boost::statechart::result PeeringState::Down::react(const MNotifyRec& infoevt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   ceph_assert(ps->is_primary());
   epoch_t old_start = ps->info.history.last_epoch_started;
@@ -6567,7 +6567,7 @@ PeeringState::Incomplete::Incomplete(my_context ctx)
     NamedState(context< PeeringMachine >().state_history, "Started/Primary/Peering/Incomplete")
 {
   context< PeeringMachine >().log_enter(state_name);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   ps->state_clear(PG_STATE_PEERING);
   ps->state_set(PG_STATE_INCOMPLETE);
@@ -6579,7 +6579,7 @@ PeeringState::Incomplete::Incomplete(my_context ctx)
 }
 
 boost::statechart::result PeeringState::Incomplete::react(const AdvMap &advmap) {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   int64_t poolnum = ps->info.pgid.pool();
 
   // Reset if min_size turn smaller than previous value, pg might now be able to go active
@@ -6594,7 +6594,7 @@ boost::statechart::result PeeringState::Incomplete::react(const AdvMap &advmap) 
 }
 
 boost::statechart::result PeeringState::Incomplete::react(const MNotifyRec& notevt) {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(7) << "handle_pg_notify from osd." << notevt.from << dendl;
   if (ps->proc_replica_info(
     notevt.from, notevt.notify.info, notevt.notify.epoch_sent)) {
@@ -6620,7 +6620,7 @@ void PeeringState::Incomplete::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   ps->state_clear(PG_STATE_INCOMPLETE);
   utime_t dur = ceph_clock_now() - enter_time;
@@ -6636,7 +6636,7 @@ PeeringState::GetMissing::GetMissing(my_context ctx)
 {
   context< PeeringMachine >().log_enter(state_name);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   ceph_assert(!ps->acting_recovery_backfill.empty());
   eversion_t since;
   for (set<pg_shard_t>::iterator i = ps->acting_recovery_backfill.begin();
@@ -6719,7 +6719,7 @@ PeeringState::GetMissing::GetMissing(my_context ctx)
 
 boost::statechart::result PeeringState::GetMissing::react(const MLogRec& logevt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
 
   peer_missing_requested.erase(logevt.from);
   ps->proc_replica_log(logevt.msg->info, logevt.msg->log, logevt.msg->missing, logevt.from);
@@ -6740,7 +6740,7 @@ boost::statechart::result PeeringState::GetMissing::react(const MLogRec& logevt)
 
 boost::statechart::result PeeringState::GetMissing::react(const QueryState& q)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   q.f->open_object_section("state");
   q.f->dump_string("name", state_name);
   q.f->dump_stream("enter_time") << enter_time;
@@ -6768,7 +6768,7 @@ void PeeringState::GetMissing::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
 
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_getmissing_latency, dur);
   ps->blocked_by.clear();
@@ -6784,7 +6784,7 @@ PeeringState::WaitUpThru::WaitUpThru(my_context ctx)
 
 boost::statechart::result PeeringState::WaitUpThru::react(const ActMap& am)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   if (!ps->need_up_thru) {
     post_event(Activate(ps->get_osdmap_epoch()));
   }
@@ -6793,7 +6793,7 @@ boost::statechart::result PeeringState::WaitUpThru::react(const ActMap& am)
 
 boost::statechart::result PeeringState::WaitUpThru::react(const MLogRec& logevt)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(10) << "Noting missing from osd." << logevt.from << dendl;
   ps->peer_missing[logevt.from].claim(logevt.msg->missing);
   ps->peer_info[logevt.from] = logevt.msg->info;
@@ -6813,7 +6813,7 @@ boost::statechart::result PeeringState::WaitUpThru::react(const QueryState& q)
 void PeeringState::WaitUpThru::exit()
 {
   context< PeeringMachine >().log_exit(state_name, enter_time);
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_waitupthru_latency, dur);
 }
@@ -6824,14 +6824,14 @@ void PeeringState::WaitUpThru::exit()
 
 void PeeringState::PeeringMachine::log_enter(const char *state_name)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   psdout(5) << "enter " << state_name << dendl;
   pl->log_state_enter(state_name);
 }
 
 void PeeringState::PeeringMachine::log_exit(const char *state_name, utime_t enter_time)
 {
-  DECLARE_LOCALS
+  DECLARE_LOCALS;
   utime_t dur = ceph_clock_now() - enter_time;
   psdout(5) << "exit " << state_name << " " << dur << " " << event_count << " " << event_time << dendl;
   pl->log_state_exit(state_name, enter_time, event_count, event_time);
