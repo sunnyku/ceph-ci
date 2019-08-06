@@ -9241,7 +9241,9 @@ void OSD::handle_fast_pg_info(MOSDPGInfo* m)
 	  MInfoRec(
 	    pg_shard_t(from, p.from),
 	    p.info,
-	    p.epoch_sent)))
+	    p.epoch_sent,
+	    p.lease,
+	    p.lease_ack)))
       );
   }
   m->put();

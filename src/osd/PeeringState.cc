@@ -1141,7 +1141,8 @@ void PeeringState::recalc_readable_until()
   }
   readable_until = min;
   readable_until_ub = min;
-  dout(20) << __func__ << " readable_until[_ub] " << readable_until << dendl;
+  dout(20) << __func__ << " readable_until[_ub] " << readable_until
+	   << " (sent " << readable_until_ub_sent << ")" << dendl;
 }
 
 bool PeeringState::check_prior_readable_down_osds(const OSDMapRef& map)
@@ -2342,7 +2343,8 @@ void PeeringState::activate(
 	      get_osdmap_epoch(),
 	      get_osdmap_epoch(),
 	      info,
-	      past_intervals));
+	      past_intervals,
+	      get_lease()));
 	} else {
 	  psdout(10) << "activate peer osd." << peer
 		     << " is up to date, but sending pg_log anyway" << dendl;
@@ -5563,13 +5565,16 @@ boost::statechart::result PeeringState::Active::react(const MInfoRec& infoevt)
   ceph_assert(ps->is_primary());
 
   ceph_assert(!ps->acting_recovery_backfill.empty());
+  if (infoevt.lease_ack) {
+    ps->proc_lease_ack(infoevt.from.osd, *infoevt.lease_ack);
+  }
   // don't update history (yet) if we are active and primary; the replica
   // may be telling us they have activated (and committed) but we can't
   // share that until _everyone_ does the same.
   if (ps->is_acting_recovery_backfill(infoevt.from) &&
       ps->peer_activated.count(infoevt.from) == 0) {
     psdout(10) << " peer osd." << infoevt.from
-		       << " activated and committed" << dendl;
+	       << " activated and committed" << dendl;
     ps->peer_activated.insert(infoevt.from);
     ps->blocked_by.erase(infoevt.from.shard);
     pl->publish_stats_to_osd();
@@ -5762,8 +5767,6 @@ void PeeringState::Active::all_activated_and_committed()
   ceph_assert(!ps->acting_recovery_backfill.empty());
   ceph_assert(ps->blocked_by.empty());
 
-  ps->send_lease();
-
   // Degraded?
   ps->update_calc_stats();
   if (ps->info.stats.stats.sum.num_objects_degraded) {
@@ -5838,6 +5841,7 @@ boost::statechart::result PeeringState::ReplicaActive::react(
     ps->get_osdmap_epoch(),
     ps->info,
     PastIntervals());
+  i.lease_ack = ps->get_lease_ack();
 
   i.info.history.last_epoch_started = evt.activation_epoch;
   i.info.history.last_interval_started = i.info.history.same_interval_since;
@@ -6005,6 +6009,10 @@ boost::statechart::result PeeringState::Stray::react(const MInfoRec& infoevt)
     ps->rewind_divergent_log(t, infoevt.info.last_update);
     ps->info.stats = infoevt.info.stats;
     ps->info.hit_set = infoevt.info.hit_set;
+  }
+
+  if (infoevt.lease) {
+    ps->proc_lease(*infoevt.lease);
   }
 
   ceph_assert(infoevt.info.last_update == ps->info.last_update);
