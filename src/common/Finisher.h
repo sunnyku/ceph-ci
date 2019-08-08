@@ -195,10 +195,11 @@ class ContextQueue {
   std::mutex q_mutex;
   ceph::mutex& mutex;
   ceph::condition_variable& cond;
+  bool& worker_in_progress;
 public:
   ContextQueue(ceph::mutex& mut,
-	       ceph::condition_variable& con)
-    : mutex(mut), cond(con) {}
+	       ceph::condition_variable& con, bool& worker_in_progress)
+    : mutex(mut), cond(con), worker_in_progress(worker_in_progress) {}
 
   void queue(std::list<Context *>& ls) {
     bool empty = false;
@@ -214,6 +215,7 @@ public:
 
     if (empty) {
       std::scoped_lock l{mutex};
+      if (!worker_in_progress)
       cond.notify_all();
     }
 
