@@ -182,7 +182,8 @@ class HealthTest(DashboardTestCase):
                 'standbys': JList(JObj({}, allow_unknown=True)),
             }),
             'health': JObj({
-                'checks': JList(str),
+                'checks': JList(JObj({}, allow_unknown=True)),
+                'mutes': JList(JObj({}, allow_unknown=True)),
                 'status': str,
             }),
             'hosts': int,
