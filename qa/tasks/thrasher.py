@@ -20,3 +20,11 @@ class Thrasher:
         returns the exception
         """
         return self.exception
+
+    @property
+    def exception(self):
+        return self._exception
+
+    @exception.setter
+    def exception(self, e):
+        self._exception = e
