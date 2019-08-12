@@ -4,7 +4,9 @@ Thrasher base class
 class Thrasher:
 
     def __init__(self):
+        print "init start"
         self.exception = None
+        print "init end"
 
     def setexception(self, e):
         """
