@@ -166,7 +166,8 @@ def task(ctx, config):
             '--access-key', admin_access_key,
             '--secret', admin_secret_key,
             '--max-buckets', '0',
-            '--caps', admin_caps
+            '--caps', admin_caps,
+            '--yes-i-really-mean-it'
             ])
     logging.error(out)
     logging.error(err)
@@ -223,7 +224,7 @@ def task(ctx, config):
     (ret, out) = rgwadmin_rest(admin_conn, ['user', 'list'], {'list' : '', 'max-entries' : 1, 'marker': marker})
     assert ret == 200
     assert out['count'] == 1
-    assert out['truncated'] == False
+    assert out['truncated'] == True
     assert len(out['keys']) == 1
 
     # TESTCASE 'info-existing','user','info','existing user','returns correct info'
@@ -480,7 +481,7 @@ def task(ctx, config):
             'display-name' :  display_name2,
             'access-key' : access_key2,
             'secret-key' : secret_key2,
-            'max-buckets' : '1',
+            'max-buckets' : '1'
             })
 
     assert ret == 200
