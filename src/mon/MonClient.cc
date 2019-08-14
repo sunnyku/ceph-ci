@@ -862,7 +862,7 @@ void MonClient::_un_backoff()
 
 void MonClient::schedule_tick()
 {
-  auto do_tick = make_lambda_context([this]() { tick(); });
+  auto do_tick = make_lambda_context([this](int) { tick(); });
   if (_hunting()) {
     const auto hunt_interval = (cct->_conf->mon_client_hunt_interval *
 				reopen_interval_multiplier);
