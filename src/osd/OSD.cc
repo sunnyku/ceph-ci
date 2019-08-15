@@ -438,6 +438,16 @@ HeartbeatStampsRef OSDService::get_hb_stamps(unsigned peer)
   return hb_stamps[peer];
 }
 
+void OSDService::queue_renew_lease(epoch_t epoch, spg_t spgid)
+{
+  osd->enqueue_peering_evt(
+    spgid,
+    PGPeeringEventRef(
+      std::make_shared<PGPeeringEvent>(
+	epoch, epoch,
+	RenewLease())));
+}
+
 void OSDService::start_shutdown()
 {
   {
@@ -464,6 +474,8 @@ void OSDService::shutdown_reserver()
 
 void OSDService::shutdown()
 {
+  mono_timer.suspend();
+
   {
     std::lock_guard l(watch_lock);
     watch_timer.shutdown();
@@ -492,6 +504,7 @@ void OSDService::init()
 
   watch_timer.init();
   agent_timer.init();
+  mono_timer.resume();
 
   agent_thread.create("osd_srv_agent");
 
@@ -6956,6 +6969,8 @@ void OSD::ms_fast_dispatch(Message *m)
   case MSG_OSD_PG_TRIM:
   case MSG_OSD_BACKFILL_RESERVE:
   case MSG_OSD_RECOVERY_RESERVE:
+  case MSG_OSD_PG_LEASE:
+  case MSG_OSD_PG_LEASE_ACK:
     {
       MOSDPeeringOp *pm = static_cast<MOSDPeeringOp*>(m);
       if (require_osd_peer(pm)) {
@@ -9226,7 +9241,9 @@ void OSD::handle_fast_pg_info(MOSDPGInfo* m)
 	  MInfoRec(
 	    pg_shard_t(from, p.from),
 	    p.info,
-	    p.epoch_sent)))
+	    p.epoch_sent,
+	    p.lease,
+	    p.lease_ack)))
       );
   }
   m->put();
@@ -9329,6 +9346,26 @@ void OSD::handle_pg_query_nopg(const MQuery& q)
     }
     service.maybe_share_map(con.get(), osdmap);
     con->send_message(m);
+  }
+}
+
+void OSDService::queue_check_readable(spg_t spgid,
+				      ceph::signedspan delay)
+{
+  if (delay == ceph::signedspan::zero()) {
+    OSDMapRef osdmap = get_osdmap();
+    osd->enqueue_peering_evt(
+      spgid,
+      PGPeeringEventRef(
+	std::make_shared<PGPeeringEvent>(
+	  osdmap->get_epoch(), osdmap->get_epoch(),
+	  PeeringState::CheckReadable())));
+  } else {
+    mono_timer.add_event(
+      delay,
+      [this, spgid]() {
+	queue_check_readable(spgid);
+      });
   }
 }
 

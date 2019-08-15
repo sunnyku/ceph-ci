@@ -1038,6 +1038,10 @@ std::string pg_state_string(uint64_t state)
     oss << "snaptrim_error+";
   if (state & PG_STATE_FAILED_REPAIR)
     oss << "failed_repair+";
+  if (state & PG_STATE_LAGGY)
+    oss << "laggy+";
+  if (state & PG_STATE_WAIT)
+    oss << "wait+";
   string ret(oss.str());
   if (ret.length() > 0)
     ret.resize(ret.length() - 1);
@@ -1111,6 +1115,10 @@ std::optional<uint64_t> pg_string_state(const std::string& state)
     type = PG_STATE_CREATING;
   else if (state == "failed_repair")
     type = PG_STATE_FAILED_REPAIR;
+  else if (state == "laggy")
+    type = PG_STATE_LAGGY;
+  else if (state == "wait")
+    type = PG_STATE_WAIT;
   else if (state == "unknown")
     type = 0;
   else
@@ -1212,7 +1220,9 @@ static opt_mapping_t opt_mapping = boost::assign::map_list_of
            ("target_size_ratio", pool_opts_t::opt_desc_t(
 	     pool_opts_t::TARGET_SIZE_RATIO, pool_opts_t::DOUBLE))
            ("pg_autoscale_bias", pool_opts_t::opt_desc_t(
-	     pool_opts_t::PG_AUTOSCALE_BIAS, pool_opts_t::DOUBLE));
+	     pool_opts_t::PG_AUTOSCALE_BIAS, pool_opts_t::DOUBLE))
+           ("read_lease_interval", pool_opts_t::opt_desc_t(
+	     pool_opts_t::READ_LEASE_INTERVAL, pool_opts_t::DOUBLE));
 
 bool pool_opts_t::is_opt_name(const std::string& name)
 {
@@ -3133,6 +3143,7 @@ void pg_history_t::encode(ceph::buffer::list &bl) const
   encode(last_interval_started, bl);
   encode(last_interval_clean, bl);
   encode(epoch_pool_created, bl);
+  encode(prior_readable_until_ub, bl);
   ENCODE_FINISH(bl);
 }
 
@@ -3183,6 +3194,9 @@ void pg_history_t::decode(ceph::buffer::list::const_iterator &bl)
   } else {
     epoch_pool_created = epoch_created;
   }
+  if (struct_v >= 8) {
+    decode(prior_readable_until_ub, bl);
+  }
   DECODE_FINISH(bl);
 }
 
@@ -3204,6 +3218,9 @@ void pg_history_t::dump(Formatter *f) const
   f->dump_stream("last_deep_scrub") << last_deep_scrub;
   f->dump_stream("last_deep_scrub_stamp") << last_deep_scrub_stamp;
   f->dump_stream("last_clean_scrub_stamp") << last_clean_scrub_stamp;
+  f->dump_float(
+    "prior_readable_until_ub",
+    std::chrono::duration<double>(prior_readable_until_ub).count());
 }
 
 void pg_history_t::generate_test_instances(list<pg_history_t*>& o)
@@ -3217,6 +3234,7 @@ void pg_history_t::generate_test_instances(list<pg_history_t*>& o)
   o.back()->last_epoch_clean = 3;
   o.back()->last_interval_clean = 2;
   o.back()->last_epoch_split = 4;
+  o.back()->prior_readable_until_ub = make_timespan(3.1415);
   o.back()->same_up_since = 5;
   o.back()->same_interval_since = 6;
   o.back()->same_primary_since = 7;
@@ -3351,19 +3369,20 @@ void pg_info_t::generate_test_instances(list<pg_info_t*>& o)
 // -- pg_notify_t --
 void pg_notify_t::encode(ceph::buffer::list &bl) const
 {
-  ENCODE_START(3, 2, bl);
+  ENCODE_START(4, 2, bl);
   encode(query_epoch, bl);
   encode(epoch_sent, bl);
   encode(info, bl);
   encode(to, bl);
   encode(from, bl);
   encode(past_intervals, bl);
+  encode(lease, bl);
   ENCODE_FINISH(bl);
 }
 
 void pg_notify_t::decode(ceph::buffer::list::const_iterator &bl)
 {
-  DECODE_START(3, bl);
+  DECODE_START(4, bl);
   decode(query_epoch, bl);
   decode(epoch_sent, bl);
   decode(info, bl);
@@ -3371,6 +3390,9 @@ void pg_notify_t::decode(ceph::buffer::list::const_iterator &bl)
   decode(from, bl);
   if (struct_v >= 3) {
     decode(past_intervals, bl);
+  }
+  if (struct_v >= 4) {
+    decode(lease, bl);
   }
   DECODE_FINISH(bl);
 }
@@ -3387,6 +3409,12 @@ void pg_notify_t::dump(Formatter *f) const
     f->close_section();
   }
   f->dump_object("past_intervals", past_intervals);
+  if (lease) {
+    f->dump_object("lease", *lease);
+  }
+  if (lease_ack) {
+    f->dump_object("lease_ack", *lease_ack);
+  }
 }
 
 void pg_notify_t::generate_test_instances(list<pg_notify_t*>& o)
@@ -3407,6 +3435,12 @@ ostream &operator<<(ostream &lhs, const pg_notify_t &notify)
     lhs << " " << (unsigned)notify.from
 	<< "->" << (unsigned)notify.to;
   lhs << " " << notify.past_intervals;
+  if (notify.lease) {
+    lhs << " " << *notify.lease;
+  }
+  if (notify.lease_ack) {
+    lhs << " " << *notify.lease_ack;
+  }
   return lhs << ")";
 }
 
@@ -4111,6 +4145,71 @@ void pg_query_t::generate_test_instances(list<pg_query_t*>& o)
 			     shard_id_t::NO_SHARD, shard_id_t::NO_SHARD,
 			     *h.back(), 5));
 }
+
+// -- pg_lease_t --
+
+void pg_lease_t::encode(bufferlist& bl) const
+{
+  ENCODE_START(1, 1, bl);
+  encode(readable_until, bl);
+  encode(readable_until_ub, bl);
+  encode(interval, bl);
+  ENCODE_FINISH(bl);
+}
+
+void pg_lease_t::decode(bufferlist::const_iterator& p)
+{
+  DECODE_START(1, p);
+  decode(readable_until, p);
+  decode(readable_until_ub, p);
+  decode(interval, p);
+  DECODE_FINISH(p);
+}
+
+void pg_lease_t::dump(Formatter *f) const
+{
+  f->dump_stream("readable_until") << readable_until;
+  f->dump_stream("readable_until_ub") << readable_until_ub;
+  f->dump_stream("interval") << interval;
+}
+
+void pg_lease_t::generate_test_instances(std::list<pg_lease_t*>& o)
+{
+  o.push_back(new pg_lease_t());
+  o.push_back(new pg_lease_t());
+  o.back()->readable_until = make_timespan(1.5);
+  o.back()->readable_until_ub = make_timespan(3.4);
+  o.back()->interval = make_timespan(1.0);
+}
+
+// -- pg_lease_ack_t --
+
+void pg_lease_ack_t::encode(bufferlist& bl) const
+{
+  ENCODE_START(1, 1, bl);
+  encode(readable_until_ub, bl);
+  ENCODE_FINISH(bl);
+}
+
+void pg_lease_ack_t::decode(bufferlist::const_iterator& p)
+{
+  DECODE_START(1, p);
+  decode(readable_until_ub, p);
+  DECODE_FINISH(p);
+}
+
+void pg_lease_ack_t::dump(Formatter *f) const
+{
+  f->dump_stream("readable_until_ub") << readable_until_ub;
+}
+
+void pg_lease_ack_t::generate_test_instances(std::list<pg_lease_ack_t*>& o)
+{
+  o.push_back(new pg_lease_ack_t());
+  o.push_back(new pg_lease_ack_t());
+  o.back()->readable_until_ub = make_timespan(3.4);
+}
+
 
 // -- ObjectModDesc --
 void ObjectModDesc::visit(Visitor *visitor) const
