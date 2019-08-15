@@ -6882,9 +6882,50 @@ std::vector<Option> get_rgw_options() {
     .set_default("")
     .set_description(""),
 
+    Option("rgw_crypt_s3_kms_backend", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("local")
+    .set_description(
+        "Where the SSE-KMS encryption keys are stored. Supported KMS "
+        "systems are OpenStack Barbican ('barbican') and HashiCorp Vault "
+        "('vault'). Use 'local' if keys are stored in ceph.conf.")
+    .add_see_also("rgw_crypt_s3_kms_encryption_keys"),
+
     Option("rgw_crypt_s3_kms_encryption_keys", Option::TYPE_STR, Option::LEVEL_DEV)
     .set_default("")
-    .set_description(""),
+    .set_description(
+        "KMS encryption keys if rgw_crypt_s3_kms_backend is set to local. "
+        "Format is a space-separated list of key name/value pairs, e.g. "
+        "'key-1=... key-2=...'.")
+    .add_see_also("rgw_crypt_s3_kms_backend"),
+
+    Option("rgw_crypt_s3_kms_vault_auth", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("token")
+    .set_description(
+        "Type of authentication method to be used with Vault. "
+        "The only currently supported method is 'token'.")
+    .add_see_also({
+        "rgw_crypt_s3_kms_backend",
+        "rgw_crypt_s3_kms_vault_addr",
+        "rgw_crypt_s3_kms_vault_token_file"}),
+
+    Option("rgw_crypt_s3_kms_vault_token_file", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("")
+    .set_description(
+        "If authentication method is 'token', provide a path to the token file "
+        "readable only by Rados Gateway.")
+    .add_see_also({
+      "rgw_crypt_s3_kms_backend",
+      "rgw_crypt_s3_kms_vault_auth",
+      "rgw_crypt_s3_kms_vault_addr"}),
+
+    Option("rgw_crypt_s3_kms_vault_addr", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("")
+    .set_description(
+        "Provide a URL to the Vault server endpoint.")
+    .add_see_also({
+      "rgw_crypt_s3_kms_backend",
+      "rgw_crypt_s3_kms_vault_auth",
+      "rgw_crypt_s3_kms_vault_token_file"}),
 
     Option("rgw_crypt_suppress_logs", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(true)

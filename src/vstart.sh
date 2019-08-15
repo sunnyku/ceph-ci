@@ -656,11 +656,18 @@ EOF
         admin socket = $CEPH_ASOK_DIR/\$name.\$pid.asok
 
         ; needed for s3tests
+        rgw crypt s3 kms backend = local
         rgw crypt s3 kms encryption keys = testkey-1=YmluCmJvb3N0CmJvb3N0LWJ1aWxkCmNlcGguY29uZgo= testkey-2=aWIKTWFrZWZpbGUKbWFuCm91dApzcmMKVGVzdGluZwo=
         rgw crypt require ssl = false
         ; uncomment the following to set LC days as the value in seconds;
         ; needed for passing lc time based s3-tests (can be verbose)
         ; rgw lc debug interval = 10
+        ; The following settings are for SSE-KMS with Vault
+        ; rgw crypt s3 kms backend = vault
+        ; rgw crypt s3 kms vault auth = token
+        ; rgw crypt s3 kms vault addr = http://127.0.0.1:8200/v1/secret/data/
+        ; rgw crypt s3 kms vault token file = /path/to/token.file
+
 $extra_conf
 EOF
 
