@@ -61,7 +61,7 @@ class Auth(RESTController):
                 token = JwtManager.decode_token(token)
                 if not JwtManager.is_blacklisted(token['jti']):
                     user = AuthManager.get_user(token['username'])
-                    if user.lastUpdate <= token['iat']:
+                    if user.last_update <= token['iat']:
                         return {
                             'username': user.username,
                             'permissions': user.permissions_dict(),
@@ -69,8 +69,8 @@ class Auth(RESTController):
                         }
 
                     logger.debug("AMT: user info changed after token was"
-                                 " issued, iat=%s lastUpdate=%s",
-                                 token['iat'], user.lastUpdate)
+                                 " issued, iat=%s last_update=%s",
+                                 token['iat'], user.last_update)
                 else:
                     logger.debug('AMT: Token is black-listed')
             except jwt.exceptions.ExpiredSignatureError:
