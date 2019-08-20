@@ -1071,6 +1071,9 @@ void PeeringState::send_lease()
 
 void PeeringState::proc_lease(const pg_lease_t& l)
 {
+  if (get_role() < 0) {
+    return;
+  }
   psdout(10) << __func__ << " " << l << dendl;
   if (l.readable_until_ub > readable_until_ub_from_primary) {
     readable_until_ub_from_primary = l.readable_until_ub;
