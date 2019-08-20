@@ -2854,7 +2854,7 @@ void PeeringState::split_into(
   // History
   child->past_intervals = past_intervals;
 
-  on_new_interval();
+  child->on_new_interval();
 
   child->send_notify = !child->is_primary();
 
