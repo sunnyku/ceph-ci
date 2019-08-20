@@ -133,6 +133,9 @@
 
 #define MSG_OSD_PG_READY_TO_MERGE 122
 
+#define MSG_OSD_PG_LEASE        130
+#define MSG_OSD_PG_LEASE_ACK    131
+
 // *** MDS ***
 
 #define MSG_MDS_BEACON             100  // to monitor
