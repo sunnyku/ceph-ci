@@ -2343,6 +2343,8 @@ public:
   int repair(bool deep) override {
     return _fsck(deep, true);
   }
+  int reshard(const std::string& new_sharding);
+
   int _fsck(bool deep, bool repair);
 
   void set_cache_shards(unsigned num) override;
