@@ -8312,25 +8312,23 @@ void OSD::_finish_splits(set<PGRef>& pgs)
   dout(10) << __func__ << " " << pgs << dendl;
   if (is_stopping())
     return;
-  PeeringCtx rctx = create_context();
   for (set<PGRef>::iterator i = pgs.begin();
        i != pgs.end();
        ++i) {
     PG *pg = i->get();
 
+    PeeringCtx rctx = create_context();
     pg->lock();
     dout(10) << __func__ << " " << *pg << dendl;
     epoch_t e = pg->get_osdmap_epoch();
     pg->handle_initialize(rctx);
     pg->queue_null(e, e);
-    dispatch_context_transaction(rctx, pg);
+    dispatch_context(rctx, pg, service.get_osdmap());
     pg->unlock();
 
     unsigned shard_index = pg->pg_id.hash_to_shard(num_shards);
     shards[shard_index]->register_and_wake_split_child(pg);
   }
-
-  dispatch_context(rctx, 0, service.get_osdmap());
 };
 
 bool OSD::add_merge_waiter(OSDMapRef nextmap, spg_t target, PGRef src,
@@ -8388,7 +8386,7 @@ bool OSD::advance_pg(
 		  << " is merge source, target is " << parent
 		   << dendl;
 	  pg->write_if_dirty(rctx);
-	  dispatch_context_transaction(rctx, pg, &handle);
+	  dispatch_context(rctx, pg, pg->get_osdmap(), &handle);
 	  pg->ch->flush();
 	  pg->on_shutdown();
 	  OSDShard *sdata = pg->osd_shard;
@@ -8963,18 +8961,6 @@ void OSD::handle_pg_create(OpRequestRef op)
 PeeringCtx OSD::create_context()
 {
   return PeeringCtx();
-}
-
-void OSD::dispatch_context_transaction(PeeringCtx &ctx, PG *pg,
-                                       ThreadPool::TPHandle *handle)
-{
-  if (!ctx.transaction.empty() || ctx.transaction.has_contexts()) {
-    int tr = store->queue_transaction(
-      pg->ch,
-      std::move(ctx.transaction), TrackedOpRef(), handle);
-    ceph_assert(tr == 0);
-    ctx.reset_transaction();
-  }
 }
 
 void OSD::dispatch_context(PeeringCtx &ctx, PG *pg, OSDMapRef curmap,
@@ -9647,7 +9633,7 @@ void OSD::dequeue_peering_evt(
       pg->unlock();
       return;
     }
-    dispatch_context_transaction(rctx, pg, &handle);
+    dispatch_context(rctx, pg, curmap, &handle);
     need_up_thru = pg->get_need_up_thru();
     same_interval_since = pg->get_same_interval_since();
     pg->unlock();
@@ -9656,7 +9642,6 @@ void OSD::dequeue_peering_evt(
   if (need_up_thru) {
     queue_want_up_thru(same_interval_since);
   }
-  dispatch_context(rctx, pg, curmap, &handle);
 
   service.send_pg_temp();
 }
