@@ -1895,6 +1895,7 @@ int RGWBucketAdminOp::info(RGWRados *store, RGWBucketAdminOpState& op_state,
           formatter->dump_string("bucket", bucket_name);
       }
     }
+    store->meta_mgr->list_keys_complete(handle);
 
     formatter->close_section();
   }
@@ -2051,6 +2052,11 @@ static int process_stale_instances(RGWRados *store, RGWBucketAdminOpState& op_st
   bool truncated;
 
   formatter->open_array_section("keys");
+  auto g = make_scope_guard([&store, &handle, &formatter]() {
+                              store->meta_mgr->list_keys_complete(handle);
+                              formatter->close_section(); // keys
+                              formatter->flush(cout);
+                            });
 
   do {
     list<std::string> keys;
@@ -2076,8 +2082,6 @@ static int process_stale_instances(RGWRados *store, RGWBucketAdminOpState& op_st
     }
   } while (truncated);
 
-  formatter->close_section(); // keys
-  formatter->flush(cout);
   return 0;
 }
 
