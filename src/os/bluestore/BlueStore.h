@@ -45,6 +45,7 @@
 #include "BlockDevice.h"
 #include "BlueFS.h"
 #include "common/EventTrace.h"
+#include "BlueStore_DB_Hash.h"
 
 class Allocator;
 class FreelistManager;
@@ -2105,12 +2106,13 @@ private:
   int _open_db(bool create,
 	       bool to_repair_db=false,
 	       bool read_only = false);
+
   /*
    * splits string of sharding definition into ColumnFamily definition
    */
-  int get_sharding(const std::string& sharding_schema,
-                   std::vector<KeyValueDB::ColumnFamily>& cfs,
-                   std::map<std::string, size_t>& shards);
+  int parse_sharding(const std::string& sharding_schema,
+                     std::vector<KeyValueDB::ColumnFamily>& cfs,
+                     BlueStore_DB_Hash::ShardingSchema& shards);
   void _close_db();
   int _open_fm(KeyValueDB::Transaction t);
   void _close_fm();
