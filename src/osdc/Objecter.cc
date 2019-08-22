@@ -4543,6 +4543,7 @@ void Objecter::_dump_ops(const OSDSession *s, Formatter *fmt)
     fmt->dump_unsigned("tid", op->tid);
     op->target.dump(fmt);
     fmt->dump_stream("last_sent") << op->stamp;
+    fmt->dump_stream("age") << coarse_mono_clock::now() - op->stamp;
     fmt->dump_int("attempts", op->attempts);
     fmt->dump_stream("snapid") << op->snapid;
     fmt->dump_stream("snap_context") << op->snapc;
