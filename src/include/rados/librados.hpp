@@ -711,6 +711,8 @@ namespace librados
 
     ~IoCtx();
 
+    bool is_valid() const;
+
     // Close our pool handle
     void close();
 
