@@ -990,6 +990,7 @@ protected:
 	ceph_assert(!missing.is_missing(hoid));
       }
       missing.revise_have(hoid, eversion_t());
+      missing.mark_fully_dirty(hoid);
       if (rollbacker) {
 	if (!object_not_in_store) {
 	  rollbacker->remove(hoid);
@@ -1399,6 +1400,7 @@ public:
 	  pg_missing_item item;
 	  decode(oid, bp);
 	  decode(item, bp);
+          ldpp_dout(dpp, 20) << "read_log_and_missing " << item << dendl;
 	  if (item.is_delete()) {
 	    ceph_assert(missing.may_include_deletes);
 	  }
@@ -1451,8 +1453,6 @@ public:
 	    continue;
 	  if (i->is_error())
 	    continue;
-    if (!i->is_delete())
-        missing.merge(*i);
 	  if (did.count(i->soid)) continue;
 	  did.insert(i->soid);
 
@@ -1481,8 +1481,7 @@ public:
 		ceph_assert(miter->second.have == oi.version || miter->second.have == eversion_t());
 		checked.insert(i->soid);
 	      } else {
-		missing.add(i->soid, i->version, oi.version, i->is_delete(), false);
-		missing.merge(*i);
+		missing.add(i->soid, i->version, oi.version, i->is_delete());
 	      }
 	    }
 	  } else {
@@ -1500,8 +1499,7 @@ public:
 	      }
 	      checked.insert(i->soid);
 	    } else {
-	      missing.add(i->soid, i->version, eversion_t(), i->is_delete(), false);
-	      missing.merge(*i);
+	      missing.add(i->soid, i->version, eversion_t(), i->is_delete());
 	    }
 	  }
 	}
