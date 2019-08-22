@@ -42,8 +42,8 @@
 #include "perfglue/heap_profiler.h"
 #include "common/blkdev.h"
 #include "common/numa.h"
-#include "BlueStore_DB_Hash.h"
 #include "common/url_escape.h"
+#include "kv/RocksDBStore.h"
 
 #define dout_context cct
 #define dout_subsys ceph_subsys_bluestore
@@ -5629,8 +5629,8 @@ int BlueStore::_open_db(bool create, bool to_repair_db, bool read_only)
 
     if (r == 0 && sharding_schema.size() > 0) {
       /* enable sharding of rocksdb */
-      std::map<std::string, size_t> shards;
-      r = get_sharding(sharding_schema, cfs, shards);
+      BlueStore_DB_Hash::ShardingSchema shards;
+      r = parse_sharding(sharding_schema, cfs, shards);
       if (r < 0)
         return r;
       RocksDBStore* rdb = dynamic_cast<RocksDBStore*>(db);
@@ -5690,9 +5690,9 @@ void BlueStore::_close_db()
   }
 }
 
-int BlueStore::get_sharding(const std::string& sharding_schema,
+int BlueStore::parse_sharding(const std::string& sharding_schema,
                             std::vector<KeyValueDB::ColumnFamily>& cfs,
-                            std::map<std::string, size_t>& shards)
+                            BlueStore_DB_Hash::ShardingSchema& shards)
 {
   cfs.clear();
   map<string,string> cf_map;
@@ -5701,17 +5701,17 @@ int BlueStore::get_sharding(const std::string& sharding_schema,
               &cf_map,
               " \t");
 
-  shards = std::map<std::string, size_t> {
-    {PREFIX_SUPER, 0},
-    {PREFIX_STAT, 0},
-    {PREFIX_COLL, 0},
-    {PREFIX_OBJ, 0},
-    {PREFIX_OMAP, 0},
-    {PREFIX_PGMETA_OMAP, 0},
-    {PREFIX_DEFERRED, 0},
-    {PREFIX_ALLOC, 0},
-    {PREFIX_ALLOC_BITMAP, 0},
-    {PREFIX_SHARED_BLOB, 0}
+  shards = BlueStore_DB_Hash::ShardingSchema {
+    {PREFIX_SUPER, {0, 0}},
+    {PREFIX_STAT, {0, 0}},
+    {PREFIX_COLL, {0, 0}},
+    {PREFIX_OBJ, {0, 0}},
+    {PREFIX_OMAP, {0, sizeof(BlueStore::Onode::onode.nid)}},
+    {PREFIX_PGMETA_OMAP, {0, sizeof(BlueStore::Onode::onode.nid)}},
+    {PREFIX_DEFERRED, {0, 0}},
+    {PREFIX_ALLOC, {0, 0}},
+    {PREFIX_ALLOC_BITMAP, {0, 0}},
+    {PREFIX_SHARED_BLOB, {0, 0}}
   };
 
   for (auto& i : cf_map) {
@@ -5726,7 +5726,7 @@ int BlueStore::get_sharding(const std::string& sharding_schema,
       derr << __func__ << " db prefix '" << prefix << "' illegal " << dendl;
       return -EINVAL;
     }
-    sh->second = prefix_count;
+    sh->second.shards = prefix_count;
     dout(10) << "prefix '" << prefix << "' split into " << prefix_count << "column families" << dendl;
 
     for(int k = 0; k < prefix_count; k++) {
