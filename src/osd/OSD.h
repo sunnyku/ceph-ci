@@ -1896,15 +1896,7 @@ protected:
   PeeringCtx create_context();
   void dispatch_context(PeeringCtx &ctx, PG *pg, OSDMapRef curmap,
                         ThreadPool::TPHandle *handle = NULL);
-  void dispatch_context_transaction(PeeringCtx &ctx, PG *pg,
-                                    ThreadPool::TPHandle *handle = NULL);
   void discard_context(PeeringCtx &ctx);
-  void do_notifies(map<int,vector<pg_notify_t>>& notify_list,
-		   OSDMapRef map);
-  void do_queries(map<int, map<spg_t,pg_query_t> >& query_map,
-		  OSDMapRef map);
-  void do_infos(map<int,vector<pg_notify_t>>& info_map,
-		OSDMapRef map);
 
   bool require_mon_peer(const Message *m);
   bool require_mon_or_mgr_peer(const Message *m);
