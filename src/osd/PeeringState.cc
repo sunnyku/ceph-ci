@@ -1975,11 +1975,12 @@ bool PeeringState::search_for_missing(
   return found_missing;
 }
 
-void PeeringState::discover_all_missing(
+bool PeeringState::discover_all_missing(
   map<int, map<spg_t,pg_query_t> > &query_map)
 {
   auto &missing = pg_log.get_missing();
   uint64_t unfound = get_num_unfound();
+  bool any = false;  // did we start any queries
 
   psdout(10) << __func__ << " "
 	     << missing.num_missing() << " missing, "
@@ -2031,7 +2032,9 @@ void PeeringState::discover_all_missing(
 	pg_query_t::FULLLOG,
 	peer.shard, pg_whoami.shard,
 	info.history, get_osdmap_epoch());
+    any = true;
   }
+  return any;
 }
 
 /* Build the might_have_unfound set.
