@@ -26,6 +26,7 @@
 #include "common/errno.h"
 #include "common/version.h"
 
+#include "PyUtil.h"
 #include "BaseMgrModule.h"
 #include "Gil.h"
 
@@ -303,13 +304,11 @@ ceph_set_health_checks(BaseMgrModule *self, PyObject *args)
 	  summary = std::move(vs);
 	}
       } else if (ks == "count") {
-	if (PyLong_Check(v)) {
-	  count = PyLong_AsLong(v);
-	} else if (PyInt_Check(v)) {
+	if (PyInt_Check(v)) {
 	  count = PyInt_AsLong(v);
 	} else {
 	  derr << __func__ << " check " << check_name
-	       << " count value not long or int" << dendl;
+	       << " count value not int" << dendl;
 	  continue;
 	}
       } else if (ks == "detail") {
@@ -395,11 +394,13 @@ ceph_option_get(BaseMgrModule *self, PyObject *args)
     return nullptr;
   }
 
-  std::string value;
-  int r = g_conf().get_val(string(what), &value);
-  if (r >= 0) {
+  const Option *opt = g_conf().find_option(string(what));
+  if (opt) {
+    std::string value;
+    int r = g_conf().get_val(string(what), &value);
+    assert(r >= 0);
     dout(10) << "ceph_option_get " << what << " found: " << value << dendl;
-    return PyString_FromString(value.c_str());
+    return get_python_typed_option_value(opt->type, string(what), value);
   } else {
     dout(4) << "ceph_option_get " << what << " not found " << dendl;
     Py_RETURN_NONE;
@@ -946,16 +947,12 @@ ceph_add_osd_perf_query(BaseMgrModule *self, PyObject *args)
           }
           limit->order_by = it->second;
         } else if (limit_param_name == NAME_LIMIT_MAX_COUNT) {
-#if PY_MAJOR_VERSION <= 2
-          if (!PyInt_Check(limit_param_val) && !PyLong_Check(limit_param_val)) {
-#else
-          if (!PyLong_Check(limit_param_val)) {
-#endif
+          if (!PyInt_Check(limit_param_val)) {
             derr << __func__ << " " << limit_param_name << " not an int"
                  << dendl;
             Py_RETURN_NONE;
           }
-          limit->max_count = PyLong_AsLong(limit_param_val);
+          limit->max_count = PyInt_AsLong(limit_param_val);
         } else {
           derr << __func__ << " unknown limit param: " << limit_param_name
                << dendl;
