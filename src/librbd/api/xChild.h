@@ -6,6 +6,7 @@
 
 #include "include/rados/librados.hpp"
 #include "include/rbd/librbd.hpp"
+#include "include/rbd/librbdx.hpp"
 #include "librbd/Types.h"
 
 #include <map>
@@ -23,7 +24,7 @@ template <typename ImageCtxT = librbd::ImageCtx>
 struct xChild {
 
   static int list(librados::IoCtx& ioctx,
-      std::map<ParentSpec, std::set<std::string>>* children);
+      std::map<librbdx::parent_spec_t, std::vector<std::string>>* children);
 
 };
 

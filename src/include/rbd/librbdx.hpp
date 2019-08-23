@@ -22,7 +22,7 @@ enum class snap_ns_type_t {
   SNAPSHOT_NAMESPACE_TYPE_USER = 0,
 };
 
-std::string to_str(const snap_ns_type_t& o) {
+inline std::string to_str(const snap_ns_type_t& o) {
   switch (o) {
   case snap_ns_type_t::SNAPSHOT_NAMESPACE_TYPE_USER:
     return "SNAPSHOT_NAMESPACE_TYPE_USER";
@@ -38,7 +38,7 @@ enum class snap_protection_status_t {
   PROTECTION_STATUS_LAST         = 3
 };
 
-std::string to_str(const snap_protection_status_t& o) {
+inline std::string to_str(const snap_protection_status_t& o) {
   switch (o) {
   case snap_protection_status_t::PROTECTION_STATUS_UNPROTECTED:
     return "PROTECTION_STATUS_UNPROTECTED";
@@ -56,7 +56,7 @@ enum class trash_source_t {
   TRASH_IMAGE_SOURCE_MIRRORING = 1,
 };
 
-std::string to_str(const trash_source_t& o) {
+inline std::string to_str(const trash_source_t& o) {
   switch (o) {
   case trash_source_t::TRASH_IMAGE_SOURCE_USER:
     return "TRASH_IMAGE_SOURCE_USER";
@@ -94,13 +94,13 @@ typedef struct {
   uint64_t snap_id;
 } parent_spec_t;
 
-bool operator<(const parent_spec_t& lhs, const parent_spec_t& rhs) {
+inline bool operator<(const parent_spec_t& lhs, const parent_spec_t& rhs) {
   return ((lhs.pool_id < rhs.pool_id) ||
       (lhs.image_id < rhs.image_id) ||
       (lhs.snap_id < rhs.snap_id));
 }
 
-std::string to_str(const parent_spec_t& o) {
+inline std::string to_str(const parent_spec_t& o) {
   std::string str;
   str = std::to_string(o.pool_id);
   str += "/";

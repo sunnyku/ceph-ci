@@ -38,7 +38,7 @@ namespace {
 
 template <typename I>
 int xChild<I>::list(librados::IoCtx& ioctx,
-    std::map<ParentSpec, std::set<std::string>>* children) {
+    std::map<librbdx::parent_spec_t, std::vector<std::string>>* children) {
   CephContext* cct((CephContext*)ioctx.cct());
   ldout(cct, 20) << "ioctx=" << &ioctx << dendl;
 
@@ -63,9 +63,17 @@ int xChild<I>::list(librados::IoCtx& ioctx,
 
     for (const auto& entry : page) {
       // decode to parent
-      auto parent = parent_from_key(entry.first);
+      auto x_parent = parent_from_key(entry.first);
 
-      children->insert({parent, entry.second});
+      librbdx::parent_spec_t parent;
+      parent.pool_id = x_parent.pool_id;
+      parent.image_id = std::move(x_parent.image_id);
+      parent.snap_id = std::move(x_parent.snap_id);
+
+      auto& children_ = (*children)[parent];
+      for (auto& c : entry.second) {
+        children_.push_back(std::move(c));
+      }
     }
     last_read = page.rbegin()->first;
     more_entries = (page.size() >= max_read);

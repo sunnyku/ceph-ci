@@ -7,6 +7,18 @@
 #include "common/errno.h"
 #include "cls/rbd/cls_rbd_client.h"
 
+namespace {
+
+void cvt_trash_info(librbd::xTrashInfo& in, librbdx::trash_info_t* out) {
+  out->id = std::move(in.id);
+  out->name = std::move(in.name);
+  out->source = static_cast<librbdx::trash_source_t>(in.source);
+  in.deletion_time.to_timespec(&out->deletion_time);
+  in.deferment_end_time.to_timespec(&out->deferment_end_time);
+}
+
+}
+
 #define dout_subsys ceph_subsys_rbd
 #undef dout_prefix
 #define dout_prefix *_dout << "librbd::api::xTrash: " << __func__ << ": "
@@ -16,7 +28,7 @@ namespace api {
 
 template <typename I>
 int xTrash<I>::list(librados::IoCtx& ioctx,
-    std::map<std::string, xTrashInfo>* trashes) {
+    std::map<std::string, librbdx::trash_info_t>* trashes) {
   CephContext* cct((CephContext*)ioctx.cct());
   ldout(cct, 20) << "ioctx=" << &ioctx << dendl;
 
@@ -40,13 +52,18 @@ int xTrash<I>::list(librados::IoCtx& ioctx,
     }
 
     for (const auto& entry : page) {
-      trashes->insert({entry.first, {
-          .id = entry.first,
-          .name = entry.second.name,
-          .source = entry.second.source,
-          .deletion_time = entry.second.deletion_time,
-          .deferment_end_time = entry.second.deferment_end_time
-      }});
+      librbd::xTrashInfo x_info = {
+        .id = entry.first,
+        .name = entry.second.name,
+        .source = entry.second.source,
+        .deletion_time = entry.second.deletion_time,
+        .deferment_end_time = entry.second.deferment_end_time
+      };
+
+      librbdx::trash_info_t info;
+      cvt_trash_info(x_info, &info);
+
+      trashes->insert({info.id, info});
     }
     last_read = page.rbegin()->first;
     more_entries = (page.size() >= max_read);

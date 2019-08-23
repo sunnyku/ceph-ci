@@ -6,6 +6,7 @@
 
 #include "include/rados/librados.hpp"
 #include "include/rbd/librbd.hpp"
+#include "include/rbd/librbdx.hpp"
 #include "librbd/Types.h"
 
 #include <map>
@@ -22,7 +23,7 @@ template <typename ImageCtxT = librbd::ImageCtx>
 struct xTrash {
 
   static int list(librados::IoCtx& ioctx,
-      std::map<std::string, xTrashInfo>* trashes);
+      std::map<std::string, librbdx::trash_info_t>* trashes);
 
 };
 
