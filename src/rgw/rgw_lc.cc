@@ -392,7 +392,7 @@ int RGWLC::handle_multipart_expiration(
   list_op.params.ns = RGW_OBJ_NS_MULTIPART;
   list_op.params.filter = &mp_filter;
   for (auto prefix_iter = prefix_map.begin(); prefix_iter != prefix_map.end(); ++prefix_iter) {
-    if (!prefix_iter->second.status || prefix_iter->second.mp_expiration <= 0) {
+    if (!prefix_iter->second.status || prefix_iter->second.mp_expiration < 0) {
       continue;
     }
     list_op.params.prefix = prefix_iter->first;
@@ -441,9 +441,9 @@ static int read_obj_tags(RGWRados *store, RGWBucketInfo& bucket_info, rgw_obj& o
 static bool is_valid_op(const lc_op& op)
 {
       return (op.status &&
-              (op.expiration > 0 
+              (op.expiration >= 0 
                || op.expiration_date != boost::none
-               || op.noncur_expiration > 0
+               || op.noncur_expiration >= 0
                || op.dm_expiration
                || !op.transitions.empty()
                || !op.noncur_transitions.empty()));
@@ -748,7 +748,7 @@ public:
     auto& mtime = o.meta.mtime;
     bool is_expired;
     auto& op = oc.op;
-    if (op.expiration <= 0) {
+    if (op.expiration < 0) {
       if (op.expiration_date == boost::none) {
         ldout(oc.cct, 20) << __func__ << "(): key=" << o.key << ": no expiration set in rule, skipping" << dendl;
         return false;
@@ -863,7 +863,7 @@ public:
 
     auto mtime = get_effective_mtime(oc);
     bool is_expired;
-    if (transition.days <= 0) {
+    if (transition.days < 0) {
       if (transition.date == boost::none) {
         ldout(oc.cct, 20) << __func__ << "(): key=" << o.key << ": no transition day/date set in rule, skipping" << dendl;
         return false;
@@ -942,7 +942,7 @@ void LCOpRule::build()
 
   auto& op = env.op;
 
-  if (op.expiration > 0 ||
+  if (op.expiration >= 0 ||
       op.expiration_date != boost::none) {
     actions.emplace_back(new LCOpAction_CurrentExpiration);
   }
@@ -951,7 +951,7 @@ void LCOpRule::build()
     actions.emplace_back(new LCOpAction_DMExpiration);
   }
 
-  if (op.noncur_expiration > 0) {
+  if (op.noncur_expiration >= 0) {
     actions.emplace_back(new LCOpAction_NonCurrentExpiration);
   }
 
