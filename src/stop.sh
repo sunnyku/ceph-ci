@@ -122,3 +122,5 @@ else
     [ $stop_mgr -eq 1 ] && do_killall ceph-mgr
     [ $stop_rgw -eq 1 ] && do_killall radosgw lt-radosgw apache2
 fi
+
+
