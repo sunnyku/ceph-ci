@@ -29,6 +29,7 @@ void MetaRequest::dump(Formatter *f) const
   f->dump_stream("hint_ino") << inodeno_t(head.ino);
 
   f->dump_stream("sent_stamp") << sent_stamp;
+  f->dump_stream("age") << ceph_clock_now() - op_stamp;
   f->dump_int("mds", mds);
   f->dump_int("resend_mds", resend_mds);
   f->dump_int("send_to_auth", send_to_auth);
