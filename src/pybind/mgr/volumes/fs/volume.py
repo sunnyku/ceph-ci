@@ -396,6 +396,31 @@ class VolumeClient(object):
         return ret
 
     @connection_pool_wrap
+    def resize_subvolume(self, fs_handle, **kwargs):
+        ret        = 0, "", ""
+        volname    = kwargs['vol_name']
+        subvolname = kwargs['sub_name']
+        groupname  = kwargs['group_name']
+        newsize    = kwargs['newsize']
+        extend     = kwargs['extend']
+
+        try:
+            with SubVolume(self.mgr, fs_handle) as sv:
+                spec = SubvolumeSpec(subvolname, groupname)
+                if not self.group_exists(sv, spec):
+                    raise VolumeException(
+                        -errno.ENOENT, "Subvolume group '{0}' not found, create it with " \
+                        "`ceph fs subvolumegroup create` before creating or resizing subvolumes".format(groupname))
+                if not sv.get_subvolume_path(spec):
+                    raise VolumeException(
+                        -errno.ENOENT, "Subvolume '{0}' not found, create it with " \
+                        "`ceph fs subvolume create` before resizing subvolumes".format(subvolname))
+                sv.resize_subvolume(spec, newsize, extend)
+        except VolumeException as ve:
+            ret = self.volume_exception_to_retval(ve)
+        return ret
+
+    @connection_pool_wrap
     def subvolume_getpath(self, fs_handle, **kwargs):
         ret        = None
         volname    = kwargs['vol_name']

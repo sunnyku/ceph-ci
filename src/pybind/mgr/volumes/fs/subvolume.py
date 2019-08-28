@@ -141,6 +141,46 @@ class SubVolume(object):
         except cephfs.Error as e:
             raise VolumeException(-e.args[0], e.args[1])
 
+    def resize_subvolume(self, spec, newsize, extend=True):
+        """
+        :param spec: subvolume path specification
+        :param newsize: new size In bytes
+        :param extend: the extend/shrink switch
+        :return: None
+        """
+
+        if newsize <= 0:
+            raise VolumeException(-errno.EINVAL, "Provide a valid size")
+
+        subvolpath = spec.subvolume_path
+
+        try:
+            maxbytes = int(self.fs.getxattr(subvolpath, 'ceph.quota.max_bytes').decode('utf-8'))
+        except cephfs.NoData:
+            raise VolumeException(-errno.EINVAL, "ceph.quota.max_bytes: No such attribute")
+
+        try:
+            usedbytes = int(self.fs.getxattr(subvolpath, "ceph.dir.rbytes").decode('utf-8'))
+        except cephfs.NoData:
+            raise VolumeException(-errno.EINVAL, "ceph.dir.rbytes: No such attribute")
+
+        if extend:
+            if newsize <= maxbytes:
+                raise VolumeException(-errno.EINVAL, "Can't extend the subvolume. "
+                                      "The new size must be greater than the current size '{0}'".format(maxbytes))
+        else:
+            if newsize >= maxbytes:
+                raise VolumeException(-errno.EINVAL, "Can't shrink the subvolume. "
+                                      "The new size must be lesser than the current size '{0}'".format(maxbytes))
+            elif newsize < usedbytes:
+                raise VolumeException(-errno.EINVAL, "Can't shrink the subvolume. "
+                                      "The new size cannot be lesser than the current used size '{0}', "
+                                      "possible data loss.".format(usedbytes))
+        try:
+            self.fs.setxattr(subvolpath, 'ceph.quota.max_bytes', str(newsize).encode('utf-8'), 0)
+        except Exception as e:
+            raise VolumeException(-e.args[0], "Cannot set new size for the subvolume. '{0}'".format(e.args[1]))
+
     def purge_subvolume(self, spec, should_cancel):
         """
         Finish clearing up a subvolume from the trash directory.
