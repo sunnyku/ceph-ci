@@ -143,6 +143,34 @@ class SubVolume(object):
         except cephfs.Error as e:
             raise VolumeException(-e.args[0], e.args[1])
 
+    def resize_subvolume(self, subvolpath, newsize):
+        """
+        :param subvolpath: subvolume path
+        :param newsize: new size In bytes
+        :return: new quota size and used bytes as a tuple
+        """
+        if newsize <= 0:
+            raise VolumeException(-errno.EINVAL, "Provide a valid size")
+
+        try:
+            maxbytes = int(self.fs.getxattr(subvolpath, 'ceph.quota.max_bytes').decode('utf-8'))
+        except cephfs.NoData:
+            pass
+
+        if newsize == maxbytes:
+            raise VolumeException(-errno.EINVAL, "The resize value '{0}' is equal to the current quota size".format(newsize))
+
+        usedbytes = int(self.fs.getxattr(subvolpath, "ceph.dir.rbytes").decode('utf-8'))
+
+        if newsize < usedbytes:
+            log.warn("The resize value '{0}' is less than the current used size '{1}'".format(newsize, usedbytes))
+
+        try:
+            self.fs.setxattr(subvolpath, 'ceph.quota.max_bytes', str(newsize).encode('utf-8'), 0)
+        except Exception as e:
+            raise VolumeException(-e.args[0], "Cannot set new size for the subvolume. '{0}'".format(e.args[1]))
+        return newsize, usedbytes
+
     def purge_subvolume(self, spec, should_cancel):
         """
         Finish clearing up a subvolume from the trash directory.

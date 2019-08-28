@@ -165,6 +165,15 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
                     "and optionally, in a specific subvolume group",
             'perm': 'rw'
         },
+        {
+            'cmd': 'fs subvolume resize '
+                   'name=vol_name,type=CephString '
+                   'name=sub_name,type=CephString '
+                   'name=new_size,type=CephInt,req=true '
+                   'name=group_name,type=CephString,req=false ',
+            'desc': "Resize a CephFS subvolume",
+            'perm': 'rw'
+        },
 
         # volume ls [recursive]
         # subvolume ls <volume>
@@ -314,3 +323,9 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
         return self.vc.list_subvolume_snapshots(None, vol_name=cmd['vol_name'],
                                                 sub_name=cmd['sub_name'],
                                                 group_name=cmd.get('group_name', None))
+
+    def _cmd_fs_subvolume_resize(self, inbuf, cmd):
+        return self.vc.resize_subvolume(None, vol_name=cmd['vol_name'],
+                                        sub_name=cmd['sub_name'],
+                                        new_size=cmd['new_size'],
+                                        group_name=cmd.get('group_name', None))
