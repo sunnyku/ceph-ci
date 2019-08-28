@@ -143,6 +143,35 @@ class SubVolume(object):
         except cephfs.Error as e:
             raise VolumeException(-e.args[0], e.args[1])
 
+    def resize_subvolume(self, subvolpath, newsize):
+        """
+        :param subvolpath: subvolume path
+        :param newsize: new size In bytes
+        :return: None
+        """
+        if newsize <= 0:
+            raise VolumeException(-errno.EINVAL, "Provide a valid size")
+
+        try:
+            maxbytes = int(self.fs.getxattr(subvolpath, 'ceph.quota.max_bytes').decode('utf-8'))
+        except cephfs.NoData:
+            raise VolumeException(-errno.EINVAL, "ceph.quota.max_bytes: No such attribute")
+
+        try:
+            usedbytes = int(self.fs.getxattr(subvolpath, "ceph.dir.rbytes").decode('utf-8'))
+        except cephfs.NoData:
+            raise VolumeException(-errno.EINVAL, "ceph.dir.rbytes: No such attribute")
+
+        if newsize < usedbytes:
+            log.warn("The resize value is less than the current used size '{0}'".format(usedbytes))
+
+        try:
+            self.fs.setxattr(subvolpath, 'ceph.quota.max_bytes', str(newsize).encode('utf-8'), 0)
+            log.info("Used Bytes: {0}, Quota: {1}, Percentage Used: {2}%".format(usedbytes, newsize,
+                                                                                 '{0:.2f}'.format(usedbytes / newsize * 100)))
+        except Exception as e:
+            raise VolumeException(-e.args[0], "Cannot set new size for the subvolume. '{0}'".format(e.args[1]))
+
     def purge_subvolume(self, spec, should_cancel):
         """
         Finish clearing up a subvolume from the trash directory.
