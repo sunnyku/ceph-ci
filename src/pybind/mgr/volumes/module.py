@@ -137,6 +137,24 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
                     "and optionally, in a specific subvolume group",
             'perm': 'rw'
         },
+        {
+            'cmd': 'fs subvolume extend '
+                   'name=vol_name,type=CephString '
+                   'name=sub_name,type=CephString '
+                   'name=newsize,type=CephInt,req=true '
+                   'name=group_name,type=CephString,req=false ',
+            'desc': "Extend a CephFS subvolume",
+            'perm': 'rw'
+        },
+        {
+            'cmd': 'fs subvolume shrink '
+                   'name=vol_name,type=CephString '
+                   'name=sub_name,type=CephString '
+                   'name=newsize,type=CephInt,req=true '
+                   'name=group_name,type=CephString,req=false ',
+            'desc': "Shrink a CephFS subvolume",
+            'perm': 'rw'
+        },
 
         # volume ls [recursive]
         # subvolume ls <volume>
@@ -270,3 +288,17 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
                                                  snap_name=cmd['snap_name'],
                                                  group_name=cmd.get('group_name', None),
                                                  force=cmd.get('force', False))
+
+    def _cmd_fs_subvolume_extend(self, inbuf, cmd):
+        return self.vc.resize_subvolume(None, vol_name=cmd['vol_name'],
+                                        sub_name=cmd['sub_name'],
+                                        group_name=cmd.get('group_name', None),
+                                        newsize=cmd.get('newsize', None),
+                                        extend=True)
+
+    def _cmd_fs_subvolume_shrink(self, inbuf, cmd):
+        return self.vc.resize_subvolume(None, vol_name=cmd['vol_name'],
+                                        sub_name=cmd['sub_name'],
+                                        group_name=cmd.get('group_name', None),
+                                        newsize=cmd.get('newsize', None),
+                                        extend=False)
