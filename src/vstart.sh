@@ -656,7 +656,7 @@ EOF
         admin socket = $CEPH_ASOK_DIR/\$name.\$pid.asok
 
         ; needed for s3tests
-        rgw crypt s3 kms backend = local
+        rgw crypt s3 kms backend = testing
         rgw crypt s3 kms encryption keys = testkey-1=YmluCmJvb3N0CmJvb3N0LWJ1aWxkCmNlcGguY29uZgo= testkey-2=aWIKTWFrZWZpbGUKbWFuCm91dApzcmMKVGVzdGluZwo=
         rgw crypt require ssl = false
         ; uncomment the following to set LC days as the value in seconds;

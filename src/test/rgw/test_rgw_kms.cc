@@ -21,7 +21,7 @@ TEST(TestSSEKMS, invalid_backend)
 TEST(TestSSEKMS, invalid_vault_auth)
 {
   CephContext *cct = (new CephContext(CEPH_ENTITY_TYPE_ANY))->get();
-  cct->_conf.set_val("rgw_crypt_s3_kms_vault_auth", "invalid");
+  cct->_conf.set_val("rgw_crypt_vault_auth", "invalid");
 
   std::string key_id, actual_key;
   ASSERT_EQ(
@@ -45,7 +45,7 @@ TEST(TestSSEKMS, vault_token_file_unset)
 TEST(TestSSEKMS, non_existent_vault_token_file)
 {
   CephContext *cct = (new CephContext(CEPH_ENTITY_TYPE_ANY))->get();
-  cct->_conf.set_val("rgw_crypt_s3_kms_vault_token_file", "/nonexistent/file");
+  cct->_conf.set_val("rgw_crypt_vault_token_file", "/nonexistent/file");
 
   std::string key_id, key_selector, actual_key;
   bufferlist secret_bl;

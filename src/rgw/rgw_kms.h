@@ -8,7 +8,7 @@
 #ifndef CEPH_RGW_KMS_H
 #define CEPH_RGW_KMS_H
 
-static const std::string RGW_SSE_KMS_BACKEND_LOCAL = "local";
+static const std::string RGW_SSE_KMS_BACKEND_TESTING = "testing";
 static const std::string RGW_SSE_KMS_BACKEND_BARBICAN = "barbican";
 static const std::string RGW_SSE_KMS_BACKEND_VAULT = "vault";
 

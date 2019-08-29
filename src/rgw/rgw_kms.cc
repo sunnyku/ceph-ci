@@ -145,9 +145,9 @@ static int request_key_from_vault_with_token(CephContext *cct,
   std::string token_file, vault_addr, vault_token;
   int res = 0;
 
-  token_file = cct->_conf->rgw_crypt_s3_kms_vault_token_file;
+  token_file = cct->_conf->rgw_crypt_vault_token_file;
   if (token_file.empty()) {
-    ldout(cct, 0) << "ERROR: Vault token file not set in rgw_crypt_s3_kms_vault_token_file" << dendl;
+    ldout(cct, 0) << "ERROR: Vault token file not set in rgw_crypt_vault_token_file" << dendl;
     return -EINVAL;
   }
   ldout(cct, 20) << "Vault token file: " << token_file << dendl;
@@ -171,9 +171,9 @@ static int request_key_from_vault_with_token(CephContext *cct,
   vault_token = std::string{buf, static_cast<size_t>(res)};
   memset(buf, 0, sizeof(buf));
 
-  vault_addr = cct->_conf->rgw_crypt_s3_kms_vault_addr;
+  vault_addr = cct->_conf->rgw_crypt_vault_addr;
   if (vault_addr.empty()) {
-    ldout(cct, 0) << "ERROR: Vault address not set in rgw_crypt_s3_kms_vault_addr" << dendl;
+    ldout(cct, 0) << "ERROR: Vault address not set in rgw_crypt_vault_addr" << dendl;
     return -EINVAL;
   }
 
@@ -206,14 +206,14 @@ static int get_actual_key_from_vault(CephContext *cct,
   std::string auth;
   bufferlist secret_bl;
 
-  auth = cct->_conf->rgw_crypt_s3_kms_vault_auth;
+  auth = cct->_conf->rgw_crypt_vault_auth;
   ldout(cct, 20) << "Vault authentication method: " << auth << dendl;
 
   // Currently only token-based authentication is supported
   if (RGW_SSE_KMS_VAULT_AUTH_TOKEN == auth) {
     res = request_key_from_vault_with_token(cct, key_id, &secret_bl);
   } else {
-    ldout(cct, 0) << "ERROR: Invalid rgw_crypt_s3_kms_vault_auth: " << auth << dendl;
+    ldout(cct, 0) << "ERROR: Invalid rgw_crypt_vault_auth: " << auth << dendl;
     return -EINVAL;
   }
 
@@ -269,10 +269,9 @@ int get_actual_key_from_kms(CephContext *cct,
   if (RGW_SSE_KMS_BACKEND_VAULT == kms_backend)
     return get_actual_key_from_vault(cct, key_id, actual_key);
 
-  if (RGW_SSE_KMS_BACKEND_LOCAL != kms_backend) {
-    ldout(cct, 0) << "ERROR: Invalid rgw_crypt_s3_kms_backend: " << kms_backend << dendl;
-    return -EINVAL;
-  }
+  if (RGW_SSE_KMS_BACKEND_TESTING == kms_backend)
+    return get_actual_key_from_conf(cct, key_id, key_selector, actual_key);
 
-  return get_actual_key_from_conf(cct, key_id, key_selector, actual_key);
+  ldout(cct, 0) << "ERROR: Invalid rgw_crypt_s3_kms_backend: " << kms_backend << dendl;
+  return -EINVAL;
 }

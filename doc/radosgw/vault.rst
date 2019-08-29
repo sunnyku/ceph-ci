@@ -17,8 +17,9 @@ Vault provides several authentication mechanisms. Currently, the Object Gateway
 supports the `token authentication method`_ only.
 
 When authenticating with Vault using the token method, save the token in a
-plain-text file readable only by the Object Gateway. The path to this file will
-need to be provided in the Gateway configuration file (see below).
+plain-text file. The path to this file must be provided in the Gateway
+configuration file (see below). For security reasons, ensure the file is
+readable by the Object Gateway only.
 
 Create a key in Vault
 =====================
@@ -45,8 +46,8 @@ Output::
   ---    -----
   key    Ak5dRyLQjwX/wb7vo6Fq1qjsfk1dh2CiSicX+gLAhwk=
 
-The URL to the secret in Vault will need to be provided in the Gateway
-configuration file (see below).
+The URL to the secret in Vault must be provided in the Gateway configuration
+file (see below).
 
 Configure the Ceph Object Gateway
 =================================
@@ -55,9 +56,9 @@ Edit the Ceph configuration file to enable Vault as a KMS for server-side
 encryption::
 
    rgw crypt s3 kms backend = vault
-   rgw crypt s3 kms vault auth = token
-   rgw crypt s3 kms vault addr = http://vaultserver:8200/v1/secret/data/
-   rgw crypt s3 kms vault token file = /path/to/token.file
+   rgw crypt vault auth = token
+   rgw crypt vault addr = http://vaultserver:8200/v1/secret/data/
+   rgw crypt vault token file = /path/to/token.file
 
 Upload object
 =============
