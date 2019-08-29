@@ -7984,4 +7984,6 @@ void RGWGetBucketPolicyStatus::execute()
   			  }
   			 );
   ldout(s->cct,20) << __func__ << "ACL public status=" << isPublic << dendl;
+  if (s->iam_policy)
+    isPublic |= rgw::IAM::IsPublic(*s->iam_policy);
 }
