@@ -197,6 +197,7 @@ add_library(rgw_a STATIC
 
 add_dependencies(rgw_a civetweb_h)
 
+target_compile_definitions(rgw_a PUBLIC "-DCLS_CLIENT_HIDE_IOCTX")
 target_include_directories(rgw_a PUBLIC "${CMAKE_SOURCE_DIR}/src/dmclock/support/src")
 target_include_directories(rgw_a SYSTEM PUBLIC "../rapidjson/include")
 
@@ -257,7 +258,6 @@ target_link_libraries(rgw_schedulers
 target_link_libraries(radosgw_a
   PRIVATE ${rgw_libs} rgw_schedulers
   PUBLIC dmclock::dmclock)
-target_compile_definitions(radosgw_a PUBLIC "-DCLS_CLIENT_HIDE_IOCTX")
 if(WITH_RADOSGW_BEAST_FRONTEND AND WITH_RADOSGW_BEAST_OPENSSL)
   # used by rgw_asio_frontend.cc
   target_link_libraries(radosgw_a PRIVATE OpenSSL::SSL)
