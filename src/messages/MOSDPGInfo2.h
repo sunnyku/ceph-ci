@@ -34,8 +34,7 @@ public:
       MInfoRec(
 	pg_shard_t(get_source().num(), info.pgid.shard),
 	info,
-	epoch_sent),
-      false);
+	epoch_sent));
   }
 
   MOSDPGInfo2() : MOSDPeeringOp{MSG_OSD_PG_INFO2,
