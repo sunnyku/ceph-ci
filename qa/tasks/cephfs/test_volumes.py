@@ -118,6 +118,179 @@ class TestVolumes(CephFSTestCase):
         # verify trash dir is clean
         self._wait_for_trash_empty()
 
+    def test_subvolume_extend(self):
+        # tests the 'fs subvolume extend' command
+
+        data_pool = "new_pool"
+        self.fs.add_data_pool(data_pool)
+
+        #create volume
+        self.volname = TestVolumes.TEST_VOLUME_NAME
+        self._fs_cmd("volume", "create", self.volname)
+
+        #create subvolumegroup
+        subvolgroup = self._generate_random_group_name()
+        self._fs_cmd("subvolumegroup", "create", self.volname, subvolgroup,
+                     "--pool_layout", data_pool)
+
+        # create subvolume
+        subvolname = self._generate_random_subvolume_name()
+        osize = DEFAULT_FILE_SIZE*1024*1024
+        self._fs_cmd("subvolume", "create",
+                     self.volname, subvolname,
+                     "--size", osize,
+                     "--group_name", subvolgroup, "--pool_layout", data_pool,
+                     "--mode", "777")
+
+        # make sure it exists
+        subvolpath = self._fs_cmd("subvolume", "getpath", self.volname, subvolname)
+        self.assertNotEqual(subvolpath, None)
+
+        # extend the subvolume
+        nsize = osize*2
+        self._fs_cmd("subvolume", "extend", self.volname, subvolname, nsize,
+                     "--group_name", subvolgroup)
+
+        #check if sizes are equal
+        size = self.mount_a.getfattr(subvolpath, "ceph.quota.max_bytes")
+        self.assertEqual(size, nsize)
+
+    def test_subvolume_extend_fail_invalid_size(self):
+        # tests the 'fs subvolume extend' command for the new size
+        # lesser than the original/current size
+
+        data_pool = "new_pool"
+        self.fs.add_data_pool(data_pool)
+
+        #create volume
+        self.volname = TestVolumes.TEST_VOLUME_NAME
+        self._fs_cmd("volume", "create", self.volname)
+
+        #create subvolumegroup
+        subvolgroup = self._generate_random_group_name()
+        self._fs_cmd("subvolumegroup", "create",
+                     self.volname, subvolgroup,
+                     "--pool_layout", data_pool)
+
+        # create subvolume
+        subvolname = self._generate_random_subvolume_name()
+        osize = DEFAULT_FILE_SIZE*1024*1024
+        self._fs_cmd("subvolume", "create",
+                     self.volname, subvolname,
+                     "--size", osize,
+                     "--group_name", subvolgroup, "--pool_layout", data_pool,
+                     "--mode", "777")
+
+        # make sure it exists
+        subvolpath = self._fs_cmd("subvolume", "getpath", self.volname, subvolname)
+        self.assertNotEqual(subvolpath, None)
+
+        # try to extend the subvolume with lesser size than the original/current size
+        nsize = osize/2
+        try:
+            self._fs_cmd("subvolume", "extend", self.volname, subvolname, nsize,
+                         "--group_name", subvolgroup)
+        except CommandFailedError as ce:
+            if ce.exitstatus != errno.EINVAL:
+                raise
+        else:
+            raise RuntimeError("expected the 'fs subvolume extend' command to fail")
+
+    def test_subvolume_shrink(self):
+        # tests the 'fs subvolume shrink' command
+
+        data_pool = "new_pool"
+        self.fs.add_data_pool(data_pool)
+
+        #create volume
+        self.volname = TestVolumes.TEST_VOLUME_NAME
+        self._fs_cmd("volume", "create", self.volname)
+
+        #create subvolumegroup
+        subvolgroup = self._generate_random_group_name()
+        self._fs_cmd("subvolumegroup", "create",
+                     self.volname, subvolgroup,
+                     "--pool_layout", data_pool)
+
+        # create subvolume
+        subvolname = self._generate_random_subvolume_name()
+        file_size=DEFAULT_FILE_SIZE
+        osize = file_size*1024*1024*10
+        self._fs_cmd("subvolume", "create",
+                     self.volname, subvolname,
+                     "--size", osize,
+                     "--group_name", subvolgroup, "--pool_layout", data_pool,
+                     "--mode", "777")
+
+        # make sure it exists
+        subvolpath = self._fs_cmd("subvolume", "getpath", self.volname, subvolname)
+        self.assertNotEqual(subvolpath, None)
+
+        #create one file of 1MB
+        subvolpath = subvolpath[1:].rstrip() # remove "/" prefix and any trailing newline
+        number_of_files=1
+        log.debug("filling subvolume {0} with {1} files each {2}MB size".format(subvolname,
+                                                                                number_of_files,
+                                                                                file_size))
+        filename = "{0}.{1}".format(TestVolumes.TEST_FILE_NAME_PREFIX, 0)
+        self.mount_a.write_n_mb(os.path.join(subvolpath, filename), file_size)
+
+        usedsize = self.mount_a.getfattr(subvolpath, "ceph.dir.rbytes")
+
+        # shrink the subvolume
+        nsize = osize/2
+        self._fs_cmd("subvolume", "shrink", self.volname, subvolname, nsize,
+                     "--group_name", subvolgroup)
+
+        #check if sizes are equal and check if size >= usedsize
+        size = self.mount_a.getfattr(subvolpath, "ceph.quota.max_bytes")
+        self.assertEqual(size, nsize)
+        self.assertGreaterEqual(size, usedsize)
+
+    def test_subvolume_shrink_fail_invalid_size(self):
+        # tests the 'fs subvolume shrink' command for the new size
+        # lesser than the used size
+
+        data_pool = "new_pool"
+        self.fs.add_data_pool(data_pool)
+
+        # create volume
+        self.volname = TestVolumes.TEST_VOLUME_NAME
+        self._fs_cmd("volume", "create", self.volname)
+
+        # create subvolumegroup
+        subvolgroup = self._generate_random_group_name()
+        self._fs_cmd("subvolumegroup", "create",
+                     self.volname, subvolgroup,
+                     "--pool_layout", data_pool)
+
+        # create subvolume
+        subvolname = self._generate_random_subvolume_name()
+        file_size=DEFAULT_FILE_SIZE
+        osize = file_size*1024*1024*10
+        self._fs_cmd("subvolume", "create",
+                     self.volname, subvolname,
+                     "--size", osize,
+                     "--group_name", subvolgroup, "--pool_layout", data_pool,
+                     "--mode", "777")
+
+        # make sure it exists
+        subvolpath = self._fs_cmd("subvolume", "getpath", self.volname, subvolname)
+        self.assertNotEqual(subvolpath, None)
+
+        usedsize = self.mount_a.getfattr(subvolpath, "ceph.dir.rbytes")
+
+        # try to shrink the subvolume with lesser size than the used size
+        nsize = usedsize/2
+        try:
+            self._fs_cmd("subvolume", "shrink", self.volname, subvolname, nsize,
+                         "--group_name", subvolgroup)
+        except CommandFailedError as ce:
+            if ce.exitstatus != errno.EINVAL:
+                raise
+        else:
+            raise RuntimeError("expected the 'fs subvolume shrink' command to fail")
+
     def test_subvolume_create_idempotence(self):
         # create subvolume
         subvolume = self._generate_random_subvolume_name()
