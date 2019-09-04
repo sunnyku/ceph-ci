@@ -136,6 +136,77 @@ class TestVolumes(CephFSTestCase):
         # verify trash dir is clean
         self._wait_for_trash_empty()
 
+    def test_subvolume_resize(self):
+        # tests the 'fs subvolume resize' command
+
+        # create subvolume
+        subvolname = self._generate_random_subvolume_name()
+        osize = self.DEFAULT_FILE_SIZE*1024*1024
+        self._fs_cmd("subvolume", "create", self.volname, subvolname, "--size", str(osize))
+
+        # make sure it exists
+        subvolpath = self._get_subvolume_path(self.volname, subvolname)
+        self.assertNotEqual(subvolpath, None)
+
+        # resize the subvolume with double size of the original size
+        nsize = osize*2
+        self._fs_cmd("subvolume", "resize", self.volname, subvolname, str(nsize))
+
+        #check if sizes are equal
+        size = int(self.mount_a.getfattr(subvolpath, "ceph.quota.max_bytes"))
+        self.assertEqual(size, nsize)
+
+        #resize the subvolume back to half size of the original size
+        nsize = osize/2
+        self._fs_cmd("subvolume", "resize", self.volname, subvolname, str(nsize))
+
+        #check if sizes are equal
+        size = int(self.mount_a.getfattr(subvolpath, "ceph.quota.max_bytes"))
+        self.assertEqual(size, nsize)
+
+    def test_subvolume_resize_fail_invalid_size(self):
+        # tests the 'fs subvolume resize' command for an invalid size
+
+        # create subvolume
+        subvolname = self._generate_random_subvolume_name()
+        self._fs_cmd("subvolume", "create", self.volname, subvolname, "--size",
+                     str(self.DEFAULT_FILE_SIZE*1024*1024))
+
+        # make sure it exists
+        subvolpath = self._fs_cmd("subvolume", "getpath", self.volname, subvolname)
+        self.assertNotEqual(subvolpath, None)
+
+        # try to resize the subvolume with an invalid size -10
+        nsize = -10
+        try:
+            self._fs_cmd("subvolume", "resize", self.volname, subvolname, str(nsize))
+        except CommandFailedError as ce:
+            if ce.exitstatus != errno.EINVAL:
+                raise
+        else:
+            raise RuntimeError("expected the 'fs subvolume resize' command to fail")
+
+    def test_subvolume_resize_fail_equal_size(self):
+        # tests the 'fs subvolume resize' command for an equal quota size
+
+        osize = self.DEFAULT_FILE_SIZE*1024*1024
+        # create subvolume
+        subvolname = self._generate_random_subvolume_name()
+        self._fs_cmd("subvolume", "create", self.volname, subvolname, "--size", str(osize))
+
+        # make sure it exists
+        subvolpath = self._fs_cmd("subvolume", "getpath", self.volname, subvolname)
+        self.assertNotEqual(subvolpath, None)
+
+        # try to resize the subvolume with the same quota size
+        try:
+            self._fs_cmd("subvolume", "resize", self.volname, subvolname, str(osize))
+        except CommandFailedError as ce:
+            if ce.exitstatus != errno.EINVAL:
+                raise
+        else:
+            raise RuntimeError("expected the 'fs subvolume resize' command to fail")
+
     def test_subvolume_create_idempotence(self):
         # create subvolume
         subvolume = self._generate_random_subvolume_name()
