@@ -293,18 +293,18 @@ bool MonClient::ms_dispatch(Message *m)
 
   std::lock_guard lock(monc_lock);
 
-  if (m->get_connection()->is_anon()) {
-    // this connection is from 'tell'... ignore everything except our command
-    // reply.  (we'll get misc other message because we authenticated, but we
-    // don't need them.)
-    switch (m->get_type()) {
-    case MSG_COMMAND_REPLY:
+  switch (m->get_type()) {
+  case MSG_COMMAND_REPLY:
+    if (m->get_connection()->is_anon() &&
+        m->get_source().type() == CEPH_ENTITY_TYPE_MON) {
+      // this connection is from 'tell'... ignore everything except our command
+      // reply.  (we'll get misc other message because we authenticated, but we
+      // don't need them.)
       handle_command_reply(static_cast<MCommandReply*>(m));
       return true;
     }
-    // ignore everything else
-    m->put();
-    return true;
+    // leave the message for another dispatch handler (e.g., Objecter)
+    return false;
   }
 
   if (_hunting()) {
