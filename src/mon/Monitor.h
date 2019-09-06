@@ -696,6 +696,7 @@ public:
   void _quorum_status(Formatter *f, ostream& ss);
   bool _add_bootstrap_peer_hint(std::string_view cmd, const cmdmap_t& cmdmap,
 				std::ostream& ss);
+  void handle_tell_command(MonOpRequestRef op);
   void handle_command(MonOpRequestRef op);
   void handle_route(MonOpRequestRef op);
 
@@ -765,6 +766,9 @@ public:
 
   void reply_command(MonOpRequestRef op, int rc, const string &rs, version_t version);
   void reply_command(MonOpRequestRef op, int rc, const string &rs, bufferlist& rdata, version_t version);
+
+  void reply_tell_command(MonOpRequestRef op, int rc, const string &rs);
+
 
 
   void handle_probe(MonOpRequestRef op);
