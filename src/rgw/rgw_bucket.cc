@@ -346,7 +346,6 @@ static int rgw_remove_bucket(rgw::sal::RGWRadosStore *store, rgw_bucket& bucket,
   RGWRados::Bucket target(store->getRados(), info);
   RGWRados::Bucket::List list_op(&target);
   CephContext *cct = store->ctx();
-  int max = 1000;
 
   list_op.params.list_versions = true;
   list_op.params.allow_unordered = true;
@@ -355,7 +354,8 @@ static int rgw_remove_bucket(rgw::sal::RGWRadosStore *store, rgw_bucket& bucket,
   do {
     objs.clear();
 
-    ret = list_op.list_objects(max, &objs, &common_prefixes, &is_truncated, null_yield);
+    ret = list_op.list_objects(listing_max_entries, &objs, &common_prefixes,
+			       &is_truncated, null_yield);
     if (ret < 0)
       return ret;
 
@@ -464,13 +464,13 @@ int rgw_remove_bucket_bypass_gc(rgw::sal::RGWRadosStore *store, rgw_bucket& buck
 
   std::list<librados::AioCompletion*> handles;
 
-  int max = 1000;
   int max_aio = concurrent_max;
   bool is_truncated = true;
 
   while (is_truncated) {
     objs.clear();
-    ret = list_op.list_objects(max, &objs, &common_prefixes, &is_truncated, null_yield);
+    ret = list_op.list_objects(listing_max_entries, &objs, &common_prefixes,
+			       &is_truncated, null_yield);
     if (ret < 0)
       return ret;
 
@@ -888,8 +888,6 @@ int RGWBucket::check_bad_index_multipart(RGWBucketAdminOpState& op_state,
   bool fix_index = op_state.will_fix_index();
   rgw_bucket bucket = op_state.get_bucket();
 
-  size_t max = 1000;
-
   map<string, bool> common_prefixes;
 
   bool is_truncated;
@@ -912,7 +910,8 @@ int RGWBucket::check_bad_index_multipart(RGWBucketAdminOpState& op_state,
 
   do {
     vector<rgw_bucket_dir_entry> result;
-    int r = list_op.list_objects(max, &result, &common_prefixes, &is_truncated, null_yield);
+    int r = list_op.list_objects(listing_max_entries, &result,
+				 &common_prefixes, &is_truncated, null_yield);
     if (r < 0) {
       set_err_msg(err_msg, "failed to list objects in bucket=" + bucket.name +
               " err=" +  cpp_strerror(-r));
@@ -942,7 +941,6 @@ int RGWBucket::check_bad_index_multipart(RGWBucketAdminOpState& op_state,
         }
       }
     }
-
   } while (is_truncated);
 
   list<rgw_obj_index_key> objs_to_unlink;
@@ -957,7 +955,7 @@ int RGWBucket::check_bad_index_multipart(RGWBucketAdminOpState& op_state,
       objs_to_unlink.push_back(aiter->first);
     }
 
-    if (objs_to_unlink.size() > max) {
+    if (objs_to_unlink.size() > listing_max_entries) {
       if (fix_index) {
 	int r = store->getRados()->remove_objs_from_index(bucket_info, objs_to_unlink);
 	if (r < 0) {
@@ -1013,12 +1011,11 @@ int RGWBucket::check_object_index(RGWBucketAdminOpState& op_state,
   formatter->open_object_section("objects");
   while (is_truncated) {
     RGWRados::ent_map_t result;
+    result.reserve(listing_max_entries);
 
-    int r = store->getRados()->cls_bucket_list_ordered(bucket_info, RGW_NO_SHARD,
-					   marker, prefix, 1000, true,
-					   result, &is_truncated, &marker,
-                                           y,
-					   bucket_object_check_filter);
+    int r = store->getRados()->cls_bucket_list_ordered(
+      bucket_info, RGW_NO_SHARD, marker, prefix, listing_max_entries, true,
+      result, &is_truncated, &marker, y, bucket_object_check_filter);
     if (r == -ENOENT) {
       break;
     } else if (r < 0 && r != -ENOENT) {
@@ -1956,12 +1953,12 @@ static int fix_bucket_obj_expiry(rgw::sal::RGWRadosStore *store,
   list_op.params.list_versions = bucket_info.versioned();
   list_op.params.allow_unordered = true;
 
-  constexpr auto max_objects = 1000;
   bool is_truncated {false};
   do {
     std::vector<rgw_bucket_dir_entry> objs;
 
-    int ret = list_op.list_objects(max_objects, &objs, nullptr, &is_truncated, null_yield);
+    int ret = list_op.list_objects(listing_max_entries, &objs, nullptr,
+				   &is_truncated, null_yield);
     if (ret < 0) {
       lderr(store->ctx()) << "ERROR failed to list objects in the bucket" << dendl;
       return ret;
