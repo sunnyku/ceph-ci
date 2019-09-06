@@ -74,11 +74,10 @@ TEST(LibRadosAio, TooBigPP) {
   ASSERT_EQ("", test_data.init());
 
   bufferlist bl;
-  AioCompletion *aio_completion = test_data.m_cluster.aio_create_completion(nullptr, NULL, NULL);
-  ASSERT_EQ(-E2BIG, test_data.m_ioctx.aio_write("foo", aio_completion, bl, UINT_MAX, 0));
-  ASSERT_EQ(-E2BIG, test_data.m_ioctx.aio_append("foo", aio_completion, bl, UINT_MAX));
+  auto aio_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_EQ(-E2BIG, test_data.m_ioctx.aio_write("foo", aio_completion.get(), bl, UINT_MAX, 0));
+  ASSERT_EQ(-E2BIG, test_data.m_ioctx.aio_append("foo", aio_completion.get(), bl, UINT_MAX));
   // ioctx.aio_write_full no way to overflow bl.length()
-  delete aio_completion;
 }
 
 TEST(LibRadosAio, PoolQuotaPP) {
@@ -103,14 +102,12 @@ TEST(LibRadosAio, PoolQuotaPP) {
   for (n = 0; n < 1024; ++n) {
     ObjectWriteOperation op;
     op.write_full(bl);
-    librados::AioCompletion *completion =
-      test_data.m_cluster.aio_create_completion();
-    ASSERT_EQ(0, ioctx.aio_operate(
-	"foo" + stringify(n), completion, &op,
-	librados::OPERATION_FULL_TRY));
+    auto completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+    ASSERT_EQ(0, ioctx.aio_operate("foo" + stringify(n),
+                                   completion.get(), &op,
+                                   librados::OPERATION_FULL_TRY));
     completion->wait_for_safe();
     int r = completion->get_return_value();
-    completion->release();
     if (r == -EDQUOT)
       break;
     ASSERT_EQ(0, r);
@@ -125,12 +122,10 @@ TEST(LibRadosAio, PoolQuotaPP) {
   {
     ObjectWriteOperation op;
     op.write_full(bl);
-    librados::AioCompletion *completion =
-      test_data.m_cluster.aio_create_completion();
-    ASSERT_EQ(0, ioctx.aio_operate("bar", completion, &op, 0));
+    auto completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+    ASSERT_EQ(0, ioctx.aio_operate("bar", completion.get(), &op, 0));
     sleep(5);
     ASSERT_FALSE(completion->is_safe());
-    completion->release();
   }
 
   ioctx.close();
@@ -145,80 +140,69 @@ TEST(LibRadosAio, SimpleWritePP) {
   {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo",
-			       my_completion, bl1, sizeof(buf), 0));
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
+                                           bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion->wait_for_complete());
   }
   ASSERT_EQ(0, my_completion->get_return_value());
-  delete my_completion;
   }
 
   {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
   test_data.m_ioctx.set_namespace("nspace");
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo",
-			       my_completion, bl1, sizeof(buf), 0));
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
+                                           bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion->wait_for_complete());
   }
   ASSERT_EQ(0, my_completion->get_return_value());
-  delete my_completion;
   }
 }
 
 TEST(LibRadosAio, WaitForSafePP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo",
-			       my_completion, bl1, sizeof(buf), 0));
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
+                                           bl1, sizeof(buf), 0));
   TestAlarm alarm;
   ASSERT_EQ(0, my_completion->wait_for_safe());
   ASSERT_EQ(0, my_completion->get_return_value());
-  delete my_completion;
 }
 
 TEST(LibRadosAio, RoundTripPP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
-					   bl1, sizeof(buf), 0));
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
+                                           bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion->wait_for_complete());
   }
   ASSERT_EQ(0, my_completion->get_return_value());
   bufferlist bl2;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo",
-			      my_completion2, &bl2, sizeof(buf), 0));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2.get(),
+                                          &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion2->wait_for_complete());
@@ -226,34 +210,29 @@ TEST(LibRadosAio, RoundTripPP) {
   ASSERT_EQ((int)sizeof(buf), my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), bl2.length());
   ASSERT_EQ(0, memcmp(buf, bl2.c_str(), sizeof(buf)));
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAio, RoundTripPP2) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
-					   bl1, sizeof(buf), 0));
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
+                                           bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion->wait_for_complete());
    }
   ASSERT_EQ(0, my_completion->get_return_value());
   bufferlist bl2;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo",
-			      my_completion2, &bl2, sizeof(buf), 0));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2.get(),
+                                          &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion2->wait_for_safe());
@@ -262,8 +241,6 @@ TEST(LibRadosAio, RoundTripPP2) {
   ASSERT_EQ((int)sizeof(buf), my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), bl2.length());
   ASSERT_EQ(0, memcmp(buf, bl2.c_str(), sizeof(buf)));
-  delete my_completion;
-  delete my_completion2;
 }
 
 //using ObjectWriteOperation/ObjectReadOperation with iohint
@@ -275,7 +252,7 @@ TEST(LibRadosAio, RoundTripPP3)
   IoCtx ioctx;
   cluster.ioctx_create(pool_name.c_str(), ioctx);
 
-  boost::scoped_ptr<AioCompletion> my_completion1(cluster.aio_create_completion(0, 0, 0));
+  auto my_completion1 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ObjectWriteOperation op;
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
@@ -291,7 +268,7 @@ TEST(LibRadosAio, RoundTripPP3)
   }
   EXPECT_EQ(0, my_completion1->get_return_value());
 
-  boost::scoped_ptr<AioCompletion> my_completion2(cluster.aio_create_completion(0, 0, 0));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   bl.clear();
   ObjectReadOperation op1;
   op1.read(0, sizeof(buf), &bl, NULL);
@@ -324,15 +301,13 @@ TEST(LibRadosAio, RoundTripPP3)
 TEST(LibRadosAio, RoundTripSparseReadPP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -341,19 +316,16 @@ TEST(LibRadosAio, RoundTripSparseReadPP) {
   ASSERT_EQ(0, my_completion->get_return_value());
   std::map<uint64_t, uint64_t> extents;
   bufferlist bl2;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_sparse_read("foo",
-			      my_completion2, &extents, &bl2, sizeof(buf), 0));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_sparse_read("foo", my_completion2.get(),
+                                                 &extents, &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion2->wait_for_complete());
   }
   ASSERT_EQ(0, my_completion2->get_return_value());
   assert_eq_sparse(bl1, extents, bl2);
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAioPP, ReadIntoBufferlist) {
@@ -363,16 +335,14 @@ TEST(LibRadosAioPP, ReadIntoBufferlist) {
 
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
-					   bl1, sizeof(buf), 0));
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
+                                           bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion->wait_for_complete());
@@ -383,19 +353,16 @@ TEST(LibRadosAioPP, ReadIntoBufferlist) {
   char buf2[sizeof(buf)];
   memset(buf2, 0xbb, sizeof(buf2));
   bl2.append(buffer::create_static(sizeof(buf2), buf2));
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-    nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2,
-					  &bl2, sizeof(buf), 0));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2.get(),
+                                          &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion2->wait_for_complete());
   }
   ASSERT_EQ((int)sizeof(buf), my_completion2->get_return_value());
   ASSERT_EQ(0, memcmp(buf, buf2, sizeof(buf)));
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAioPP, XattrsRoundTripPP) {
@@ -410,9 +377,7 @@ TEST(LibRadosAioPP, XattrsRoundTripPP) {
   ASSERT_EQ(0, test_data.m_ioctx.append("foo", bl1, sizeof(buf)));
   bufferlist bl2;
   // async getxattr
-  boost::scoped_ptr<AioCompletion> my_completion
-    (test_data.m_cluster.aio_create_completion
-     (nullptr, nullptr, nullptr));
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ASSERT_EQ(0, test_data.m_ioctx.aio_getxattr("foo", my_completion.get(), attr1, bl2));
   {
     TestAlarm alarm;
@@ -425,9 +390,7 @@ TEST(LibRadosAioPP, XattrsRoundTripPP) {
   // async setxattr
   AioTestDataPP test_data2;
   ASSERT_EQ("", test_data2.init());
-  boost::scoped_ptr<AioCompletion> my_completion2
-    (test_data.m_cluster.aio_create_completion
-     (nullptr, nullptr, nullptr));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ASSERT_EQ(0, test_data.m_ioctx.aio_setxattr("foo", my_completion2.get(), attr1, bl3));
   {
     TestAlarm alarm;
@@ -438,9 +401,7 @@ TEST(LibRadosAioPP, XattrsRoundTripPP) {
   bufferlist bl4;
   AioTestDataPP test_data3;
   ASSERT_EQ("", test_data3.init());
-  boost::scoped_ptr<AioCompletion> my_completion3
-    (test_data.m_cluster.aio_create_completion
-     (nullptr, nullptr, nullptr));
+  auto my_completion3 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ASSERT_EQ(0, test_data.m_ioctx.aio_getxattr("foo", my_completion3.get(), attr1, bl4));
   {
     TestAlarm alarm;
@@ -464,9 +425,7 @@ TEST(LibRadosAioPP, RmXattrPP) {
   // async setxattr
   bufferlist bl2;
   bl2.append(attr1_buf, sizeof(attr1_buf));
-  boost::scoped_ptr<AioCompletion> my_completion
-    (test_data.m_cluster.aio_create_completion
-     (nullptr, nullptr, nullptr));
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ASSERT_EQ(0, test_data.m_ioctx.aio_setxattr("foo", my_completion.get(), attr1, bl2));
   {
     TestAlarm alarm;
@@ -476,9 +435,7 @@ TEST(LibRadosAioPP, RmXattrPP) {
   // async rmxattr
   AioTestDataPP test_data2;
   ASSERT_EQ("", test_data2.init());
-  boost::scoped_ptr<AioCompletion> my_completion2
-    (test_data.m_cluster.aio_create_completion
-     (nullptr, nullptr, nullptr));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ASSERT_EQ(0, test_data.m_ioctx.aio_rmxattr("foo", my_completion2.get(), attr1));
   {
     TestAlarm alarm;
@@ -488,9 +445,7 @@ TEST(LibRadosAioPP, RmXattrPP) {
   // async getxattr
   AioTestDataPP test_data3;
   ASSERT_EQ("", test_data3.init());
-  boost::scoped_ptr<AioCompletion> my_completion3
-    (test_data.m_cluster.aio_create_completion
-     (nullptr, nullptr, nullptr));
+  auto my_completion3 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   bufferlist bl3;
   ASSERT_EQ(0, test_data.m_ioctx.aio_getxattr("foo", my_completion3.get(), attr1, bl3));
   {
@@ -511,9 +466,7 @@ TEST(LibRadosAioPP, RmXattrPP) {
   // async setxattr
   AioTestDataPP test_data4;
   ASSERT_EQ("", test_data4.init());
-  boost::scoped_ptr<AioCompletion> my_completion4
-    (test_data.m_cluster.aio_create_completion
-     (nullptr, nullptr, nullptr));
+  auto my_completion4 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ASSERT_EQ(0, test_data.m_ioctx.aio_setxattr("foo_rmxattr", my_completion4.get(), attr2, bl22));
   {
     TestAlarm alarm;
@@ -525,9 +478,7 @@ TEST(LibRadosAioPP, RmXattrPP) {
   // async rmxattr on non existing object
   AioTestDataPP test_data5;
   ASSERT_EQ("", test_data5.init());
-  boost::scoped_ptr<AioCompletion> my_completion5
-    (test_data.m_cluster.aio_create_completion
-     (nullptr, nullptr, nullptr));
+  auto my_completion5 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ASSERT_EQ(0, test_data.m_ioctx.aio_rmxattr("foo_rmxattr", my_completion5.get(), attr2));
   {
     TestAlarm alarm;
@@ -559,9 +510,7 @@ TEST(LibRadosIoPP, XattrListPP) {
   bl3.append(attr2_buf, sizeof(attr2_buf));
   ASSERT_EQ(0, test_data.m_ioctx.setxattr("foo", attr2, bl3));
   // call async version of getxattrs
-  boost::scoped_ptr<AioCompletion> my_completion
-    (test_data.m_cluster.aio_create_completion
-     (nullptr, nullptr, nullptr));
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   std::map<std::string, bufferlist> attrset;
   ASSERT_EQ(0, test_data.m_ioctx.aio_getxattrs("foo", my_completion.get(), attrset));
   {
@@ -586,15 +535,13 @@ TEST(LibRadosIoPP, XattrListPP) {
 TEST(LibRadosAio, IsCompletePP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -602,11 +549,10 @@ TEST(LibRadosAio, IsCompletePP) {
   }
   ASSERT_EQ(0, my_completion->get_return_value());
   bufferlist bl2;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2,
-					  &bl2, sizeof(buf), 0));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2.get(),
+                                          &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
 
@@ -621,22 +567,18 @@ TEST(LibRadosAio, IsCompletePP) {
   ASSERT_EQ((int)sizeof(buf), my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), bl2.length());
   ASSERT_EQ(0, memcmp(buf, bl2.c_str(), sizeof(buf)));
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAio, IsSafePP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -650,11 +592,10 @@ TEST(LibRadosAio, IsSafePP) {
     }
   }
   ASSERT_EQ(0, my_completion->get_return_value());
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   bufferlist bl2;
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2,
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2.get(),
 					  &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -663,48 +604,40 @@ TEST(LibRadosAio, IsSafePP) {
   ASSERT_EQ((int)sizeof(buf), my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), bl2.length());
   ASSERT_EQ(0, memcmp(buf, bl2.c_str(), sizeof(buf)));
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAio, ReturnValuePP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   bufferlist bl1;
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("nonexistent",
-			       my_completion, &bl1, 128, 0));
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("nonexistent", my_completion.get(),
+                                          &bl1, 128, 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion->wait_for_complete());
   }
   ASSERT_EQ(-ENOENT, my_completion->get_return_value());
-  delete my_completion;
 }
 
 TEST(LibRadosAio, FlushPP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xee, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   ASSERT_EQ(0, test_data.m_ioctx.aio_flush());
   ASSERT_EQ(0, my_completion->get_return_value());
   bufferlist bl2;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2.get(),
 					  &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -713,26 +646,21 @@ TEST(LibRadosAio, FlushPP) {
   ASSERT_EQ((int)sizeof(buf), my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), bl2.length());
   ASSERT_EQ(0, memcmp(buf, bl2.c_str(), sizeof(buf)));
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAio, FlushAsyncPP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *flush_completion =
-      test_data.m_cluster.aio_create_completion(NULL, NULL, NULL);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  auto flush_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xee, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_flush_async(flush_completion));
+  ASSERT_EQ(0, test_data.m_ioctx.aio_flush_async(flush_completion.get()));
   {
       TestAlarm alarm;
       ASSERT_EQ(0, flush_completion->wait_for_complete());
@@ -744,10 +672,9 @@ TEST(LibRadosAio, FlushAsyncPP) {
   ASSERT_EQ(1, flush_completion->is_safe());
   ASSERT_EQ(0, my_completion->get_return_value());
   bufferlist bl2;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2.get(),
 					  &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -756,23 +683,18 @@ TEST(LibRadosAio, FlushAsyncPP) {
   ASSERT_EQ((int)sizeof(buf), my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), bl2.length());
   ASSERT_EQ(0, memcmp(buf, bl2.c_str(), sizeof(buf)));
-  delete my_completion;
-  delete my_completion2;
-  delete flush_completion;
 }
 
 TEST(LibRadosAio, RoundTripWriteFullPP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -783,20 +705,18 @@ TEST(LibRadosAio, RoundTripWriteFullPP) {
   memset(buf2, 0xdd, sizeof(buf2));
   bufferlist bl2;
   bl2.append(buf2, sizeof(buf2));
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write_full("foo", my_completion2, bl2));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write_full("foo", my_completion2.get(), bl2));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion2->wait_for_complete());
   }
   ASSERT_EQ(0, my_completion2->get_return_value());
   bufferlist bl3;
-  AioCompletion *my_completion3 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion3, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion3,
+  auto my_completion3 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion3);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion3.get(),
 					  &bl3, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -805,9 +725,6 @@ TEST(LibRadosAio, RoundTripWriteFullPP) {
   ASSERT_EQ((int)sizeof(buf2), my_completion3->get_return_value());
   ASSERT_EQ(sizeof(buf2), bl3.length());
   ASSERT_EQ(0, memcmp(bl3.c_str(), buf2, sizeof(buf2)));
-  delete my_completion;
-  delete my_completion2;
-  delete my_completion3;
 }
 
 //using ObjectWriteOperation/ObjectReadOperation with iohint
@@ -819,7 +736,7 @@ TEST(LibRadosAio, RoundTripWriteFullPP2)
   IoCtx ioctx;
   cluster.ioctx_create(pool_name.c_str(), ioctx);
 
-  boost::scoped_ptr<AioCompletion> my_completion1(cluster.aio_create_completion(0, 0, 0));
+  auto my_completion1 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ObjectWriteOperation op;
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
@@ -835,7 +752,7 @@ TEST(LibRadosAio, RoundTripWriteFullPP2)
   }
   EXPECT_EQ(0, my_completion1->get_return_value());
 
-  boost::scoped_ptr<AioCompletion> my_completion2(cluster.aio_create_completion(0, 0, 0));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   bl.clear();
   ObjectReadOperation op1;
   op1.read(0, sizeof(buf), &bl, NULL);
@@ -855,15 +772,13 @@ TEST(LibRadosAio, RoundTripWriteFullPP2)
 TEST(LibRadosAio, RoundTripWriteSamePP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char full[128];
   memset(full, 0xcc, sizeof(full));
   bufferlist bl1;
   bl1.append(full, sizeof(full));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(full), 0));
   {
     TestAlarm alarm;
@@ -876,10 +791,9 @@ TEST(LibRadosAio, RoundTripWriteSamePP) {
   memset(buf, 0xdd, sizeof(buf));
   bufferlist bl2;
   bl2.append(buf, sizeof(buf));
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_writesame("foo", my_completion2, bl2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_writesame("foo", my_completion2.get(), bl2,
 					       ws_write_len, 0));
   {
     TestAlarm alarm;
@@ -887,10 +801,9 @@ TEST(LibRadosAio, RoundTripWriteSamePP) {
   }
   ASSERT_EQ(0, my_completion2->get_return_value());
   bufferlist bl3;
-  AioCompletion *my_completion3 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion3, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion3,
+  auto my_completion3 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion3);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion3.get(),
 					  &bl3, sizeof(full), 0));
   {
     TestAlarm alarm;
@@ -902,9 +815,6 @@ TEST(LibRadosAio, RoundTripWriteSamePP) {
 							cmp += sizeof(buf)) {
     ASSERT_EQ(0, memcmp(cmp, buf, sizeof(buf)));
   }
-  delete my_completion;
-  delete my_completion2;
-  delete my_completion3;
 }
 
 TEST(LibRadosAio, RoundTripWriteSamePP2)
@@ -915,8 +825,7 @@ TEST(LibRadosAio, RoundTripWriteSamePP2)
   IoCtx ioctx;
   cluster.ioctx_create(pool_name.c_str(), ioctx);
 
-  boost::scoped_ptr<AioCompletion>
-			wr_cmpl(cluster.aio_create_completion(0, 0, 0));
+  auto wr_cmpl = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ObjectWriteOperation op;
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
@@ -959,15 +868,13 @@ TEST(LibRadosAio, RoundTripWriteSamePP2)
 TEST(LibRadosAio, SimpleStatPPNS) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -976,10 +883,9 @@ TEST(LibRadosAio, SimpleStatPPNS) {
   ASSERT_EQ(0, my_completion->get_return_value());
   uint64_t psize;
   time_t pmtime;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion2.get(),
 			  		&psize, &pmtime));
   {
     TestAlarm alarm;
@@ -987,22 +893,18 @@ TEST(LibRadosAio, SimpleStatPPNS) {
   }
   ASSERT_EQ(0, my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), psize);
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAio, SimpleStatPP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -1011,10 +913,9 @@ TEST(LibRadosAio, SimpleStatPP) {
   ASSERT_EQ(0, my_completion->get_return_value());
   uint64_t psize;
   time_t pmtime;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion2.get(),
 			  		&psize, &pmtime));
   {
     TestAlarm alarm;
@@ -1022,22 +923,18 @@ TEST(LibRadosAio, SimpleStatPP) {
   }
   ASSERT_EQ(0, my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), psize);
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAio, StatRemovePP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -1046,10 +943,9 @@ TEST(LibRadosAio, StatRemovePP) {
   ASSERT_EQ(0, my_completion->get_return_value());
   uint64_t psize;
   time_t pmtime;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion2.get(),
 			  		&psize, &pmtime));
   {
     TestAlarm alarm;
@@ -1059,55 +955,46 @@ TEST(LibRadosAio, StatRemovePP) {
   ASSERT_EQ(sizeof(buf), psize);
   uint64_t psize2;
   time_t pmtime2;
-  AioCompletion *my_completion3 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion3, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_remove("foo", my_completion3));
+  auto my_completion3 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion3);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_remove("foo", my_completion3.get()));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion3->wait_for_complete());
   }
   ASSERT_EQ(0, my_completion3->get_return_value());
 
-  AioCompletion *my_completion4 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion4, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion4,
+  auto my_completion4 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion4);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion4.get(),
 			  		&psize2, &pmtime2));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion4->wait_for_complete());
   }
   ASSERT_EQ(-ENOENT, my_completion4->get_return_value());
-  delete my_completion;
-  delete my_completion2;
-  delete my_completion3;
-  delete my_completion4;
 }
 
 TEST(LibRadosAio, ExecuteClassPP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion->wait_for_complete());
   }
   ASSERT_EQ(0, my_completion->get_return_value());
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
   bufferlist in, out;
-  ASSERT_EQ(0, test_data.m_ioctx.aio_exec("foo", my_completion2,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_exec("foo", my_completion2.get(),
 					  "hello", "say_hello", in, &out));
   {
     TestAlarm alarm;
@@ -1115,8 +1002,6 @@ TEST(LibRadosAio, ExecuteClassPP) {
   }
   ASSERT_EQ(0, my_completion2->get_return_value());
   ASSERT_EQ(std::string("Hello, world!"), std::string(out.c_str(), out.length()));
-  delete my_completion;
-  delete my_completion2;
 }
 
 using std::string;
@@ -1327,15 +1212,13 @@ TEST(LibRadosAio, OmapPP) {
 TEST(LibRadosAio, MultiWritePP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -1347,10 +1230,9 @@ TEST(LibRadosAio, MultiWritePP) {
   memset(buf2, 0xdd, sizeof(buf2));
   bufferlist bl2;
   bl2.append(buf2, sizeof(buf2));
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion2.get(),
 					   bl2, sizeof(buf2), sizeof(buf)));
   {
     TestAlarm alarm;
@@ -1359,10 +1241,9 @@ TEST(LibRadosAio, MultiWritePP) {
   ASSERT_EQ(0, my_completion2->get_return_value());
 
   bufferlist bl3;
-  AioCompletion *my_completion3 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion3, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion3,
+  auto my_completion3 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion3);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion3.get(),
 					  &bl3, (sizeof(buf) + sizeof(buf2) * 3), 0));
   {
     TestAlarm alarm;
@@ -1372,18 +1253,13 @@ TEST(LibRadosAio, MultiWritePP) {
   ASSERT_EQ(sizeof(buf) + sizeof(buf2), bl3.length());
   ASSERT_EQ(0, memcmp(bl3.c_str(), buf, sizeof(buf)));
   ASSERT_EQ(0, memcmp(bl3.c_str() + sizeof(buf), buf2, sizeof(buf2)));
-  delete my_completion;
-  delete my_completion2;
-  delete my_completion3;
 }
 
 TEST(LibRadosAio, AioUnlockPP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
   ASSERT_EQ(0, test_data.m_ioctx.lock_exclusive("foo", "TestLock", "Cookie", "", NULL, 0));
-  boost::scoped_ptr<AioCompletion> my_completion
-    (test_data.m_cluster.aio_create_completion
-     (nullptr, nullptr, nullptr));
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ASSERT_EQ(0, test_data.m_ioctx.aio_unlock("foo", "TestLock", "Cookie", my_completion.get()));
   {
     TestAlarm alarm;
@@ -1445,68 +1321,58 @@ TEST(LibRadosAioEC, SimpleWritePP) {
   {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo",
-			       my_completion, bl1, sizeof(buf), 0));
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
+                                           bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion->wait_for_complete());
   }
   ASSERT_EQ(0, my_completion->get_return_value());
-  delete my_completion;
   }
 
   {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
   test_data.m_ioctx.set_namespace("nspace");
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo",
-			       my_completion, bl1, sizeof(buf), 0));
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
+                                           bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion->wait_for_complete());
   }
   ASSERT_EQ(0, my_completion->get_return_value());
-  delete my_completion;
   }
 }
 
 TEST(LibRadosAioEC, WaitForSafePP) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo",
-			       my_completion, bl1, sizeof(buf), 0));
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
+                                           bl1, sizeof(buf), 0));
   TestAlarm alarm;
   ASSERT_EQ(0, my_completion->wait_for_safe());
   ASSERT_EQ(0, my_completion->get_return_value());
-  delete my_completion;
 }
 
 TEST(LibRadosAioEC, RoundTripPP) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -1514,11 +1380,10 @@ TEST(LibRadosAioEC, RoundTripPP) {
   }
   ASSERT_EQ(0, my_completion->get_return_value());
   bufferlist bl2;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo",
-			      my_completion2, &bl2, sizeof(buf), 0));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2.get(),
+                                          &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion2->wait_for_complete());
@@ -1526,22 +1391,18 @@ TEST(LibRadosAioEC, RoundTripPP) {
   ASSERT_EQ((int)sizeof(buf), my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), bl2.length());
   ASSERT_EQ(0, memcmp(buf, bl2.c_str(), sizeof(buf)));
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAioEC, RoundTripPP2) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -1549,11 +1410,10 @@ TEST(LibRadosAioEC, RoundTripPP2) {
   }
   ASSERT_EQ(0, my_completion->get_return_value());
   bufferlist bl2;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo",
-			      my_completion2, &bl2, sizeof(buf), 0));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2.get(),
+                                          &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion2->wait_for_safe());
@@ -1562,8 +1422,6 @@ TEST(LibRadosAioEC, RoundTripPP2) {
   ASSERT_EQ((int)sizeof(buf), my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), bl2.length());
   ASSERT_EQ(0, memcmp(buf, bl2.c_str(), sizeof(buf)));
-  delete my_completion;
-  delete my_completion2;
 }
 
 //using ObjectWriteOperation/ObjectReadOperation with iohint
@@ -1575,7 +1433,7 @@ TEST(LibRadosAioEC, RoundTripPP3)
   IoCtx ioctx;
   cluster.ioctx_create(pool_name.c_str(), ioctx);
 
-  boost::scoped_ptr<AioCompletion> my_completion1(cluster.aio_create_completion(0, 0, 0));
+  auto my_completion1 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};;
   ObjectWriteOperation op;
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
@@ -1591,7 +1449,7 @@ TEST(LibRadosAioEC, RoundTripPP3)
   }
   EXPECT_EQ(0, my_completion1->get_return_value());
 
-  boost::scoped_ptr<AioCompletion> my_completion2(cluster.aio_create_completion(0, 0, 0));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   bl.clear();
   ObjectReadOperation op1;
   op1.read(0, sizeof(buf), &bl, NULL);
@@ -1611,15 +1469,13 @@ TEST(LibRadosAioEC, RoundTripPP3)
 TEST(LibRadosAio, RoundTripAppendPP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_append("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_append("foo", my_completion.get(),
 					    bl1, sizeof(buf)));
   {
     TestAlarm alarm;
@@ -1630,10 +1486,9 @@ TEST(LibRadosAio, RoundTripAppendPP) {
   memset(buf2, 0xdd, sizeof(buf2));
   bufferlist bl2;
   bl2.append(buf2, sizeof(buf2));
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_append("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_append("foo", my_completion2.get(),
 					    bl2, sizeof(buf2)));
   {
     TestAlarm alarm;
@@ -1641,11 +1496,10 @@ TEST(LibRadosAio, RoundTripAppendPP) {
   }
   ASSERT_EQ(0, my_completion2->get_return_value());
   bufferlist bl3;
-  AioCompletion *my_completion3 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion3, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo",
-			      my_completion3, &bl3, 2 * sizeof(buf), 0));
+  auto my_completion3 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion3);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion3.get(),
+                                          &bl3, 2 * sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion3->wait_for_complete());
@@ -1654,9 +1508,6 @@ TEST(LibRadosAio, RoundTripAppendPP) {
   ASSERT_EQ(sizeof(buf) * 2, bl3.length());
   ASSERT_EQ(0, memcmp(bl3.c_str(), buf, sizeof(buf)));
   ASSERT_EQ(0, memcmp(bl3.c_str() + sizeof(buf), buf2, sizeof(buf2)));
-  delete my_completion;
-  delete my_completion2;
-  delete my_completion3;
 }
 
 TEST(LibRadosAioPP, RemoveTestPP) {
@@ -1667,9 +1518,7 @@ TEST(LibRadosAioPP, RemoveTestPP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
   ASSERT_EQ(0, test_data.m_ioctx.append("foo", bl1, sizeof(buf)));
-  boost::scoped_ptr<AioCompletion> my_completion
-    (test_data.m_cluster.aio_create_completion
-     (nullptr, nullptr, nullptr));
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ASSERT_EQ(0, test_data.m_ioctx.aio_remove("foo", my_completion.get()));
   {
     TestAlarm alarm;
@@ -1683,15 +1532,13 @@ TEST(LibRadosAioPP, RemoveTestPP) {
 TEST(LibRadosAioEC, RoundTripSparseReadPP) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -1701,28 +1548,23 @@ TEST(LibRadosAioEC, RoundTripSparseReadPP) {
 
   map<uint64_t, uint64_t> extents;
   bufferlist bl2;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_sparse_read("foo",
-			      my_completion2, &extents, &bl2, sizeof(buf), 0));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_sparse_read("foo", my_completion2.get(),
+                                                 &extents, &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion2->wait_for_complete());
   }
   ASSERT_EQ(0, my_completion2->get_return_value());
   assert_eq_sparse(bl1, extents, bl2);
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAioEC, RoundTripAppendPP) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   bool requires;
   ASSERT_EQ(0, test_data.m_ioctx.pool_requires_alignment2(&requires));
   ASSERT_TRUE(requires);
@@ -1734,7 +1576,7 @@ TEST(LibRadosAioEC, RoundTripAppendPP) {
   memset(buf, 0xcc, bsize);
   bufferlist bl1;
   bl1.append(buf, bsize);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_append("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_append("foo", my_completion.get(),
 					    bl1, bsize));
   {
     TestAlarm alarm;
@@ -1747,10 +1589,9 @@ TEST(LibRadosAioEC, RoundTripAppendPP) {
   memset(buf2, 0xdd, hbsize);
   bufferlist bl2;
   bl2.append(buf2, hbsize);
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_append("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_append("foo", my_completion2.get(),
 					    bl2, hbsize));
   {
     TestAlarm alarm;
@@ -1758,10 +1599,9 @@ TEST(LibRadosAioEC, RoundTripAppendPP) {
   }
   ASSERT_EQ(0, my_completion2->get_return_value());
 
-  AioCompletion *my_completion3 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion3, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_append("foo", my_completion3,
+  auto my_completion3 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion3);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_append("foo", my_completion3.get(),
 					    bl2, hbsize));
   {
     TestAlarm alarm;
@@ -1770,11 +1610,10 @@ TEST(LibRadosAioEC, RoundTripAppendPP) {
   EXPECT_EQ(-EOPNOTSUPP, my_completion3->get_return_value());
 
   bufferlist bl3;
-  AioCompletion *my_completion4 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion4, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo",
-			      my_completion4, &bl3, bsize * 3, 0));
+  auto my_completion4 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion4);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion4.get(),
+                                          &bl3, bsize * 3, 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion4->wait_for_complete());
@@ -1784,9 +1623,6 @@ TEST(LibRadosAioEC, RoundTripAppendPP) {
   ASSERT_EQ((unsigned)tbsize, bl3.length());
   ASSERT_EQ(0, memcmp(bl3.c_str(), buf, bsize));
   ASSERT_EQ(0, memcmp(bl3.c_str() + bsize, buf2, hbsize));
-  delete my_completion;
-  delete my_completion2;
-  delete my_completion3;
   delete[] buf;
   delete[] buf2;
 }
@@ -1794,15 +1630,13 @@ TEST(LibRadosAioEC, RoundTripAppendPP) {
 TEST(LibRadosAioEC, IsCompletePP) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -1810,10 +1644,9 @@ TEST(LibRadosAioEC, IsCompletePP) {
   }
   ASSERT_EQ(0, my_completion->get_return_value());
   bufferlist bl2;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2.get(),
 					  &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -1829,21 +1662,17 @@ TEST(LibRadosAioEC, IsCompletePP) {
   ASSERT_EQ((int)sizeof(buf), my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), bl2.length());
   ASSERT_EQ(0, memcmp(buf, bl2.c_str(), sizeof(buf)));
-  delete my_completion;
-  delete my_completion2;
 }
 TEST(LibRadosAioEC, IsSafePP) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -1857,11 +1686,10 @@ TEST(LibRadosAioEC, IsSafePP) {
     }
   }
   ASSERT_EQ(0, my_completion->get_return_value());
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   bufferlist bl2;
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2,
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2.get(),
 					  &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -1870,48 +1698,40 @@ TEST(LibRadosAioEC, IsSafePP) {
   ASSERT_EQ((int)sizeof(buf), my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), bl2.length());
   ASSERT_EQ(0, memcmp(buf, bl2.c_str(), sizeof(buf)));
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAioEC, ReturnValuePP) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   bufferlist bl1;
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("nonexistent",
-			       my_completion, &bl1, 128, 0));
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("nonexistent", my_completion.get(),
+                                          &bl1, 128, 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion->wait_for_complete());
   }
   ASSERT_EQ(-ENOENT, my_completion->get_return_value());
-  delete my_completion;
 }
 
 TEST(LibRadosAioEC, FlushPP) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xee, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   ASSERT_EQ(0, test_data.m_ioctx.aio_flush());
   ASSERT_EQ(0, my_completion->get_return_value());
   bufferlist bl2;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2.get(),
 					  &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -1920,26 +1740,21 @@ TEST(LibRadosAioEC, FlushPP) {
   ASSERT_EQ((int)sizeof(buf), my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), bl2.length());
   ASSERT_EQ(0, memcmp(buf, bl2.c_str(), sizeof(buf)));
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAioEC, FlushAsyncPP) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *flush_completion =
-      test_data.m_cluster.aio_create_completion(NULL, NULL, NULL);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  auto flush_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xee, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_flush_async(flush_completion));
+  ASSERT_EQ(0, test_data.m_ioctx.aio_flush_async(flush_completion.get()));
   {
       TestAlarm alarm;
       ASSERT_EQ(0, flush_completion->wait_for_complete());
@@ -1951,10 +1766,9 @@ TEST(LibRadosAioEC, FlushAsyncPP) {
   ASSERT_EQ(1, flush_completion->is_safe());
   ASSERT_EQ(0, my_completion->get_return_value());
   bufferlist bl2;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion2.get(),
 					  &bl2, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -1963,23 +1777,18 @@ TEST(LibRadosAioEC, FlushAsyncPP) {
   ASSERT_EQ((int)sizeof(buf), my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), bl2.length());
   ASSERT_EQ(0, memcmp(buf, bl2.c_str(), sizeof(buf)));
-  delete my_completion;
-  delete my_completion2;
-  delete flush_completion;
 }
 
 TEST(LibRadosAioEC, RoundTripWriteFullPP) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -1990,20 +1799,18 @@ TEST(LibRadosAioEC, RoundTripWriteFullPP) {
   memset(buf2, 0xdd, sizeof(buf2));
   bufferlist bl2;
   bl2.append(buf2, sizeof(buf2));
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write_full("foo", my_completion2, bl2));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write_full("foo", my_completion2.get(), bl2));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion2->wait_for_complete());
   }
   ASSERT_EQ(0, my_completion2->get_return_value());
   bufferlist bl3;
-  AioCompletion *my_completion3 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion3, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion3,
+  auto my_completion3 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion3);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion3.get(),
 					  &bl3, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -2012,9 +1819,6 @@ TEST(LibRadosAioEC, RoundTripWriteFullPP) {
   ASSERT_EQ((int)sizeof(buf2), my_completion3->get_return_value());
   ASSERT_EQ(sizeof(buf2), bl3.length());
   ASSERT_EQ(0, memcmp(bl3.c_str(), buf2, sizeof(buf2)));
-  delete my_completion;
-  delete my_completion2;
-  delete my_completion3;
 }
 
 //using ObjectWriteOperation/ObjectReadOperation with iohint
@@ -2026,7 +1830,7 @@ TEST(LibRadosAioEC, RoundTripWriteFullPP2)
   IoCtx ioctx;
   cluster.ioctx_create(pool_name.c_str(), ioctx);
 
-  boost::scoped_ptr<AioCompletion> my_completion1(cluster.aio_create_completion(0, 0, 0));
+  auto my_completion1 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ObjectWriteOperation op;
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
@@ -2042,7 +1846,7 @@ TEST(LibRadosAioEC, RoundTripWriteFullPP2)
   }
   EXPECT_EQ(0, my_completion1->get_return_value());
 
-  boost::scoped_ptr<AioCompletion> my_completion2(cluster.aio_create_completion(0, 0, 0));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   bl.clear();
   ObjectReadOperation op1;
   op1.read(0, sizeof(buf), &bl, NULL);
@@ -2062,15 +1866,13 @@ TEST(LibRadosAioEC, RoundTripWriteFullPP2)
 TEST(LibRadosAioEC, SimpleStatPP) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -2079,10 +1881,9 @@ TEST(LibRadosAioEC, SimpleStatPP) {
   ASSERT_EQ(0, my_completion->get_return_value());
   uint64_t psize;
   time_t pmtime;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion2.get(),
 			  		&psize, &pmtime));
   {
     TestAlarm alarm;
@@ -2090,22 +1891,18 @@ TEST(LibRadosAioEC, SimpleStatPP) {
   }
   ASSERT_EQ(0, my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), psize);
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAioEC, SimpleStatPPNS) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -2114,10 +1911,9 @@ TEST(LibRadosAioEC, SimpleStatPPNS) {
   ASSERT_EQ(0, my_completion->get_return_value());
   uint64_t psize;
   time_t pmtime;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion2.get(),
 			  		&psize, &pmtime));
   {
     TestAlarm alarm;
@@ -2125,22 +1921,18 @@ TEST(LibRadosAioEC, SimpleStatPPNS) {
   }
   ASSERT_EQ(0, my_completion2->get_return_value());
   ASSERT_EQ(sizeof(buf), psize);
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAioEC, StatRemovePP) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -2149,10 +1941,9 @@ TEST(LibRadosAioEC, StatRemovePP) {
   ASSERT_EQ(0, my_completion->get_return_value());
   uint64_t psize;
   time_t pmtime;
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion2.get(),
 			  		&psize, &pmtime));
   {
     TestAlarm alarm;
@@ -2162,55 +1953,46 @@ TEST(LibRadosAioEC, StatRemovePP) {
   ASSERT_EQ(sizeof(buf), psize);
   uint64_t psize2;
   time_t pmtime2;
-  AioCompletion *my_completion3 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion3, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_remove("foo", my_completion3));
+  auto my_completion3 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion3);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_remove("foo", my_completion3.get()));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion3->wait_for_complete());
   }
   ASSERT_EQ(0, my_completion3->get_return_value());
 
-  AioCompletion *my_completion4 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion4, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion4,
+  auto my_completion4 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion4);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_stat("foo", my_completion4.get(),
 			  		&psize2, &pmtime2));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion4->wait_for_complete());
   }
   ASSERT_EQ(-ENOENT, my_completion4->get_return_value());
-  delete my_completion;
-  delete my_completion2;
-  delete my_completion3;
-  delete my_completion4;
 }
 
 TEST(LibRadosAioEC, ExecuteClassPP) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion->wait_for_complete());
   }
   ASSERT_EQ(0, my_completion->get_return_value());
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
   bufferlist in, out;
-  ASSERT_EQ(0, test_data.m_ioctx.aio_exec("foo", my_completion2,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_exec("foo", my_completion2.get(),
 					  "hello", "say_hello", in, &out));
   {
     TestAlarm alarm;
@@ -2218,8 +2000,6 @@ TEST(LibRadosAioEC, ExecuteClassPP) {
   }
   ASSERT_EQ(0, my_completion2->get_return_value());
   ASSERT_EQ(std::string("Hello, world!"), std::string(out.c_str(), out.length()));
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAioEC, OmapPP) {
@@ -2235,7 +2015,7 @@ TEST(LibRadosAioEC, OmapPP) {
   header_to_set.push_back(bp);
   map<string, bufferlist> to_set;
   {
-    boost::scoped_ptr<AioCompletion> my_completion(cluster.aio_create_completion(0, 0, 0));
+    auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
     ObjectWriteOperation op;
     to_set["foo"] = header_to_set;
     to_set["foo2"] = header_to_set;
@@ -2258,15 +2038,13 @@ TEST(LibRadosAioEC, OmapPP) {
 TEST(LibRadosAioEC, MultiWritePP) {
   AioTestDataECPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl1;
   bl1.append(buf, sizeof(buf));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -2278,10 +2056,9 @@ TEST(LibRadosAioEC, MultiWritePP) {
   memset(buf2, 0xdd, sizeof(buf2));
   bufferlist bl2;
   bl2.append(buf2, sizeof(buf2));
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion2,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion2.get(),
 					   bl2, sizeof(buf2), sizeof(buf)));
   {
     TestAlarm alarm;
@@ -2290,10 +2067,9 @@ TEST(LibRadosAioEC, MultiWritePP) {
   ASSERT_EQ(-EOPNOTSUPP, my_completion2->get_return_value());
 
   bufferlist bl3;
-  AioCompletion *my_completion3 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion3, my_completion_null);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion3,
+  auto my_completion3 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion3);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_read("foo", my_completion3.get(),
 					  &bl3, (sizeof(buf) + sizeof(buf2) * 3), 0));
   {
     TestAlarm alarm;
@@ -2302,26 +2078,22 @@ TEST(LibRadosAioEC, MultiWritePP) {
   ASSERT_EQ((int)sizeof(buf), my_completion3->get_return_value());
   ASSERT_EQ(sizeof(buf), bl3.length());
   ASSERT_EQ(0, memcmp(bl3.c_str(), buf, sizeof(buf)));
-  delete my_completion;
-  delete my_completion2;
-  delete my_completion3;
+
 }
 
 TEST(LibRadosAio, RacingRemovePP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init({{"objecter_retry_writes_after_first_reply", "true"}}));
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-        nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion, nullptr);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl;
   bl.append(buf, sizeof(buf));
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-        nullptr, nullptr, nullptr);
-  ASSERT_NE(my_completion2, nullptr);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_remove("foo", my_completion2));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion2);
+  ASSERT_EQ(0, test_data.m_ioctx.aio_remove("foo", my_completion2.get()));
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
                                          bl, sizeof(buf), 0));
   {
     TestAlarm alarm;
@@ -2331,22 +2103,18 @@ TEST(LibRadosAio, RacingRemovePP) {
   ASSERT_EQ(-ENOENT, my_completion2->get_return_value());
   ASSERT_EQ(0, my_completion->get_return_value());
   ASSERT_EQ(0, test_data.m_ioctx.stat("foo", nullptr, nullptr));
-  delete my_completion;
-  delete my_completion2;
 }
 
 TEST(LibRadosAio, RoundTripCmpExtPP) {
   AioTestDataPP test_data;
   ASSERT_EQ("", test_data.init());
-  AioCompletion *my_completion = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  AioCompletion *my_completion_null = NULL;
-  ASSERT_NE(my_completion, my_completion_null);
+  auto my_completion = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_TRUE(my_completion);
   char full[128];
   memset(full, 0xcc, sizeof(full));
   bufferlist bl1;
   bl1.append(full, sizeof(full));
-  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion,
+  ASSERT_EQ(0, test_data.m_ioctx.aio_write("foo", my_completion.get(),
 					   bl1, sizeof(full), 0));
   {
     TestAlarm alarm;
@@ -2357,9 +2125,8 @@ TEST(LibRadosAio, RoundTripCmpExtPP) {
   /* compare with match */
   bufferlist cbl;
   cbl.append(full, sizeof(full));
-  AioCompletion *my_completion2 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_cmpext("foo", my_completion2, 0, cbl));
+  auto my_completion2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_EQ(0, test_data.m_ioctx.aio_cmpext("foo", my_completion2.get(), 0, cbl));
 
   {
     TestAlarm alarm;
@@ -2371,19 +2138,13 @@ TEST(LibRadosAio, RoundTripCmpExtPP) {
   memset(full, 0xdd, sizeof(full));
   cbl.clear();
   cbl.append(full, sizeof(full));
-  AioCompletion *my_completion3 = test_data.m_cluster.aio_create_completion(
-	  nullptr, nullptr, nullptr);
-  ASSERT_EQ(0, test_data.m_ioctx.aio_cmpext("foo", my_completion3, 0, cbl));
-
+  auto my_completion3 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
+  ASSERT_EQ(0, test_data.m_ioctx.aio_cmpext("foo", my_completion3.get(), 0, cbl));
   {
     TestAlarm alarm;
     ASSERT_EQ(0, my_completion3->wait_for_complete());
   }
   ASSERT_EQ(-MAX_ERRNO, my_completion3->get_return_value());
-
-  delete my_completion;
-  delete my_completion2;
-  delete my_completion3;
 }
 
 TEST(LibRadosAio, RoundTripCmpExtPP2)
@@ -2398,8 +2159,7 @@ TEST(LibRadosAio, RoundTripCmpExtPP2)
   IoCtx ioctx;
   cluster.ioctx_create(pool_name.c_str(), ioctx);
 
-  boost::scoped_ptr<AioCompletion>
-			wr_cmpl(cluster.aio_create_completion(0, 0, 0));
+  auto wr_cmpl = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ObjectWriteOperation wr_op;
   memset(buf, 0xcc, sizeof(buf));
   memset(miscmp_buf, 0xdd, sizeof(miscmp_buf));
@@ -2416,8 +2176,7 @@ TEST(LibRadosAio, RoundTripCmpExtPP2)
   EXPECT_EQ(0, wr_cmpl->get_return_value());
 
   /* cmpext as write op. first match then mismatch */
-  boost::scoped_ptr<AioCompletion>
-			wr_cmpext_cmpl(cluster.aio_create_completion(0, 0, 0));
+  auto wr_cmpext_cmpl = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   cbl.append(buf, sizeof(buf));
   ret = 0;
 
@@ -2431,8 +2190,7 @@ TEST(LibRadosAio, RoundTripCmpExtPP2)
   EXPECT_EQ(0, wr_cmpext_cmpl->get_return_value());
   EXPECT_EQ(0, ret);
 
-  boost::scoped_ptr<AioCompletion>
-			wr_cmpext_cmpl2(cluster.aio_create_completion(0, 0, 0));
+  auto wr_cmpext_cmpl2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   cbl.clear();
   cbl.append(miscmp_buf, sizeof(miscmp_buf));
   ret = 0;
@@ -2448,8 +2206,7 @@ TEST(LibRadosAio, RoundTripCmpExtPP2)
   EXPECT_EQ(-MAX_ERRNO, ret);
 
   /* cmpext as read op */
-  boost::scoped_ptr<AioCompletion>
-			rd_cmpext_cmpl(cluster.aio_create_completion(0, 0, 0));
+  auto rd_cmpext_cmpl = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   ObjectReadOperation rd_op;
   cbl.clear();
   cbl.append(buf, sizeof(buf));
@@ -2464,8 +2221,7 @@ TEST(LibRadosAio, RoundTripCmpExtPP2)
   EXPECT_EQ(0, rd_cmpext_cmpl->get_return_value());
   EXPECT_EQ(0, ret);
 
-  boost::scoped_ptr<AioCompletion>
-			rd_cmpext_cmpl2(cluster.aio_create_completion(0, 0, 0));
+  auto rd_cmpext_cmpl2 = std::unique_ptr<AioCompletion>{Rados::aio_create_completion()};
   cbl.clear();
   cbl.append(miscmp_buf, sizeof(miscmp_buf));
   ret = 0;
