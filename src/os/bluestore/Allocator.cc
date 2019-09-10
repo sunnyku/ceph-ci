@@ -22,19 +22,19 @@ public:
       name = to_string((uintptr_t)this);
     }
     if (admin_socket) {
-      int r = admin_socket->register_command(("bluestore allocator dump " + name).c_str(),
-                                           ("bluestore allocator dump " + name).c_str(),
-                                           this,
-                                           "dump allocator free regions");
+      int r = admin_socket->register_command(
+	("bluestore allocator dump " + name).c_str(),
+	this,
+	"dump allocator free regions");
       if (r != 0)
         alloc = nullptr; //some collision, disable
       if (alloc) {
-        r = admin_socket->register_command(("bluestore allocator score " + name).c_str(),
-                                           ("bluestore allocator score " + name).c_str(),
-                                           this,
-                                           "give score on allocator fragmentation (0-no fragmentation, 1-absolute fragmentation)");
+        r = admin_socket->register_command(
+	  ("bluestore allocator score " + name).c_str(),
+	  this,
+	  "give score on allocator fragmentation (0-no fragmentation, 1-absolute fragmentation)");
         ceph_assert(r == 0);
-        r = admin_socket->register_command(("bluestore allocator fragmentation " + name).c_str(),
+        r = admin_socket->register_command(
           ("bluestore allocator fragmentation " + name).c_str(),
           this,
           "give allocator fragmentation (0-no fragmentation, 1-absolute fragmentation)");
@@ -46,19 +46,14 @@ public:
   {
     AdminSocket *admin_socket = g_ceph_context->get_admin_socket();
     if (admin_socket && alloc) {
-      int r = admin_socket->unregister_command(("bluestore allocator dump " + name).c_str());
-      ceph_assert(r == 0);
-      r = admin_socket->unregister_command(("bluestore allocator score " + name).c_str());
-      ceph_assert(r == 0);
-      r = admin_socket->unregister_command(("bluestore allocator fragmentation " + name).c_str());
-      ceph_assert(r == 0);
+      admin_socket->unregister_commands(this);
     }
   }
 
-  bool call(std::string_view command, const cmdmap_t& cmdmap,
-            std::string_view format, bufferlist& out) override {
+  int call(std::string_view command, const cmdmap_t& cmdmap,
+	   std::string_view format, bufferlist& out) override {
     stringstream ss;
-    bool r = true;
+    bool r = 0;
     if (command == "bluestore allocator dump " + name) {
       Formatter *f = Formatter::create(format, "json-pretty", "json-pretty");
       f->open_array_section("free_regions");
@@ -94,7 +89,7 @@ public:
       delete f;
     } else {
       ss << "Invalid command" << std::endl;
-      r = false;
+      r = -ENOSYS;
     }
     out.append(ss);
     return r;

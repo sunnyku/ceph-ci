@@ -181,15 +181,15 @@ class ClusterSocketHook : public AdminSocketHook {
   ClusterState *cluster_state;
 public:
   explicit ClusterSocketHook(ClusterState *o) : cluster_state(o) {}
-  bool call(std::string_view admin_command, const cmdmap_t& cmdmap,
-	    std::string_view format, bufferlist& out) override {
+  int call(std::string_view admin_command, const cmdmap_t& cmdmap,
+	   std::string_view format, bufferlist& out) override {
     stringstream ss;
-    bool r = true;
+    int r = 0;
     try {
       r = cluster_state->asok_command(admin_command, cmdmap, format, ss);
     } catch (const bad_cmd_get& e) {
       ss << e.what();
-      r = true;
+      r = -EINVAL;
     }
     out.append(ss);
     return r;
@@ -200,9 +200,9 @@ void ClusterState::final_init()
 {
   AdminSocket *admin_socket = g_ceph_context->get_admin_socket();
   asok_hook = new ClusterSocketHook(this);
-  int r = admin_socket->register_command("dump_osd_network",
-		      "dump_osd_network name=value,type=CephInt,req=false", asok_hook,
-		      "Dump osd heartbeat network ping times");
+  int r = admin_socket->register_command(
+    "dump_osd_network name=value,type=CephInt,req=false", asok_hook,
+    "Dump osd heartbeat network ping times");
   ceph_assert(r == 0);
 }
 

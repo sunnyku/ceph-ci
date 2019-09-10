@@ -140,13 +140,13 @@ int RGWSyncTraceManager::hook_to_admin_command()
 {
   AdminSocket *admin_socket = cct->get_admin_socket();
 
-  admin_commands = { { "sync trace show", "sync trace show name=search,type=CephString,req=false", "sync trace show [filter_str]: show current multisite tracing information" },
-                     { "sync trace history", "sync trace history name=search,type=CephString,req=false", "sync trace history [filter_str]: show history of multisite tracing information" },
-                     { "sync trace active", "sync trace active name=search,type=CephString,req=false", "show active multisite sync entities information" },
-                     { "sync trace active_short", "sync trace active_short name=search,type=CephString,req=false", "show active multisite sync entities entries" } };
+  admin_commands = { { "sync trace show name=search,type=CephString,req=false", "sync trace show [filter_str]: show current multisite tracing information" },
+                     { "sync trace history name=search,type=CephString,req=false", "sync trace history [filter_str]: show history of multisite tracing information" },
+                     { "sync trace active name=search,type=CephString,req=false", "show active multisite sync entities information" },
+                     { "sync trace active_short name=search,type=CephString,req=false", "show active multisite sync entities entries" } };
   for (auto cmd : admin_commands) {
-    int r = admin_socket->register_command(cmd[0], cmd[1], this,
-                                           cmd[2]);
+    int r = admin_socket->register_command(cmd[0], this,
+                                           cmd[1]);
     if (r < 0) {
       lderr(cct) << "ERROR: fail to register admin socket command (r=" << r << ")" << dendl;
       return r;
@@ -195,8 +195,8 @@ string RGWSyncTraceManager::get_active_names()
   return ss.str();
 }
 
-bool RGWSyncTraceManager::call(std::string_view command, const cmdmap_t& cmdmap,
-                               std::string_view format, bufferlist& out) {
+int RGWSyncTraceManager::call(std::string_view command, const cmdmap_t& cmdmap,
+			      std::string_view format, bufferlist& out) {
 
   bool show_history = (command == "sync trace history");
   bool show_short = (command == "sync trace active_short");
@@ -254,7 +254,7 @@ bool RGWSyncTraceManager::call(std::string_view command, const cmdmap_t& cmdmap,
   f.flush(ss);
   out.append(ss);
 
-  return true;
+  return 0;
 }
 
 void RGWSyncTraceManager::finish_node(RGWSyncTraceNode *node)

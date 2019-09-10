@@ -56,6 +56,9 @@
 #include "messages/MMonSubscribe.h"
 #include "messages/MMonSubscribeAck.h"
 
+#include "messages/MCommand.h"
+#include "messages/MCommandReply.h"
+
 #include "messages/MAuthReply.h"
 
 #include "messages/MTimeCheck2.h"
@@ -271,12 +274,12 @@ class AdminHook : public AdminSocketHook {
   Monitor *mon;
 public:
   explicit AdminHook(Monitor *m) : mon(m) {}
-  bool call(std::string_view command, const cmdmap_t& cmdmap,
+  int call(std::string_view command, const cmdmap_t& cmdmap,
 	    std::string_view format, bufferlist& out) override {
     stringstream ss;
     mon->do_admin_command(command, cmdmap, format, ss);
     out.append(ss);
-    return true;
+    return 0;
   }
 };
 
@@ -795,60 +798,55 @@ int Monitor::preinit()
   // unlock while registering to avoid mon_lock -> admin socket lock dependency.
   l.unlock();
 
-  r = admin_socket->register_command("mon_status", "mon_status", admin_hook,
+  r = admin_socket->register_command("mon_status", admin_hook,
 				     "show current monitor status");
   ceph_assert(r == 0);
-  r = admin_socket->register_command("quorum_status", "quorum_status",
+  r = admin_socket->register_command("quorum_status",
 				     admin_hook, "show current quorum status");
   ceph_assert(r == 0);
-  r = admin_socket->register_command("sync_force",
-				     "sync_force name=validate,"
+  r = admin_socket->register_command("sync_force name=validate,"
 				     "type=CephChoices,"
 			             "strings=--yes-i-really-mean-it",
 				     admin_hook,
 				     "force sync of and clear monitor store");
   ceph_assert(r == 0);
-  r = admin_socket->register_command("add_bootstrap_peer_hint",
-				     "add_bootstrap_peer_hint name=addr,"
+  r = admin_socket->register_command("add_bootstrap_peer_hint name=addr,"
 				     "type=CephIPAddr",
 				     admin_hook,
 				     "add peer address as potential bootstrap"
 				     " peer for cluster bringup");
   ceph_assert(r == 0);
-  r = admin_socket->register_command("add_bootstrap_peer_hintv",
-				     "add_bootstrap_peer_hintv name=addrv,"
+  r = admin_socket->register_command("add_bootstrap_peer_hintv name=addrv,"
 				     "type=CephString",
 				     admin_hook,
 				     "add peer address vector as potential bootstrap"
 				     " peer for cluster bringup");
   ceph_assert(r == 0);
-  r = admin_socket->register_command("quorum enter", "quorum enter",
+  r = admin_socket->register_command("quorum enter",
                                      admin_hook,
                                      "force monitor back into quorum");
   ceph_assert(r == 0);
-  r = admin_socket->register_command("quorum exit", "quorum exit",
+  r = admin_socket->register_command("quorum exit",
                                      admin_hook,
                                      "force monitor out of the quorum");
   ceph_assert(r == 0);
   r = admin_socket->register_command("ops",
-                                     "ops",
                                      admin_hook,
                                      "show the ops currently in flight");
   ceph_assert(r == 0);
   r = admin_socket->register_command("sessions",
-                                     "sessions",
                                      admin_hook,
                                      "list existing sessions");
   ceph_assert(r == 0);
-  r = admin_socket->register_command("dump_historic_ops", "dump_historic_ops",
+  r = admin_socket->register_command("dump_historic_ops",
                                      admin_hook,
                                     "show recent ops");
   ceph_assert(r == 0);
-  r = admin_socket->register_command("dump_historic_ops_by_duration", "dump_historic_ops_by_duration",
+  r = admin_socket->register_command("dump_historic_ops_by_duration",
                                      admin_hook,
                                     "show recent ops, sorted by duration");
   ceph_assert(r == 0);
-  r = admin_socket->register_command("dump_historic_slow_ops", "dump_historic_slow_ops",
+  r = admin_socket->register_command("dump_historic_slow_ops",
                                      admin_hook,
                                     "show recent slow ops");
   ceph_assert(r == 0);
@@ -3121,12 +3119,34 @@ struct C_MgrProxyCommand : public Context {
   }
 };
 
+void Monitor::handle_tell_command(MonOpRequestRef op)
+{
+  ceph_assert(op->is_type_command());
+  MCommand *m = static_cast<MCommand*>(op->get_req());
+  if (m->fsid != monmap->fsid) {
+    dout(0) << "handle_command on fsid " << m->fsid << " != " << monmap->fsid << dendl;
+    reply_command(op, -EPERM, "wrong fsid", 0);
+    return;
+  }
+  MonSession *session = op->get_session();
+  if (!session) {
+    dout(5) << __func__ << " dropping stray message " << *m << dendl;
+    return;
+  }
+  if (!session->caps.is_allow_all()) {
+    reply_tell_command(op, -EPERM, "insufficient caps");
+  }
+  // pass it to asok
+  cct->get_admin_socket()->queue_tell_command(m);
+}
+
 void Monitor::handle_command(MonOpRequestRef op)
 {
   ceph_assert(op->is_type_command());
   auto m = op->get_req<MMonCommand>();
   if (m->fsid != monmap->fsid) {
-    dout(0) << "handle_command on fsid " << m->fsid << " != " << monmap->fsid << dendl;
+    dout(0) << "handle_command on fsid " << m->fsid << " != " << monmap->fsid
+	    << dendl;
     reply_command(op, -EPERM, "wrong fsid", 0);
     return;
   }
@@ -3138,8 +3158,7 @@ void Monitor::handle_command(MonOpRequestRef op)
   }
 
   if (m->cmd.empty()) {
-    string rs = "No command supplied";
-    reply_command(op, -EINVAL, rs, 0);
+    reply_command(op, -EINVAL, "no command specified", 0);
     return;
   }
 
@@ -3931,6 +3950,16 @@ void Monitor::reply_command(MonOpRequestRef op, int rc, const string &rs,
   send_reply(op, reply);
 }
 
+void Monitor::reply_tell_command(
+  MonOpRequestRef op, int rc, const string &rs)
+{
+  MCommand *m = static_cast<MCommand*>(op->get_req());
+  ceph_assert(m->get_type() == MSG_MON_COMMAND);
+  MCommandReply *reply = new MCommandReply(rc, rs);
+  reply->set_tid(m->get_tid());
+  m->get_connection()->send_message(reply);
+}
+
 
 // ------------------------
 // request/reply routing
@@ -4419,6 +4448,10 @@ void Monitor::dispatch_op(MonOpRequestRef op)
 
     case CEPH_MSG_PING:
       handle_ping(op);
+      return;
+    case MSG_COMMAND:
+      op->set_type_command();
+      handle_tell_command(op);
       return;
   }
 

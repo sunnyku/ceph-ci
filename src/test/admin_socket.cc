@@ -115,8 +115,8 @@ TEST(AdminSocket, SendTooLongRequest) {
 }
 
 class MyTest : public AdminSocketHook {
-  bool call(std::string_view command, const cmdmap_t& cmdmap,
-	    std::string_view format, bufferlist& result) override {
+  int call(std::string_view command, const cmdmap_t& cmdmap,
+	   std::string_view format, bufferlist& result) override {
     std::vector<std::string> args;
     cmd_getval(g_ceph_context, cmdmap, "args", args);
     result.append(command);
@@ -129,7 +129,7 @@ class MyTest : public AdminSocketHook {
       resultstr += *it;
     }
     result.append(resultstr);
-    return true;
+    return 0;
   }
 };
 
@@ -140,7 +140,7 @@ TEST(AdminSocket, RegisterCommand) {
   ASSERT_EQ(true, asoct.shutdown());
   ASSERT_EQ(true, asoct.init(get_rand_socket_path()));
   AdminSocketClient client(get_rand_socket_path());
-  ASSERT_EQ(0, asoct.m_asokc->register_command("test", "test", my_test_asok.get(), ""));
+  ASSERT_EQ(0, asoct.m_asokc->register_command("test", my_test_asok.get(), ""));
   string result;
   ASSERT_EQ("", client.do_request("{\"prefix\":\"test\"}", &result));
   ASSERT_EQ("test|", result);
@@ -148,8 +148,8 @@ TEST(AdminSocket, RegisterCommand) {
 }
 
 class MyTest2 : public AdminSocketHook {
-  bool call(std::string_view command, const cmdmap_t& cmdmap,
-	    std::string_view format, bufferlist& result) override {
+  int call(std::string_view command, const cmdmap_t& cmdmap,
+	   std::string_view format, bufferlist& result) override {
     std::vector<std::string> args;
     cmd_getval(g_ceph_context, cmdmap, "args", args);
     result.append(command);
@@ -162,7 +162,7 @@ class MyTest2 : public AdminSocketHook {
       resultstr += *it;
     }
     result.append(resultstr);
-    return true;
+    return 0;
   }
 };
 
@@ -174,8 +174,8 @@ TEST(AdminSocket, RegisterCommandPrefixes) {
   ASSERT_EQ(true, asoct.shutdown());
   ASSERT_EQ(true, asoct.init(get_rand_socket_path()));
   AdminSocketClient client(get_rand_socket_path());
-  ASSERT_EQ(0, asoct.m_asokc->register_command("test", "test name=args,type=CephString,n=N", my_test_asok.get(), ""));
-  ASSERT_EQ(0, asoct.m_asokc->register_command("test command", "test command name=args,type=CephString,n=N", my_test2_asok.get(), ""));
+  ASSERT_EQ(0, asoct.m_asokc->register_command("test name=args,type=CephString,n=N", my_test_asok.get(), ""));
+  ASSERT_EQ(0, asoct.m_asokc->register_command("test command name=args,type=CephString,n=N", my_test2_asok.get(), ""));
   string result;
   ASSERT_EQ("", client.do_request("{\"prefix\":\"test\"}", &result));
   ASSERT_EQ("test|", result);
@@ -202,11 +202,11 @@ public:
 
   BlockingHook() = default;
 
-  bool call(std::string_view command, const cmdmap_t& cmdmap,
-	    std::string_view format, bufferlist& result) override {
+  int call(std::string_view command, const cmdmap_t& cmdmap,
+	   std::string_view format, bufferlist& result) override {
     std::unique_lock l{_lock};
     _cond.wait(l);
-    return true;
+    return 0;
   }
 };
 
@@ -248,7 +248,7 @@ TEST(AdminSocketClient, Ping) {
   {
     AdminSocketTest asoct(asokc.get());
     BlockingHook *blocking = new BlockingHook();
-    ASSERT_EQ(0, asoct.m_asokc->register_command("0", "0", blocking, ""));
+    ASSERT_EQ(0, asoct.m_asokc->register_command("0", blocking, ""));
     ASSERT_TRUE(asoct.init(path));
     bool ok;
     std::string result = client.ping(&ok);

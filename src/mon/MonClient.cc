@@ -35,6 +35,8 @@
 #include "messages/MAuthReply.h"
 #include "messages/MMonCommand.h"
 #include "messages/MMonCommandAck.h"
+#include "messages/MCommand.h"
+#include "messages/MCommandReply.h"
 #include "messages/MPing.h"
 
 #include "messages/MMonSubscribe.h"
@@ -278,6 +280,7 @@ bool MonClient::ms_dispatch(Message *m)
   case CEPH_MSG_MON_SUBSCRIBE_ACK:
   case CEPH_MSG_MON_GET_VERSION_REPLY:
   case MSG_MON_COMMAND_ACK:
+  case MSG_COMMAND_REPLY:
   case MSG_LOGACK:
   case MSG_CONFIG:
     break;
@@ -289,6 +292,20 @@ bool MonClient::ms_dispatch(Message *m)
   }
 
   std::lock_guard lock(monc_lock);
+
+  switch (m->get_type()) {
+  case MSG_COMMAND_REPLY:
+    if (m->get_connection()->is_anon() &&
+        m->get_source().type() == CEPH_ENTITY_TYPE_MON) {
+      // this connection is from 'tell'... ignore everything except our command
+      // reply.  (we'll get misc other message because we authenticated, but we
+      // don't need them.)
+      handle_command_reply(static_cast<MCommandReply*>(m));
+      return true;
+    }
+    // leave the message for another dispatch handler (e.g., Objecter)
+    return false;
+  }
 
   if (_hunting()) {
     auto p = _find_pending_con(m->get_connection());
@@ -753,6 +770,19 @@ bool MonClient::ms_handle_reset(Connection *con)
   if (con->get_peer_type() != CEPH_ENTITY_TYPE_MON)
     return false;
 
+  if (con->is_anon()) {
+    auto p = mon_commands.begin();
+    while (p != mon_commands.end()) {
+      auto cmd = p->second;
+      ++p;
+      if (cmd->target_con == con) {
+	_send_command(cmd); // may retry or fail
+	break;
+      }
+    }
+    return true;
+  }
+
   if (_hunting()) {
     if (pending_cons.count(con->get_peer_addrs())) {
       ldout(cct, 10) << __func__ << " hunted mon " << con->get_peer_addrs()
@@ -847,6 +877,7 @@ void MonClient::tick()
     });
 
   _check_auth_tickets();
+  _check_tell_commands();
   
   if (_hunting()) {
     ldout(cct, 1) << "continuing hunt" << dendl;
@@ -1031,58 +1062,115 @@ int MonClient::wait_auth_rotating(double timeout)
 
 void MonClient::_send_command(MonCommand *r)
 {
-  ++r->send_attempts;
-
-  entity_addr_t peer;
-  if (active_con) {
-    peer = active_con->get_con()->get_peer_addr();
-  }
-
-  if (r->target_rank >= 0 &&
-      r->target_rank != monmap.get_rank(peer)) {
+  if (r->is_tell()) {
+    ++r->send_attempts;
     if (r->send_attempts > cct->_conf->mon_client_directed_command_retry) {
       _finish_command(r, -ENXIO, "mon unavailable");
       return;
     }
-    ldout(cct, 10) << __func__ << " " << r->tid << " " << r->cmd
-		   << " wants rank " << r->target_rank
-		   << ", reopening session"
-		   << dendl;
-    if (r->target_rank >= (int)monmap.size()) {
-      ldout(cct, 10) << " target " << r->target_rank << " >= max mon " << monmap.size() << dendl;
-      _finish_command(r, -ENOENT, "mon rank dne");
+
+    // tell-style command
+    if (true || monmap.min_mon_release >= ceph_release_t::octopus) {
+      if (r->target_rank >= (int)monmap.size()) {
+	ldout(cct, 10) << " target " << r->target_rank
+		       << " >= max mon " << monmap.size() << dendl;
+	_finish_command(r, -ENOENT, "mon rank dne");
+	return;
+      }
+      if (!monmap.contains(r->target_name)) {
+	ldout(cct, 10) << " target " << r->target_name
+		       << " not present in monmap" << dendl;
+	_finish_command(r, -ENOENT, "mon dne");
+	return;
+      }
+
+      if (r->target_con) {
+	r->target_con->mark_down();
+      }
+      if (r->target_rank >= 0) {
+	r->target_con = messenger->connect_to_mon(
+	  monmap.get_addrs(r->target_rank), true /* anon */);
+      } else {
+	r->target_con = messenger->connect_to_mon(
+	  monmap.get_addrs(r->target_name), true /* anon */);
+      }
+
+      r->target_session.reset(new MonConnection(cct, r->target_con, 0,
+						&auth_registry));
+      r->target_session->start(monmap.get_epoch(), entity_name);
+      r->last_send_attempt = ceph_clock_now();
+
+      MCommand *m = new MCommand(monmap.fsid);
+      m->set_tid(r->tid);
+      m->cmd = r->cmd;
+      m->set_data(r->inbl);
+      r->target_con->send_message(m);
       return;
     }
-    _reopen_session(r->target_rank);
-    return;
+
+    // ugly legacy handling of pre-octopus mons
+    entity_addr_t peer;
+    if (active_con) {
+      peer = active_con->get_con()->get_peer_addr();
+    }
+
+    if (r->target_rank >= 0 &&
+	r->target_rank != monmap.get_rank(peer)) {
+      ldout(cct, 10) << __func__ << " " << r->tid << " " << r->cmd
+		     << " wants rank " << r->target_rank
+		     << ", reopening session"
+		     << dendl;
+      if (r->target_rank >= (int)monmap.size()) {
+	ldout(cct, 10) << " target " << r->target_rank
+		       << " >= max mon " << monmap.size() << dendl;
+	_finish_command(r, -ENOENT, "mon rank dne");
+	return;
+      }
+      _reopen_session(r->target_rank);
+      return;
+    }
+    if (r->target_name.length() &&
+	r->target_name != monmap.get_name(peer)) {
+      ldout(cct, 10) << __func__ << " " << r->tid << " " << r->cmd
+		     << " wants mon " << r->target_name
+		     << ", reopening session"
+		     << dendl;
+      if (!monmap.contains(r->target_name)) {
+	ldout(cct, 10) << " target " << r->target_name
+		       << " not present in monmap" << dendl;
+	_finish_command(r, -ENOENT, "mon dne");
+	return;
+      }
+      _reopen_session(monmap.get_rank(r->target_name));
+      return;
+    }
+    // fall-thru to send 'normal' CLI command
   }
 
-  if (r->target_name.length() &&
-      r->target_name != monmap.get_name(peer)) {
-    if (r->send_attempts > cct->_conf->mon_client_directed_command_retry) {
-      _finish_command(r, -ENXIO, "mon unavailable");
-      return;
-    }
-    ldout(cct, 10) << __func__ << " " << r->tid << " " << r->cmd
-		   << " wants mon " << r->target_name
-		   << ", reopening session"
-		   << dendl;
-    if (!monmap.contains(r->target_name)) {
-      ldout(cct, 10) << " target " << r->target_name << " not present in monmap" << dendl;
-      _finish_command(r, -ENOENT, "mon dne");
-      return;
-    }
-    _reopen_session(monmap.get_rank(r->target_name));
-    return;
-  }
-
+  // normal CLI command
   ldout(cct, 10) << __func__ << " " << r->tid << " " << r->cmd << dendl;
   MMonCommand *m = new MMonCommand(monmap.fsid);
   m->set_tid(r->tid);
   m->cmd = r->cmd;
   m->set_data(r->inbl);
   _send_mon_message(m);
-  return;
+}
+
+void MonClient::_check_tell_commands()
+{
+  // resend any requests
+  auto now = ceph_clock_now();
+  auto p = mon_commands.begin();
+  while (p != mon_commands.end()) {
+    auto cmd = p->second;
+    ++p;
+    if (cmd->is_tell() &&
+	cmd->last_send_attempt != utime_t() &&
+	now - cmd->last_send_attempt > cct->_conf->mon_client_hunt_interval) {
+      ldout(cct,5) << __func__ << " timeout tell command " << cmd->tid << dendl;
+      _send_command(cmd); // might remove cmd from mon_commands
+    }
+  }
 }
 
 void MonClient::_resend_mon_commands()
@@ -1092,7 +1180,9 @@ void MonClient::_resend_mon_commands()
   while (p != mon_commands.end()) {
     auto cmd = p->second;
     ++p;
-    _send_command(cmd); // might remove cmd from mon_commands
+    if (!cmd->is_tell()) {
+      _send_command(cmd); // might remove cmd from mon_commands
+    }
   }
 }
 
@@ -1121,6 +1211,33 @@ void MonClient::handle_mon_command_ack(MMonCommandAck *ack)
   ack->put();
 }
 
+void MonClient::handle_command_reply(MCommandReply *reply)
+{
+  MonCommand *r = NULL;
+  uint64_t tid = reply->get_tid();
+
+  if (tid == 0 && !mon_commands.empty()) {
+    r = mon_commands.begin()->second;
+    ldout(cct, 10) << __func__ << " has tid 0, assuming it is " << r->tid
+		   << dendl;
+  } else {
+    auto p = mon_commands.find(tid);
+    if (p == mon_commands.end()) {
+      ldout(cct, 10) << __func__ << " " << reply->get_tid() << " not found"
+		     << dendl;
+      reply->put();
+      return;
+    }
+    r = p->second;
+  }
+
+  ldout(cct, 10) << __func__ << " " << r->tid << " " << r->cmd << dendl;
+  if (r->poutbl)
+    r->poutbl->claim(reply->get_data());
+  _finish_command(r, reply->r, reply->rs);
+  reply->put();
+}
+
 int MonClient::_cancel_mon_command(uint64_t tid)
 {
   ceph_assert(ceph_mutex_is_locked(monc_lock));
@@ -1147,6 +1264,9 @@ void MonClient::_finish_command(MonCommand *r, int ret, string rs)
     *(r->prs) = rs;
   if (r->onfinish)
     finisher.queue(r->onfinish, ret);
+  if (r->target_con) {
+    r->target_con->mark_down();
+  }
   mon_commands.erase(r->tid);
   delete r;
 }
@@ -1287,6 +1407,15 @@ int MonClient::get_auth_request(
   // connection to mon?
   if (con->get_peer_type() == CEPH_ENTITY_TYPE_MON) {
     ceph_assert(!auth_meta->authorizer);
+    if (con->is_anon()) {
+      for (auto& i : mon_commands) {
+	if (i.second->target_con == con) {
+	  return i.second->target_session->get_auth_request(
+	    auth_method, preferred_modes, bl,
+	    entity_name, want_keys, rotating_secrets.get());
+	}
+      }
+    }
     for (auto& i : pending_cons) {
       if (i.second.is_con(con)) {
 	return i.second.get_auth_request(
@@ -1325,6 +1454,14 @@ int MonClient::handle_auth_reply_more(
   std::lock_guard l(monc_lock);
 
   if (con->get_peer_type() == CEPH_ENTITY_TYPE_MON) {
+    if (con->is_anon()) {
+      for (auto& i : mon_commands) {
+	if (i.second->target_con == con) {
+	  return i.second->target_session->handle_auth_reply_more(
+	    auth_meta, bl, reply);
+	}
+      }
+    }
     for (auto& i : pending_cons) {
       if (i.second.is_con(con)) {
 	return i.second.handle_auth_reply_more(auth_meta, bl, reply);
@@ -1354,6 +1491,15 @@ int MonClient::handle_auth_done(
 {
   if (con->get_peer_type() == CEPH_ENTITY_TYPE_MON) {
     std::lock_guard l(monc_lock);
+    if (con->is_anon()) {
+      for (auto& i : mon_commands) {
+	if (i.second->target_con == con) {
+	  return i.second->target_session->handle_auth_done(
+	    auth_meta, global_id, bl,
+	    session_key, connection_secret);
+	}
+      }
+    }
     for (auto& i : pending_cons) {
       if (i.second.is_con(con)) {
 	int r = i.second.handle_auth_done(
@@ -1403,6 +1549,21 @@ int MonClient::handle_auth_bad_method(
 
   std::lock_guard l(monc_lock);
   if (con->get_peer_type() == CEPH_ENTITY_TYPE_MON) {
+    if (con->is_anon()) {
+      for (auto& i : mon_commands) {
+	if (i.second->target_con == con) {
+	  int r = i.second->target_session->handle_auth_bad_method(
+	    old_auth_method,
+	    result,
+	    allowed_methods,
+	    allowed_modes);
+	  if (r < 0) {
+	    _finish_command(i.second, r, "auth failed");
+	  }
+	  return r;
+	}
+      }
+    }
     for (auto& i : pending_cons) {
       if (i.second.is_con(con)) {
 	int r = i.second.handle_auth_bad_method(old_auth_method,

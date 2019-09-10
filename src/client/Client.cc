@@ -138,9 +138,10 @@ Client::CommandHook::CommandHook(Client *client) :
 {
 }
 
-bool Client::CommandHook::call(std::string_view command,
-			       const cmdmap_t& cmdmap,
-			       std::string_view format, bufferlist& out)
+int Client::CommandHook::call(
+  std::string_view command,
+  const cmdmap_t& cmdmap,
+  std::string_view format, bufferlist& out)
 {
   std::unique_ptr<Formatter> f(Formatter::create(format));
   f->open_object_section("result");
@@ -161,7 +162,7 @@ bool Client::CommandHook::call(std::string_view command,
   }
   f->close_section();
   f->flush(out);
-  return true;
+  return 0;
 }
 
 
@@ -502,7 +503,6 @@ void Client::_finish_init()
 
   AdminSocket* admin_socket = cct->get_admin_socket();
   int ret = admin_socket->register_command("mds_requests",
-					   "mds_requests",
 					   &m_command_hook,
 					   "show in-progress mds requests");
   if (ret < 0) {
@@ -510,7 +510,6 @@ void Client::_finish_init()
 	       << cpp_strerror(-ret) << dendl;
   }
   ret = admin_socket->register_command("mds_sessions",
-				       "mds_sessions",
 				       &m_command_hook,
 				       "show mds session state");
   if (ret < 0) {
@@ -518,7 +517,6 @@ void Client::_finish_init()
 	       << cpp_strerror(-ret) << dendl;
   }
   ret = admin_socket->register_command("dump_cache",
-				       "dump_cache",
 				       &m_command_hook,
 				       "show in-memory metadata cache contents");
   if (ret < 0) {
@@ -526,7 +524,6 @@ void Client::_finish_init()
 	       << cpp_strerror(-ret) << dendl;
   }
   ret = admin_socket->register_command("kick_stale_sessions",
-				       "kick_stale_sessions",
 				       &m_command_hook,
 				       "kick sessions that were remote reset");
   if (ret < 0) {
@@ -534,7 +531,6 @@ void Client::_finish_init()
 	       << cpp_strerror(-ret) << dendl;
   }
   ret = admin_socket->register_command("status",
-				       "status",
 				       &m_command_hook,
 				       "show overall client status");
   if (ret < 0) {

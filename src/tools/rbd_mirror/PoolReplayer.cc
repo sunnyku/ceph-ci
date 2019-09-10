@@ -155,42 +155,42 @@ public:
     int r;
 
     command = "rbd mirror status " + name;
-    r = admin_socket->register_command(command, command, this,
+    r = admin_socket->register_command(command, this,
 				       "get status for rbd mirror " + name);
     if (r == 0) {
       commands[command] = new StatusCommand<I>(pool_replayer);
     }
 
     command = "rbd mirror start " + name;
-    r = admin_socket->register_command(command, command, this,
+    r = admin_socket->register_command(command, this,
 				       "start rbd mirror " + name);
     if (r == 0) {
       commands[command] = new StartCommand<I>(pool_replayer);
     }
 
     command = "rbd mirror stop " + name;
-    r = admin_socket->register_command(command, command, this,
+    r = admin_socket->register_command(command, this,
 				       "stop rbd mirror " + name);
     if (r == 0) {
       commands[command] = new StopCommand<I>(pool_replayer);
     }
 
     command = "rbd mirror restart " + name;
-    r = admin_socket->register_command(command, command, this,
+    r = admin_socket->register_command(command, this,
 				       "restart rbd mirror " + name);
     if (r == 0) {
       commands[command] = new RestartCommand<I>(pool_replayer);
     }
 
     command = "rbd mirror flush " + name;
-    r = admin_socket->register_command(command, command, this,
+    r = admin_socket->register_command(command, this,
 				       "flush rbd mirror " + name);
     if (r == 0) {
       commands[command] = new FlushCommand<I>(pool_replayer);
     }
 
     command = "rbd mirror leader release " + name;
-    r = admin_socket->register_command(command, command, this,
+    r = admin_socket->register_command(command, this,
                                        "release rbd mirror leader " + name);
     if (r == 0) {
       commands[command] = new LeaderReleaseCommand<I>(pool_replayer);
@@ -198,19 +198,19 @@ public:
   }
 
   ~PoolReplayerAdminSocketHook() override {
+    (void)admin_socket->unregister_commands(this);
     for (auto i = commands.begin(); i != commands.end(); ++i) {
-      (void)admin_socket->unregister_command(i->first);
       delete i->second;
     }
   }
 
-  bool call(std::string_view command, const cmdmap_t& cmdmap,
-	    std::string_view format, bufferlist& out) override {
+  int call(std::string_view command, const cmdmap_t& cmdmap,
+	   std::string_view format, bufferlist& out) override {
     auto i = commands.find(command);
     ceph_assert(i != commands.end());
     Formatter *f = Formatter::create(format);
     stringstream ss;
-    bool r = i->second->call(f, &ss);
+    int r = i->second->call(f, &ss);
     delete f;
     out.append(ss);
     return r;

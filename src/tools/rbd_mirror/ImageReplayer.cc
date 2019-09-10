@@ -179,7 +179,7 @@ public:
 
   int register_commands() {
     for (auto &it : commands) {
-      int r = admin_socket->register_command(it.first, it.first, this,
+      int r = admin_socket->register_command(it.first, this,
                                              it.second->desc);
       if (r < 0) {
         return r;
@@ -190,22 +190,20 @@ public:
   }
 
   ~ImageReplayerAdminSocketHook() override {
+    admin_socket->unregister_commands(this);
     for (auto &it : commands) {
-      if (it.second->registered) {
-        admin_socket->unregister_command(it.first);
-      }
       delete it.second;
     }
     commands.clear();
   }
 
-  bool call(std::string_view command, const cmdmap_t& cmdmap,
-	    std::string_view format, bufferlist& out) override {
+  int call(std::string_view command, const cmdmap_t& cmdmap,
+	   std::string_view format, bufferlist& out) override {
     auto i = commands.find(command);
     ceph_assert(i != commands.end());
     Formatter *f = Formatter::create(format);
     stringstream ss;
-    bool r = i->second->call(f, &ss);
+    int r = i->second->call(f, &ss);
     delete f;
     out.append(ss);
     return r;

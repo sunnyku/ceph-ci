@@ -503,14 +503,11 @@ class RGWSI_SysObj_Cache_ASocketHook : public AdminSocketHook {
     { "cache list",
       "cache list name=filter,type=CephString,req=false",
       "cache list [filter_str]: list object cache, possibly matching substrings" },
-    { "cache inspect",
-      "cache inspect name=target,type=CephString,req=true",
+    { "cache inspect name=target,type=CephString,req=true",
       "cache inspect target: print cache element" },
-    { "cache erase",
-      "cache erase name=target,type=CephString,req=true",
+    { "cache erase name=target,type=CephString,req=true",
       "cache erase target: erase element from cache" },
     { "cache zap",
-      "cache zap",
       "cache zap: erase all elements from cache" }
   };
 
@@ -520,16 +517,15 @@ public:
     int start();
     void shutdown();
 
-    bool call(std::string_view command, const cmdmap_t& cmdmap,
-              std::string_view format, bufferlist& out) override;
+    int call(std::string_view command, const cmdmap_t& cmdmap,
+	     std::string_view format, bufferlist& out) override;
 };
 
 int RGWSI_SysObj_Cache_ASocketHook::start()
 {
   auto admin_socket = svc->ctx()->get_admin_socket();
   for (auto cmd : admin_commands) {
-    int r = admin_socket->register_command(cmd[0], cmd[1], this,
-                                           cmd[2]);
+    int r = admin_socket->register_command(cmd[0], this, cmd[1]);
     if (r < 0) {
       ldout(svc->ctx(), 0) << "ERROR: fail to register admin socket command (r=" << r
                            << ")" << dendl;
@@ -545,8 +541,9 @@ void RGWSI_SysObj_Cache_ASocketHook::shutdown()
   admin_socket->unregister_commands(this);
 }
 
-bool RGWSI_SysObj_Cache_ASocketHook::call(std::string_view command, const cmdmap_t& cmdmap,
-                                          std::string_view format, bufferlist& out)
+int RGWSI_SysObj_Cache_ASocketHook::call(
+  std::string_view command, const cmdmap_t& cmdmap,
+  std::string_view format, bufferlist& out)
 {
   if (command == "cache list"sv) {
     std::optional<std::string> filter;
@@ -559,10 +556,10 @@ bool RGWSI_SysObj_Cache_ASocketHook::call(std::string_view command, const cmdmap
       svc->asocket.call_list(filter, f.get());
       f->close_section();
       f->flush(out);
-      return true;
+      return 0;
     } else {
       out.append("Unable to create Formatter.\n");
-      return false;
+      return -EINVAL;
     }
   } else if (command == "cache inspect"sv) {
     std::unique_ptr<Formatter> f(ceph::Formatter::create(format, "json-pretty"));
@@ -570,28 +567,28 @@ bool RGWSI_SysObj_Cache_ASocketHook::call(std::string_view command, const cmdmap
       const auto& target = boost::get<std::string>(cmdmap.at("target"));
       if (svc->asocket.call_inspect(target, f.get())) {
         f->flush(out);
-        return true;
+        return 0;
       } else {
         out.append("Unable to find entry "s + target + ".\n");
-        return false;
+        return -ENOENT;
       }
     } else {
       out.append("Unable to create Formatter.\n");
-      return false;
+      return -EINVAL;
     }
   } else if (command == "cache erase"sv) {
     const auto& target = boost::get<std::string>(cmdmap.at("target"));
     if (svc->asocket.call_erase(target)) {
-      return true;
+      return 0;
     } else {
       out.append("Unable to find entry "s + target + ".\n");
-      return false;
+      return -ENOENT;
     }
   } else if (command == "cache zap"sv) {
     svc->asocket.call_zap();
     return true;
   }
-  return false;
+  return -ENOSYS;
 }
 
 RGWSI_SysObj_Cache::ASocketHandler::ASocketHandler(RGWSI_SysObj_Cache *_svc) : svc(_svc)

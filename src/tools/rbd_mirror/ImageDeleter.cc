@@ -87,7 +87,7 @@ public:
     int r;
 
     command = "rbd mirror deletion status " + pool_name;
-    r = admin_socket->register_command(command, command, this,
+    r = admin_socket->register_command(command, this,
 				       "get status for image deleter");
     if (r == 0) {
       commands[command] = new StatusCommand<I>(image_del);
@@ -96,20 +96,20 @@ public:
   }
 
   ~ImageDeleterAdminSocketHook() override {
+    (void)admin_socket->unregister_commands(this);
     for (Commands::const_iterator i = commands.begin(); i != commands.end();
 	 ++i) {
-      (void)admin_socket->unregister_command(i->first);
       delete i->second;
     }
   }
 
-  bool call(std::string_view command, const cmdmap_t& cmdmap,
-	    std::string_view format, bufferlist& out) override {
+  int call(std::string_view command, const cmdmap_t& cmdmap,
+	   std::string_view format, bufferlist& out) override {
     Commands::const_iterator i = commands.find(command);
     ceph_assert(i != commands.end());
     Formatter *f = Formatter::create(format);
     stringstream ss;
-    bool r = i->second->call(f, &ss);
+    int r = i->second->call(f, &ss);
     delete f;
     out.append(ss);
     return r;

@@ -271,42 +271,42 @@ public:
     int r;
 
     command = "rbd mirror status";
-    r = admin_socket->register_command(command, command, this,
+    r = admin_socket->register_command(command, this,
 				       "get status for rbd mirror");
     if (r == 0) {
       commands[command] = new StatusCommand(mirror);
     }
 
     command = "rbd mirror start";
-    r = admin_socket->register_command(command, command, this,
+    r = admin_socket->register_command(command, this,
 				       "start rbd mirror");
     if (r == 0) {
       commands[command] = new StartCommand(mirror);
     }
 
     command = "rbd mirror stop";
-    r = admin_socket->register_command(command, command, this,
+    r = admin_socket->register_command(command, this,
 				       "stop rbd mirror");
     if (r == 0) {
       commands[command] = new StopCommand(mirror);
     }
 
     command = "rbd mirror restart";
-    r = admin_socket->register_command(command, command, this,
+    r = admin_socket->register_command(command, this,
 				       "restart rbd mirror");
     if (r == 0) {
       commands[command] = new RestartCommand(mirror);
     }
 
     command = "rbd mirror flush";
-    r = admin_socket->register_command(command, command, this,
+    r = admin_socket->register_command(command, this,
 				       "flush rbd mirror");
     if (r == 0) {
       commands[command] = new FlushCommand(mirror);
     }
 
     command = "rbd mirror leader release";
-    r = admin_socket->register_command(command, command, this,
+    r = admin_socket->register_command(command, this,
 				       "release rbd mirror leader");
     if (r == 0) {
       commands[command] = new LeaderReleaseCommand(mirror);
@@ -314,20 +314,20 @@ public:
   }
 
   ~MirrorAdminSocketHook() override {
+    (void)admin_socket->unregister_commands(this);
     for (Commands::const_iterator i = commands.begin(); i != commands.end();
 	 ++i) {
-      (void)admin_socket->unregister_command(i->first);
       delete i->second;
     }
   }
 
-  bool call(std::string_view command, const cmdmap_t& cmdmap,
-	    std::string_view format, bufferlist& out) override {
+  int call(std::string_view command, const cmdmap_t& cmdmap,
+	   std::string_view format, bufferlist& out) override {
     Commands::const_iterator i = commands.find(command);
     ceph_assert(i != commands.end());
     Formatter *f = Formatter::create(format);
     stringstream ss;
-    bool r = i->second->call(f, &ss);
+    int r = i->second->call(f, &ss);
     delete f;
     out.append(ss);
     return r;
