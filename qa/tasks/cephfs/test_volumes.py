@@ -121,8 +121,8 @@ class TestVolumes(CephFSTestCase):
     def test_subvolume_extend(self):
         # tests the 'fs subvolume extend' command
 
-        data_pool = "new_pool"
-        self.fs.add_data_pool(data_pool)
+        #data_pool = "jcollinpool"
+        #self.fs.add_data_pool(data_pool)
 
         #create volume
         self.volname = TestVolumes.TEST_VOLUME_NAME
@@ -130,8 +130,7 @@ class TestVolumes(CephFSTestCase):
 
         #create subvolumegroup
         subvolgroup = self._generate_random_group_name()
-        self._fs_cmd("subvolumegroup", "create", self.volname, subvolgroup,
-                     "--pool_layout", data_pool)
+        self._fs_cmd("subvolumegroup", "create", self.volname, subvolgroup)
 
         # create subvolume
         subvolname = self._generate_random_subvolume_name()
@@ -139,7 +138,7 @@ class TestVolumes(CephFSTestCase):
         self._fs_cmd("subvolume", "create",
                      self.volname, subvolname,
                      "--size", osize,
-                     "--group_name", subvolgroup, "--pool_layout", data_pool,
+                     "--group_name", subvolgroup,
                      "--mode", "777")
 
         # make sure it exists
