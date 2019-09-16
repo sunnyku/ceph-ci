@@ -135,10 +135,8 @@ class TestVolumes(CephFSTestCase):
         # create subvolume
         subvolname = self._generate_random_subvolume_name()
         osize = self.DEFAULT_FILE_SIZE*1024*1024
-        self._fs_cmd("subvolume", "create",
-                     self.volname, subvolname,
-                     "--size", osize,
-                     "--group_name", subvolgroup,
+        self._fs_cmd("subvolume", "create", self.volname, subvolname,
+                     "--size", str(osize), "--group_name", subvolgroup,
                      "--mode", "777")
 
         # make sure it exists
