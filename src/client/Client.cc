@@ -6195,7 +6195,7 @@ void Client::tick()
   ldout(cct, 21) << "tick" << dendl;
   tick_event = timer.add_event_after(
     cct->_conf->client_tick_interval,
-    new FunctionContext([this](int) {
+    new LambdaContext([this](int) {
 	// Called back via Timer, which takes client_lock for us
 	ceph_assert(ceph_mutex_is_locked_by_me(client_lock));
 	tick();
@@ -8035,12 +8035,12 @@ int Client::_readdir_cache_cb(dir_result_t *dirp, add_dirent_cb_t cb, void *p,
     fill_statx(dn->inode, caps, &stx);
 
     uint64_t next_off = dn->offset + 1;
+    fill_dirent(&de, dn->name.c_str(), stx.stx_mode, stx.stx_ino, next_off);
     ++pd;
     if (pd == dir->readdir_cache.end())
       next_off = dir_result_t::END;
 
     Inode *in = NULL;
-    fill_dirent(&de, dn->name.c_str(), stx.stx_mode, stx.stx_ino, next_off);
     if (getref) {
       in = dn->inode.get();
       _ll_get(in);
@@ -10525,8 +10525,11 @@ int Client::lazyio_synchronize(int fd, loff_t offset, size_t count)
   Inode *in = f->inode.get();
   
   _fsync(f, true);
-  if (_release(in))
-    check_caps(in, 0);
+  if (_release(in)) {
+    int r =_getattr(in, CEPH_STAT_CAP_SIZE, f->actor_perms);
+    if (r < 0) 
+      return r;
+  }
   return 0;
 }
 

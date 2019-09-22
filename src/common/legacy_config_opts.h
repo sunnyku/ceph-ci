@@ -756,7 +756,6 @@ OPTION(osd_op_complaint_time, OPT_FLOAT) // how many seconds old makes an op com
 OPTION(osd_command_max_records, OPT_INT)
 OPTION(osd_max_pg_blocked_by, OPT_U32)    // max peer osds to report that are blocking our progress
 OPTION(osd_op_log_threshold, OPT_INT) // how many op log messages to show in one go
-OPTION(osd_verify_sparse_read_holes, OPT_BOOL)  // read fiemap-reported holes and verify they are zeros
 OPTION(osd_backoff_on_unfound, OPT_BOOL)   // object unfound
 OPTION(osd_backoff_on_degraded, OPT_BOOL) // [mainly for debug?] object unreadable/writeable
 OPTION(osd_backoff_on_peering, OPT_BOOL)  // [debug] pg peering
@@ -1039,12 +1038,14 @@ OPTION(bluestore_max_defer_interval, OPT_U64)
 OPTION(bluestore_rocksdb_options, OPT_STR)
 OPTION(bluestore_fsck_on_mount, OPT_BOOL)
 OPTION(bluestore_fsck_on_mount_deep, OPT_BOOL)
+OPTION(bluestore_fsck_quick_fix_on_mount, OPT_BOOL)
 OPTION(bluestore_fsck_on_umount, OPT_BOOL)
 OPTION(bluestore_fsck_on_umount_deep, OPT_BOOL)
 OPTION(bluestore_fsck_on_mkfs, OPT_BOOL)
 OPTION(bluestore_fsck_on_mkfs_deep, OPT_BOOL)
 OPTION(bluestore_sync_submit_transaction, OPT_BOOL) // submit kv txn in queueing thread (not kv_sync_thread)
 OPTION(bluestore_fsck_read_bytes_cap, OPT_U64)
+OPTION(bluestore_fsck_quick_fix_threads, OPT_INT)
 OPTION(bluestore_throttle_bytes, OPT_U64)
 OPTION(bluestore_throttle_deferred_bytes, OPT_U64)
 OPTION(bluestore_throttle_cost_per_io_hdd, OPT_U64)
@@ -1074,7 +1075,7 @@ OPTION(bluestore_debug_permit_any_bdev_label, OPT_BOOL)
 OPTION(bluestore_debug_random_read_err, OPT_DOUBLE)
 OPTION(bluestore_debug_inject_bug21040, OPT_BOOL)
 OPTION(bluestore_debug_inject_csum_err_probability, OPT_FLOAT)
-OPTION(bluestore_no_per_pool_stats_tolerance, OPT_STR)
+OPTION(bluestore_fsck_error_on_no_per_pool_stats, OPT_BOOL)
 OPTION(bluestore_warn_on_bluefs_spillover, OPT_BOOL)
 OPTION(bluestore_warn_on_legacy_statfs, OPT_BOOL)
 OPTION(bluestore_fsck_error_on_no_per_pool_omap, OPT_BOOL)
@@ -1264,6 +1265,10 @@ OPTION(rados_mon_op_timeout, OPT_DOUBLE) // how many seconds to wait for a respo
 OPTION(rados_osd_op_timeout, OPT_DOUBLE) // how many seconds to wait for a response from osds before returning an error from a rados operation. 0 means no limit.
 OPTION(rados_tracing, OPT_BOOL) // true if LTTng-UST tracepoints should be enabled
 
+
+OPTION(rgw_max_attr_name_len, OPT_SIZE)
+OPTION(rgw_max_attr_size, OPT_SIZE)
+OPTION(rgw_max_attrs_num_in_req, OPT_U64)
 
 OPTION(rgw_max_chunk_size, OPT_INT)
 OPTION(rgw_put_obj_min_window_size, OPT_INT)

@@ -120,14 +120,6 @@ MonCommand mon_commands[] = {
 #undef COMMAND
 #undef COMMAND_WITH_FLAG
 
-
-
-void C_MonContext::finish(int r) {
-  if (mon->is_shutdown())
-    return;
-  FunctionContext::finish(r);
-}
-
 Monitor::Monitor(CephContext* cct_, string nm, MonitorDBStore *s,
 		 Messenger *m, Messenger *mgr_m, MonMap *map) :
   Dispatcher(cct_),
@@ -549,18 +541,18 @@ void Monitor::handle_conf_change(const ConfigProxy& conf,
   if (changed.count("mon_health_to_clog") ||
       changed.count("mon_health_to_clog_interval") ||
       changed.count("mon_health_to_clog_tick_interval")) {
-    finisher.queue(new C_MonContext(this, [this, changed](int) {
+    finisher.queue(new C_MonContext{this, [this, changed](int) {
       std::lock_guard l{lock};
       health_to_clog_update_conf(changed);
-    }));
+    }});
   }
 
   if (changed.count("mon_scrub_interval")) {
     int scrub_interval = conf->mon_scrub_interval;
-    finisher.queue(new C_MonContext(this, [this, scrub_interval](int) {
+    finisher.queue(new C_MonContext{this, [this, scrub_interval](int) {
       std::lock_guard l{lock};
       scrub_update_interval(scrub_interval);
-    }));
+    }});
   }
 }
 
@@ -1449,9 +1441,9 @@ void Monitor::sync_reset_timeout()
     timer.cancel_event(sync_timeout_event);
   sync_timeout_event = timer.add_event_after(
     g_conf()->mon_sync_timeout,
-    new C_MonContext(this, [this](int) {
+    new C_MonContext{this, [this](int) {
 	sync_timeout();
-      }));
+      }});
 }
 
 void Monitor::sync_finish(version_t last_committed)
@@ -1495,7 +1487,7 @@ void Monitor::sync_finish(version_t last_committed)
 
 void Monitor::handle_sync(MonOpRequestRef op)
 {
-  MMonSync *m = static_cast<MMonSync*>(op->get_req());
+  auto m = op->get_req<MMonSync>();
   dout(10) << __func__ << " " << *m << dendl;
   switch (m->op) {
 
@@ -1533,14 +1525,14 @@ void Monitor::handle_sync(MonOpRequestRef op)
 
 void Monitor::_sync_reply_no_cookie(MonOpRequestRef op)
 {
-  MMonSync *m = static_cast<MMonSync*>(op->get_req());
+  auto m = op->get_req<MMonSync>();
   MMonSync *reply = new MMonSync(MMonSync::OP_NO_COOKIE, m->cookie);
   m->get_connection()->send_message(reply);
 }
 
 void Monitor::handle_sync_get_cookie(MonOpRequestRef op)
 {
-  MMonSync *m = static_cast<MMonSync*>(op->get_req());
+  auto m = op->get_req<MMonSync>();
   if (is_synchronizing()) {
     _sync_reply_no_cookie(op);
     return;
@@ -1593,7 +1585,7 @@ void Monitor::handle_sync_get_cookie(MonOpRequestRef op)
 
 void Monitor::handle_sync_get_chunk(MonOpRequestRef op)
 {
-  MMonSync *m = static_cast<MMonSync*>(op->get_req());
+  auto m = op->get_req<MMonSync>();
   dout(10) << __func__ << " " << *m << dendl;
 
   if (sync_providers.count(m->cookie) == 0) {
@@ -1664,7 +1656,7 @@ void Monitor::handle_sync_get_chunk(MonOpRequestRef op)
 
 void Monitor::handle_sync_cookie(MonOpRequestRef op)
 {
-  MMonSync *m = static_cast<MMonSync*>(op->get_req());
+  auto m = op->get_req<MMonSync>();
   dout(10) << __func__ << " " << *m << dendl;
   if (sync_cookie) {
     dout(10) << __func__ << " already have a cookie, ignoring" << dendl;
@@ -1698,7 +1690,7 @@ void Monitor::sync_get_next_chunk()
 
 void Monitor::handle_sync_chunk(MonOpRequestRef op)
 {
-  MMonSync *m = static_cast<MMonSync*>(op->get_req());
+  auto m = op->get_req<MMonSync>();
   dout(10) << __func__ << " " << *m << dendl;
 
   if (m->cookie != sync_cookie) {
@@ -1791,9 +1783,9 @@ void Monitor::cancel_probe_timeout()
 void Monitor::reset_probe_timeout()
 {
   cancel_probe_timeout();
-  probe_timeout_event = new C_MonContext(this, [this](int r) {
+  probe_timeout_event = new C_MonContext{this, [this](int r) {
       probe_timeout(r);
-    });
+    }};
   double t = g_conf()->mon_probe_timeout;
   if (timer.add_event_after(t, probe_timeout_event)) {
     dout(10) << "reset_probe_timeout " << probe_timeout_event
@@ -1814,7 +1806,7 @@ void Monitor::probe_timeout(int r)
 
 void Monitor::handle_probe(MonOpRequestRef op)
 {
-  MMonProbe *m = static_cast<MMonProbe*>(op->get_req());
+  auto m = op->get_req<MMonProbe>();
   dout(10) << "handle_probe " << *m << dendl;
 
   if (m->fsid != monmap->fsid) {
@@ -1844,7 +1836,7 @@ void Monitor::handle_probe(MonOpRequestRef op)
 
 void Monitor::handle_probe_probe(MonOpRequestRef op)
 {
-  MMonProbe *m = static_cast<MMonProbe*>(op->get_req());
+  auto m = op->get_req<MMonProbe>();
 
   dout(10) << "handle_probe_probe " << m->get_source_inst() << *m
 	   << " features " << m->get_connection()->get_features() << dendl;
@@ -1902,7 +1894,7 @@ void Monitor::handle_probe_probe(MonOpRequestRef op)
 
 void Monitor::handle_probe_reply(MonOpRequestRef op)
 {
-  MMonProbe *m = static_cast<MMonProbe*>(op->get_req());
+  auto m = op->get_req<MMonProbe>();
   dout(10) << "handle_probe_reply " << m->get_source_inst()
 	   << " " << *m << dendl;
   dout(10) << " monmap is " << *monmap << dendl;
@@ -2202,16 +2194,16 @@ void Monitor::win_election(epoch_t epoch, const set<int>& active, uint64_t featu
 
     // Freshen the health status before doing health_to_clog in case
     // our just-completed election changed the health
-    healthmon()->wait_for_active_ctx(new FunctionContext([this](int r){
+    healthmon()->wait_for_active_ctx(new LambdaContext([this](int r){
       dout(20) << "healthmon now active" << dendl;
       healthmon()->tick();
       if (healthmon()->is_proposing()) {
         dout(20) << __func__ << " healthmon proposing, waiting" << dendl;
-        healthmon()->wait_for_finished_proposal(nullptr, new C_MonContext(this,
+        healthmon()->wait_for_finished_proposal(nullptr, new C_MonContext{this,
               [this](int r){
                 ceph_assert(ceph_mutex_is_locked_by_me(lock));
                 do_health_to_clog_interval();
-              }));
+              }});
 
       } else {
         do_health_to_clog_interval();
@@ -2631,11 +2623,11 @@ void Monitor::health_tick_start()
   health_tick_stop();
   health_tick_event = timer.add_event_after(
     cct->_conf->mon_health_to_clog_tick_interval,
-    new C_MonContext(this, [this](int r) {
+    new C_MonContext{this, [this](int r) {
 	if (r < 0)
 	  return;
 	health_tick_start();
-      }));
+      }});
 }
 
 void Monitor::health_tick_stop()
@@ -2677,11 +2669,11 @@ void Monitor::health_interval_start()
 
   health_interval_stop();
   auto next = health_interval_calc_next_update();
-  health_interval_event = new C_MonContext(this, [this](int r) {
+  health_interval_event = new C_MonContext{this, [this](int r) {
       if (r < 0)
         return;
       do_health_to_clog_interval();
-    });
+    }};
   if (!timer.add_event_at(next, health_interval_event)) {
     health_interval_event = nullptr;
   }
@@ -3124,7 +3116,7 @@ struct C_MgrProxyCommand : public Context {
 void Monitor::handle_command(MonOpRequestRef op)
 {
   ceph_assert(op->is_type_command());
-  MMonCommand *m = static_cast<MMonCommand*>(op->get_req());
+  auto m = op->get_req<MMonCommand>();
   if (m->fsid != monmap->fsid) {
     dout(0) << "handle_command on fsid " << m->fsid << " != " << monmap->fsid << dendl;
     reply_command(op, -EPERM, "wrong fsid", 0);
@@ -3923,7 +3915,7 @@ void Monitor::reply_command(MonOpRequestRef op, int rc, const string &rs, versio
 void Monitor::reply_command(MonOpRequestRef op, int rc, const string &rs,
                             bufferlist& rdata, version_t version)
 {
-  MMonCommand *m = static_cast<MMonCommand*>(op->get_req());
+  auto m = op->get_req<MMonCommand>();
   ceph_assert(m->get_type() == MSG_MON_COMMAND);
   MMonCommandAck *reply = new MMonCommandAck(m->cmd, rc, rs, version);
   reply->set_tid(m->get_tid());
@@ -3987,10 +3979,6 @@ void Monitor::forward_request_leader(MonOpRequestRef op)
 // fake connection attached to forwarded messages
 struct AnonConnection : public Connection {
   entity_addr_t socket_addr;
-  explicit AnonConnection(CephContext *cct,
-			  const entity_addr_t& sa)
-    : Connection(cct, NULL),
-      socket_addr(sa) {}
 
   int send_message(Message *m) override {
     ceph_assert(!"send_message on anonymous connection");
@@ -4008,12 +3996,18 @@ struct AnonConnection : public Connection {
   entity_addr_t get_peer_socket_addr() const override {
     return socket_addr;
   }
+
+private:
+  FRIEND_MAKE_REF(AnonConnection);
+  explicit AnonConnection(CephContext *cct, const entity_addr_t& sa)
+    : Connection(cct, nullptr),
+      socket_addr(sa) {}
 };
 
 //extract the original message and put it into the regular dispatch function
 void Monitor::handle_forward(MonOpRequestRef op)
 {
-  MForward *m = static_cast<MForward*>(op->get_req());
+  auto m = op->get_req<MForward>();
   dout(10) << "received forwarded message from "
 	   << ceph_entity_type_name(m->client_type)
 	   << " " << m->client_addrs
@@ -4030,7 +4024,7 @@ void Monitor::handle_forward(MonOpRequestRef op)
     PaxosServiceMessage *req = m->claim_message();
     ceph_assert(req != NULL);
 
-    ConnectionRef c(new AnonConnection(cct, m->client_socket_addr));
+    auto c = ceph::make_ref<AnonConnection>(cct, m->client_socket_addr);
     MonSession *s = new MonSession(static_cast<Connection*>(c.get()));
     s->_ident(req->get_source(),
 	      req->get_source_addrs());
@@ -4130,7 +4124,7 @@ void Monitor::no_reply(MonOpRequestRef op)
 
 void Monitor::handle_route(MonOpRequestRef op)
 {
-  MRoute *m = static_cast<MRoute*>(op->get_req());
+  auto m = op->get_req<MRoute>();
   MonSession *session = op->get_session();
   //check privileges
   if (!session->is_capable("mon", MON_CAP_X)) {
@@ -4562,7 +4556,7 @@ void Monitor::dispatch_op(MonOpRequestRef op)
     case MSG_MON_PAXOS:
       {
         op->set_type_paxos();
-        MMonPaxos *pm = static_cast<MMonPaxos*>(op->get_req());
+        auto pm = op->get_req<MMonPaxos>();
         if (!op->get_session()->is_capable("mon", MON_CAP_X)) {
           //can't send these!
           return;
@@ -4629,7 +4623,7 @@ void Monitor::dispatch_op(MonOpRequestRef op)
 
 void Monitor::handle_ping(MonOpRequestRef op)
 {
-  MPing *m = static_cast<MPing*>(op->get_req());
+  auto m = op->get_req<MPing>();
   dout(10) << __func__ << " " << *m << dendl;
   MPing *reply = new MPing;
   bufferlist payload;
@@ -4771,9 +4765,9 @@ void Monitor::timecheck_reset_event()
 
   timecheck_event = timer.add_event_after(
     delay,
-    new C_MonContext(this, [this](int) {
+    new C_MonContext{this, [this](int) {
 	timecheck_start_round();
-      }));
+      }});
 }
 
 void Monitor::timecheck_check_skews()
@@ -4904,7 +4898,7 @@ health_status_t Monitor::timecheck_status(ostringstream &ss,
 
 void Monitor::handle_timecheck_leader(MonOpRequestRef op)
 {
-  MTimeCheck2 *m = static_cast<MTimeCheck2*>(op->get_req());
+  auto m = op->get_req<MTimeCheck2>();
   dout(10) << __func__ << " " << *m << dendl;
   /* handles PONG's */
   ceph_assert(m->op == MTimeCheck2::OP_PONG);
@@ -5022,7 +5016,7 @@ void Monitor::handle_timecheck_leader(MonOpRequestRef op)
 
 void Monitor::handle_timecheck_peon(MonOpRequestRef op)
 {
-  MTimeCheck2 *m = static_cast<MTimeCheck2*>(op->get_req());
+  auto m = op->get_req<MTimeCheck2>();
   dout(10) << __func__ << " " << *m << dendl;
 
   ceph_assert(is_peon());
@@ -5064,7 +5058,7 @@ void Monitor::handle_timecheck_peon(MonOpRequestRef op)
 
 void Monitor::handle_timecheck(MonOpRequestRef op)
 {
-  MTimeCheck2 *m = static_cast<MTimeCheck2*>(op->get_req());
+  auto m = op->get_req<MTimeCheck2>();
   dout(10) << __func__ << " " << *m << dendl;
 
   if (is_leader()) {
@@ -5086,7 +5080,7 @@ void Monitor::handle_timecheck(MonOpRequestRef op)
 
 void Monitor::handle_subscribe(MonOpRequestRef op)
 {
-  MMonSubscribe *m = static_cast<MMonSubscribe*>(op->get_req());
+  auto m = op->get_req<MMonSubscribe>();
   dout(10) << "handle_subscribe " << *m << dendl;
   
   bool reply = false;
@@ -5179,7 +5173,7 @@ void Monitor::handle_subscribe(MonOpRequestRef op)
 
 void Monitor::handle_get_version(MonOpRequestRef op)
 {
-  MMonGetVersion *m = static_cast<MMonGetVersion*>(op->get_req());
+  auto m = op->get_req<MMonGetVersion>();
   dout(10) << "handle_get_version " << *m << dendl;
   PaxosService *svc = NULL;
 
@@ -5269,14 +5263,14 @@ void Monitor::send_latest_monmap(Connection *con)
 
 void Monitor::handle_mon_get_map(MonOpRequestRef op)
 {
-  MMonGetMap *m = static_cast<MMonGetMap*>(op->get_req());
+  auto m = op->get_req<MMonGetMap>();
   dout(10) << "handle_mon_get_map" << dendl;
   send_latest_monmap(m->get_connection().get());
 }
 
 void Monitor::handle_mon_metadata(MonOpRequestRef op)
 {
-  MMonMetadata *m = static_cast<MMonMetadata*>(op->get_req());
+  auto m = op->get_req<MMonMetadata>();
   if (is_leader()) {
     dout(10) << __func__ << dendl;
     update_mon_metadata(m->get_source().num(), std::move(m->data));
@@ -5431,7 +5425,7 @@ int Monitor::scrub()
 
 void Monitor::handle_scrub(MonOpRequestRef op)
 {
-  MMonScrub *m = static_cast<MMonScrub*>(op->get_req());
+  auto m = op->get_req<MMonScrub>();
   dout(10) << __func__ << " " << *m << dendl;
   switch (m->op) {
   case MMonScrub::OP_SCRUB:
@@ -5628,9 +5622,9 @@ void Monitor::scrub_event_start()
 
   scrub_event = timer.add_event_after(
     cct->_conf->mon_scrub_interval,
-    new C_MonContext(this, [this](int) {
+    new C_MonContext{this, [this](int) {
       scrub_start();
-      }));
+      }});
 }
 
 void Monitor::scrub_event_cancel()
@@ -5656,17 +5650,17 @@ void Monitor::scrub_reset_timeout()
   scrub_cancel_timeout();
   scrub_timeout_event = timer.add_event_after(
     g_conf()->mon_scrub_timeout,
-    new C_MonContext(this, [this](int) {
+    new C_MonContext{this, [this](int) {
       scrub_timeout();
-    }));
+    }});
 }
 
 /************ TICK ***************/
 void Monitor::new_tick()
 {
-  timer.add_event_after(g_conf()->mon_tick_interval, new C_MonContext(this, [this](int) {
+  timer.add_event_after(g_conf()->mon_tick_interval, new C_MonContext{this, [this](int) {
 	tick();
-      }));
+      }});
 }
 
 void Monitor::tick()
@@ -6217,7 +6211,7 @@ int Monitor::handle_auth_request(
     }
     dout(10) << __func__ << " bad authorizer on " << con << dendl;
     return -EACCES;
-  } else if (auth_meta->auth_mode < AUTH_MODE_MON &&
+  } else if (auth_meta->auth_mode < AUTH_MODE_MON ||
 	     auth_meta->auth_mode > AUTH_MODE_MON_MAX) {
     derr << __func__ << " unrecognized auth mode " << auth_meta->auth_mode
 	 << dendl;

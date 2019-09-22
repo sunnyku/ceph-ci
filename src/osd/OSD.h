@@ -273,8 +273,8 @@ public:
 private:
   // -- scrub scheduling --
   ceph::mutex sched_scrub_lock = ceph::make_mutex("OSDService::sched_scrub_lock");
-  int scrubs_pending;
-  int scrubs_active;
+  int scrubs_local;
+  int scrubs_remote;
 
 public:
   struct ScrubJob {
@@ -349,11 +349,12 @@ public:
     f->close_section();
   }
 
-  bool can_inc_scrubs_pending();
-  bool inc_scrubs_pending();
-  void inc_scrubs_active(bool reserved);
-  void dec_scrubs_pending();
-  void dec_scrubs_active();
+  bool can_inc_scrubs();
+  bool inc_scrubs_local();
+  void dec_scrubs_local();
+  bool inc_scrubs_remote();
+  void dec_scrubs_remote();
+  void dump_scrub_reservations(Formatter *f);
 
   void reply_op_error(OpRequestRef op, int err);
   void reply_op_error(OpRequestRef op, int err, eversion_t v, version_t uv);
@@ -714,15 +715,6 @@ public:
     deleted_pool_pg_nums[pool] = pg_num;
   }
 
-  /// get pgnum from newmap or, if pool was deleted, last map pool existed in
-  int get_possibly_deleted_pool_pg_num(OSDMapRef newmap,
-				       int64_t pool) {
-    if (newmap->have_pg_pool(pool)) {
-      return newmap->get_pg_num(pool);
-    }
-    return get_deleted_pool_pg_num(pool);
-  }
-
   /// identify split child pgids over a osdmap interval
   void identify_splits_and_merges(
     OSDMapRef old_map,
@@ -759,6 +751,12 @@ public:
   uint64_t get_osd_stat_seq() {
     std::lock_guard l(stat_lock);
     return osd_stat.seq;
+  }
+  void get_hb_pingtime(map<int, osd_stat_t::Interfaces> *pp)
+  {
+    std::lock_guard l(stat_lock);
+    *pp = osd_stat.hb_pingtime;
+    return;
   }
 
   // -- OSD Full Status --
@@ -1336,36 +1334,35 @@ private:
 
   // -- sessions --
 private:
-  void dispatch_session_waiting(SessionRef session, OSDMapRef osdmap);
+  void dispatch_session_waiting(const ceph::ref_t<Session>& session, OSDMapRef osdmap);
 
   ceph::mutex session_waiting_lock = ceph::make_mutex("OSD::session_waiting_lock");
-  set<SessionRef> session_waiting_for_map;
+  set<ceph::ref_t<Session>> session_waiting_for_map;
 
   /// Caller assumes refs for included Sessions
-  void get_sessions_waiting_for_map(set<SessionRef> *out) {
+  void get_sessions_waiting_for_map(set<ceph::ref_t<Session>> *out) {
     std::lock_guard l(session_waiting_lock);
     out->swap(session_waiting_for_map);
   }
-  void register_session_waiting_on_map(SessionRef session) {
+  void register_session_waiting_on_map(const ceph::ref_t<Session>& session) {
     std::lock_guard l(session_waiting_lock);
     session_waiting_for_map.insert(session);
   }
-  void clear_session_waiting_on_map(SessionRef session) {
+  void clear_session_waiting_on_map(const ceph::ref_t<Session>& session) {
     std::lock_guard l(session_waiting_lock);
     session_waiting_for_map.erase(session);
   }
   void dispatch_sessions_waiting_on_map() {
-    set<SessionRef> sessions_to_check;
+    set<ceph::ref_t<Session>> sessions_to_check;
     get_sessions_waiting_for_map(&sessions_to_check);
     for (auto i = sessions_to_check.begin();
 	 i != sessions_to_check.end();
 	 sessions_to_check.erase(i++)) {
       std::lock_guard l{(*i)->session_dispatch_lock};
-      SessionRef session = *i;
-      dispatch_session_waiting(session, osdmap);
+      dispatch_session_waiting(*i, osdmap);
     }
   }
-  void session_handle_reset(SessionRef session) {
+  void session_handle_reset(const ceph::ref_t<Session>& session) {
     std::lock_guard l(session->session_dispatch_lock);
     clear_session_waiting_on_map(session);
 
@@ -1416,6 +1413,24 @@ private:
     /// history of inflight pings, arranging by timestamp we sent
     /// send time -> deadline -> remaining replies
     map<utime_t, pair<utime_t, int>> ping_history;
+
+    utime_t hb_interval_start;
+    uint32_t hb_average_count = 0;
+    uint32_t hb_index = 0;
+
+    uint32_t hb_total_back = 0;
+    uint32_t hb_min_back = UINT_MAX;
+    uint32_t hb_max_back = 0;
+    vector<uint32_t> hb_back_pingtime;
+    vector<uint32_t> hb_back_min;
+    vector<uint32_t> hb_back_max;
+
+    uint32_t hb_total_front = 0;
+    uint32_t hb_min_front = UINT_MAX;
+    uint32_t hb_max_front = 0;
+    vector<uint32_t> hb_front_pingtime;
+    vector<uint32_t> hb_front_min;
+    vector<uint32_t> hb_front_max;
 
     bool is_stale(utime_t stale) {
       if (ping_history.empty()) {
@@ -1473,6 +1488,10 @@ private:
   utime_t last_heartbeat_resample;   ///< last time we chose random peers in waiting-for-healthy state
   double daily_loadavg;
   ceph::mono_time startup_time;
+
+  // Track ping repsonse times using vector as a circular buffer
+  // MUST BE A POWER OF 2
+  const uint32_t hb_vector_size = 16;
 
   void _add_heartbeat_peer(int p);
   void _remove_heartbeat_peer(int p);
@@ -1896,15 +1915,6 @@ protected:
   PeeringCtx create_context();
   void dispatch_context(PeeringCtx &ctx, PG *pg, OSDMapRef curmap,
                         ThreadPool::TPHandle *handle = NULL);
-  void dispatch_context_transaction(PeeringCtx &ctx, PG *pg,
-                                    ThreadPool::TPHandle *handle = NULL);
-  void discard_context(PeeringCtx &ctx);
-  void do_notifies(map<int,vector<pg_notify_t>>& notify_list,
-		   OSDMapRef map);
-  void do_queries(map<int, map<spg_t,pg_query_t> >& query_map,
-		  OSDMapRef map);
-  void do_infos(map<int,vector<pg_notify_t>>& info_map,
-		OSDMapRef map);
 
   bool require_mon_peer(const Message *m);
   bool require_mon_or_mgr_peer(const Message *m);
@@ -2030,8 +2040,11 @@ private:
     case MSG_MON_COMMAND:
     case MSG_OSD_PG_CREATE2:
     case MSG_OSD_PG_QUERY:
+    case MSG_OSD_PG_QUERY2:
     case MSG_OSD_PG_INFO:
+    case MSG_OSD_PG_INFO2:
     case MSG_OSD_PG_NOTIFY:
+    case MSG_OSD_PG_NOTIFY2:
     case MSG_OSD_PG_LOG:
     case MSG_OSD_PG_TRIM:
     case MSG_OSD_PG_REMOVE:

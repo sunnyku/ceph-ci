@@ -446,7 +446,7 @@ int BlueFS::get_block_extents(unsigned id, interval_set<uint64_t> *extents)
   return 0;
 }
 
-int BlueFS::mkfs(uuid_d osd_uuid)
+int BlueFS::mkfs(uuid_d osd_uuid, const bluefs_layout_t& layout)
 {
   std::unique_lock l(lock);
   dout(1) << __func__
@@ -463,7 +463,7 @@ int BlueFS::mkfs(uuid_d osd_uuid)
   dout(1) << __func__ << " uuid " << super.uuid << dendl;
 
   // init log
-  FileRef log_file = new File;
+  FileRef log_file = ceph::make_ref<File>();
   log_file->fnode.ino = 1;
   log_file->fnode.prefer_bdev = BDEV_WAL;
   int r = _allocate(
@@ -490,6 +490,7 @@ int BlueFS::mkfs(uuid_d osd_uuid)
 
   // write supers
   super.log_fnode = log_file->fnode;
+  super.memorized_layout = layout;
   _write_super(BDEV_DB);
   flush_bdev();
 
@@ -616,6 +617,23 @@ int BlueFS::mount()
   return r;
 }
 
+int BlueFS::maybe_verify_layout(const bluefs_layout_t& layout) const
+{
+  if (super.memorized_layout) {
+    if (layout == *super.memorized_layout) {
+      dout(10) << __func__ << " bluefs layout verified positively" << dendl;
+    } else {
+      derr << __func__ << " memorized layout doesn't fit current one" << dendl;
+      return -EIO;
+    }
+  } else {
+    dout(10) << __func__ << " no memorized_layout in bluefs superblock"
+             << dendl;
+  }
+
+  return 0;
+}
+
 void BlueFS::umount()
 {
   dout(1) << __func__ << dendl;
@@ -693,7 +711,7 @@ int BlueFS::_write_super(int dev)
   dout(10) << __func__ << " super block length(encoded): " << bl.length() << dendl;
   dout(10) << __func__ << " superblock " << super.version << dendl;
   dout(10) << __func__ << " log_fnode " << super.log_fnode << dendl;
-  ceph_assert(bl.length() <= get_super_length());
+  ceph_assert_always(bl.length() <= get_super_length());
   bl.append_zero(get_super_length() - bl.length());
 
   bdev[dev]->write(get_super_offset(), bl, false, WRITE_LIFE_SHORT);
@@ -1042,7 +1060,7 @@ int BlueFS::_replay(bool noop, bool to_stdout)
 	  if (!noop) {
 	    map<string,DirRef>::iterator q = dir_map.find(dirname);
 	    ceph_assert(q == dir_map.end());
-	    dir_map[dirname] = new Dir;
+	    dir_map[dirname] = ceph::make_ref<Dir>();
 	  }
 	}
 	break;
@@ -1447,7 +1465,7 @@ BlueFS::FileRef BlueFS::_get_file(uint64_t ino)
 {
   auto p = file_map.find(ino);
   if (p == file_map.end()) {
-    FileRef f = new File;
+    FileRef f = ceph::make_ref<File>();
     file_map[ino] = f;
     dout(30) << __func__ << " ino " << ino << " = " << f
 	     << " (new)" << dendl;
@@ -1941,7 +1959,7 @@ void BlueFS::_compact_log_async(std::unique_lock<ceph::mutex>& l)
 
   // create a new log [writer] so that we know compaction is in progress
   // (see _should_compact_log)
-  new_log = new File;
+  new_log = ceph::make_ref<File>();
   new_log->fnode.ino = 0;   // so that _flush_range won't try to log the fnode
 
   // 0. wait for any racing flushes to complete.  (We do not want to block
@@ -2815,7 +2833,7 @@ int BlueFS::open_for_write(
 	       << " does not exist" << dendl;
       return -ENOENT;
     }
-    file = new File;
+    file = ceph::make_ref<File>();
     file->fnode.ino = ++ino_last;
     file_map[ino_last] = file;
     dir->file_map[filename] = file;
@@ -2994,7 +3012,7 @@ int BlueFS::mkdir(const string& dirname)
     dout(20) << __func__ << " dir " << dirname << " exists" << dendl;
     return -EEXIST;
   }
-  dir_map[dirname] = new Dir;
+  dir_map[dirname] = ceph::make_ref<Dir>();
   log_t.op_dir_create(dirname);
   return 0;
 }
@@ -3067,12 +3085,12 @@ int BlueFS::lock_file(const string& dirname, const string& filename,
   }
   DirRef dir = p->second;
   map<string,FileRef>::iterator q = dir->file_map.find(filename);
-  File *file;
+  FileRef file;
   if (q == dir->file_map.end()) {
     dout(20) << __func__ << " dir " << dirname << " (" << dir
 	     << ") file " << filename
 	     << " not found, creating" << dendl;
-    file = new File;
+    file = ceph::make_ref<File>();
     file->fnode.ino = ++ino_last;
     file->fnode.mtime = ceph_clock_now();
     file_map[ino_last] = file;
@@ -3081,7 +3099,7 @@ int BlueFS::lock_file(const string& dirname, const string& filename,
     log_t.op_file_update(file->fnode);
     log_t.op_dir_link(dirname, filename, file->fnode.ino);
   } else {
-    file = q->second.get();
+    file = q->second;
     if (file->locked) {
       dout(10) << __func__ << " already locked" << dendl;
       return -ENOLCK;

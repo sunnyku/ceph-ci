@@ -1,5 +1,5 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
+// vim: ts=8 sw=2 smarttab ft=cpp
 
 #include <errno.h>
 
@@ -87,13 +87,13 @@ int rgw_user_sync_all_stats(rgw::sal::RGWRadosStore *store, const rgw_user& user
         ldout(cct, 0) << "ERROR: could not read bucket info: bucket=" << bucket_ent.bucket << " ret=" << ret << dendl;
         continue;
       }
-      ret = store->ctl()->bucket->sync_user_stats(user_id, bucket_info);
+      RGWBucketEnt ent;
+      ret = store->ctl()->bucket->sync_user_stats(user_id, bucket_info, &ent);
       if (ret < 0) {
         ldout(cct, 0) << "ERROR: could not sync bucket stats: ret=" << ret << dendl;
         return ret;
       }
-      RGWQuotaInfo bucket_quota;
-      ret = store->getRados()->check_bucket_shards(bucket_info, bucket_info.bucket, bucket_quota);
+      ret = store->getRados()->check_bucket_shards(bucket_info, bucket_info.bucket, ent.count);
       if (ret < 0) {
 	ldout(cct, 0) << "ERROR in check_bucket_shards: " << cpp_strerror(-ret)<< dendl;
       }
@@ -420,6 +420,7 @@ static void dump_user_info(Formatter *f, RGWUserInfo &info,
   op_type_to_str(info.op_mask, buf, sizeof(buf));
   encode_json("op_mask", (const char *)buf, f);
   encode_json("system", (bool)info.system, f);
+  encode_json("admin", (bool)info.admin, f);
   encode_json("default_placement", info.default_placement.name, f);
   encode_json("default_storage_class", info.default_placement.storage_class, f);
   encode_json("placement_tags", info.placement_tags, f);
@@ -1587,7 +1588,7 @@ static void rename_swift_keys(const rgw_user& user,
   user.to_str(user_id);
 
   auto modify_keys = std::move(keys);
-  for (auto& [k, key] : modify_keys) {
+  for ([[maybe_unused]] auto& [k, key] : modify_keys) {
     std::string id = user_id + ":" + key.subuser;
     key.id = id;
     keys[id] = std::move(key);

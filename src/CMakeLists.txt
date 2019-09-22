@@ -410,7 +410,7 @@ target_link_libraries(ceph-common ${ceph_common_deps})
 # appease dpkg-shlibdeps
 set_target_properties(ceph-common PROPERTIES
   SOVERSION 0
-  INSTALL_RPATH "")
+  SKIP_RPATH TRUE)
 if(NOT APPLE AND NOT FREEBSD)
   # Apple uses Mach-O, not ELF. so this option does not apply to APPLE.
   #
@@ -640,6 +640,8 @@ add_subdirectory(bash_completion)
 add_subdirectory(client)
 
 if(WITH_LIBCEPHFS)
+  find_package(PkgConfig QUIET REQUIRED)
+  pkg_check_modules(CAPNG REQUIRED libcap-ng)
   set(libcephfs_srcs libcephfs.cc)
   add_library(cephfs ${CEPH_SHARED} ${libcephfs_srcs})
   target_link_libraries(cephfs PRIVATE client ceph-common

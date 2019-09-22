@@ -1,5 +1,5 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
+// vim: ts=8 sw=2 smarttab ft=cpp
 
 #include <errno.h>
 #include <stdlib.h>
@@ -48,6 +48,8 @@
 #include "rgw_putobj_processor.h"
 #include "rgw_crypt.h"
 #include "rgw_perf_counters.h"
+#include "rgw_notify.h"
+#include "rgw_notify_event_type.h"
 
 #include "services/svc_zone.h"
 #include "services/svc_quota.h"
@@ -89,8 +91,6 @@ static string mp_ns = RGW_OBJ_NS_MULTIPART;
 static string shadow_ns = RGW_OBJ_NS_SHADOW;
 
 static void forward_req_info(CephContext *cct, req_info& info, const std::string& bucket_name);
-static int forward_request_to_master(struct req_state *s, obj_version *objv, rgw::sal::RGWRadosStore *store,
-                                     bufferlist& in_data, JSONParser *jp, req_info *forward_info = nullptr);
 
 static MultipartMetaFilter mp_filter;
 
@@ -2875,9 +2875,9 @@ int RGWCreateBucket::verify_permission()
   return 0;
 }
 
-static int forward_request_to_master(struct req_state *s, obj_version *objv,
-				    rgw::sal::RGWRadosStore *store, bufferlist& in_data,
-				    JSONParser *jp, req_info *forward_info)
+int forward_request_to_master(struct req_state *s, obj_version *objv,
+                              rgw::sal::RGWRadosStore *store, bufferlist& in_data,
+                              JSONParser *jp, req_info *forward_info)
 {
   if (!store->svc()->zone->get_master_conn()) {
     ldpp_dout(s, 0) << "rest connection is invalid" << dendl;
@@ -2887,7 +2887,7 @@ static int forward_request_to_master(struct req_state *s, obj_version *objv,
   bufferlist response;
   string uid_str = s->user->user_id.to_str();
 #define MAX_REST_RESPONSE (128 * 1024) // we expect a very small response
-  int ret = store->svc()->zone->get_master_conn()->forward(uid_str, (forward_info ? *forward_info : s->info),
+  int ret = store->svc()->zone->get_master_conn()->forward(rgw_user(uid_str), (forward_info ? *forward_info : s->info),
                                                         objv, MAX_REST_RESPONSE, &in_data, &response);
   if (ret < 0)
     return ret;
@@ -3750,11 +3750,6 @@ void RGWPutObj::execute()
       ldpp_dout(this, 20) << "check_quota() returned ret=" << op_ret << dendl;
       return;
     }
-    op_ret = store->getRados()->check_bucket_shards(s->bucket_info, s->bucket, bucket_quota);
-    if (op_ret < 0) {
-      ldpp_dout(this, 20) << "check_bucket_shards() returned ret=" << op_ret << dendl;
-      return;
-    }
   }
 
   if (supplied_etag) {
@@ -3872,20 +3867,23 @@ void RGWPutObj::execute()
   boost::optional<RGWPutObj_Compress> compressor;
 
   std::unique_ptr<DataProcessor> encrypt;
-  op_ret = get_encrypt_filter(&encrypt, filter);
-  if (op_ret < 0) {
-    return;
-  }
-  if (encrypt != nullptr) {
-    filter = &*encrypt;
-  } else if (compression_type != "none") {
-    plugin = get_compressor_plugin(s, compression_type);
-    if (!plugin) {
-      ldpp_dout(this, 1) << "Cannot load plugin for compression type "
-          << compression_type << dendl;
-    } else {
-      compressor.emplace(s->cct, plugin, filter);
-      filter = &*compressor;
+
+  if (!append) { // compression and encryption only apply to full object uploads
+    op_ret = get_encrypt_filter(&encrypt, filter);
+    if (op_ret < 0) {
+      return;
+    }
+    if (encrypt != nullptr) {
+      filter = &*encrypt;
+    } else if (compression_type != "none") {
+      plugin = get_compressor_plugin(s, compression_type);
+      if (!plugin) {
+        ldpp_dout(this, 1) << "Cannot load plugin for compression type "
+            << compression_type << dendl;
+      } else {
+        compressor.emplace(s->cct, plugin, filter);
+        filter = &*compressor;
+      }
     }
   }
   tracepoint(rgw_op, before_data_transfer, s->req_id.c_str());
@@ -3953,12 +3951,6 @@ void RGWPutObj::execute()
                               user_quota, bucket_quota, s->obj_size);
   if (op_ret < 0) {
     ldpp_dout(this, 20) << "second check_quota() returned op_ret=" << op_ret << dendl;
-    return;
-  }
-
-  op_ret = store->getRados()->check_bucket_shards(s->bucket_info, s->bucket, bucket_quota);
-  if (op_ret < 0) {
-    ldpp_dout(this, 20) << "check_bucket_shards() returned ret=" << op_ret << dendl;
     return;
   }
 
@@ -4058,6 +4050,15 @@ void RGWPutObj::execute()
       return;
     }
   }
+
+  // send request to notification manager
+  const auto ret = rgw::notify::publish(s, mtime, etag, rgw::notify::ObjectCreatedPut, store);
+  if (ret < 0) {
+    ldpp_dout(this, 5) << "WARNING: publishing notification failed, with error: " << ret << dendl;
+	// TODO: we should have conf to make send a blocking coroutine and reply with error in case sending failed
+	// this should be global conf (probably returnign a different handler)
+    // so we don't need to read the configured values before we perform it
+  }
 }
 
 int RGWPostObj::verify_permission()
@@ -4129,11 +4130,6 @@ void RGWPostObj::execute()
                                 user_quota,
                                 bucket_quota,
                                 s->content_length);
-    if (op_ret < 0) {
-      return;
-    }
-
-    op_ret = store->getRados()->check_bucket_shards(s->bucket_info, s->bucket, bucket_quota);
     if (op_ret < 0) {
       return;
     }
@@ -4242,11 +4238,6 @@ void RGWPostObj::execute()
       return;
     }
 
-    op_ret = store->getRados()->check_bucket_shards(s->bucket_info, s->bucket, bucket_quota);
-    if (op_ret < 0) {
-      return;
-    }
-
     hash.Final(m);
     buf_to_hex(m, CEPH_CRYPTO_MD5_DIGESTSIZE, calc_md5);
 
@@ -4288,6 +4279,14 @@ void RGWPostObj::execute()
       return;
     }
   } while (is_next_file_to_upload());
+
+  const auto ret = rgw::notify::publish(s, ceph::real_clock::now(), etag, rgw::notify::ObjectCreatedPost, store);
+  if (ret < 0) {
+    ldpp_dout(this, 5) << "WARNING: publishing notification failed, with error: " << ret << dendl;
+	// TODO: we should have conf to make send a blocking coroutine and reply with error in case sending failed
+	// this should be global conf (probably returnign a different handler)
+    // so we don't need to read the configured values before we perform it
+  }
 }
 
 
@@ -4707,9 +4706,10 @@ void RGWDeleteObj::execute()
   bool check_obj_lock = obj.key.have_instance() && s->bucket_info.obj_lock_enabled();
 
   if (!s->object.empty()) {
+    op_ret = get_obj_attrs(store, s, obj, attrs);
+
     if (need_object_expiration() || multipart_delete) {
       /* check if obj exists, read orig attrs */
-      op_ret = get_obj_attrs(store, s, obj, attrs);
       if (op_ret < 0) {
         return;
       }
@@ -4717,7 +4717,6 @@ void RGWDeleteObj::execute()
 
     if (check_obj_lock) {
       /* check if obj exists, read orig attrs */
-      op_ret = get_obj_attrs(store, s, obj, attrs);
       if (op_ret < 0) {
         if (op_ret == -ENOENT) {
           /* object maybe delete_marker, skip check_obj_lock*/
@@ -4727,6 +4726,9 @@ void RGWDeleteObj::execute()
         }
       }
     }
+
+    // ignore return value from get_obj_attrs in all other cases
+    op_ret = 0;
 
     if (check_obj_lock) {
       auto aiter = attrs.find(RGW_ATTR_OBJECT_RETENTION);
@@ -4829,6 +4831,16 @@ void RGWDeleteObj::execute()
     }
   } else {
     op_ret = -EINVAL;
+  }
+
+  const auto ret = rgw::notify::publish(s, ceph::real_clock::now(), attrs[RGW_ATTR_ETAG].to_str(),
+          delete_marker && s->object.instance.empty() ? rgw::notify::ObjectRemovedDeleteMarkerCreated : rgw::notify::ObjectRemovedDelete,
+          store);
+  if (ret < 0) {
+    ldpp_dout(this, 5) << "WARNING: publishing notification failed, with error: " << ret << dendl;
+	// TODO: we should have conf to make send a blocking coroutine and reply with error in case sending failed
+	// this should be global conf (probably returnign a different handler)
+    // so we don't need to read the configured values before we perform it
   }
 }
 
@@ -5002,10 +5014,11 @@ int RGWCopyObj::verify_permission()
                                                         RGW_PERM_WRITE)){
         return -EACCES;
       }
+    } else if (! dest_bucket_policy.verify_permission(this, *s->auth.identity, s->perm_mask,
+                                                      RGW_PERM_WRITE)) {
+      return -EACCES;
     }
-  } else if (! dest_bucket_policy.verify_permission(this, *s->auth.identity, s->perm_mask,
-                                                    RGW_PERM_WRITE)) {
-    return -EACCES;
+
   }
 
   op_ret = init_dest_policy();
@@ -5133,6 +5146,14 @@ void RGWCopyObj::execute()
 			   copy_obj_progress_cb, (void *)this, 
                            this,
                            s->yield);
+  
+  const auto ret = rgw::notify::publish(s, mtime, etag, rgw::notify::ObjectCreatedCopy, store);
+  if (ret < 0) {
+    ldpp_dout(this, 5) << "WARNING: publishing notification failed, with error: " << ret << dendl;
+	// TODO: we should have conf to make send a blocking coroutine and reply with error in case sending failed
+	// this should be global conf (probably returnign a different handler)
+    // so we don't need to read the configured values before we perform it
+  }
 }
 
 int RGWGetACLs::verify_permission()
@@ -5803,6 +5824,14 @@ void RGWInitMultipart::execute()
 
     op_ret = obj_op.write_meta(bl.length(), 0, attrs, s->yield);
   } while (op_ret == -EEXIST);
+  
+  const auto ret = rgw::notify::publish(s, ceph::real_clock::now(), attrs[RGW_ATTR_ETAG].to_str(), rgw::notify::ObjectCreatedPost, store);
+  if (ret < 0) {
+    ldpp_dout(this, 5) << "WARNING: publishing notification failed, with error: " << ret << dendl;
+	// TODO: we should have conf to make send a blocking coroutine and reply with error in case sending failed
+	// this should be global conf (probably returnign a different handler)
+    // so we don't need to read the configured values before we perform it
+  }
 }
 
 int RGWCompleteMultipart::verify_permission()
@@ -6108,6 +6137,14 @@ void RGWCompleteMultipart::execute()
     serializer.clear_locked();
   } else {
     ldpp_dout(this, 0) << "WARNING: failed to remove object " << meta_obj << dendl;
+  }
+  
+  const auto ret = rgw::notify::publish(s, ceph::real_clock::now(), etag, rgw::notify::ObjectCreatedCompleteMultipartUpload, store);
+  if (ret < 0) {
+    ldpp_dout(this, 5) << "WARNING: publishing notification failed, with error: " << ret << dendl;
+	// TODO: we should have conf to make send a blocking coroutine and reply with error in case sending failed
+	// this should be global conf (probably returnign a different handler)
+    // so we don't need to read the configured values before we perform it
   }
 }
 
@@ -7005,11 +7042,6 @@ int RGWBulkUploadOp::handle_file(const boost::string_ref path,
     return op_ret;
   }
 
-  op_ret = store->getRados()->check_bucket_shards(s->bucket_info, s->bucket, bucket_quota);
-  if (op_ret < 0) {
-    return op_ret;
-  }
-
   rgw_obj obj(binfo.bucket, object);
   if (s->bucket_info.versioning_enabled()) {
     store->getRados()->gen_rand_obj_instance_name(&obj);
@@ -7090,11 +7122,6 @@ int RGWBulkUploadOp::handle_file(const boost::string_ref path,
 			      user_quota, bucket_quota, size);
   if (op_ret < 0) {
     ldpp_dout(this, 20) << "quota exceeded for path=" << path << dendl;
-    return op_ret;
-  }
-
-  op_ret = store->getRados()->check_bucket_shards(s->bucket_info, s->bucket, bucket_quota);
-  if (op_ret < 0) {
     return op_ret;
   }
 

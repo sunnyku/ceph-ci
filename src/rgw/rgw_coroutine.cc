@@ -1,5 +1,5 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
+// vim: ts=8 sw=2 smarttab ft=cpp
 
 #include "include/Context.h"
 #include "common/ceph_json.h"
@@ -875,7 +875,12 @@ void RGWCoroutinesManagerRegistry::dump(Formatter *f) const {
 
 void RGWCoroutine::call(RGWCoroutine *op)
 {
-  stack->call(op);
+  if (op) {
+    stack->call(op);
+  } else {
+    // the call()er expects this to set a retcode
+    retcode = 0;
+  }
 }
 
 RGWCoroutinesStack *RGWCoroutine::spawn(RGWCoroutine *op, bool wait)

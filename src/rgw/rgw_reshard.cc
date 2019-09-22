@@ -1,5 +1,5 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
+// vim: ts=8 sw=2 smarttab ft=cpp
 
 #include <limits>
 #include <sstream>
@@ -993,11 +993,8 @@ int RGWReshard::process_single_logshard(int logshard_num)
 	}
 
 	RGWBucketReshard br(store, bucket_info, attrs, nullptr);
-
-	Formatter* formatter = new JSONFormatter(false);
-	auto formatter_ptr = std::unique_ptr<Formatter>(formatter);
-	ret = br.execute(entry.new_num_shards, max_entries, true, nullptr,
-			 formatter, this);
+	ret = br.execute(entry.new_num_shards, max_entries, false, nullptr,
+			 nullptr, this);
 	if (ret < 0) {
 	  ldout (store->ctx(), 0) <<  __func__ <<
 	    "ERROR in reshard_bucket " << entry.bucket_name << ":" <<

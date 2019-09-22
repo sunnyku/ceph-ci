@@ -283,7 +283,11 @@ static int encode_list_index_key(cls_method_context_t hctx, const cls_rgw_obj_ke
   }
 
   string obj_index_key;
-  encode_obj_index_key(key, &obj_index_key);
+  cls_rgw_obj_key tmp_key(key);
+  if (tmp_key.instance == "null") {
+    tmp_key.instance.clear();
+  }
+  encode_obj_versioned_data_key(tmp_key, &obj_index_key);
 
   rgw_bucket_dir_entry entry;
 
@@ -711,30 +715,10 @@ int rgw_bucket_prepare_op(cls_method_context_t hctx, bufferlist *in, bufferlist 
   info.op = op.op;
   entry.pending_map.insert(pair<string, rgw_bucket_pending_info>(op.tag, info));
 
-  rgw_bucket_dir_header header;
-  rc = read_bucket_header(hctx, &header);
-  if (rc < 0) {
-    CLS_LOG(1, "ERROR: rgw_bucket_prepare_op(): failed to read header\n");
-    return rc;
-  }
-
-  if (op.log_op && !header.syncstopped) {
-    rc = log_index_operation(hctx, op.key, op.op, op.tag, entry.meta.mtime,
-                             entry.ver, info.state, header.ver, header.max_marker, op.bilog_flags, NULL, NULL, &op.zones_trace);
-    if (rc < 0)
-      return rc;
-  }
-
   // write out new key to disk
   bufferlist info_bl;
   encode(entry, info_bl);
-  rc = cls_cxx_map_set_val(hctx, idx, &info_bl);
-  if (rc < 0)
-    return rc;
-
-  if (op.log_op && !header.syncstopped)
-    return write_bucket_header(hctx, &header);
-  return 0;
+  return cls_cxx_map_set_val(hctx, idx, &info_bl);
 }
 
 static void unaccount_entry(rgw_bucket_dir_header& header,
@@ -890,23 +874,10 @@ int rgw_bucket_complete_op(cls_method_context_t hctx, bufferlist *in, bufferlist
 
   bufferlist op_bl;
   if (cancel) {
-    if (op.log_op && !header.syncstopped) {
-      rc = log_index_operation(hctx, op.key, op.op, op.tag, entry.meta.mtime, entry.ver,
-                               CLS_RGW_STATE_COMPLETE, header.ver, header.max_marker, op.bilog_flags, NULL, NULL, &op.zones_trace);
-      if (rc < 0)
-        return rc;
-    }
-
     if (op.tag.size()) {
       bufferlist new_key_bl;
       encode(entry, new_key_bl);
-      rc = cls_cxx_map_set_val(hctx, idx, &new_key_bl);
-      if (rc < 0)
-        return rc;
-    }
-
-    if (op.log_op && !header.syncstopped) {
-      return write_bucket_header(hctx, &header);
+      return cls_cxx_map_set_val(hctx, idx, &new_key_bl);
     }
     return 0;
   }
@@ -3148,7 +3119,7 @@ int rgw_user_usage_log_trim(cls_method_context_t hctx, bufferlist *in, bufferlis
   string iter;
   bool more;
   bool found = false;
-#define MAX_USAGE_TRIM_ENTRIES 128
+#define MAX_USAGE_TRIM_ENTRIES 1000
   ret = usage_iterate_range(hctx, op.start_epoch, op.end_epoch, op.user, op.bucket, iter, MAX_USAGE_TRIM_ENTRIES, &more, usage_log_trim_cb, (void *)&found);
   if (ret < 0)
     return ret;

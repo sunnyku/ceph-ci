@@ -101,12 +101,6 @@ function main() {
         esac
     done
 
-    # normalize options
-    [ "$with_python2" = "ON" ] && with_python2=true || with_python2=false
-    # WITH_PYTHON3 might be set to "ON" or to the python3 RPM version number
-    # prevailing on the system - e.g. "3", "36"
-    [[ "$with_python3" =~ (^3|^ON) ]] && with_python3=true || with_python3=false
-
     local test_name
     if [ -z "$tox_path" ]; then
         # try harder
@@ -128,7 +122,8 @@ function main() {
 
     # tox.ini will take care of this.
     export CEPH_BUILD_DIR=$build_dir
-
+    # use the wheelhouse prepared by install-deps.sh
+    export PIP_FIND_LINKS="$tox_path/wheelhouse"
     tox -c $tox_path/tox.ini -e "$tox_envs" "$@"
 }
 

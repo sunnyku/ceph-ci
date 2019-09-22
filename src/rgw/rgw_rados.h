@@ -1,5 +1,5 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
+// vim: ts=8 sw=2 smarttab ft=cpp
 
 #ifndef CEPH_RGWRADOS_H
 #define CEPH_RGWRADOS_H
@@ -1420,7 +1420,7 @@ public:
                   RGWQuotaInfo& user_quota, RGWQuotaInfo& bucket_quota, uint64_t obj_size, bool check_size_only = false);
 
   int check_bucket_shards(const RGWBucketInfo& bucket_info, const rgw_bucket& bucket,
-			  RGWQuotaInfo& bucket_quota);
+			  uint64_t num_objs);
 
   int add_bucket_to_reshard(const RGWBucketInfo& bucket_info, uint32_t new_num_shards);
 

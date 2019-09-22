@@ -33,7 +33,7 @@ namespace ceph {
 /// label for block device
 struct bluestore_bdev_label_t {
   uuid_d osd_uuid;     ///< osd uuid
-  uint64_t size;       ///< device size
+  uint64_t size = 0;   ///< device size
   utime_t btime;       ///< birth time
   string description;  ///< device description
 
@@ -758,11 +758,11 @@ public:
     case 1:
       return reinterpret_cast<const uint8_t*>(p)[i];
     case 2:
-      return reinterpret_cast<const __le16*>(p)[i];
+      return reinterpret_cast<const ceph_le16*>(p)[i];
     case 4:
-      return reinterpret_cast<const __le32*>(p)[i];
+      return reinterpret_cast<const ceph_le32*>(p)[i];
     case 8:
-      return reinterpret_cast<const __le64*>(p)[i];
+      return reinterpret_cast<const ceph_le64*>(p)[i];
     default:
       ceph_abort_msg("unrecognized csum word size");
     }
