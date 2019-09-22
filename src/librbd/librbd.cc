@@ -669,8 +669,8 @@ namespace librbd {
     TracepointProvider::initialize<tracepoint_traits>(get_cct(io_ctx));
     tracepoint(librbd, trash_undelete_enter, io_ctx.get_pool_name().c_str(),
                io_ctx.get_id(), id, name);
-    int r = librbd::api::Trash<>::restore(io_ctx, RBD_TRASH_IMAGE_SOURCE_USER,
-                                          id, name);
+    int r = librbd::api::Trash<>::restore(
+      io_ctx, librbd::api::Trash<>::RESTORE_SOURCE_WHITELIST, id, name);
     tracepoint(librbd, trash_undelete_exit, r);
     return r;
   }
@@ -1430,7 +1430,7 @@ namespace librbd {
     tracepoint(librbd, get_access_timestamp_enter, ictx, ictx->name.c_str(),
                ictx->read_only);
     {
-      RWLock::RLocker timestamp_locker(ictx->timestamp_lock);
+      std::shared_lock timestamp_locker{ictx->timestamp_lock};
       utime_t time = ictx->get_access_timestamp();
       time.to_timespec(timestamp);
     }
@@ -1444,7 +1444,7 @@ namespace librbd {
     tracepoint(librbd, get_modify_timestamp_enter, ictx, ictx->name.c_str(),
                ictx->read_only);
     {
-      RWLock::RLocker timestamp_locker(ictx->timestamp_lock);
+      std::shared_lock timestamp_locker{ictx->timestamp_lock};
       utime_t time = ictx->get_modify_timestamp();
       time.to_timespec(timestamp);
     }
@@ -1487,7 +1487,7 @@ namespace librbd {
   int64_t Image::get_data_pool_id()
   {
     ImageCtx *ictx = reinterpret_cast<ImageCtx *>(ctx);
-    return ictx->data_ctx.get_id();
+    return librbd::api::Image<>::get_data_pool_id(ictx);
   }
 
   int Image::parent_info(string *parent_pool_name, string *parent_name,
@@ -3331,8 +3331,8 @@ extern "C" int rbd_trash_restore(rados_ioctx_t p, const char *id,
   TracepointProvider::initialize<tracepoint_traits>(get_cct(io_ctx));
   tracepoint(librbd, trash_undelete_enter, io_ctx.get_pool_name().c_str(),
              io_ctx.get_id(), id, name);
-  int r = librbd::api::Trash<>::restore(io_ctx, RBD_TRASH_IMAGE_SOURCE_USER,
-                                        id, name);
+  int r = librbd::api::Trash<>::restore(
+      io_ctx, librbd::api::Trash<>::RESTORE_SOURCE_WHITELIST, id, name);
   tracepoint(librbd, trash_undelete_exit, r);
   return r;
 }
@@ -4261,7 +4261,7 @@ extern "C" int rbd_get_block_name_prefix(rbd_image_t image, char *prefix,
 extern "C" int64_t rbd_get_data_pool_id(rbd_image_t image)
 {
   librbd::ImageCtx *ictx = reinterpret_cast<librbd::ImageCtx *>(image);
-  return ictx->data_ctx.get_id();
+  return librbd::api::Image<>::get_data_pool_id(ictx);
 }
 
 extern "C" int rbd_get_parent_info(rbd_image_t image,

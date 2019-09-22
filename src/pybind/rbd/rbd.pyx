@@ -827,45 +827,52 @@ class DiskQuotaExceeded(OSError):
         super(DiskQuotaExceeded, self).__init__(
                 "RBD disk quota exceeded (%s)" % message, errno)
 
+class OperationNotSupported(OSError):
+    def __init__(self, message, errno=None):
+        super(OperationNotSupported, self).__init__(
+                "RBD operation not supported (%s)" % message, errno)
+
 class OperationCanceled(OSError):
     def __init__(self, message, errno=None):
         super(OperationCanceled, self).__init__(
                 "RBD operation canceled (%s)" % message, errno)
 
 cdef errno_to_exception = {
-    errno.EPERM     : PermissionError,
-    errno.ENOENT    : ImageNotFound,
-    errno.EIO       : IOError,
-    errno.ENOSPC    : NoSpace,
-    errno.EEXIST    : ImageExists,
-    errno.EINVAL    : InvalidArgument,
-    errno.EROFS     : ReadOnlyImage,
-    errno.EBUSY     : ImageBusy,
-    errno.ENOTEMPTY : ImageHasSnapshots,
-    errno.ENOSYS    : FunctionNotSupported,
-    errno.EDOM      : ArgumentOutOfRange,
-    errno.ESHUTDOWN : ConnectionShutdown,
-    errno.ETIMEDOUT : Timeout,
-    errno.EDQUOT    : DiskQuotaExceeded,
-    ECANCELED       : OperationCanceled,
+    errno.EPERM      : PermissionError,
+    errno.ENOENT     : ImageNotFound,
+    errno.EIO        : IOError,
+    errno.ENOSPC     : NoSpace,
+    errno.EEXIST     : ImageExists,
+    errno.EINVAL     : InvalidArgument,
+    errno.EROFS      : ReadOnlyImage,
+    errno.EBUSY      : ImageBusy,
+    errno.ENOTEMPTY  : ImageHasSnapshots,
+    errno.ENOSYS     : FunctionNotSupported,
+    errno.EDOM       : ArgumentOutOfRange,
+    errno.ESHUTDOWN  : ConnectionShutdown,
+    errno.ETIMEDOUT  : Timeout,
+    errno.EDQUOT     : DiskQuotaExceeded,
+    errno.EOPNOTSUPP : OperationNotSupported,
+    ECANCELED        : OperationCanceled,
 }
 
 cdef group_errno_to_exception = {
-    errno.EPERM     : PermissionError,
-    errno.ENOENT    : ObjectNotFound,
-    errno.EIO       : IOError,
-    errno.ENOSPC    : NoSpace,
-    errno.EEXIST    : ObjectExists,
-    errno.EINVAL    : InvalidArgument,
-    errno.EROFS     : ReadOnlyImage,
-    errno.EBUSY     : ImageBusy,
-    errno.ENOTEMPTY : ImageHasSnapshots,
-    errno.ENOSYS    : FunctionNotSupported,
-    errno.EDOM      : ArgumentOutOfRange,
-    errno.ESHUTDOWN : ConnectionShutdown,
-    errno.ETIMEDOUT : Timeout,
-    errno.EDQUOT    : DiskQuotaExceeded,
-    ECANCELED       : OperationCanceled,
+    errno.EPERM      : PermissionError,
+    errno.ENOENT     : ObjectNotFound,
+    errno.EIO        : IOError,
+    errno.ENOSPC     : NoSpace,
+    errno.EEXIST     : ObjectExists,
+    errno.EINVAL     : InvalidArgument,
+    errno.EROFS      : ReadOnlyImage,
+    errno.EBUSY      : ImageBusy,
+    errno.ENOTEMPTY  : ImageHasSnapshots,
+    errno.ENOSYS     : FunctionNotSupported,
+    errno.EDOM       : ArgumentOutOfRange,
+    errno.ESHUTDOWN  : ConnectionShutdown,
+    errno.ETIMEDOUT  : Timeout,
+    errno.EDQUOT     : DiskQuotaExceeded,
+    errno.EOPNOTSUPP : OperationNotSupported,
+    ECANCELED        : OperationCanceled,
 }
 
 cdef make_ex(ret, msg, exception_map=errno_to_exception):
@@ -3434,7 +3441,7 @@ cdef class Image(object):
         with nogil:
             ret = rbd_snap_remove2(self.image, _name, _flags, prog_cb, NULL)
         if ret != 0:
-            raise make_ex(ret, 'error removing snapshot %s from %s with flags %llx' % (name, self.name, flags))
+            raise make_ex(ret, 'error removing snapshot %s from %s with flags %lx' % (name, self.name, flags))
 
     def remove_snap_by_id(self, snap_id):
         """
@@ -4459,9 +4466,86 @@ written." % (self.name, ret, length))
         """
         List image-level config overrides.
 
-        :returns: :class:`ConfigPoolIterator`
+        :returns: :class:`ConfigImageIterator`
         """
         return ConfigImageIterator(self)
+
+
+    def config_set(self, key, value):
+        """
+        Set an image-level configuration override.
+
+        :param key: key
+        :type key: str
+        :param value: value
+        :type value: str
+        """
+        conf_key = 'conf_' + key
+        conf_key = cstr(conf_key, 'key')
+        value = cstr(value, 'value')
+        cdef:
+            char *_key = conf_key
+            char *_value = value
+        with nogil:
+            ret = rbd_metadata_set(self.image, _key, _value)
+
+        if ret != 0:
+            raise make_ex(ret, 'error setting config %s for image %s' %
+                          (key, self.name))
+
+
+    def config_get(self, key):
+        """
+        Get an image-level configuration override.
+
+        :param key: key
+        :type key: str
+        :returns: str - value
+        """
+        conf_key = 'conf_' + key
+        conf_key = cstr(conf_key, 'key')
+        cdef:
+            char *_key = conf_key
+            size_t size = 4096
+            char *value = NULL
+            int ret
+        try:
+            while True:
+                value = <char *>realloc_chk(value, size)
+                with nogil:
+                    ret = rbd_metadata_get(self.image, _key, value, &size)
+                if ret != -errno.ERANGE:
+                    break
+            if ret == -errno.ENOENT:
+                raise KeyError('no config %s for image %s' % (key, self.name))
+            if ret != 0:
+                raise make_ex(ret, 'error getting config %s for image %s' %
+                              (key, self.name))
+            return decode_cstr(value)
+        finally:
+            free(value)
+
+
+    def config_remove(self, key):
+        """
+        Remove an image-level configuration override.
+
+        :param key: key
+        :type key: str
+        """
+        conf_key = 'conf_' + key
+        conf_key = cstr(conf_key, 'key')
+        cdef:
+            char *_key = conf_key
+        with nogil:
+            ret = rbd_metadata_remove(self.image, _key)
+
+        if ret == -errno.ENOENT:
+            raise KeyError('no config %s for image %s' % (key, self.name))
+        if ret != 0:
+            raise make_ex(ret, 'error removing config %s for image %s' %
+                          (key, self.name))
+
 
     def snap_get_namespace_type(self, snap_id):
         """
