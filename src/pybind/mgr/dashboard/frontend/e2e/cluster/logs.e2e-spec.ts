@@ -1,4 +1,3 @@
-import { Helper } from '../helper.po';
 import { PoolPageHelper } from '../pools/pools.po';
 import { ConfigurationPageHelper } from './configuration.po';
 import { LogsPageHelper } from './logs.po';
@@ -24,7 +23,7 @@ describe('Logs page', () => {
   });
 
   afterEach(async () => {
-    await Helper.checkConsole();
+    await LogsPageHelper.checkConsole();
   });
 
   describe('breadcrumb and tab tests', () => {
@@ -33,7 +32,7 @@ describe('Logs page', () => {
     });
 
     it('should open and show breadcrumb', async () => {
-      await expect(logs.getBreadcrumbText()).toEqual('Logs');
+      await logs.waitTextToBePresent(logs.getBreadcrumb(), 'Logs');
     });
 
     it('should show two tabs', async () => {
@@ -63,9 +62,6 @@ describe('Logs page', () => {
     it('should delete pool and check audit logs reacted', async () => {
       await pools.navigateTo();
       await pools.delete(poolname);
-
-      await pools.navigateTo();
-      await pools.exist(poolname, false);
 
       await logs.navigateTo();
       await logs.checkAuditForPoolFunction(poolname, 'delete', hour, minute);

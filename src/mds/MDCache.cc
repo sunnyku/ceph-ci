@@ -175,7 +175,8 @@ MDCache::MDCache(MDSRank *m, PurgeQueue &purge_queue_) :
           trim_client_leases();
           trim();
           check_memory_usage();
-          mds->server->recall_client_state(nullptr, Server::RecallFlags::ENFORCE_MAX);
+          auto flags = Server::RecallFlags::ENFORCE_MAX|Server::RecallFlags::ENFORCE_LIVENESS;
+          mds->server->recall_client_state(nullptr, flags);
           upkeep_last_trim = clock::now();
         } else {
           dout(10) << "cache not ready for trimming" << dendl;
@@ -619,7 +620,7 @@ void MDCache::open_mydir_frag(MDSContext *c)
 {
   open_mydir_inode(
       new MDSInternalContextWrapper(mds,
-	new FunctionContext([this, c](int r) {
+	new LambdaContext([this, c](int r) {
 	    if (r < 0) {
 	      c->complete(r);
 	      return;
@@ -2670,7 +2671,7 @@ void MDCache::send_resolves()
     // I'm survivor: refresh snap cache
     mds->snapclient->sync(
 	new MDSInternalContextWrapper(mds,
-	  new FunctionContext([this](int r) {
+	  new LambdaContext([this](int r) {
 	    maybe_finish_slave_resolve();
 	    })
 	  )
@@ -5326,7 +5327,7 @@ bool MDCache::process_imported_caps()
       open_file_table.prefetch_inodes()) {
     open_file_table.wait_for_prefetch(
 	new MDSInternalContextWrapper(mds,
-	  new FunctionContext([this](int r) {
+	  new LambdaContext([this](int r) {
 	    ceph_assert(rejoin_gather.count(mds->get_nodeid()));
 	    process_imported_caps();
 	    })
@@ -5927,7 +5928,7 @@ bool MDCache::open_undef_inodes_dirfrags()
 
   MDSGatherBuilder gather(g_ceph_context,
       new MDSInternalContextWrapper(mds,
-	new FunctionContext([this](int r) {
+	new LambdaContext([this](int r) {
 	    if (rejoin_gather.empty())
 	      rejoin_gather_finish();
 	  })
@@ -7593,7 +7594,7 @@ void MDCache::check_memory_usage()
   mds->mlogger->set(l_mdm_heap, last.get_heap());
 
   if (cache_toofull()) {
-    mds->server->recall_client_state(nullptr);
+    mds->server->recall_client_state(nullptr, Server::RecallFlags::TRIM);
   }
 
   // If the cache size had exceeded its limit, but we're back in bounds
@@ -7903,7 +7904,7 @@ again:
 	MDSContext *fin = nullptr;
 	if (shutdown_exporting_strays.empty()) {
 	  fin = new MDSInternalContextWrapper(mds,
-		  new FunctionContext([this](int r) {
+		  new LambdaContext([this](int r) {
 		    shutdown_export_strays();
 		  })
 		);
@@ -9347,7 +9348,40 @@ void MDCache::request_forward(MDRequestRef& mdr, mds_rank_t who, int port)
   if (mdr->client_request && mdr->client_request->get_source().is_client()) {
     dout(7) << "request_forward " << *mdr << " to mds." << who << " req "
             << *mdr->client_request << dendl;
-    mds->forward_message_mds(mdr->release_client_request(), who);
+    if (mdr->is_batch_head) {
+      int mask = mdr->client_request->head.args.getattr.mask;
+
+      switch (mdr->client_request->get_op()) {
+	case CEPH_MDS_OP_GETATTR:
+	  {
+	    CInode* in = mdr->in[0];
+	    if (in) {
+	      auto it = in->batch_ops.find(mask);
+	      if (it != in->batch_ops.end()) {
+                it->second->forward(who);
+                in->batch_ops.erase(it);
+	      }
+	    }
+	    break;
+	  }
+	case CEPH_MDS_OP_LOOKUP:
+	  {
+	    CDentry* dn = mdr->dn[0].back();
+	    if (dn) {
+	      auto it = dn->batch_ops.find(mask);
+	      if (it != dn->batch_ops.end()) {
+                it->second->forward(who);
+                dn->batch_ops.erase(it);
+	      }
+	    }
+	    break;
+	  }
+	default:
+	  ceph_abort();
+      }
+    } else {
+      mds->forward_message_mds(mdr->release_client_request(), who);
+    }
     if (mds->logger) mds->logger->inc(l_mds_forward);
   } else if (mdr->internal_op >= 0) {
     dout(10) << "request_forward on internal op; cancelling" << dendl;
@@ -12539,7 +12573,7 @@ void MDCache::enqueue_scrub_work(MDRequestRef& mdr)
   if (header->get_recursive()) {
     header->get_origin()->get(CInode::PIN_SCRUBQUEUE);
     fin = new MDSInternalContextWrapper(mds,
-	    new FunctionContext([this, header](int r) {
+	    new LambdaContext([this, header](int r) {
 	      recursive_scrub_finish(header);
 	      header->get_origin()->put(CInode::PIN_SCRUBQUEUE);
 	    })
@@ -12551,14 +12585,14 @@ void MDCache::enqueue_scrub_work(MDRequestRef& mdr)
   // If the scrub did some repair, then flush the journal at the end of
   // the scrub.  Otherwise in the case of e.g. rewriting a backtrace
   // the on disk state will still look damaged.
-  auto scrub_finish = new FunctionContext([this, header, fin](int r){
+  auto scrub_finish = new LambdaContext([this, header, fin](int r){
     if (!header->get_repaired()) {
       if (fin)
         fin->complete(r);
       return;
     }
 
-    auto flush_finish = new FunctionContext([this, fin](int r){
+    auto flush_finish = new LambdaContext([this, fin](int r){
       dout(4) << "Expiring log segments because scrub did some repairs" << dendl;
       mds->mdlog->trim_all();
 

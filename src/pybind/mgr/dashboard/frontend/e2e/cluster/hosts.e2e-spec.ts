@@ -1,4 +1,3 @@
-import { Helper } from '../helper.po';
 import { HostsPageHelper } from './hosts.po';
 
 describe('Hosts page', () => {
@@ -9,7 +8,7 @@ describe('Hosts page', () => {
   });
 
   afterEach(async () => {
-    await Helper.checkConsole();
+    await HostsPageHelper.checkConsole();
   });
 
   describe('breadcrumb and tab tests', () => {
@@ -18,7 +17,7 @@ describe('Hosts page', () => {
     });
 
     it('should open and show breadcrumb', async () => {
-      await expect(hosts.getBreadcrumbText()).toEqual('Hosts');
+      await hosts.waitTextToBePresent(hosts.getBreadcrumb(), 'Hosts');
     });
 
     it('should show two tabs', async () => {

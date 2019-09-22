@@ -113,7 +113,7 @@ PG::PG(
 PG::~PG() {}
 
 bool PG::try_flush_or_schedule_async() {
-  shard_services.get_store().do_transaction(
+  (void)shard_services.get_store().do_transaction(
     coll_ref,
     ObjectStore::Transaction()).then(
       [this, epoch=get_osdmap_epoch()]() {
@@ -358,11 +358,11 @@ seastar::future<Ref<MOSDOpReply>> PG::do_osd_ops(Ref<MOSDOp> m)
   const auto oid = m->get_snapid() == CEPH_SNAPDIR ? m->get_hobj().get_head()
                                                    : m->get_hobj();
   return backend->get_object_state(oid).then([this, m](auto os) mutable {
-    return seastar::do_with(OpsExecuter{std::move(os), *this/* as const& */},
-                            [this, m=std::move(m)] (auto& ox) {
+    return seastar::do_with(OpsExecuter{std::move(os), *this/* as const& */, m},
+                            [this, m] (auto& ox) {
       return seastar::do_for_each(m->ops, [this, &ox](OSDOp& osd_op) {
         logger().debug("will be handling op {}", ceph_osd_op_name(osd_op.op.op));
-        return ox.do_osd_op(osd_op);
+        return ox.execute_osd_op(osd_op);
       }).then([this, m, &ox] {
         logger().debug("all operations have been executed successfully");
         return std::move(ox).submit_changes([this, m] (auto&& txn, auto&& os) {
@@ -384,12 +384,34 @@ seastar::future<Ref<MOSDOpReply>> PG::do_osd_ops(Ref<MOSDOp> m)
   }).handle_exception_type([=,&oid](const ceph::osd::error& e) {
     logger().debug("got ceph::osd::error while handling object {}: {} ({})",
                    oid, e.code(), e.what());
+    return backend->evict_object_state(oid).then([=] {
+      auto reply = make_message<MOSDOpReply>(
+        m.get(), -e.code().value(), get_osdmap_epoch(), 0, false);
+      reply->set_enoent_reply_versions(peering_state.get_info().last_update,
+                                         peering_state.get_info().last_user_version);
+      return seastar::make_ready_future<Ref<MOSDOpReply>>(std::move(reply));
+    });
+  });
+}
 
-    backend->evict_object_state(oid);
+seastar::future<Ref<MOSDOpReply>> PG::do_pg_ops(Ref<MOSDOp> m)
+{
+  return seastar::do_with(OpsExecuter{*this/* as const& */, m},
+                          [this, m] (auto& ox) {
+    return seastar::do_for_each(m->ops, [this, &ox](OSDOp& osd_op) {
+      logger().debug("will be handling pg op {}", ceph_osd_op_name(osd_op.op.op));
+      return ox.execute_pg_op(osd_op);
+    });
+  }).then([m, this] {
+    auto reply = make_message<MOSDOpReply>(m.get(), 0, get_osdmap_epoch(),
+                                           CEPH_OSD_FLAG_ACK | CEPH_OSD_FLAG_ONDISK,
+                                           false);
+    return seastar::make_ready_future<Ref<MOSDOpReply>>(std::move(reply));
+  }).handle_exception_type([=](const ceph::osd::error& e) {
     auto reply = make_message<MOSDOpReply>(
       m.get(), -e.code().value(), get_osdmap_epoch(), 0, false);
     reply->set_enoent_reply_versions(peering_state.get_info().last_update,
-                                       peering_state.get_info().last_user_version);
+				     peering_state.get_info().last_user_version);
     return seastar::make_ready_future<Ref<MOSDOpReply>>(std::move(reply));
   });
 }
@@ -401,7 +423,12 @@ seastar::future<> PG::handle_op(ceph::net::Connection* conn,
     if (m->finish_decode()) {
       m->clear_payload();
     }
-    return do_osd_ops(m);
+    if (std::any_of(begin(m->ops), end(m->ops),
+		    [](auto& op) { return ceph_osd_op_type_pg(op.op.op); })) {
+      return do_pg_ops(m);
+    } else {
+      return do_osd_ops(m);
+    }
   }).then([conn](Ref<MOSDOpReply> reply) {
     return conn->send(reply);
   });

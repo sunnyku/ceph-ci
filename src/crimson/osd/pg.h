@@ -158,11 +158,11 @@ public:
   void send_cluster_message(
     int osd, Message *m,
     epoch_t epoch, bool share_map_update=false) final {
-    shard_services.send_to_osd(osd, m, epoch);
+    (void)shard_services.send_to_osd(osd, m, epoch);
   }
 
   void send_pg_created(pg_t pgid) final {
-    shard_services.send_pg_created(pgid);
+    (void)shard_services.send_pg_created(pgid);
   }
 
   bool try_flush_or_schedule_async() final;
@@ -170,7 +170,7 @@ public:
   void start_flush_on_transaction(
     ObjectStore::Transaction &t) final {
     t.register_on_commit(
-      new LambdaContext([this](){
+      new LambdaContext([this](int r){
 	peering_state.complete_flush();
     }));
   }
@@ -217,7 +217,7 @@ public:
     PGPeeringEventRef on_commit) final {
     t.register_on_commit(
       new LambdaContext(
-	[this, on_commit=std::move(on_commit)] {
+	[this, on_commit=std::move(on_commit)](int r){
 	  shard_services.start_operation<LocalPeeringEvent>(
 	    this,
 	    shard_services,
@@ -443,6 +443,7 @@ private:
     const boost::statechart::event_base &evt,
     PeeringCtx &rctx);
   seastar::future<Ref<MOSDOpReply>> do_osd_ops(Ref<MOSDOp> m);
+  seastar::future<Ref<MOSDOpReply>> do_pg_ops(Ref<MOSDOp> m);
   seastar::future<> do_osd_op(
     ObjectState& os,
     OSDOp& op,

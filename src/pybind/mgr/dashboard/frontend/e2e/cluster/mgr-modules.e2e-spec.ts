@@ -1,4 +1,3 @@
-import { Helper } from '../helper.po';
 import { ManagerModulesPageHelper } from './mgr-modules.po';
 
 describe('Manager modules page', () => {
@@ -9,7 +8,7 @@ describe('Manager modules page', () => {
   });
 
   afterEach(async () => {
-    await Helper.checkConsole();
+    await ManagerModulesPageHelper.checkConsole();
   });
 
   describe('breadcrumb test', () => {
@@ -18,7 +17,7 @@ describe('Manager modules page', () => {
     });
 
     it('should open and show breadcrumb', async () => {
-      await expect(mgrmodules.getBreadcrumbText()).toEqual('Manager modules');
+      await mgrmodules.waitTextToBePresent(mgrmodules.getBreadcrumb(), 'Manager modules');
     });
   });
 

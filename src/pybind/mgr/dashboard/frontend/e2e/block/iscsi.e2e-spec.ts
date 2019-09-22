@@ -1,4 +1,3 @@
-import { Helper } from '../helper.po';
 import { IscsiPageHelper } from './iscsi.po';
 
 describe('Iscsi Page', () => {
@@ -9,7 +8,7 @@ describe('Iscsi Page', () => {
   });
 
   afterEach(async () => {
-    await Helper.checkConsole();
+    await IscsiPageHelper.checkConsole();
   });
 
   describe('breadcrumb test', () => {
@@ -18,7 +17,7 @@ describe('Iscsi Page', () => {
     });
 
     it('should open and show breadcrumb', async () => {
-      await expect(iscsi.getBreadcrumbText()).toEqual('Overview');
+      await iscsi.waitTextToBePresent(iscsi.getBreadcrumb(), 'Overview');
     });
   });
 

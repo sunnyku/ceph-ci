@@ -1,4 +1,3 @@
-import { Helper } from '../helper.po';
 import { FilesystemsPageHelper } from './filesystems.po';
 
 describe('Filesystems page', () => {
@@ -9,7 +8,7 @@ describe('Filesystems page', () => {
   });
 
   afterEach(async () => {
-    await Helper.checkConsole();
+    await FilesystemsPageHelper.checkConsole();
   });
 
   describe('breadcrumb test', () => {
@@ -18,7 +17,7 @@ describe('Filesystems page', () => {
     });
 
     it('should open and show breadcrumb', async () => {
-      await expect(filesystems.getBreadcrumbText()).toEqual('Filesystems');
+      await filesystems.waitTextToBePresent(filesystems.getBreadcrumb(), 'Filesystems');
     });
   });
 });

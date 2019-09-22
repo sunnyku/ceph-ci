@@ -1,4 +1,3 @@
-import { Helper } from '../helper.po';
 import { PoolPageHelper } from './pools.po';
 
 describe('Pools page', () => {
@@ -11,12 +10,12 @@ describe('Pools page', () => {
   });
 
   afterEach(async () => {
-    await Helper.checkConsole();
+    await PoolPageHelper.checkConsole();
   });
 
   describe('breadcrumb and tab tests', () => {
     it('should open and show breadcrumb', async () => {
-      await expect(pools.getBreadcrumbText()).toEqual('Pools');
+      await pools.waitTextToBePresent(pools.getBreadcrumb(), 'Pools');
     });
 
     it('should show two tabs', async () => {
@@ -47,9 +46,7 @@ describe('Pools page', () => {
   });
 
   it('should delete a pool', async () => {
-    await pools.exist(poolName);
-    await pools.delete(poolName);
     await pools.navigateTo();
-    await pools.exist(poolName, false);
+    await pools.delete(poolName);
   });
 });

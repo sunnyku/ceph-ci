@@ -9,10 +9,13 @@ import threading
 import warnings
 
 import six
-if six.PY2:
-    FileNotFoundError = IOError
-
 from six.moves.urllib import parse
+
+from .. import mgr, logger
+from ..tools import prepare_url_prefix
+
+if six.PY2:
+    FileNotFoundError = IOError  # pylint: disable=redefined-builtin
 
 try:
     from onelogin.saml2.settings import OneLogin_Saml2_Settings as Saml2Settings
@@ -22,10 +25,6 @@ try:
     python_saml_imported = True
 except ImportError:
     python_saml_imported = False
-
-
-from .. import mgr, logger
-from ..tools import prepare_url_prefix
 
 
 class Saml2(object):
@@ -197,7 +196,7 @@ def handle_sso_command(cmd):
             sp_private_key = ''
 
         if os.path.isfile(idp_metadata):
-            warnings.warn_explicit(
+            warnings.warn(
                 "Please prepend 'file://' to indicate a local SAML2 IdP file", DeprecationWarning)
             with open(idp_metadata, 'r') as f:
                 idp_settings = Saml2Parser.parse(f.read(), entity_id=idp_entity_id)

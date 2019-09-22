@@ -1,4 +1,3 @@
-import { Helper } from '../helper.po';
 import { UsersPageHelper } from './users.po';
 
 describe('RGW users page', () => {
@@ -10,7 +9,7 @@ describe('RGW users page', () => {
   });
 
   afterEach(async () => {
-    await Helper.checkConsole();
+    await UsersPageHelper.checkConsole();
   });
 
   describe('breadcrumb test', () => {
@@ -19,7 +18,7 @@ describe('RGW users page', () => {
     });
 
     it('should open and show breadcrumb', async () => {
-      await expect(users.getBreadcrumbText()).toEqual('Users');
+      await users.waitTextToBePresent(users.getBreadcrumb(), 'Users');
     });
   });
 
@@ -30,7 +29,7 @@ describe('RGW users page', () => {
 
     it('should create user', async () => {
       await users.create(user_name, 'Some Name', 'original@website.com', '1200');
-      await expect(users.getTableCell(user_name).isPresent()).toBe(true);
+      await expect(users.getFirstTableCellWithText(user_name).isPresent()).toBe(true);
     });
 
     it('should edit users full name, email and max buckets', async () => {
@@ -40,7 +39,6 @@ describe('RGW users page', () => {
 
     it('should delete user', async () => {
       await users.delete(user_name);
-      await expect(users.getTableCell(user_name).isPresent()).toBe(false);
     });
   });
 

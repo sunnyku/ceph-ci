@@ -21,6 +21,7 @@
 #include "rgw_rest.h"
 #include "rgw_rest_s3.h"
 #include "rgw_rest_s3website.h"
+#include "rgw_rest_pubsub.h"
 #include "rgw_auth_s3.h"
 #include "rgw_acl.h"
 #include "rgw_policy_s3.h"
@@ -785,55 +786,50 @@ void RGWGetUsage_ObjStore_S3::send_response()
 }
 
 int RGWListBucket_ObjStore_S3::get_common_params()
-
 {
-list_versions = s->info.args.exists("versions");
-prefix = s->info.args.get("prefix");
+  list_versions = s->info.args.exists("versions");
+  prefix = s->info.args.get("prefix");
 
-// non-standard
-s->info.args.get_bool("allow-unordered", &allow_unordered, false);
-delimiter = s->info.args.get("delimiter");
-max_keys = s->info.args.get("max-keys");
-op_ret = parse_max_keys();
-if (op_ret < 0) {
-  return op_ret;
-}
-
-encoding_type = s->info.args.get("encoding-type");
-if (s->system_request) {
-  s->info.args.get_bool("objs-container", &objs_container, false);
-  const char *shard_id_str = s->info.env->get("HTTP_RGWX_SHARD_ID");
-  if (shard_id_str) {  
-    string err;
-    shard_id = strict_strtol(shard_id_str, 10, &err);
-    if (!err.empty()) {
-      ldout(s->cct, 5) << "bad shard id specified: " << shard_id_str << dendl;
-      return -EINVAL;
-}
-} 
-  else {
-    shard_id = s->bucket_instance_shard_id;
-}
-}
-return 0;
+  // non-standard
+  s->info.args.get_bool("allow-unordered", &allow_unordered, false);
+  delimiter = s->info.args.get("delimiter");
+  max_keys = s->info.args.get("max-keys");
+  op_ret = parse_max_keys();
+  if (op_ret < 0) {
+   return op_ret;
+  }
+  encoding_type = s->info.args.get("encoding-type");
+  if (s->system_request) {
+    s->info.args.get_bool("objs-container", &objs_container, false);
+    const char *shard_id_str = s->info.env->get("HTTP_RGWX_SHARD_ID");
+    if (shard_id_str) {  
+      string err;
+      shard_id = strict_strtol(shard_id_str, 10, &err);
+      if (!err.empty()) {
+        ldout(s->cct, 5) << "bad shard id specified: " << shard_id_str << dendl;
+        return -EINVAL;
+      }
+    } else {
+     shard_id = s->bucket_instance_shard_id;
+    }
+  }
+  return 0;
 }
 
 int RGWListBucket_ObjStore_S3::get_params()
 {
-int ret = get_common_params();
-if (ret < 0) {
-  return ret;
+  int ret = get_common_params();
+  if (ret < 0) {
+    return ret;
+  }
+  if (!list_versions) {
+    marker = s->info.args.get("marker");
+  } else {
+    marker.name = s->info.args.get("key-marker");
+    marker.instance = s->info.args.get("version-id-marker");
+  }
+  return 0;
 }
-if (!list_versions) {
-  marker = s->info.args.get("marker");
-} 
-else {
-  marker.name = s->info.args.get("key-marker");
-  marker.instance = s->info.args.get("version-id-marker");
-}
-return 0;
-}
-
 
 int RGWListBucket_ObjStore_S3v2::get_params()
 {
@@ -877,8 +873,6 @@ void RGWListBucket_ObjStore_S3::send_common_versioned_response()
     }
   }
   
-
-
 void RGWListBucket_ObjStore_S3::send_versioned_response()
 {
   s->formatter->open_object_section_in_ns("ListVersionsResult", XMLNS_AWS_S3);
@@ -943,7 +937,7 @@ void RGWListBucket_ObjStore_S3::send_versioned_response()
         auto& storage_class = rgw_placement_rule::get_canonical_storage_class(iter->meta.storage_class);
         s->formatter->dump_string("StorageClass", storage_class.c_str());
       }
-      dump_owner(s, iter->meta.owner, iter->meta.owner_display_name);
+      dump_owner(s, rgw_user(iter->meta.owner), iter->meta.owner_display_name);
       if (iter->meta.appendable) {
         s->formatter->dump_string("Type", "Appendable");
       } else {
@@ -985,12 +979,9 @@ void RGWListBucket_ObjStore_S3::send_common_response()
     }
   }
   
-
-
 void RGWListBucket_ObjStore_S3::send_response()
 {
-   
-if(op_ret < 0) {
+  if (op_ret < 0) {
     set_req_state_err(s, op_ret);
   }
   dump_errno(s);
@@ -1031,7 +1022,7 @@ if(op_ret < 0) {
         s->formatter->dump_int("Size", iter->meta.accounted_size);
         auto& storage_class = rgw_placement_rule::get_canonical_storage_class(iter->meta.storage_class);
         s->formatter->dump_string("StorageClass", storage_class.c_str());
-        dump_owner(s, iter->meta.owner, iter->meta.owner_display_name);
+        dump_owner(s, rgw_user(iter->meta.owner), iter->meta.owner_display_name);
         if (s->system_request) {
           s->formatter->dump_string("RgwxTag", iter->tag);
       }
@@ -1111,7 +1102,7 @@ void RGWListBucket_ObjStore_S3v2::send_versioned_response()
         auto& storage_class = rgw_placement_rule::get_canonical_storage_class(iter->meta.storage_class);
         s->formatter->dump_string("StorageClass", storage_class.c_str());
       }
-      if(fetchOwner == true) {
+      if (fetchOwner == true) {
         dump_owner(s, s->user->user_id, s->user->display_name);
       }
       s->formatter->close_section();
@@ -1138,13 +1129,12 @@ void RGWListBucket_ObjStore_S3v2::send_versioned_response()
   
     s->formatter->close_section();
     rgw_flush_formatter_and_reset(s, s->formatter);
-}
+  }
 }
 
 void RGWListBucket_ObjStore_S3v2::send_response()
 {
-
-  if(op_ret < 0) {
+  if (op_ret < 0) {
     set_req_state_err(s, op_ret);
   }
   dump_errno(s);
@@ -1187,7 +1177,7 @@ void RGWListBucket_ObjStore_S3v2::send_response()
       s->formatter->dump_int("Size", iter->meta.accounted_size);
       auto& storage_class = rgw_placement_rule::get_canonical_storage_class(iter->meta.storage_class);
       s->formatter->dump_string("StorageClass", storage_class.c_str());
-      if(fetchOwner == true) {
+      if (fetchOwner == true) {
         dump_owner(s, s->user->user_id, s->user->display_name);
       }
       if (s->system_request) {
@@ -1214,8 +1204,6 @@ void RGWListBucket_ObjStore_S3v2::send_response()
   s->formatter->close_section();
   rgw_flush_formatter_and_reset(s, s->formatter);
 }
-
-
 
 void RGWGetBucketLogging_ObjStore_S3::send_response()
 {
@@ -3583,12 +3571,16 @@ RGWOp *RGWHandler_REST_Service_S3::op_post()
 {
   const auto max_size = s->cct->_conf->rgw_max_put_param_size;
 
-  int ret = 0;
+  int ret;
   bufferlist data;
   std::tie(ret, data) = rgw_rest_read_all_input(s, max_size, false);
-  string post_body = data.to_str();
+  if (ret < 0) {
+      return nullptr;
+  }
 
-  if (this->isSTSenabled) {
+  const auto post_body = data.to_str();
+
+  if (isSTSEnabled) {
     RGWHandler_REST_STS sts_handler(auth_registry, post_body);
     sts_handler.init(store, s, s->cio);
     auto op = sts_handler.get_op(store);
@@ -3597,7 +3589,7 @@ RGWOp *RGWHandler_REST_Service_S3::op_post()
     }
   }
 
-  if (this->isIAMenabled) {
+  if (isIAMEnabled) {
     RGWHandler_REST_IAM iam_handler(auth_registry, post_body);
     iam_handler.init(store, s, s->cio);
     auto op = iam_handler.get_op(store);
@@ -3605,7 +3597,17 @@ RGWOp *RGWHandler_REST_Service_S3::op_post()
       return op;
     }
   }
-  return NULL;
+
+  if (isPSEnabled) {
+    RGWHandler_REST_PSTopic_AWS topic_handler(auth_registry, post_body);
+    topic_handler.init(store, s, s->cio);
+    auto op = topic_handler.get_op(store);
+    if (op) {
+      return op;
+    }
+  }
+
+  return nullptr;
 }
 
 RGWOp *RGWHandler_REST_Bucket_S3::get_obj_op(bool get_data)
@@ -3666,6 +3668,8 @@ RGWOp *RGWHandler_REST_Bucket_S3::op_get()
     return new RGWGetBucketTags_ObjStore_S3;
   } else if (is_object_lock_op()) {
     return new RGWGetBucketObjectLock_ObjStore_S3;
+  } else if (is_notification_op()) {
+    return RGWHandler_REST_PSNotifs_S3::create_get_op();
   }
   return get_obj_op(true);
 }
@@ -3709,6 +3713,8 @@ RGWOp *RGWHandler_REST_Bucket_S3::op_put()
     return nullptr;
   } else if (is_object_lock_op()) {
     return new RGWPutBucketObjectLock_ObjStore_S3;
+  } else if (is_notification_op()) {
+    return RGWHandler_REST_PSNotifs_S3::create_put_op();
   }
   return new RGWCreateBucket_ObjStore_S3;
 }
@@ -3723,6 +3729,8 @@ RGWOp *RGWHandler_REST_Bucket_S3::op_delete()
     return new RGWDeleteLC_ObjStore_S3;
   } else if(is_policy_op()) {
     return new RGWDeleteBucketPolicy;
+  } else if (is_notification_op()) {
+    return RGWHandler_REST_PSNotifs_S3::create_delete_op();
   }
 
   if (s->info.args.sub_resource_exists("website")) {
@@ -4132,9 +4140,9 @@ RGWHandler_REST* RGWRESTMgr_S3::get_handler(struct req_state* const s,
     }
   } else {
     if (s->init_state.url_bucket.empty()) {
-      handler = new RGWHandler_REST_Service_S3(auth_registry, enable_sts, enable_iam);
+      handler = new RGWHandler_REST_Service_S3(auth_registry, enable_sts, enable_iam, enable_pubsub);
     } else if (s->object.empty()) {
-      handler = new RGWHandler_REST_Bucket_S3(auth_registry);
+      handler = new RGWHandler_REST_Bucket_S3(auth_registry, enable_pubsub);
     } else {
       handler = new RGWHandler_REST_Obj_S3(auth_registry);
     }
@@ -4926,7 +4934,7 @@ rgw::auth::s3::LDAPEngine::authenticate(
   }*/
 
   if (ldh->auth(base64_token.id, base64_token.key) != 0) {
-    return result_t::deny();
+    return result_t::deny(-ERR_INVALID_ACCESS_KEY);
   }
 
   auto apl = apl_factory->create_apl_remote(cct, s, get_acl_strategy(),

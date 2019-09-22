@@ -175,6 +175,14 @@ class VolumeClient(object):
         for fs in fs_map['filesystems']:
             self.purge_queue.queue_purge_job(fs['mdsmap']['fs_name'])
 
+    def cluster_log(self, msg, lvl=None):
+        """
+        log to cluster log with default log level as WARN.
+        """
+        if not lvl:
+            lvl = self.mgr.CLUSTER_LOG_PRIO_WARN
+        self.mgr.cluster_log("cluster", lvl, msg)
+
     def gen_pool_names(self, volname):
         """
         return metadata and data pool name (from a filesystem/volume name) as a tuple
@@ -247,7 +255,7 @@ class VolumeClient(object):
 
     ### volume operations -- create, rm, ls
 
-    def create_volume(self, volname, size=None):
+    def create_volume(self, volname):
         """
         create volume  (pool, filesystem and mds)
         """
@@ -411,7 +419,7 @@ class VolumeClient(object):
                 if not path:
                     raise VolumeException(
                         -errno.ENOENT, "Subvolume '{0}' not found".format(subvolname))
-                ret = 0, path, ""
+                ret = 0, path.decode("utf-8"), ""
         except VolumeException as ve:
             ret = self.volume_exception_to_retval(ve)
         return ret
@@ -512,7 +520,7 @@ class VolumeClient(object):
                 if path is None:
                     raise VolumeException(
                         -errno.ENOENT, "Subvolume group '{0}' not found".format(groupname))
-                return 0, path, ""
+                return 0, path.decode("utf-8"), ""
         except VolumeException as ve:
             return self.volume_exception_to_retval(ve)
 

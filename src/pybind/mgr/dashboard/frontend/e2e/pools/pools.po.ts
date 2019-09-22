@@ -60,7 +60,7 @@ export class PoolPageHelper extends PageHelper {
     const elem = await this.getTableCellByContent(name);
     await elem.click(); // select pool from the table
     await element(by.cssContainingText('button', 'Edit')).click(); // click edit button
-    await expect(this.getBreadcrumbText()).toEqual('Edit'); // verify we are now on edit page
+    await this.waitTextToBePresent(this.getBreadcrumb(), 'Edit'); // verify we are now on edit page
     await $('input[name=pgNum]').sendKeys(protractor.Key.CONTROL, 'a', protractor.Key.NULL, new_pg);
     await element(by.css('cd-submit-button')).click();
     const str = `${new_pg} active+clean`;
@@ -81,18 +81,5 @@ export class PoolPageHelper extends PageHelper {
     apps.forEach(
       async (app) => await element(by.cssContainingText('.select-menu-item-content', app)).click()
     );
-  }
-
-  @PageHelper.restrictTo(pages.index)
-  async delete(name: string): Promise<any> {
-    await this.waitClickable(this.getTableCell(name));
-    await this.getTableCell(name).click();
-    await $('.table-actions button.dropdown-toggle').click(); // open submenu
-    await $('li.delete a').click(); // click on "delete" menu item
-    // wait for pop-up to be visible (checks for title of pop-up)
-    await this.waitVisibility($('.modal-body'));
-    await this.clickCheckbox($('.custom-control-label'));
-    await element(by.cssContainingText('button', 'Delete Pool')).click();
-    return this.waitStaleness(this.getTableCell(name));
   }
 }

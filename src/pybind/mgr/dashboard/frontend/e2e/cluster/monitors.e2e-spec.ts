@@ -1,4 +1,3 @@
-import { Helper } from '../helper.po';
 import { MonitorsPageHelper } from './monitors.po';
 
 describe('Monitors page', () => {
@@ -9,7 +8,7 @@ describe('Monitors page', () => {
   });
 
   afterEach(async () => {
-    await Helper.checkConsole();
+    await MonitorsPageHelper.checkConsole();
   });
 
   describe('breadcrumb test', () => {
@@ -18,7 +17,7 @@ describe('Monitors page', () => {
     });
 
     it('should open and show breadcrumb', async () => {
-      await expect(monitors.getBreadcrumbText()).toEqual('Monitors');
+      await monitors.waitTextToBePresent(monitors.getBreadcrumb(), 'Monitors');
     });
   });
 

@@ -1,5 +1,4 @@
 import { $ } from 'protractor';
-import { Helper } from '../helper.po';
 import { ConfigurationPageHelper } from './configuration.po';
 
 describe('Configuration page', () => {
@@ -10,7 +9,7 @@ describe('Configuration page', () => {
   });
 
   afterEach(async () => {
-    await Helper.checkConsole();
+    await ConfigurationPageHelper.checkConsole();
   });
 
   describe('breadcrumb test', () => {
@@ -19,13 +18,13 @@ describe('Configuration page', () => {
     });
 
     it('should open and show breadcrumb', async () => {
-      await expect(configuration.getBreadcrumbText()).toEqual('Configuration');
+      await configuration.waitTextToBePresent(configuration.getBreadcrumb(), 'Configuration');
     });
   });
 
   describe('fields check', () => {
-    beforeAll(() => {
-      configuration.navigateTo();
+    beforeAll(async () => {
+      await configuration.navigateTo();
     });
 
     it('should verify that selected footer increases when an entry is clicked', async () => {

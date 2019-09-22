@@ -26,6 +26,7 @@
 #include "common/errno.h"
 #include "common/version.h"
 
+#include "PyUtil.h"
 #include "BaseMgrModule.h"
 #include "Gil.h"
 
@@ -151,9 +152,9 @@ ceph_send_command(BaseMgrModule *self, PyObject *args)
     // TODO: enhance MCommand interface so that it returns
     // latest cluster map versions on completion, and callers
     // can wait for those.
-    auto c = new FunctionContext([command_c, self](int command_r){
+    auto c = new LambdaContext([command_c, self](int command_r){
       self->py_modules->get_objecter().wait_for_latest_osdmap(
-          new FunctionContext([command_c, command_r](int wait_r){
+          new LambdaContext([command_c, command_r](int wait_r){
             command_c->complete(command_r);
           })
       );
@@ -393,11 +394,13 @@ ceph_option_get(BaseMgrModule *self, PyObject *args)
     return nullptr;
   }
 
-  std::string value;
-  int r = g_conf().get_val(string(what), &value);
-  if (r >= 0) {
+  const Option *opt = g_conf().find_option(string(what));
+  if (opt) {
+    std::string value;
+    int r = g_conf().get_val(string(what), &value);
+    assert(r >= 0);
     dout(10) << "ceph_option_get " << what << " found: " << value << dendl;
-    return PyString_FromString(value.c_str());
+    return get_python_typed_option_value(opt->type, value);
   } else {
     dout(4) << "ceph_option_get " << what << " not found " << dendl;
     Py_RETURN_NONE;
@@ -571,7 +574,13 @@ ceph_get_version(BaseMgrModule *self, PyObject *args)
 }
 
 static PyObject *
-ceph_get_context(BaseMgrModule *self, PyObject *args)
+ceph_get_release_name(BaseMgrModule *self, PyObject *args)
+{
+  return PyString_FromString(ceph_release_to_str());
+}
+
+static PyObject *
+ceph_get_context(BaseMgrModule *self)
 {
   return self->py_modules->get_context();
 }
@@ -1061,8 +1070,11 @@ PyMethodDef BaseMgrModule_methods[] = {
   {"_ceph_cluster_log", (PyCFunction)ceph_cluster_log, METH_VARARGS,
    "Emit a cluster log message"},
 
-  {"_ceph_get_version", (PyCFunction)ceph_get_version, METH_VARARGS,
+  {"_ceph_get_version", (PyCFunction)ceph_get_version, METH_NOARGS,
    "Get the ceph version of this process"},
+
+  {"_ceph_get_release_name", (PyCFunction)ceph_get_release_name, METH_NOARGS,
+   "Get the ceph release name of this process"},
 
   {"_ceph_get_context", (PyCFunction)ceph_get_context, METH_NOARGS,
     "Get a CephContext* in a python capsule"},

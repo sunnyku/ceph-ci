@@ -29,7 +29,7 @@ export class ImagesPageHelper extends PageHelper {
 
     // Click the create button and wait for image to be made
     await element(by.cssContainingText('button', 'Create RBD')).click();
-    await this.waitPresence(this.getTableCell(name));
+    return this.waitPresence(this.getFirstTableCellWithText(name));
   }
 
   async editImage(name, pool, newName, newSize) {
@@ -49,9 +49,7 @@ export class ImagesPageHelper extends PageHelper {
 
     await element(by.cssContainingText('button', 'Edit RBD')).click();
     await this.navigateTo();
-    await this.waitClickable(this.getTableCell(newName));
-    // click edit button and wait to make sure new owner is present in table
-    await this.getTableCell(newName).click();
+    await this.waitClickableAndClick(this.getFirstTableCellWithText(newName));
     await expect(
       element
         .all(by.css('.table.table-striped.table-bordered'))
@@ -60,20 +58,74 @@ export class ImagesPageHelper extends PageHelper {
     ).toMatch(newSize);
   }
 
-  async deleteImage(name) {
+  // Selects RBD image and moves it to the trash, checks that it is present in the
+  // trash table
+  async moveToTrash(name) {
     await this.navigateTo();
-
-    // wait for table to load
-    await this.waitClickable(this.getTableCell(name));
-    await this.getTableCell(name).click(); // click on the image you want to delete in the table
+    // wait for image to be created
+    await this.waitTextNotPresent($$('.datatable-body').first(), '(Creating...)');
+    await this.waitClickableAndClick(this.getFirstTableCellWithText(name));
+    // click on the drop down and selects the move to trash option
     await $$('.table-actions button.dropdown-toggle')
       .first()
-      .click(); // click toggle menu
-    await $('li.delete.ng-star-inserted').click(); // click delete
+      .click();
+    await $('li.move-to-trash').click();
+    await this.waitVisibility(element(by.cssContainingText('button', 'Move Image')));
+    await element(by.cssContainingText('button', 'Move Image')).click();
+    await this.navigateTo();
+    // Clicks trash tab
+    await this.waitClickableAndClick(element(by.cssContainingText('.nav-link', 'Trash')));
+    await this.waitPresence(this.getFirstTableCellWithText(name));
+  }
+
+  // Checks trash tab table for image and then restores it to the RBD Images table
+  // (could change name if new name is given)
+  async restoreImage(name, newName?: string) {
+    await this.navigateTo();
+    // clicks on trash tab
+    await element(by.cssContainingText('.nav-link', 'Trash')).click();
+    // wait for table to load
+    await this.waitClickableAndClick(this.getFirstTableCellWithText(name));
+    await element(by.cssContainingText('button', 'Restore')).click();
     // wait for pop-up to be visible (checks for title of pop-up)
-    await this.waitVisibility($('.modal-body'));
-    await this.clickCheckbox($('.custom-control-label'));
-    await element(by.cssContainingText('button', 'Delete RBD')).click();
-    await this.waitStaleness(this.getTableCell(name));
+    await this.waitVisibility(element(by.id('name')));
+    // If a new name for the image is passed, it changes the name of the image
+    if (newName !== undefined) {
+      await element(by.id('name')).click(); // click name box and send new name
+      await element(by.id('name')).clear();
+      await element(by.id('name')).sendKeys(newName);
+    }
+    await element(by.cssContainingText('button', 'Restore Image')).click();
+    await this.navigateTo();
+    // clicks images tab
+    await element(by.cssContainingText('.nav-link', 'Images')).click();
+    await this.navigateTo();
+    await this.waitPresence(this.getFirstTableCellWithText(newName));
+  }
+
+  // Enters trash tab and purges trash, thus emptying the trash table. Checks if
+  // Image is still in the table.
+  async purgeTrash(name, pool?: string) {
+    await this.navigateTo();
+    // clicks trash tab
+    await element(by.cssContainingText('.nav-link', 'Trash')).click();
+    await element(by.cssContainingText('button', 'Purge Trash')).click();
+    // Check for visibility of modal container
+    await this.waitVisibility(element(by.id('poolName')));
+    // If purgeing a specific pool, selects that pool if given
+    if (pool !== undefined) {
+      const getPoolName = `[value="${pool}"]`;
+      await element(by.id('poolName')).click();
+      await element(by.cssContainingText('select[name=poolName] option', pool)).click();
+      await $(getPoolName).click();
+      await expect(element(by.id('poolName')).getAttribute('class')).toContain('ng-valid'); // check if pool is selected
+    }
+    await this.waitClickableAndClick(element(by.id('purgeFormButton')));
+    // Wait for image to delete and check it is not present
+    await this.waitStaleness(
+      this.getFirstTableCellWithText(name),
+      'Timed out waiting for image to be purged'
+    );
+    await expect(this.getFirstTableCellWithText(name).isPresent()).toBe(false);
   }
 }

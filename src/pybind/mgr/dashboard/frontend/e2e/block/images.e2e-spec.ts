@@ -1,4 +1,3 @@
-import { Helper } from '../helper.po';
 import { PoolPageHelper } from '../pools/pools.po';
 import { ImagesPageHelper } from './images.po';
 
@@ -12,7 +11,7 @@ describe('Images page', () => {
   });
 
   afterEach(async () => {
-    await Helper.checkConsole();
+    await ImagesPageHelper.checkConsole();
   });
 
   describe('breadcrumb and tab tests', () => {
@@ -21,7 +20,7 @@ describe('Images page', () => {
     });
 
     it('should open and show breadcrumb', async () => {
-      await expect(images.getBreadcrumbText()).toEqual('Images');
+      await images.waitTextToBePresent(images.getBreadcrumb(), 'Images');
     });
 
     it('should show three tabs', async () => {
@@ -35,7 +34,7 @@ describe('Images page', () => {
     });
   });
 
-  describe('create, edit & delete image test', async () => {
+  describe('create, edit & delete image test', () => {
     const poolName = 'e2e_images_pool';
     const imageName = 'e2e_images_image';
     const newImageName = 'e2e_images_image_new';
@@ -50,22 +49,65 @@ describe('Images page', () => {
 
     it('should create image', async () => {
       await images.createImage(imageName, poolName, '1');
-      await expect(images.getTableCell(imageName).isPresent()).toBe(true);
+      await expect(images.getFirstTableCellWithText(imageName).isPresent()).toBe(true);
     });
 
     it('should edit image', async () => {
       await images.editImage(imageName, poolName, newImageName, '2');
-      await expect(images.getTableCell(newImageName).isPresent()).toBe(true);
+      await expect(images.getFirstTableCellWithText(newImageName).isPresent()).toBe(true);
     });
 
     it('should delete image', async () => {
-      await images.deleteImage(newImageName);
-      await expect(images.getTableCell(newImageName).isPresent()).toBe(false);
+      await images.navigateTo();
+      await images.delete(newImageName);
     });
 
     afterAll(async () => {
-      await pools.navigateTo(); // Deletes images test pool
+      await pools.navigateTo();
       await pools.delete(poolName);
+    });
+  });
+
+  describe('move to trash, restore and purge image tests', () => {
+    const poolName = 'trashpool';
+    const imageName = 'trashimage';
+    const newImageName = 'newtrashimage';
+
+    beforeAll(async () => {
+      await pools.navigateTo('create'); // Need pool for image testing
+      await pools.create(poolName, 8, 'rbd');
+      await pools.navigateTo();
+      await pools.exist(poolName, true);
+
+      await images.navigateTo(); // Need image for trash testing
+      await images.createImage(imageName, poolName, '1');
+      await expect(images.getFirstTableCellWithText(imageName).isPresent()).toBe(true);
+    });
+
+    it('should move the image to the trash', async () => {
+      await images.moveToTrash(imageName);
+      await expect(images.getFirstTableCellWithText(imageName).isPresent()).toBe(true);
+    });
+
+    it('should restore image to images table', async () => {
+      await images.restoreImage(imageName, newImageName);
+      await expect(images.getFirstTableCellWithText(newImageName).isPresent()).toBe(true);
+    });
+
+    it('should purge trash in images trash tab', async () => {
+      await images.navigateTo();
+      // Have had issues with image not restoring fast enough, thus these tests/waits are here
+      await images.waitPresence(
+        images.getFirstTableCellWithText(newImageName),
+        'Timed out waiting for image to restore'
+      );
+      await images.moveToTrash(newImageName);
+      await images.purgeTrash(newImageName, poolName);
+    });
+
+    afterAll(async () => {
+      await pools.navigateTo();
+      await pools.delete(poolName); // Deletes images test pool
       await pools.navigateTo();
       await pools.exist(poolName, false);
     });
