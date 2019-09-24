@@ -8010,7 +8010,7 @@ int RGWGetBucketPolicyStatus::verify_permission()
 
 void RGWGetBucketPolicyStatus::execute()
 {
-  isPublic = rgw::IAM::IsPublic(*s->iam_policy) | s->bucket_acl->IsPublic();
+  isPublic = (s->iam_policy && rgw::IAM::IsPublic(*s->iam_policy)) || s->bucket_acl->IsPublic();
 }
 
 int RGWPutBucketPublicAccessBlock::verify_permission()
