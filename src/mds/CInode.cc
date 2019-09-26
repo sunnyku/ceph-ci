@@ -5101,6 +5101,7 @@ void CInode::maybe_export_pin(bool update)
 
   mds_rank_t export_pin = get_export_pin(false);
   if (export_pin == MDS_RANK_NONE && !update)
+    maybe_export_ephemeral_pin();
     return;
 
   if (state_test(CInode::STATE_QUEUEDEXPORTPIN))
@@ -5131,6 +5132,76 @@ void CInode::maybe_export_pin(bool update)
       break;
     }
   }
+}
+
+void CInode::maybe_export_ephemeral_pin()
+{
+  //Check if it's already ephemerally pinned
+  if (in.inode.export_ephemeral_random != MDS_RANK_NONE)
+    return;
+
+  if (g_conf()->export_ephemeral_random) {
+    if (g_conf()->mds_export_ephemeral_random >= ceph::util::generate_random_number(0.0, 1.0)) {
+
+      mds_rank_t rank = mdcache->mds->mdsmap->put_ino_in_consistent_hash_ring(ino());
+      auto &pi = project_inode();
+     
+      set_export_ephemeral_random_pin(rank);
+      mut->add_projected_inode(this);
+      MDLog *mdlog = mdcache->mds->mdlog;
+
+      MutationRef mut(new MutationImpl());
+      mut->ls = mdlog->get_current_segment();
+
+      EUpdate *le = new EUpdate(mdlog, "set export ephemeral random vxattr");
+      mdlog->start_entry(le);
+
+      mdcache->journal_dirty_inode(mut.get(), &le->metablob, this);
+
+      mdlog->submit_entry(le, new C_Inode_Update(this, mut));
+      
+      bool queue = false;
+      for (auto p = dirfrags.begin(); p != dirfrags.end(); p++) {
+        CDir *dir = p->second;
+        if (!dir->is_auth())
+          continue;
+        if (dir->is_subtree_root()) {
+          // set auxsubtree bit or export it
+          if (!dir->state_test(CDir::STATE_AUXSUBTREE) ||
+              export_pin != dir->get_dir_auth().first)
+            queue = true;
+        } else {
+        // create aux subtree or export it
+        queue = true;
+        }
+        if (queue) {
+          state_set(CInode::STATE_QUEUEDEXPORTPIN);
+          mdcache->export_pin_queue.insert(this);
+          break;
+        }
+      }
+    }
+  }
+}
+
+class C_Inode_Update : public MDSLogContextBase {
+protected:
+  CInode *in;
+  MutationRef mut;
+  MDSRank *get_mds() override {return in->mdcache->mds;}
+  void finish(int r) override {
+    mut->apply();
+  }    
+
+public:
+  C_Inode_Update(CInode *i, MutationRef& m) : in(i), mut(m) {}
+};
+
+void CInode::set_export_ephemeral_random_pin(mds_rank_t rank)
+{
+  ceph_assert(is_dir());
+  ceph_assert(is_projected());
+  get_projected_inode()->export_ephemeral_random_pin = rank;
 }
 
 void CInode::set_export_pin(mds_rank_t rank)
