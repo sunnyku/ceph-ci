@@ -350,6 +350,7 @@ class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CIno
     ceph_assert(batch_ops.empty());
   }
 
+  mds_rank_t export_ephemeral_random_pin = MDS_RANK_NONE;
   std::map<int, std::unique_ptr<BatchOp>> batch_ops;
 
   std::string_view pin_name(int p) const override;
@@ -899,6 +900,7 @@ class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CIno
   }
 
   void maybe_export_pin(bool update=false);
+  void maybe_export_ephemeral_pin();
   void set_export_pin(mds_rank_t rank);
   mds_rank_t get_export_pin(bool inherit=true) const;
   bool is_exportable(mds_rank_t dest) const;
