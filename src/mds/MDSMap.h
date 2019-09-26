@@ -118,18 +118,6 @@ public:
 
     mds_info_t() = default;
 
-    struct mds_rank_node {
-      mds_rank_t rank;
-      uint32_t hash;
-      vector<inodeno_t> inode_nos;
-    }
-
-    std::vector<mds_rank_node> mds_rank_nodes = {{{0},{rjhash32(0)}}};
-    void add_rank_node_to_consistent_hash_ring(mds_rank_t rank);
-    void get_rank_node_from_ino(inodeno_t ino); //Get the rank that handles the key i.e inode number 
-    void put_ino_in_consistent_hash_ring(inodeno_t ino); //Assign the key i.e inode number to a rank in the consistent hash ring
-    void remove_rank_node_from_consistent_hash_ring(mds_rank_t rank);
-
     bool laggy() const { return !(laggy_since == utime_t()); }
     void clear_laggy() { laggy_since = utime_t(); }
 
@@ -161,6 +149,19 @@ public:
     void encode_versioned(bufferlist& bl, uint64_t features) const;
     void encode_unversioned(bufferlist& bl) const;
   };
+
+  struct mds_rank_node {
+      mds_rank_t rank;
+      uint32_t hash;
+      vector<inodeno_t> inode_nos;
+    };
+
+  std::vector<mds_rank_node> mds_rank_nodes = {{0, rjhash32(0)}};
+  void add_rank_node_to_consistent_hash_ring(mds_rank_t rank);
+  mds_rank_node get_rank_node_from_ino(inodeno_t ino); //Get the rank that handles the key i.e inode number
+  mds_rank_t put_ino_in_consistent_hash_ring(inodeno_t ino); //Assign the key i.e inode number to a rank in the consistent hash ring
+  void remove_rank_node_from_consistent_hash_ring(mds_rank_t rank);
+
 
   static CompatSet get_compat_set_all();
   static CompatSet get_compat_set_default();
