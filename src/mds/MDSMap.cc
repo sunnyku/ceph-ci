@@ -503,6 +503,129 @@ void MDSMap::get_health_checks(health_check_map_t *checks) const
   }
 }
 
+void MDSMap::add_rank_node_to_consistent_hash_ring(mds_rank_t rank)
+{
+  uint32_t hash = rjhash32(rank);
+  std::vector<mds_rank_node>::iterator iter;
+  int index, next_index;
+  /* Insertion into a sorted Vector - Best possible way would be to find 
+   * position of element greater than the hash via binary search and insert there */
+  iter = std::upper_bound( mds_rank_nodes.begin(), mds_rank_nodes.end(), hash,
+         [](const mds_rank_node &rank_hash1, mds_rank_node &rank_hash2) -> bool
+         {
+           return rank_hash1.hash < rank_hash2.hash;
+         });
+
+  iter = mds_rank_nodes.emplace(iter, {rank, rjhash32(rank)});
+  
+  index = iter - mds_rank_nodes.begin();
+
+  /* Now redistribute the inodes hashed in the region between the newly inserted rank
+   * and its predecessor. These inodes (before insertion) were mapped to the 
+   * successor of the newly inserted rank */
+  struct mds_rank_node last_hash = mds_rank_nodes.back();
+
+  /* Check if the newly inserted rank is the last element in the consistent hash ring.
+   * If yes, then the successor/next_index wraps around and should be the 
+   * first element i.e index 0. */
+  if (hash == last_hash.hash)
+    next_index = 0;
+  else
+    next_index = index + 1;
+  std::vector<inodeno_t>& inode_nos = mds_rank_nodes[next_index].inode_nos;
+  std::vector<inodeno_t>::iterator it = inode_nos.begin();
+  while(it != inode_nos.end()) 
+  {
+    if( rjhash32(*it) < hash ) {
+      mds_rank_nodes[index].inode_nos.push_back(*it);
+      it = inode_nos.erase(it);
+    }
+    else {
+      ++it;
+    }
+  }
+}
+
+mds_rank_node MDSMap::get_rank_node_from_ino(inodeno_t ino)
+{
+  uint32_t hash = rjhash32(ino);
+
+  /* Do a binary search to figure out the first hash greater than or equal to the key hash*/
+  /* This can be done using std::lower_bound() */
+  std::vector<mds_rank_node>::iterator iter;
+  int index;
+  iter = std::lower_bound(mds_rank_nodes.begin(), mds_rank_nodes.end(), hash,
+         [](const mds_rank_node &rank_hash1, uint32_t hash_val) -> bool
+         {
+           return rank_hash1.hash < hash_val;
+         });
+  /* If key hash is greater than last rank i.e lower bound returned end, then wrap to the first rank hash */
+  if (iter == end)
+    index = 0;
+  else
+    index = iter - mds_rank_nodes.begin();
+
+  return mds_rank_nodes[index];
+}
+
+mds_rank_t MDSMap::put_ino_in_consistent_hash_ring(inodeno_t ino)
+{
+  uint32_t hash = rjhash32(ino);
+  /* Do a binary search to figure out the first hash greater than or equal to the key hash*/
+  /* This can be done using std::lower_bound() */
+  std::vector<mds_rank_node>::iterator iter;
+  int index;
+  iter = std::lower_bound(mds_rank_nodes.begin(), mds_rank_nodes.end(), hash,
+         [](const mds_rank_node &rank_hash1, uint32_t hash_val) -> bool 
+         {
+           return rank_hash1.hash < hash_val;
+         });
+  /* If key hash is greater than last rank i.e lower bound returned end, then wrap to the first rank hash */
+  if (iter == end) 
+    index = 0; 
+  else 
+    index = iter - mds_rank_nodes.begin();
+
+  mds_rank_nodes[index].inode_nos.push_back(ino);
+  return mds_rank_nodes[index].rank;
+}
+
+void MDSMap::remove_rank_node_from_consistent_hash_ring(mds_rank_t rank)
+{
+  std::vector<int>::iterator iter;
+  uint32_t hash = rjhash32(rank);
+
+  /* Do a binary search to get the index of the rank that needs to be removed */
+  iter = std::lower_bound(mds_rank_nodes.begin(), mds_rank_nodes.end(), hash,
+         [](const mds_rank_node &rank_hash1, uint32_t hash_val) -> bool
+         {
+           return rank_hash1.hash < hash_val;
+         });
+
+  if (iter != end && !(hash < *i)) {
+    int index = iter - mds_rank_nodes.begin(), next_index;
+    struct mds_rank_node last_hash = mds_rank_nodes.back();
+    if(hash == last_hash.hash)
+      next_index = 0;
+    else
+      next_index = index + 1;
+    
+    std::vector<inodeno_t>& inode_nos = mds_rank_nodes[index].inode_nos;
+    std::vector<inodeno_t>::iterator it = inode_nos.begin();
+    while(it != inode_nos.end())
+    {
+        mds_rank_nodes[next_index].inode_nos.push_back(*it);
+	++it;
+    }
+
+    mds_rank_nodes.erase(iter);
+  }
+  else {
+    std::ostringstream oss;
+    oss << "rank not hashed in consistent hash ring";
+    return;
+  }
+}
 void MDSMap::mds_info_t::encode_versioned(bufferlist& bl, uint64_t features) const
 {
   __u8 v = 9;
