@@ -511,12 +511,12 @@ void MDSMap::add_rank_node_to_consistent_hash_ring(mds_rank_t rank)
   /* Insertion into a sorted Vector - Best possible way would be to find 
    * position of element greater than the hash via binary search and insert there */
   iter = std::upper_bound( mds_rank_nodes.begin(), mds_rank_nodes.end(), hash,
-         [](const mds_rank_node &rank_hash1, mds_rank_node &rank_hash2) -> bool
+         [](uint32_t hash_val, const mds_rank_node &rank_hash1) -> bool
          {
-           return rank_hash1.hash < rank_hash2.hash;
+           return hash_val < rank_hash1.hash;
          });
 
-  iter = mds_rank_nodes.emplace(iter, {rank, rjhash32(rank)});
+  iter = mds_rank_nodes.emplace(iter, mds_rank_node{rank, rjhash32(rank)});
   
   index = iter - mds_rank_nodes.begin();
 
@@ -546,7 +546,7 @@ void MDSMap::add_rank_node_to_consistent_hash_ring(mds_rank_t rank)
   }
 }
 
-mds_rank_node MDSMap::get_rank_node_from_ino(inodeno_t ino)
+MDSMap::mds_rank_node MDSMap::get_rank_node_from_ino(inodeno_t ino)
 {
   uint32_t hash = rjhash32(ino);
 
@@ -560,7 +560,7 @@ mds_rank_node MDSMap::get_rank_node_from_ino(inodeno_t ino)
            return rank_hash1.hash < hash_val;
          });
   /* If key hash is greater than last rank i.e lower bound returned end, then wrap to the first rank hash */
-  if (iter == end)
+  if (iter == mds_rank_nodes.end())
     index = 0;
   else
     index = iter - mds_rank_nodes.begin();
@@ -581,7 +581,7 @@ mds_rank_t MDSMap::put_ino_in_consistent_hash_ring(inodeno_t ino)
            return rank_hash1.hash < hash_val;
          });
   /* If key hash is greater than last rank i.e lower bound returned end, then wrap to the first rank hash */
-  if (iter == end) 
+  if (iter == mds_rank_nodes.end()) 
     index = 0; 
   else 
     index = iter - mds_rank_nodes.begin();
@@ -592,7 +592,7 @@ mds_rank_t MDSMap::put_ino_in_consistent_hash_ring(inodeno_t ino)
 
 void MDSMap::remove_rank_node_from_consistent_hash_ring(mds_rank_t rank)
 {
-  std::vector<int>::iterator iter;
+  std::vector<mds_rank_node>::iterator iter;
   uint32_t hash = rjhash32(rank);
 
   /* Do a binary search to get the index of the rank that needs to be removed */
@@ -602,7 +602,7 @@ void MDSMap::remove_rank_node_from_consistent_hash_ring(mds_rank_t rank)
            return rank_hash1.hash < hash_val;
          });
 
-  if (iter != end && !(hash < *i)) {
+  if (iter != mds_rank_nodes.end() && !(hash < (*iter).hash)) {
     int index = iter - mds_rank_nodes.begin(), next_index;
     struct mds_rank_node last_hash = mds_rank_nodes.back();
     if(hash == last_hash.hash)
