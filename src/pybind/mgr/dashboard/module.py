@@ -7,6 +7,7 @@ from __future__ import absolute_import
 import collections
 import errno
 from distutils.version import StrictVersion
+import logging
 import os
 import socket
 import tempfile
@@ -70,7 +71,7 @@ if 'COVERAGE_ENABLED' in os.environ:
     cherrypy.engine.subscribe('stop', __cov.stop)
 
 # pylint: disable=wrong-import-position
-from . import logger, mgr
+from . import mgr
 from .controllers import generate_routes, json_error_page
 from .grafana import push_local_dashboards
 from .tools import NotificationQueue, RequestLoggingTool, TaskManager, \
@@ -97,6 +98,9 @@ def os_exit_noop(*args):
 
 # pylint: disable=W0212
 os._exit = os_exit_noop
+
+
+logger = logging.getLogger(__name__)
 
 
 class CherryPyConfig(object):

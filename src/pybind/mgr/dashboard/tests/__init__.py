@@ -3,6 +3,7 @@
 from __future__ import absolute_import
 
 import json
+import logging
 import threading
 import time
 
@@ -12,10 +13,13 @@ from cherrypy.test import helper
 
 from mgr_module import CLICommand
 
-from .. import logger, mgr
+from .. import mgr
 from ..controllers import json_error_page, generate_controller_routes
 from ..services.auth import AuthManagerTool
 from ..services.exception import dashboard_exception_handler
+
+
+logger = logging.getLogger('tests')
 
 
 class CmdException(Exception):
