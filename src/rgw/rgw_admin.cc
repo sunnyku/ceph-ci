@@ -6195,6 +6195,7 @@ next:
     }
 
     bool is_truncated = true;
+    bool cls_filtered = true;
 
     rgw_obj_index_key marker;
     string empty_prefix;
@@ -6209,7 +6210,7 @@ next:
 	bucket_info, RGW_NO_SHARD,
 	marker, empty_prefix, empty_delimiter,
 	1000, true,
-	result, &is_truncated, &marker,
+	result, &is_truncated, &cls_filtered, &marker,
 	null_yield,
 	rgw_bucket_object_check_filter);
       if (r < 0 && r != -ENOENT) {

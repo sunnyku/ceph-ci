@@ -1737,6 +1737,7 @@ int RGWRados::Bucket::List::list_objects_ordered(
 
   int count = 0;
   bool truncated = true;
+  bool cls_filtered = false;
   const int64_t max = // protect against memory issues and negative vals
     std::min(bucket_list_objects_absolute_max, std::max(int64_t(0), max_p));
   int read_ahead = std::max(cct->_conf->rgw_list_bucket_min_readahead, max);
@@ -1790,6 +1791,7 @@ int RGWRados::Bucket::List::list_objects_ordered(
 					   params.list_versions,
 					   ent_map,
 					   &truncated,
+					   &cls_filtered,
 					   &cur_marker,
                                            y);
     if (r < 0) {
@@ -1852,26 +1854,61 @@ int RGWRados::Bucket::List::list_objects_ordered(
       }
 
       if (!params.delim.empty()) {
-        int delim_pos = obj.name.find(params.delim, params.prefix.size());
+	const int delim_pos = obj.name.find(params.delim, params.prefix.size());
+	if (delim_pos >= 0) {
+	  // run either the code where delimiter filtering is done a)
+	  // in the OSD/CLS or b) here.
+	  if (cls_filtered) {
+	    // NOTE: this condition is for the newer versions of the
+	    // OSD that does filtering on the CLS side
 
-        if (delim_pos >= 0) {
-	  // should only find one delimiter at the end if it finds any
-	  // after the prefix
-	  ceph_assert(delim_pos ==
-		      int(obj.name.length() - params.delim.length()));
-          if (common_prefixes) {
-            if (count >= max) {
-              truncated = true;
-              goto done;
-            }
+	    // should only find one delimiter at the end if it finds any
+	    // after the prefix
+	    if (delim_pos !=
+		int(obj.name.length() - params.delim.length())) {
+	      ldout(cct, 0) <<
+		"WARNING: found delimiter in place other than the end of "
+		"the prefix; obj.name=" << obj.name <<
+		", prefix=" << params.prefix << dendl;
+	    }
+	    if (common_prefixes) {
+	      if (count >= max) {
+		truncated = true;
+		goto done;
+	      }
 
-            (*common_prefixes)[obj.name] = true;
-            count++;
-          }
+	      (*common_prefixes)[obj.name] = true;
+	      count++;
+	    }
 
-          continue;
-        } // if found delimiter after prefix
-      } // if there is a delimiter
+	    continue;
+	  } else {
+	    // NOTE: this condition is for older versions of the OSD
+	    // that do not filter on the CLS side, so the following code
+	    // must do the filtering; once we reach version 16 of ceph,
+	    // this code can be removed along with the conditional that
+	    // can lead this way
+
+	    /* extract key -with trailing delimiter- for CommonPrefix */
+	    string prefix_key =
+	      obj.name.substr(0, delim_pos + params.delim.length());
+
+	    if (common_prefixes &&
+		common_prefixes->find(prefix_key) == common_prefixes->end()) {
+	      if (count >= max) {
+		truncated = true;
+		goto done;
+	      }
+	      next_marker = prefix_key;
+	      (*common_prefixes)[prefix_key] = true;
+
+	      count++;
+	    }
+
+	    continue;
+	  } // if we're running an older OSD version
+	} // if a delimiter was found after prefix
+      } // if a delimiter was passed in
 
       if (count >= max) {
         truncated = true;
@@ -1882,10 +1919,16 @@ int RGWRados::Bucket::List::list_objects_ordered(
       count++;
     } // eiter for loop
 
-    if (!params.delim.empty()) {
-      int marker_delim_pos = cur_marker.name.find(params.delim, cur_prefix.size());
+    // NOTE: the following conditional is needed by older versions of
+    // the OSD that don't do delimiter filtering on the CLS side; once
+    // we reach version 16 of ceph, the following conditional and the
+    // code within can be removed
+    if (!cls_filtered && !params.delim.empty()) {
+      int marker_delim_pos =
+	cur_marker.name.find(params.delim, cur_prefix.size());
       if (marker_delim_pos >= 0) {
-        skip_after_delim = cur_marker.name.substr(0, marker_delim_pos);
+	std::string skip_after_delim =
+	  cur_marker.name.substr(0, marker_delim_pos);
         skip_after_delim.append(after_delim_s);
 
         ldout(cct, 20) << "skip_after_delim=" << skip_after_delim << dendl;
@@ -1898,7 +1941,7 @@ int RGWRados::Bucket::List::list_objects_ordered(
                          << dendl;
         }
       }
-    }
+    } // if older osd didn't do delimiter filtering
 
     // if we finished listing, or if we're returning at least half the
     // requested entries, that's enough; S3 and swift protocols allow
@@ -7995,7 +8038,8 @@ int RGWRados::cls_bucket_list_ordered(RGWBucketInfo& bucket_info,
 				      uint32_t num_entries,
 				      bool list_versions,
 				      ent_map_t& m,
-				      bool *is_truncated,
+				      bool* is_truncated,
+				      bool* cls_filtered,
 				      rgw_obj_index_key *last_entry,
                                       optional_yield y,
 				      check_filter_t force_check_filter)
@@ -8040,10 +8084,15 @@ int RGWRados::cls_bucket_list_ordered(RGWBucketInfo& bucket_info,
   vcurrents.reserve(list_results.size());
   vends.reserve(list_results.size());
   vnames.reserve(list_results.size());
+  *cls_filtered = true;
   for (auto& iter : list_results) {
     vcurrents.push_back(iter.second.dir.m.begin());
     vends.push_back(iter.second.dir.m.end());
     vnames.push_back(oids[iter.first]);
+
+    // unless *all* are shards are cls_filtered, the entire result is
+    // not filtered
+    *cls_filtered = *cls_filtered && iter.second.cls_filtered;
   }
 
   // create a map to track the next candidate entry from each shard,
