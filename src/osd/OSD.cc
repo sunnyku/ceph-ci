@@ -10771,9 +10771,13 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
       wait_lock.unlock();
     } else if (!sdata->stop_waiting) {
       dout(20) << __func__ << " empty q, waiting" << dendl;
+      if (is_smallest_thread_index)
+	sdata->shard_in_progress = false;
       osd->cct->get_heartbeat_map()->clear_timeout(hb);
       sdata->shard_lock.unlock();
       sdata->sdata_cond.wait(wait_lock);
+      if (is_smallest_thread_index)
+	sdata->shard_in_progress = true;
       wait_lock.unlock();
       sdata->shard_lock.lock();
       if (sdata->pqueue->empty() &&
@@ -10790,6 +10794,7 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
       return;
     }
   }
+
 
   list<Context *> oncommits;
   if (is_smallest_thread_index) {

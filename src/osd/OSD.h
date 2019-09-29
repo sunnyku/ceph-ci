@@ -1028,6 +1028,7 @@ struct OSDShard {
   bool stop_waiting = false;
 
   ContextQueue context_queue;
+  bool shard_in_progress = false;
 
   void _enqueue_front(OpQueueItem&& item, unsigned cutoff) {
     unsigned priority = item.get_priority();
@@ -1087,7 +1088,7 @@ struct OSDShard {
       osdmap_lock{make_mutex(osdmap_lock_name)},
       shard_lock_name(shard_name + "::shard_lock"),
       shard_lock{make_mutex(shard_lock_name)},
-      context_queue(sdata_wait_lock, sdata_cond) {
+      context_queue(sdata_wait_lock, sdata_cond, shard_in_progress) {
     if (opqueue == io_queue::weightedpriority) {
       pqueue = std::make_unique<
 	WeightedPriorityQueue<OpQueueItem,uint64_t>>(
