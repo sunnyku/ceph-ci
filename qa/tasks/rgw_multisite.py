@@ -12,6 +12,7 @@ from util.rados import create_ec_pool, create_replicated_pool
 from rgw_multi import multisite
 from rgw_multi.zone_rados import RadosZone as RadosZone
 from rgw_multi.zone_ps import PSZone as PSZone
+from rgw_multi.zone_az import AZone
 
 from teuthology.orchestra import run
 from teuthology import misc
@@ -35,6 +36,7 @@ class RGWMultisite(Task):
     * 'is_master' is passed on the command line as --master
     * 'is_default' is passed on the command line as --default
     * 'is_pubsub' is used to create a zone with tier-type=pubsub
+    * 'is_archive' is used to create a zone with tier-type=archive
     * 'endpoints' given as client names are replaced with actual endpoints
 
             zonegroups:
@@ -79,6 +81,7 @@ class RGWMultisite(Task):
                     endpoints: [c1.client.0]
                   - name: test-zone2
                     is_default: true
+                    is_archive: true
                     endpoints: [c2.client.0]
                   - name: test-zone3
                     is_pubsub: true
@@ -376,6 +379,8 @@ def create_zone(ctx, cluster, gateways, creds, zonegroup, config):
     zone = multisite.Zone(config['name'], zonegroup, cluster)
     if config.pop('is_pubsub', False):
         zone = PSZone(config['name'], zonegroup, cluster)
+    elif config.pop('is_archive', False):
+        zone = AZone(config['name'], zonegroup, cluster)
     else:
         zone = RadosZone(config['name'], zonegroup, cluster)
 
