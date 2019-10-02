@@ -2613,7 +2613,9 @@ CtPtr ProtocolV2::handle_existing_connection(const AsyncConnectionRef& existing)
     ldout(cct, 1) << __func__ << " found previous session existing=" << existing
                   << ", peer must have reseted." << dendl;
     if (connection->policy.resetcheck) {
-      exproto->reset_session();
+      existing->center->submit_to(existing->center->get_id(), [exproto] {
+        exproto->reset_session();
+      });
     }
     return reuse_connection(existing, exproto);
   }
