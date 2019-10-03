@@ -279,6 +279,8 @@ private:
 
   BlockDevice::aio_callback_t discard_cb[3]; //discard callbacks for each dev
 
+  Allocator* shared_bdev_alloc = nullptr;
+
   class SocketHook;
   SocketHook* asok_hook = nullptr;
 
@@ -459,7 +461,8 @@ public:
   void sync_metadata();
 
   int add_block_device(unsigned bdev, const string& path, bool trim,
-		       bool shared_with_bluestore=false);
+		       bool shared_with_bluestore = false,
+                       Allocator* shared_bdev_alloc = nullptr);
   bool bdev_support_label(unsigned id);
   uint64_t get_block_device_size(unsigned bdev);
 
