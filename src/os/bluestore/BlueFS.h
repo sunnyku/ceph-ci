@@ -282,6 +282,7 @@ private:
   BlockDevice::aio_callback_t discard_cb[3]; //discard callbacks for each dev
 
   Allocator* shared_bdev_alloc = nullptr;
+  std::atomic<uint64_t> shared_bdev_used = 0;
 
   class SocketHook;
   SocketHook* asok_hook = nullptr;
