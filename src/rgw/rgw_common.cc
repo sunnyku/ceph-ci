@@ -1151,7 +1151,9 @@ bool verify_bucket_permission_no_policy(const DoutPrefixProvider* dpp, struct re
     return false;
 
   if (bucket_acl->verify_permission(dpp, *s->auth.identity, perm, perm,
-                                    s->info.env->get("HTTP_REFERER")))
+                                    s->info.env->get("HTTP_REFERER"),
+                                    s->bucket_access_conf &&
+                                    s->bucket_access_conf->ignore_public_acls()))
     return true;
 
   if (!user_acl)
