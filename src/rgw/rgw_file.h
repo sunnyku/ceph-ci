@@ -277,6 +277,9 @@ namespace rgw {
 #define CREATE_FLAGS(x) \
     ((x) & ~(RGWFileHandle::FLAG_CREATE|RGWFileHandle::FLAG_LOCK))
 
+    static constexpr uint32_t RCB_MASK = \
+      RGW_SETATTR_MTIME|RGW_SETATTR_CTIME|RGW_SETATTR_ATIME|RGW_SETATTR_SIZE;
+
     friend class RGWLibFS;
 
   private:
@@ -622,10 +625,14 @@ namespace rgw {
       state.size = size;
     }
 
-    void set_times(real_time t) {
-      state.ctime = real_clock::to_timespec(t);
+    void set_times(const struct timespec &ts) {
+      state.ctime = ts;
       state.mtime = state.ctime;
       state.atime = state.ctime;
+    }
+
+    void set_times(real_time t) {
+      set_times(real_clock::to_timespec(t));
     }
 
     void set_ctime(const struct timespec &ts) {
@@ -1156,6 +1163,11 @@ namespace rgw {
 			       RGWLibFS::BucketStats& bs,
 			       uint32_t flags);
 
+    LookupFHResult fake_leaf(RGWFileHandle* parent, const char *path,
+			     enum rgw_fh_type type = RGW_FS_TYPE_NIL,
+			     struct stat *st = nullptr, uint32_t mask = 0,
+			     uint32_t flags = RGWFileHandle::FLAG_NONE);
+
     LookupFHResult stat_leaf(RGWFileHandle* parent, const char *path,
 			     enum rgw_fh_type type = RGW_FS_TYPE_NIL,
 			     uint32_t flags = RGWFileHandle::FLAG_NONE);
@@ -1272,12 +1284,14 @@ public:
   uint64_t* ioff;
   size_t ix;
   uint32_t d_count;
+  bool rcb_eof; // caller forced early stop in readdir cycle
 
   RGWListBucketsRequest(CephContext* _cct, RGWUserInfo *_user,
 			RGWFileHandle* _rgw_fh, rgw_readdir_cb _rcb,
 			void* _cb_arg, RGWFileHandle::readdir_offset& _offset)
     : RGWLibRequest(_cct, _user), rgw_fh(_rgw_fh), offset(_offset),
-      cb_arg(_cb_arg), rcb(_rcb), ioff(nullptr), ix(0), d_count(0) {
+      cb_arg(_cb_arg), rcb(_rcb), ioff(nullptr), ix(0), d_count(0),
+      rcb_eof(false) {
 
     using boost::get;
 
@@ -1350,6 +1364,7 @@ public:
 			      << " dirent=" << ent.bucket.name
 			      << " call count=" << ix
 			      << dendl;
+	rcb_eof = true;
 	return;
       }
       ++ix;
@@ -1370,7 +1385,7 @@ public:
     rgw_fh->add_marker(off, rgw_obj_key{marker.data(), ""},
 		       RGW_FS_TYPE_DIRECTORY);
     ++d_count;
-    return rcb(name.data(), cb_arg, off, RGW_LOOKUP_FLAG_DIR);
+    return rcb(name.data(), cb_arg, off, nullptr, 0, RGW_LOOKUP_FLAG_DIR);
   }
 
   bool eof() {
@@ -1383,7 +1398,7 @@ public:
 			     << " is_truncated: " << is_truncated
 			     << dendl;
     }
-    return !is_truncated;
+    return !is_truncated && !rcb_eof;
   }
 
 }; /* RGWListBucketsRequest */
@@ -1403,12 +1418,14 @@ public:
   uint64_t* ioff;
   size_t ix;
   uint32_t d_count;
+  bool rcb_eof; // caller forced early stop in readdir cycle
 
   RGWReaddirRequest(CephContext* _cct, RGWUserInfo *_user,
 		    RGWFileHandle* _rgw_fh, rgw_readdir_cb _rcb,
 		    void* _cb_arg, RGWFileHandle::readdir_offset& _offset)
     : RGWLibRequest(_cct, _user), rgw_fh(_rgw_fh), offset(_offset),
-      cb_arg(_cb_arg), rcb(_rcb), ioff(nullptr), ix(0), d_count(0) {
+      cb_arg(_cb_arg), rcb(_rcb), ioff(nullptr), ix(0), d_count(0),
+      rcb_eof(false) {
 
     using boost::get;
 
@@ -1471,7 +1488,7 @@ public:
   }
 
   int operator()(const boost::string_ref name, const rgw_obj_key& marker,
-		uint8_t type) {
+		 const ceph::real_time& t, const uint64_t fsz, uint8_t type) {
 
     assert(name.length() > 0); // all cases handled in callers
 
@@ -1480,10 +1497,25 @@ public:
     if (unlikely(!! ioff)) {
       *ioff = off;
     }
+
     /* update traversal cache */
     rgw_fh->add_marker(off, marker, type);
     ++d_count;
-    return rcb(name.data(), cb_arg, off,
+
+    /* set c/mtime and size from bucket index entry */
+    struct stat st = {};
+#ifdef HAVE_STAT_ST_MTIMESPEC_TV_NSEC
+    st.st_atimespec = ceph::real_clock::to_timespec(t);
+    st.st_mtimespec = st.st_atimespec;
+    st.st_ctimespec = st.st_atimespec;
+#else
+    st.st_atim = ceph::real_clock::to_timespec(t);
+    st.st_mtim = st.st_atim;
+    st.st_ctim = st.st_atim;
+#endif
+    st.st_size = fsz;
+
+    return rcb(name.data(), cb_arg, off, &st, RGWFileHandle::RCB_MASK,
 	       (type == RGW_FS_TYPE_DIRECTORY) ?
 	       RGW_LOOKUP_FLAG_DIR :
 	       RGW_LOOKUP_FLAG_FILE);
@@ -1517,18 +1549,25 @@ public:
 			     << " prefix=" << prefix << " "
 			     << " obj path=" << iter.key.name
 			     << " (" << sref << ")" << ""
+			     << " mtime="
+			     << real_clock::to_time_t(iter.meta.mtime)
+			     << " size=" << iter.meta.accounted_size
 			     << dendl;
 
-      if(! this->operator()(sref, next_marker, RGW_FS_TYPE_FILE)) {
+      if (! this->operator()(sref, next_marker, iter.meta.mtime,
+			     iter.meta.accounted_size, RGW_FS_TYPE_FILE)) {
 	/* caller cannot accept more */
 	lsubdout(cct, rgw, 5) << "readdir rcb failed"
 			      << " dirent=" << sref.data()
 			      << " call count=" << ix
 			      << dendl;
+	rcb_eof = true;
 	return;
       }
       ++ix;
     }
+
+    auto cnow = real_clock::now();
     for (auto& iter : common_prefixes) {
 
       lsubdout(cct, rgw, 15) << "readdir common prefixes prefix: " << prefix
@@ -1565,7 +1604,16 @@ public:
 	return;
       }
 
-      this->operator()(sref, next_marker, RGW_FS_TYPE_DIRECTORY);
+      if (! this->operator()(sref, next_marker, cnow, 0,
+			     RGW_FS_TYPE_DIRECTORY)) {
+	/* caller cannot accept more */
+	lsubdout(cct, rgw, 5) << "readdir rcb failed"
+			      << " dirent=" << sref.data()
+			      << " call count=" << ix
+			      << dendl;
+	rcb_eof = true;
+	return;
+      }
       ++ix;
     }
   }
@@ -1585,7 +1633,7 @@ public:
 			     << " is_truncated: " << is_truncated
 			     << dendl;
     }
-    return !is_truncated;
+    return !is_truncated && !rcb_eof;
   }
 
 }; /* RGWReaddirRequest */
