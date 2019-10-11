@@ -3389,6 +3389,14 @@ std::vector<Option> get_global_options() {
     .set_default(-1)
     .set_description(""),
 
+    Option("bdev_enable_discard", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .set_description(""),
+
+    Option("bdev_async_discard", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .set_description(""),
+
     Option("bluefs_alloc_size", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
     .set_default(1_M)
     .set_description(""),

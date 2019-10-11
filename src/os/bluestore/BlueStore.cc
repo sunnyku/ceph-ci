@@ -3839,6 +3839,21 @@ BlueStore::BlueStore(CephContext *cct, const string& path)
   do_prefetch_blob = cct->_conf->bluestore_prefetch_blob;
 }
 
+static void discard_cb(void *priv, void *priv2)
+{
+  BlueStore *store = static_cast<BlueStore*>(priv);
+  interval_set<uint64_t> *tmp = static_cast<interval_set<uint64_t>*>(priv2);
+  store->handle_discard(*tmp);
+}
+
+void BlueStore::handle_discard(interval_set<uint64_t>& to_release)
+{
+  dout(10) << __func__ << dendl;
+  assert(alloc);
+  alloc->release(to_release);
+}
+
+
 BlueStore::BlueStore(CephContext *cct,
   const string& path,
   uint64_t _min_alloc_size)
@@ -4546,10 +4561,16 @@ int BlueStore::_open_bdev(bool create)
 {
   assert(bdev == NULL);
   string p = path + "/block";
-  bdev = BlockDevice::create(cct, p, aio_cb, static_cast<void*>(this));
+  uint64_t dev_size;
+  bdev = BlockDevice::create(cct, p, aio_cb, static_cast<void*>(this), discard_cb, static_cast<void*>(this));
   int r = bdev->open(p);
   if (r < 0)
     goto fail;
+
+  dev_size = bdev->get_size();
+  if (create && cct->_conf->bdev_enable_discard) {
+    bdev->discard(0, dev_size);
+  }
 
   if (bdev->supported_bdev_label()) {
     r = _check_or_set_bdev_label(p, bdev->get_size(), "main", create);
@@ -4567,6 +4588,8 @@ int BlueStore::_open_bdev(bool create)
   if (r < 0) {
     goto fail_close;
   }
+
+
   return 0;
 
  fail_close:
@@ -4729,6 +4752,9 @@ int BlueStore::_open_alloc()
 
 void BlueStore::_close_alloc()
 {
+  assert(bdev);
+  bdev->discard_drain();
+
   assert(alloc);
   alloc->shutdown();
   delete alloc;
@@ -4937,7 +4963,7 @@ int BlueStore::_open_db(bool create)
 
     bfn = path + "/block.db";
     if (::stat(bfn.c_str(), &st) == 0) {
-      r = bluefs->add_block_device(BlueFS::BDEV_DB, bfn);
+      r = bluefs->add_block_device(BlueFS::BDEV_DB, bfn,create && cct->_conf->bdev_enable_discard);
       if (r < 0) {
         derr << __func__ << " add block device(" << bfn << ") returned: " 
              << cpp_strerror(r) << dendl;
@@ -4978,7 +5004,7 @@ int BlueStore::_open_db(bool create)
 
     // shared device
     bfn = path + "/block";
-    r = bluefs->add_block_device(bluefs_shared_bdev, bfn);
+    r = bluefs->add_block_device(bluefs_shared_bdev, bfn,false);
     if (r < 0) {
       derr << __func__ << " add block device(" << bfn << ") returned: " 
 	   << cpp_strerror(r) << dendl;
@@ -5008,7 +5034,7 @@ int BlueStore::_open_db(bool create)
 
     bfn = path + "/block.wal";
     if (::stat(bfn.c_str(), &st) == 0) {
-      r = bluefs->add_block_device(BlueFS::BDEV_WAL, bfn);
+      r = bluefs->add_block_device(BlueFS::BDEV_WAL, bfn,create && cct->_conf->bdev_enable_discard);
       if (r < 0) {
         derr << __func__ << " add block device(" << bfn << ") returned: " 
 	     << cpp_strerror(r) << dendl;
@@ -8709,7 +8735,20 @@ void BlueStore::_txc_release_alloc(TransContext *txc)
   interval_set<uint64_t> bulk_release_extents;
   // it's expected we're called with lazy_release_lock already taken!
   if (!cct->_conf->bluestore_debug_no_reuse_blocks) {
-    dout(10) << __func__ << " " << txc << " " << std::hex
+    int r = 0;
+    if (cct->_conf->bdev_enable_discard && cct->_conf->bdev_async_discard) {
+      r = bdev->queue_discard(txc->released);
+      if (r == 0) {
+	dout(10) << __func__ << "(queued) " << txc << " " << std::hex
+		 << txc->released << std::dec << dendl;
+	goto out;
+      }
+    } else if (cct->_conf->bdev_enable_discard) {
+      for (auto p = txc->released.begin(); p != txc->released.end(); ++p) {
+	  bdev->discard(p.get_start(), p.get_len());
+      }
+    }
+    dout(10) << __func__ << "(sync) " << txc << " " << std::hex
              << txc->released << std::dec << dendl;
     // interval_set seems to be too costly for inserting things in
     // bstore_kv_final. We could serialize in simpler format and perform
@@ -8717,6 +8756,9 @@ void BlueStore::_txc_release_alloc(TransContext *txc)
     bulk_release_extents.insert(txc->released);
   }
 
+  
+
+out:
   alloc->release(bulk_release_extents);
   txc->allocated.clear();
   txc->released.clear();
@@ -9077,8 +9119,22 @@ void BlueStore::_kv_sync_thread()
 	}
 	dout(20) << __func__ << " releasing old bluefs 0x" << std::hex
 		 << bluefs_extents_reclaiming << std::dec << dendl;
-	alloc->release(bluefs_extents_reclaiming);
-	bluefs_extents_reclaiming.clear();
+	int r = 0;
+	if (cct->_conf->bdev_enable_discard && cct->_conf->bdev_async_discard) {
+	    r = bdev->queue_discard(bluefs_extents_reclaiming);
+	    if (r == 0) {
+	      goto clear;
+	    }
+	  } else if (cct->_conf->bdev_enable_discard) {
+	    for (auto p = bluefs_extents_reclaiming.begin(); p != bluefs_extents_reclaiming.end(); ++p) {
+	      bdev->discard(p.get_start(), p.get_len());
+	    }
+	  }
+	  alloc->release(bluefs_extents_reclaiming);
+	  
+	clear:
+	
+	  bluefs_extents_reclaiming.clear();
       }
 
       {

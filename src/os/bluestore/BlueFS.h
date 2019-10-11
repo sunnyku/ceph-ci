@@ -254,6 +254,7 @@ private:
   vector<uint64_t> block_total;               ///< sum of block_all
   vector<Allocator*> alloc;                   ///< allocators for bdevs
   vector<interval_set<uint64_t>> pending_release; ///< extents to release
+  BlockDevice::aio_callback_t discard_cb[3];
 
   void _init_logger();
   void _shutdown_logger();
@@ -394,7 +395,7 @@ public:
   /// sync any uncommitted state to disk
   void sync_metadata();
 
-  int add_block_device(unsigned bdev, const string& path);
+  int add_block_device(unsigned bdev, const string& path,bool trim);
   bool bdev_support_label(unsigned id);
   uint64_t get_block_device_size(unsigned bdev);
 
@@ -404,6 +405,9 @@ public:
   /// reclaim block space
   int reclaim_blocks(unsigned bdev, uint64_t want,
 		     PExtentVector *extents);
+
+  void handle_discard(unsigned dev, interval_set<uint64_t>& to_release);
+
 
   void flush(FileWriter *h) {
     std::lock_guard<std::mutex> l(lock);
