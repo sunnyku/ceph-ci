@@ -285,6 +285,8 @@ private:
   class SocketHook;
   SocketHook* asok_hook = nullptr;
 
+  bool after_mkfs = false;
+
   void _init_logger();
   void _shutdown_logger();
   void _update_logger_stats();
