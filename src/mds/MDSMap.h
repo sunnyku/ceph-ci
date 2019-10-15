@@ -160,6 +160,8 @@ public:
   void add_rank_node_to_consistent_hash_ring(mds_rank_t rank);
   mds_rank_node get_rank_node_from_ino(inodeno_t ino); //Get the rank that handles the key i.e inode number
   mds_rank_t put_ino_in_consistent_hash_ring(inodeno_t ino); //Assign the key i.e inode number to a rank in the consistent hash ring
+  vector<inodeno_t> get_inos_from_rank_in_consistent_hash_ring(mds_rank_t rank);
+  mds_rank_t get_successor_from_rank_in_consistent_hash_ring(mds_rank_t rank);
   void remove_rank_node_from_consistent_hash_ring(mds_rank_t rank);
 
 

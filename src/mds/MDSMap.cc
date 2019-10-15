@@ -546,7 +546,7 @@ void MDSMap::add_rank_node_to_consistent_hash_ring(mds_rank_t rank)
   }
 }
 
-MDSMap::mds_rank_node MDSMap::get_rank_node_from_ino(inodeno_t ino)
+MDSMap::mds_rank_node MDSMap::get_rank_node_from_ino_in_consistent_hash_ring(inodeno_t ino)
 {
   uint32_t hash = rjhash32(ino);
 
@@ -588,6 +588,44 @@ mds_rank_t MDSMap::put_ino_in_consistent_hash_ring(inodeno_t ino)
 
   mds_rank_nodes[index].inode_nos.push_back(ino);
   return mds_rank_nodes[index].rank;
+}
+
+vector<inodeno_t> MDSMap::get_inos_from_rank_in_consistent_hash_ring(mds_rank_t rank)
+{
+  std::vector<mds_rank_node>::iterator iter;
+  uint32_t hash = rjhash32(rank);
+
+  /* Do a binary search to get the index of the rank that needs to be removed */
+  iter = std::lower_bound(mds_rank_nodes.begin(), mds_rank_nodes.end(), hash,
+         [](const mds_rank_node &rank_hash1, uint32_t hash_val) -> bool 
+         {
+           return rank_hash1.hash < hash_val;
+         });
+
+  if (iter != mds_rank_nodes.end() && !(hash < (*iter).hash))
+    return  mds_rank_nodes[index].inode_nos;
+  else
+    std::ostringstream oss;
+    oss << "rank not hashed in consistent hash ring";
+    return;
+}
+
+mds_rank_t MDSMap::get_successor_of_rank_in_consistent_hash_ring(mds_rank rank)
+{
+  uint32_t hash = rjhash32(rank);
+  std::vector<mds_rank_node>::iterator iter;
+  struct mds_rank_node last_hash = mds_rank_nodes.back();
+
+  if (hash == last_hash.hash)
+    return mds_rank_node.begin()
+  else
+    iter = std::upper_bound( mds_rank_nodes.begin(), mds_rank_nodes.end(), hash,
+           [](uint32_t hash_val, const mds_rank_node &rank_hash1) -> bool
+           {
+             return hash_val < rank_hash1.hash;
+           });
+
+    return *iter.rank;
 }
 
 void MDSMap::remove_rank_node_from_consistent_hash_ring(mds_rank_t rank)

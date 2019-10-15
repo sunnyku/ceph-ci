@@ -2385,7 +2385,7 @@ void MDSRankDispatcher::handle_mds_map(
   if (mdsmap->get_inline_data_enabled() && !oldmap.get_inline_data_enabled())
     dout(0) << "WARNING: inline_data support has been deprecated and will be removed in a future release" << dendl;
 
-  mdcache->handle_mdsmap(*mdsmap);
+  mdcache->handle_mdsmap(*mdsmap, *oldmap);
 }
 
 void MDSRank::handle_mds_recovery(mds_rank_t who)
