@@ -5134,23 +5134,36 @@ void CInode::maybe_export_pin(bool update)
   }
 }
 
-void CInode::maybe_export_ephemeral_pin()
+void CInode::maybe_export_ephemeral_pin(bool update)
 {
   //Check if it's already ephemerally pinned
-  if (in.inode.export_ephemeral_random != MDS_RANK_NONE)
-    return;
+  if (get_inode().export_ephemeral_random_pin != MDS_RANK_NONE) {
+    /* Case where the rank where it had got pinned has now stopped */
+    if (get_inode().export_ephemeral_random_pin > mdcache->mds->mdsmap->get_max_mds()) {
+      update = true
+      mds_rank_t rank = mdscache->mds->mdsmap->get_succesor_of_rank_in_consistent_hash_ring(get_inode().export_ephemeral_random_pin)
+    }
+    /* Case where a new rank is added to the cluster */
+    else if (update)
+      mds_rank_t rank = mdcache->mds->get_nodeid();
+    else
+      return;
+  }
 
-  if (g_conf()->export_ephemeral_random) {
-    if (g_conf()->mds_export_ephemeral_random >= ceph::util::generate_random_number(0.0, 1.0)) {
+  if (g_conf()->mds_export_ephemeral_random) {
+    if (g_conf()->mds_export_ephemeral_random >= ceph::util::generate_random_number(0.0, 1.0) || update) {
 
-      mds_rank_t rank = mdcache->mds->mdsmap->put_ino_in_consistent_hash_ring(ino());
+      if(!update) 
+        mds_rank_t rank = mdcache->mds->mdsmap->put_ino_in_consistent_hash_ring(ino());
+
       auto &pi = project_inode();
-     
+    
+      MutationRef mut(new MutationImpl());
+
       set_export_ephemeral_random_pin(rank);
       mut->add_projected_inode(this);
       MDLog *mdlog = mdcache->mds->mdlog;
 
-      MutationRef mut(new MutationImpl());
       mut->ls = mdlog->get_current_segment();
 
       EUpdate *le = new EUpdate(mdlog, "set export ephemeral random vxattr");

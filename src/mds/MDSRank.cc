@@ -2401,7 +2401,7 @@ void MDSRankDispatcher::handle_mds_map(
     purge_queue.update_op_limit(*mdsmap);
   }
 
-  mdcache->handle_mdsmap(*mdsmap);
+  mdcache->handle_mdsmap(*mdsmap, *oldmap);
 }
 
 void MDSRank::handle_mds_recovery(mds_rank_t who)
