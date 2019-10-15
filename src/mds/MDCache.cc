@@ -13061,7 +13061,7 @@ bool MDCache::dump_inode(Formatter *f, uint64_t number) {
   return true;
 }
 
-void MDCache::handle_mdsmap(const MDSMap &mdsmap) {
+void MDCache::handle_mdsmap(const MDSMap &mdsmap, const MDSMap &oldmap) {
   // process export_pin_delayed_queue whenever a new MDSMap received
   auto &q = export_pin_delayed_queue;
   for (auto it = q.begin(); it != q.end(); ) {
@@ -13077,6 +13077,22 @@ void MDCache::handle_mdsmap(const MDSMap &mdsmap) {
     in->state_clear(CInode::STATE_DELAYEDEXPORTPIN);
     it = q.erase(it);
     in->maybe_export_pin();
+  }
+
+  /* Handle consistent hash ring changes when new mds is active. In the case where an mds is stopped (max_mds is decreased), the subtree migrations are handled as the Inodes are loaded */
+  if (mdsmap.get_max_mds() > oldmap.get_max_mds()) {
+    if (g_conf()->mds_export_ephemeral_random) {
+      for(mds_rank_t rank = oldmap.get_max_mds() + 1, rank <= mdsmap.get_max_mds(), rank++) {
+        vector<inodeno_t> inode_nos = mdsmap.get_inos_from_rank_in_consistent_hash_ring(rank);
+        for(auto it = inode_nos.begin(); it != inode_nos.end(), it++) {
+	  auto in = get_inode(*it);
+	  if (in == NULL || !(in.is_auth()))
+	    dout(10) << "Inode is not auth to this rank" << dendl;
+	  else
+	    in->maybe_ephemeral_export(true);
+        }
+      }
+    }
   }
 }
 
