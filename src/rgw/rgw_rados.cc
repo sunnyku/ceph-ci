@@ -10382,7 +10382,7 @@ string get_obj_data::get_pending_oid()
 }
 
 int get_obj_data::add_l2_request(struct librados::L2CacheRequest **cc, bufferlist *pbl, string oid,
-                off_t obj_ofs, off_t read_ofs, size_t len, string key, librados::AioCompletion *lc)
+                off_t obj_ofs, off_t read_ofs, size_t len, string key, librados::AioCompletion *lc, string location)
 {
   librados::L2CacheRequest *l2request = new librados::L2CacheRequest(cct);
   l2request->sequence = sequence; sequence+=1;
@@ -10395,7 +10395,8 @@ int get_obj_data::add_l2_request(struct librados::L2CacheRequest **cc, bufferlis
   l2request->op_data = this;
   l2request->pbl = pbl;
   /*FIXME calcuclate the destination for L2 and update l2request->dest*/
-  l2request->dest=deterministic_hash(oid);
+  //l2request->dest=deterministic_hash(oid);
+  l2request->dest=location;
   //ldout(cct, 0) << "INFO::REMOTE_IO :"<< dest << dendl;
   cache_lock.Lock();
   cache_aio_map[obj_ofs] = l2request;

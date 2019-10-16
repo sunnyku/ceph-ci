@@ -2168,7 +2168,7 @@ struct get_obj_data : public RefCountedObject {
   int add_l1_request(struct librados::L1CacheRequest **cc, bufferlist *pbl, string oid,
       size_t len, off_t ofs, off_t read_ofs, string key, librados::AioCompletion *lc);
   int add_l2_request(struct librados::L2CacheRequest **cc, bufferlist *pbl, string oid,
-      off_t obj_ofs, off_t read_ofs, size_t len, string key, librados::AioCompletion *lc);
+      off_t obj_ofs, off_t read_ofs, size_t len, string key, librados::AioCompletion *lc, string location);
   int add_cache_notifier(std::string oid, librados::AioCompletion *lc);
   void cache_aio_completion_cb(librados::CacheRequest *c);
   void cache_unmap_io(off_t ofs);

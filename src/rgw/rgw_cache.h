@@ -928,7 +928,7 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
  /*directory*/
 	string loc = data_cache.get_value(read_obj.oid)
 	mydout(20) << "ugur, redis "<< loc <<dendl;
-	if(loc.compare("")==0) {
+	if (loc.compare("")==0) {
 	 	mydout(20) << "rados->get_obj_iterate_cb oid=" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
     op.read(read_ofs, len, pbl, NULL);
     r = io_ctx.aio_operate(read_obj.oid, c, &op, NULL);
@@ -949,7 +949,7 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
 	}
 	else{
 		librados::L2CacheRequest *cc;
-		d->add_l2_request(&cc, pbl, read_obj.oid, obj_ofs, read_ofs, len, key, c);
+		d->add_l2_request(&cc, pbl, read_obj.oid, obj_ofs, read_ofs, len, key, c, loc);
 		r = io_ctx.cache_aio_notifier(read_obj.oid, cc);
 		data_cache.push_l2_request(cc);
 	}	
