@@ -113,6 +113,12 @@ public:
   DataCache();
   ~DataCache() {}
 
+  std::string get_value(string key);
+  std::string connect_redis(string uri);
+  int set_value(string key, string location);
+  int delete_value(string key, string location);
+	 
+ 
   bool get(string oid);
   void put(bufferlist& bl, unsigned int len, string obj_key);
   int io_write(bufferlist& bl, unsigned int len, std::string oid);
@@ -843,6 +849,7 @@ int RGWDataCache<T>::flush_read_list(struct get_obj_data *d) {
     oid = d->get_pending_oid();
     if (bl.length() == 0x400000)
       data_cache.put(bl, bl.length(), oid);
+
     r = d->client_cb->handle_data(bl, 0, bl.length());
     if (r < 0) {
       mydout(0) << "ERROR: flush_read_list(): d->client_cb->handle_data() returned " << r << dendl;
@@ -918,6 +925,36 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
   librados::IoCtx io_ctx(d->io_ctx);
   io_ctx.locator_set_key(read_obj.loc);
   d->add_pending_oid(read_obj.oid);
+ /*directory*/
+	string loc = data_cache.get_value(read_obj.oid)
+	mydout(20) << "ugur, redis "<< loc <<dendl;
+	if(loc.compare("")==0) {
+	 	mydout(20) << "rados->get_obj_iterate_cb oid=" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
+    op.read(read_ofs, len, pbl, NULL);
+    r = io_ctx.aio_operate(read_obj.oid, c, &op, NULL);
+    mydout(20) << "rados->aio_operate r=" << r << " bl.length=" << pbl->length() << dendl;
+    if (r < 0) {
+    	mydout(0) << "rados->aio_operate r=" << r << dendl;
+      goto done_err;
+    }
+	}
+	else if(loc.compare("127.0.0.1") == 0) {
+		librados::L1CacheRequest *cc;
+		d->add_l1_request(&cc, pbl, read_obj.oid, len, obj_ofs, read_ofs, key, c);
+		r = io_ctx.cache_aio_notifier(read_obj.oid, cc);
+		r = d->submit_l1_aio_read(cc);
+		if (r != 0 ){
+     		mydout(0) << "Error cache_aio_read failed err=" << r << dendl;
+    	}
+	}
+	else{
+		librados::L2CacheRequest *cc;
+		d->add_l2_request(&cc, pbl, read_obj.oid, obj_ofs, read_ofs, len, key, c);
+		r = io_ctx.cache_aio_notifier(read_obj.oid, cc);
+		data_cache.push_l2_request(cc);
+	}	
+
+
 
   if (data_cache.get(read_obj.oid)) {
     librados::L1CacheRequest *cc;

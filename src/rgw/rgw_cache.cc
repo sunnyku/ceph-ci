@@ -765,3 +765,76 @@ int HttpL2Request::sign_request(RGWAccessKey& key, RGWEnv& env, req_info& info)
 
   return 0;
 }
+
+static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp)
+{
+    ((std::string*)userp)->append((char*)contents, size * nmemb);
+    return size * nmemb;
+}
+
+
+
+std::string DataCache::connect_redis(string uri){
+	std::string readBuffer;
+	CURL *curl;
+        CURLcode res;
+        curl = curl_easy_init();
+        if(curl) {
+                curl_easy_setopt(curl, CURLOPT_URL, uri.c_str());
+                curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+                curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+                curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+                res = curl_easy_perform(curl);
+                if( res != CURLE_OK){
+	 		ldout(cct, 20) << "Engage1: redix curl_easy_perform() failed " << curl_easy_strerror(res) << " key " << key<<dendl;
+                }
+		else {
+                        ldout(cct, 20) << " Engage1: redix get in result  uri " << uri << dendl;
+                }
+		curl_easy_cleanup(curl);
+		return readBuffer;
+
+}
+
+std::string DataCache::get_value(string key){
+	std::string readBuffer;
+	std::string uri = "http://127.0.0.1:7379/GET/" + key+ ".txt";
+	readBuffer = connect_redis(uri)
+	if (readBuffer.empty()){
+		ldout(cct, 20) << "Engage1: Miss, not int directory, key " << key <<dendl;
+		return "";
+		}
+
+	else { return readBuffer; }
+}
+
+int DataCache::set_value(string key, string location){
+        string readBuffer;
+        string uri = "http://127.0.0.1:7379/SADD/" +key+"/"+location+".txt";
+	readBuffer = connect_redis(uri)
+	if (readBuffer.compare("+OK")==0) {return 0;}
+	else{ 
+		ldout(cct, 20) << " Engage1: coud not set value in directory  key " << key << dendl;
+		return -1;
+	}
+
+}
+
+int DataCache::delete_value(string key, string location){
+        string readBuffer;
+        string uri = "http://127.0.0.1:7379/DEL/" +key+".txt";
+	readBuffer = connect_redis(uri)
+	if (readBuffer.compare("1")==0) {return 0;}
+	else{ 
+		ldout(cct, 20) << " Engage1: coud not delete value in directory  key " << key << dendl;
+		return -1;
+	}
+
+}
+
+
+
+
+
+
