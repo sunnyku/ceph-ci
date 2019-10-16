@@ -99,7 +99,12 @@ void MDBalancer::handle_export_pins(void)
     auto cur = it++;
     CInode *in = *cur;
     ceph_assert(in->is_dir());
-    mds_rank_t export_pin = in->get_export_pin(false);
+    mds_rank_t export_pin = MDS_RANK_NONE;
+    // Making sure the ephemeral pin does not override export pin
+    if (in->get_export_pin(false) != MDS_RANK_NONE)
+      export_pin = in->get_export_pin(false);
+    else if (in->get_export_ephemeral_random_pin(false) != MDS_RANK_NONE)
+      export_pin = in->get_export_ephemeral_random_pin(false);
     if (export_pin >= mds->mdsmap->get_max_mds()) {
       dout(20) << " delay export pin on " << *in << dendl;
       in->state_clear(CInode::STATE_QUEUEDEXPORTPIN);
