@@ -48,13 +48,50 @@ or older versions of Ceph.
 Logging
 -------
 
-``MgrModule`` instances have a ``log`` property which is a logger instance that
-sends log messages into the Ceph logging layer where they will be recorded
-in the mgr daemon's log file.
+Logging in modules' code is done as in any other python program. Just import
+the ``logging`` package and get a logger instance with the
+``logging.getLogger`` function.
 
-Use it the same way you would any other python logger.  The python
-log levels debug, info, warn, err are mapped into the Ceph
-severities 20, 4, 1 and 0 respectively.
+Each module has a ``log_level`` option that specifies the current python
+logging level of the module.
+To change or query the logging level of the module use the following ceph
+commands::
+
+  ceph <module_name> logging level set <INFO|DEBUG|CRITICAL|ERROR|WARNING|NOTSET>
+  ceph <module_name> logging level get
+
+The logging level used upon the module's start is determined by the current
+logging level of the mgr daemon. The mgr daemon logging level is mapped to
+the module python logging level as follows:
+
+* <= 0 is CRITICAL
+* <= 1 is WARNING
+* <= 4 is INFO
+* <= +inf is DEBUG
+
+By default, modules' logging messages are processed by the Ceph logging layer
+where they will be recorded in the mgr daemon's log file.
+But it's also possible to send a module's logging message to it's own file.
+
+The module's log file will be located in the same directory as the mgr daemon's
+log file with the following name pattern::
+
+   <mgr_daemon_log_file_name>.<module_name>.log
+
+To enable the file logging on a module use the following command::
+
+   ceph <module_name> logging file enable
+
+When the module's file logging is enabled, module's logging messages stop
+being written to the mgr daemon's log file and are only written to the
+module's log file.
+
+It's also possible to check the status and disable the file logging with the
+following commands::
+
+   ceph <module_name> logging file status
+   ceph <module_name> logging file disable
+
 
 Exposing commands
 -----------------
@@ -347,20 +384,6 @@ is recommend *not* to rely on this reference passing, as in future the
 implementation may change to serialize arguments and return
 values.
 
-
-Logging
--------
-
-Use your module's ``log`` attribute as your logger.  This is a logger
-configured to output via the ceph logging framework, to the local ceph-mgr
-log files.
-
-Python log severities are mapped to ceph severities as follows:
-
-* DEBUG is 20
-* INFO is 4
-* WARN is 1
-* ERR is 0
 
 Shutting down cleanly
 ---------------------
