@@ -1263,7 +1263,7 @@ public:
   void discard_delayed_expire(CDir *dir);
 
   // -- mdsmap --
-  void handle_mdsmap(const MDSMap &mdsmap);
+  void handle_mdsmap(const MDSMap &mdsmap, const MDSMap &oldmap);
 
 protected:
   int dump_cache(std::string_view fn, Formatter *f);
