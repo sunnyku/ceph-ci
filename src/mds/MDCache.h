@@ -880,7 +880,7 @@ class MDCache {
   void discard_delayed_expire(CDir *dir);
 
   // -- mdsmap --
-  void handle_mdsmap(const MDSMap &mdsmap);
+  void handle_mdsmap(const MDSMap &mdsmap, const MDSMap &oldmap);
 
   int dump_cache() { return dump_cache({}, nullptr); }
   int dump_cache(std::string_view filename);

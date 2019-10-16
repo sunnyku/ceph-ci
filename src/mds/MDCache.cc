@@ -13110,15 +13110,18 @@ void MDCache::handle_mdsmap(const MDSMap &mdsmap, const MDSMap &oldmap) {
 
   /* Handle consistent hash ring changes when new mds is active. In the case where an mds is stopped (max_mds is decreased), the subtree migrations are handled as the Inodes are loaded */
   if (mdsmap.get_max_mds() > oldmap.get_max_mds()) {
-    if (g_conf()->mds_export_ephemeral_random) {
-      for(mds_rank_t rank = oldmap.get_max_mds() + 1, rank <= mdsmap.get_max_mds(), rank++) {
+    if (g_conf().get_val<double>("mds_export_ephemeral_random")) {
+      for(mds_rank_t rank = oldmap.get_max_mds() + 1; rank <= mdsmap.get_max_mds(); rank++) {
         vector<inodeno_t> inode_nos = mdsmap.get_inos_from_rank_in_consistent_hash_ring(rank);
-        for(auto it = inode_nos.begin(); it != inode_nos.end(), it++) {
-	  auto in = get_inode(*it);
-	  if (in == NULL || !(in.is_auth()))
-	    dout(10) << "Inode is not auth to this rank" << dendl;
-	  else
-	    in->maybe_ephemeral_export(true);
+        // Check if the rank is not hashed or if there is no inodes handled by the rank in the consistent hash ring
+        if (inode_nos.empty())
+          return;
+        for(auto it = inode_nos.begin(); it != inode_nos.end(); it++) {
+          auto in = get_inode(*it);
+          if (in == NULL || !(in->is_auth()))
+            dout(10) << "Inode is not auth to this rank" << dendl;
+          else
+            in->maybe_export_ephemeral_pin(true);
         }
       }
     }
