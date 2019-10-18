@@ -787,7 +787,7 @@ std::string DataCache::connect_redis(string uri){
                 curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
                 res = curl_easy_perform(curl);
                 if( res != CURLE_OK){
-	 		ldout(cct, 20) << "Engage1: redix curl_easy_perform() failed " << curl_easy_strerror(res) << " key " << key<<dendl;
+	 		ldout(cct, 20) << "Engage1: redix curl_easy_perform() failed " << curl_easy_strerror(res) << " uri " << uri <<dendl;
                 }
 		else {
                         ldout(cct, 20) << " Engage1: redix get in result  uri " << uri << dendl;
@@ -795,12 +795,12 @@ std::string DataCache::connect_redis(string uri){
 		curl_easy_cleanup(curl);
 		return readBuffer;
 
+	}
 }
-
 std::string DataCache::get_value(string key){
 	std::string readBuffer;
 	std::string uri = "http://127.0.0.1:7379/GET/" + key+ ".txt";
-	readBuffer = connect_redis(uri)
+	readBuffer = connect_redis(uri);
 	if (readBuffer.empty()){
 		ldout(cct, 20) << "Engage1: Miss, not int directory, key " << key <<dendl;
 		return "";
@@ -812,7 +812,7 @@ std::string DataCache::get_value(string key){
 int DataCache::set_value(string key, string location){
         string readBuffer;
         string uri = "http://127.0.0.1:7379/SADD/" +key+"/"+location+".txt";
-	readBuffer = connect_redis(uri)
+	readBuffer = connect_redis(uri);
 	if (readBuffer.compare("+OK")==0) {return 0;}
 	else{ 
 		ldout(cct, 20) << " Engage1: coud not set value in directory  key " << key << dendl;
@@ -824,7 +824,7 @@ int DataCache::set_value(string key, string location){
 int DataCache::delete_value(string key, string location){
         string readBuffer;
         string uri = "http://127.0.0.1:7379/DEL/" +key+".txt";
-	readBuffer = connect_redis(uri)
+	readBuffer = connect_redis(uri);
 	if (readBuffer.compare("1")==0) {return 0;}
 	else{ 
 		ldout(cct, 20) << " Engage1: coud not delete value in directory  key " << key << dendl;

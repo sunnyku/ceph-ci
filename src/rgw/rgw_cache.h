@@ -23,6 +23,12 @@
 #include "include/lru.h" /*engage1*/
 #include "rgw_threadpool.h"
 
+/*directory*/
+#include "/root/directory/acl/lib_acl_cpp/include/acl_cpp/lib_acl.hpp"
+#include <stdlib.h>
+#include <stdio.h>
+#include <iostream>
+
 enum {
   UPDATE_OBJ,
   REMOVE_OBJ,
@@ -925,11 +931,13 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
   librados::IoCtx io_ctx(d->io_ctx);
   io_ctx.locator_set_key(read_obj.loc);
   d->add_pending_oid(read_obj.oid);
- /*directory*/
-	string loc = data_cache.get_value(read_obj.oid)
+
+	 acl::acl_cpp_init();
+    /*directory*/
+	string loc = data_cache.get_value(read_obj.oid);
 	mydout(20) << "ugur, redis "<< loc <<dendl;
 	if (loc.compare("")==0) {
-	 	mydout(20) << "rados->get_obj_iterate_cb oid=" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
+		mydout(20) << "rados->get_obj_iterate_cb oid=" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
     op.read(read_ofs, len, pbl, NULL);
     r = io_ctx.aio_operate(read_obj.oid, c, &op, NULL);
     mydout(20) << "rados->aio_operate r=" << r << " bl.length=" << pbl->length() << dendl;
@@ -955,7 +963,7 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
 	}	
 
 
-
+/*
   if (data_cache.get(read_obj.oid)) {
     librados::L1CacheRequest *cc;
     d->add_l1_request(&cc, pbl, read_obj.oid, len, obj_ofs, read_ofs, key, c);
@@ -980,7 +988,7 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
     r = io_ctx.cache_aio_notifier(read_obj.oid, cc); 
     data_cache.push_l2_request(cc);
   }
-
+*/
   // Flush data to client if there is any
   r = flush_read_list(d);
   if (r < 0)
