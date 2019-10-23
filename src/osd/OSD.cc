@@ -6726,12 +6726,12 @@ void OSD::handle_command(MCommand *m)
   ConnectionRef con = m->get_connection();
   auto session = ceph::ref_cast<Session>(con->get_priv());
   if (!session) {
-    con->send_message(new MCommandReply(m, -EPERM));
+    con->send_message(new MCommandReply(m, -EACCES));
     m->put();
     return;
   }
   if (!session->caps.allow_all()) {
-    con->send_message(new MCommandReply(m, -EPERM));
+    con->send_message(new MCommandReply(m, -EACCES));
     m->put();
     return;
   }
@@ -7102,7 +7102,7 @@ int OSD::ms_handle_authentication(Connection *con)
     catch (buffer::error& e) {
       dout(10) << __func__ << " session " << s << " " << s->entity_name
 	       << " failed to decode caps string" << dendl;
-      ret = -EPERM;
+      ret = -EACCES;
     }
     if (!ret) {
       bool success = s->caps.parse(str);
@@ -7114,7 +7114,7 @@ int OSD::ms_handle_authentication(Connection *con)
       } else {
 	dout(10) << __func__ << " session " << s << " " << s->entity_name
 		 << " failed to parse caps '" << str << "'" << dendl;
-	ret = -EPERM;
+	ret = -EACCES;
       }
     }
   }
