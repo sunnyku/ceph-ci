@@ -230,6 +230,13 @@ class CBT(Task):
         testdir = misc.get_testdir(self.ctx)
         self.first_mon.run(
             args=[
+                'cd', testdir, run.Raw('&&'),
+                'cd', 'cos', run.Raw('&&'),
+                'sh', 'stop-all.sh'
+            ]
+        )
+        self.first_mon.run(
+            args=[
                 'rm', '--one-file-system', '-rf', '--',
                 '{tdir}/cbt'.format(tdir=testdir),
             ]
