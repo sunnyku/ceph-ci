@@ -142,7 +142,6 @@ enum {
 #define META_POOL_ID ((uint64_t)-1ull)
 
 class BlueStore : public ObjectStore,
-		  public BlueFSDeviceExpander,
 		  public md_config_obs_t {
   // -----------------------------------------------------
   // types
@@ -1944,7 +1943,6 @@ public:
 private:
   BlueFS *bluefs = nullptr;
   bluefs_layout_t bluefs_layout;
-  mono_time bluefs_last_balance;
   utime_t next_dump_on_bluefs_alloc_failure;
 
   KeyValueDB *db = nullptr;
@@ -1974,9 +1972,6 @@ private:
   std::atomic<uint64_t> nid_max = {0};
   std::atomic<uint64_t> blobid_last = {0};
   std::atomic<uint64_t> blobid_max = {0};
-
-  interval_set<uint64_t> bluefs_extents;  ///< block extents owned by bluefs
-  interval_set<uint64_t> bluefs_extents_reclaiming; ///< currently reclaiming
 
   ceph::mutex deferred_lock = ceph::make_mutex("BlueStore::deferred_lock");
   std::atomic<uint64_t> deferred_seq = {0};
@@ -2259,10 +2254,6 @@ private:
   int _open_db_and_around(bool read_only);
   void _close_db_and_around();
 
-  // updates legacy bluefs related recs in DB to a state valid for
-  // downgrades from nautilus.
-  void _sync_bluefs_and_fm();
-
   /*
    * @warning to_repair_db means that we open this db to repair it, will not
    * hold the rocksdb's file lock.
@@ -2302,9 +2293,6 @@ private:
   void _get_statfs_overall(struct store_statfs_t *buf);
 
   void _dump_alloc_on_failure();
-
-  int64_t _get_bluefs_size_delta(uint64_t bluefs_free, uint64_t bluefs_total);
-  int _balance_bluefs_freespace();
 
   CollectionRef _get_collection(const coll_t& cid);
   void _queue_reap_collection(CollectionRef& c);
@@ -2844,16 +2832,6 @@ public:
     return true;
   }
 
-  /*
-  Allocate space for BlueFS from slow device.
-  Either automatically applies allocated extents to underlying 
-  BlueFS (extents == nullptr) or just return them (non-null extents) provided
-  */
-  int allocate_bluefs_freespace(
-    uint64_t min_size,
-    uint64_t size,
-    PExtentVector* extents);
-
   inline void log_latency(const char* name,
     int idx,
     const ceph::timespan& lat,
@@ -3192,21 +3170,6 @@ private:
 			unsigned bits);
 
 private:
-  std::atomic<uint64_t> out_of_sync_fm = {0};
-  // --------------------------------------------------------
-  // BlueFSDeviceExpander implementation
-  uint64_t get_recommended_expansion_delta(uint64_t bluefs_free,
-    uint64_t bluefs_total) override {
-    auto delta = _get_bluefs_size_delta(bluefs_free, bluefs_total);
-    return delta > 0 ? delta : 0;
-  }
-  int allocate_freespace(
-    uint64_t min_size,
-    uint64_t size,
-    PExtentVector& extents) override {
-    return allocate_bluefs_freespace(min_size, size, &extents);
-  };
-  size_t available_freespace(uint64_t alloc_size) override;
   inline bool _use_rotational_settings();
 
 public:
@@ -3468,7 +3431,6 @@ public:
   bool fix_false_free(KeyValueDB *db,
 		      FreelistManager* fm,
 		      uint64_t offset, uint64_t len);
-  bool fix_bluefs_extents(std::atomic<uint64_t>& out_of_sync_flag);
 
   void init(uint64_t total_space, uint64_t lres_tracking_unit_size);
 
