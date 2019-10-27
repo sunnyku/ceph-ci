@@ -2039,7 +2039,6 @@ private:
 
   int init_op_flags(OpRequestRef& op);
 
-  size_t get_num_cache_shards();
   int get_num_op_shards();
   int get_num_op_threads();
 
