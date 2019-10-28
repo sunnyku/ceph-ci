@@ -18,6 +18,9 @@
 #include "rgw_auth_s3.h"
 #include "rgw_op.h"
 
+
+#include <cpp_redis/cpp_redis>
+
 class RGWGetObj_CB;
 
 #define dout_subsys ceph_subsys_rgw
@@ -407,6 +410,11 @@ int DataCache::io_write(bufferlist& bl ,unsigned int len, std::string oid) {
   chunk_info->set_ctx(cct);
   chunk_info->size = len;
   cache_map.insert(pair<string, ChunkDataInfo*>(oid, chunk_info));
+  r = set_value(oid,"127.0.0.1");
+  ldout(cct, 0) << "Engage1: DataCache::write: updating redis " << oid << dendl;
+  if (r < 0) {
+		ldout(cct, 0) << "ERROR: DataCache::write: error updating redis entry " << r << dendl;
+  }
   cache_lock.Unlock();
 
   return r;
@@ -423,7 +431,7 @@ void DataCache::cache_aio_write_completion_cb(cacheAioWriteRequest *c){
 
   ChunkDataInfo  *chunk_info = NULL;
 
-  ldout(cct, 0) << "engage: cache_aio_write_completion_cb oid:" << c->oid <<dendl;
+  ldout(cct, 0) << "RGW-Cache: cache_aio_write_completion_cb oid:" << c->oid <<dendl;
 
   /*update cahce_map entries for new chunk in cache*/
   cache_lock.Lock();
@@ -433,6 +441,11 @@ void DataCache::cache_aio_write_completion_cb(cacheAioWriteRequest *c){
   chunk_info->set_ctx(cct);
   chunk_info->size = c->cb->aio_nbytes;
   cache_map.insert(pair<string, ChunkDataInfo*>(c->oid, chunk_info));
+  int r = set_value(c->oid,"127.0.0.1");
+  ldout(cct, 0) << "RGW-Cache: DataCache::write: updating redis entry" << c->oid << dendl;
+  if (r < 0) {
+	ldout(cct, 0) << "ERROR: DataCache::write: error updating redis entry " << r << dendl;
+  }
   cache_lock.Unlock();
 
   /*update free size*/
@@ -766,38 +779,7 @@ int HttpL2Request::sign_request(RGWAccessKey& key, RGWEnv& env, req_info& info)
   return 0;
 }
 
-static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp)
-{
-    ((std::string*)userp)->append((char*)contents, size * nmemb);
-    return size * nmemb;
-}
-
-
-
-std::string DataCache::connect_redis(string uri){
-	std::string readBuffer;
-	CURL *curl;
-        CURLcode res;
-        curl = curl_easy_init();
-        if(curl) {
-                curl_easy_setopt(curl, CURLOPT_URL, uri.c_str());
-                curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-                curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-                curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-                res = curl_easy_perform(curl);
-                if( res != CURLE_OK){
-	 		ldout(cct, 20) << "Engage1: redix curl_easy_perform() failed " << curl_easy_strerror(res) << " uri " << uri <<dendl;
-                }
-		else {
-                        ldout(cct, 20) << " Engage1: redix get in result  uri " << uri << dendl;
-                }
-		curl_easy_cleanup(curl);
-		return readBuffer;
-
-	}
-}
-std::string DataCache::get_value(string key){
+/*std::string DataCache::get_value(string key){
 	std::string readBuffer;
 	std::string uri = "http://127.0.0.1:7379/GET/" + key+ ".txt";
 	readBuffer = connect_redis(uri);
@@ -808,33 +790,53 @@ std::string DataCache::get_value(string key){
 
 	else { return readBuffer; }
 }
+*/
+std::string DataCache::get_value(string key){
+	cpp_redis::client client;
+	client.connect();
+	cpp_redis::reply answer;
+	client.send({"smembers", key}, [&answer](cpp_redis::reply &reply) {
+		answer = std::move(reply);
+	});
+	client.sync_commit();
+	vector<string> list;	
+	for(auto &temp : answer.as_array()) {
+		list.push_back(std::move(temp.as_string()));
+		//ldout(cct, 20) << "ugur get_value" << temp.as_string() <<dendl;    
+	}
+	if (list.empty()){
+		return "";}
+	else{
+		return list[rand() % list.size()];}
+}
 
 int DataCache::set_value(string key, string location){
-        string readBuffer;
-        string uri = "http://127.0.0.1:7379/SADD/" +key+"/"+location+".txt";
-	readBuffer = connect_redis(uri);
-	if (readBuffer.compare("+OK")==0) {return 0;}
-	else{ 
-		ldout(cct, 20) << " Engage1: coud not set value in directory  key " << key << dendl;
-		return -1;
-	}
-
+	cpp_redis::client client;
+	client.connect();
+	vector<string> list;
+	list.push_back(location);
+	client.sadd(key, list,[] (cpp_redis::reply& reply){
+		if (reply.is_string() && reply.as_string() == "OK"){ 
+			return  0;
+		} else {
+			return -1;
+		}
+	});
+	client.sync_commit();
 }
 
-int DataCache::delete_value(string key, string location){
-        string readBuffer;
-        string uri = "http://127.0.0.1:7379/DEL/" +key+".txt";
-	readBuffer = connect_redis(uri);
-	if (readBuffer.compare("1")==0) {return 0;}
-	else{ 
-		ldout(cct, 20) << " Engage1: coud not delete value in directory  key " << key << dendl;
+int DataCache::remove_value(string key, string location){
+	cpp_redis::client client;
+	client.connect();
+	cpp_redis::reply answer;
+	client.send({"srem", key, location}, [&answer](cpp_redis::reply &reply) {
+		answer = std::move(reply);
+	});
+	client.sync_commit();
+	if (answer.is_string() && answer.as_string() == "OK"){
+		return 0;
+	}else {
 		return -1;
 	}
-
 }
-
-
-
-
-
 

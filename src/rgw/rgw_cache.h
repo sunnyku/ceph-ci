@@ -23,11 +23,10 @@
 #include "include/lru.h" /*engage1*/
 #include "rgw_threadpool.h"
 
-/*directory*/
-#include "/root/directory/acl/lib_acl_cpp/include/acl_cpp/lib_acl.hpp"
 #include <stdlib.h>
 #include <stdio.h>
 #include <iostream>
+#include <cpp_redis/cpp_redis> /*directort*/
 
 enum {
   UPDATE_OBJ,
@@ -119,10 +118,10 @@ public:
   DataCache();
   ~DataCache() {}
 
+  /*directory*/
   std::string get_value(string key);
-  std::string connect_redis(string uri);
   int set_value(string key, string location);
-  int delete_value(string key, string location);
+  int remove_value(string key, string location);
 	 
  
   bool get(string oid);
@@ -932,21 +931,21 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
   io_ctx.locator_set_key(read_obj.loc);
   d->add_pending_oid(read_obj.oid);
 
-	 acl::acl_cpp_init();
     /*directory*/
-	string loc = data_cache.get_value(read_obj.oid);
-	mydout(20) << "ugur, redis "<< loc <<dendl;
+  	std::string loc = data_cache.get_value(read_obj.oid);
 	if (loc.compare("")==0) {
 		mydout(20) << "rados->get_obj_iterate_cb oid=" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
-    op.read(read_ofs, len, pbl, NULL);
-    r = io_ctx.aio_operate(read_obj.oid, c, &op, NULL);
-    mydout(20) << "rados->aio_operate r=" << r << " bl.length=" << pbl->length() << dendl;
-    if (r < 0) {
-    	mydout(0) << "rados->aio_operate r=" << r << dendl;
-      goto done_err;
-    }
+		mydout(20) << "RGW-Cache Miss, Backend Hit" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
+    	op.read(read_ofs, len, pbl, NULL);
+    	r = io_ctx.aio_operate(read_obj.oid, c, &op, NULL);
+    	mydout(20) << "rados->aio_operate r=" << r << " bl.length=" << pbl->length() << dendl;
+    	if (r < 0) {
+    		mydout(0) << "rados->aio_operate r=" << r << dendl;
+      		goto done_err;
+    	}
 	}
 	else if(loc.compare("127.0.0.1") == 0) {
+		mydout(20) << "RGW-Cache Hit Local" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
 		librados::L1CacheRequest *cc;
 		d->add_l1_request(&cc, pbl, read_obj.oid, len, obj_ofs, read_ofs, key, c);
 		r = io_ctx.cache_aio_notifier(read_obj.oid, cc);
@@ -956,39 +955,13 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
     	}
 	}
 	else{
+		mydout(20) << "RGW-Cache Hit Remote" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
 		librados::L2CacheRequest *cc;
 		d->add_l2_request(&cc, pbl, read_obj.oid, obj_ofs, read_ofs, len, key, c, loc);
 		r = io_ctx.cache_aio_notifier(read_obj.oid, cc);
 		data_cache.push_l2_request(cc);
 	}	
 
-
-/*
-  if (data_cache.get(read_obj.oid)) {
-    librados::L1CacheRequest *cc;
-    d->add_l1_request(&cc, pbl, read_obj.oid, len, obj_ofs, read_ofs, key, c);
-    r = io_ctx.cache_aio_notifier(read_obj.oid, cc);
-    r = d->submit_l1_aio_read(cc);
-    if (r != 0 ){
-      mydout(0) << "Error cache_aio_read failed err=" << r << dendl;
-    }
-  } else if (d->deterministic_hash_is_local(read_obj.oid)){
-    mydout(20) << "rados->get_obj_iterate_cb oid=" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
-    op.read(read_ofs, len, pbl, NULL);
-    r = io_ctx.aio_operate(read_obj.oid, c, &op, NULL);
-    mydout(20) << "rados->aio_operate r=" << r << " bl.length=" << pbl->length() << dendl;
-    if (r < 0) {
-      mydout(0) << "rados->aio_operate r=" << r << dendl;
-      goto done_err;
-    }
-  } else {
-    librados::L2CacheRequest *cc;
-    d->add_l2_request(&cc, pbl, read_obj.oid, obj_ofs, read_ofs, len, key, c);
-//    r = d->add_cache_notifier(oid, c);
-    r = io_ctx.cache_aio_notifier(read_obj.oid, cc); 
-    data_cache.push_l2_request(cc);
-  }
-*/
   // Flush data to client if there is any
   r = flush_read_list(d);
   if (r < 0)
