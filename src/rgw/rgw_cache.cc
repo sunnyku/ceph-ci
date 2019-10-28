@@ -20,6 +20,7 @@
 
 
 #include <cpp_redis/cpp_redis>
+#include <cstddef>
 
 class RGWGetObj_CB;
 
@@ -410,7 +411,7 @@ int DataCache::io_write(bufferlist& bl ,unsigned int len, std::string oid) {
   chunk_info->set_ctx(cct);
   chunk_info->size = len;
   cache_map.insert(pair<string, ChunkDataInfo*>(oid, chunk_info));
-  r = set_value(oid,"127.0.0.1");
+  r = set_value(oid,cct->_conf->rgw_host);
   ldout(cct, 0) << "Engage1: DataCache::write: updating redis " << oid << dendl;
   if (r < 0) {
 		ldout(cct, 0) << "ERROR: DataCache::write: error updating redis entry " << r << dendl;
@@ -441,7 +442,7 @@ void DataCache::cache_aio_write_completion_cb(cacheAioWriteRequest *c){
   chunk_info->set_ctx(cct);
   chunk_info->size = c->cb->aio_nbytes;
   cache_map.insert(pair<string, ChunkDataInfo*>(c->oid, chunk_info));
-  int r = set_value(c->oid,"127.0.0.1");
+  int r = set_value(c->oid, cct->_conf->rgw_host);
   ldout(cct, 0) << "RGW-Cache: DataCache::write: updating redis entry" << c->oid << dendl;
   if (r < 0) {
 	ldout(cct, 0) << "ERROR: DataCache::write: error updating redis entry " << r << dendl;
@@ -619,6 +620,10 @@ size_t DataCache::lru_eviction(){
   map<string, ChunkDataInfo*>::iterator iter = cache_map.find(del_entry->oid);
   if (iter != cache_map.end()) {
     cache_map.erase(del_oid); // oid
+    int r = remove_value(del_oid, cct->_conf->rgw_host); 
+  	if (r < 0){
+		ldout(cct, 20) << "ERROR: RGW-Cache, delete from redis " << del_oid << dendl;
+	}
   }
   cache_lock.Unlock();
   freed_size = del_entry->size;
@@ -635,7 +640,7 @@ void DataCache::remote_io(struct librados::L2CacheRequest *l2request ) {
 }
 
 
-std::vector<string> split(const std::string &s, char * delim) {
+  std::vector<string> split(const std::string &s, char * delim) {
   stringstream ss(s);
   std::string item;
   std::vector<string> tokens;
@@ -839,4 +844,44 @@ int DataCache::remove_value(string key, string location){
 		return -1;
 	}
 }
+
+std::string DataCache::get_s3_key(string key){
+	cpp_redis::client client;
+	std::size_t found = key.find_last_of("_");
+  	std:: string prefix = key.substr(0,found) + "*";
+	client.connect();
+	cpp_redis::reply answer;
+	client.send({"keys", prefix}, [&answer](cpp_redis::reply &reply) {
+		answer = std::move(reply);
+	});
+	client.sync_commit();
+	if (answer.is_string()){
+                return answer.as_string();
+	}else if (answer.is_array()){
+                std:: string pattern = "";
+        	for(auto &temp : answer.as_array()) {
+		pattern = pattern + " " + temp.as_string();
+		}
+		return pattern;
+        }else {
+                return "";
+        }
+}
+int::string DataCache::remove_s3_key(string keys){
+        cpp_redis::client client;
+        client.connect();
+        cpp_redis::reply answer;
+        client.send({"del", keys}, [&answer](cpp_redis::reply &reply) {
+                answer = std::move(reply);
+        });
+        client.sync_commit();
+	if (answer.is_string() && answer.as_string() == "OK"){
+                return 0;
+        }else {
+                return -1;
+        }
+
+}
+
+
 

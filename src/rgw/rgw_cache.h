@@ -120,9 +120,10 @@ public:
 
   /*directory*/
   std::string get_value(string key);
+  int remove_s3_key(string prefix);
+  std::string get_s3_key(string prefix);
   int set_value(string key, string location);
   int remove_value(string key, string location);
-	 
  
   bool get(string oid);
   void put(bufferlist& bl, unsigned int len, string obj_key);
@@ -932,7 +933,10 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
   d->add_pending_oid(read_obj.oid);
 
     /*directory*/
+	std::string res= data_cache.get_s3_key("78934860-4d17-4a2a-a79f-5df0285c3f6b.4133.1__shadow_.6ult_LjT_bcdETuHvlae3TlDkXERd1-_2");
+	mydout(20) << "RGW-Cache s3 obj " << res << dendl;
   	std::string loc = data_cache.get_value(read_obj.oid);
+	mydout(20) << "RGW-Cache location " << loc << dendl;
 	if (loc.compare("")==0) {
 		mydout(20) << "rados->get_obj_iterate_cb oid=" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
 		mydout(20) << "RGW-Cache Miss, Backend Hit" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
@@ -944,7 +948,7 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
       		goto done_err;
     	}
 	}
-	else if(loc.compare("127.0.0.1") == 0) {
+	else if(loc.compare(d->cct->_conf->rgw_host) == 0) {
 		mydout(20) << "RGW-Cache Hit Local" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
 		librados::L1CacheRequest *cc;
 		d->add_l1_request(&cc, pbl, read_obj.oid, len, obj_ofs, read_ofs, key, c);
