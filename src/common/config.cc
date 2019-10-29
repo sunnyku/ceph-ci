@@ -264,7 +264,7 @@ int md_config_t::set_mon_vals(CephContext *cct,
     const map<string,string>& kv,
     config_callback config_cb)
 {
-  Mutex::Locker l(lock);
+  Mutex::Locker locker(lock);
   ignored_mon_values.clear();
 
   if (!config_cb) {
@@ -315,7 +315,15 @@ int md_config_t::set_mon_vals(CephContext *cct,
     }
   }
   values_bl.clear();
-  _apply_changes(nullptr);
+
+  rev_obs_map_t rev_obs;
+  for_each_change(
+    nullptr, [this, &rev_obs](md_config_obs_t *obs, const std::string &key) {
+      map_observer_changes(obs, key, &rev_obs);
+    });
+
+  call_observers(rev_obs);
+
   return 0;
 }
 
@@ -327,11 +335,16 @@ void md_config_t::add_observer(md_config_obs_t* observer_)
     obs_map_t::value_type val(*k, observer_);
     observers.insert(val);
   }
+  obs_call_gate.emplace(observer_, std::make_unique<CallGate>());
 }
 
 void md_config_t::remove_observer(md_config_obs_t* observer_)
 {
   Mutex::Locker l(lock);
+
+  call_gate_close(observer_);
+  obs_call_gate.erase(observer_);
+
   bool found_obs = false;
   for (obs_map_t::iterator o = observers.begin(); o != observers.end(); ) {
     if (o->second == observer_) {
@@ -748,26 +761,27 @@ int md_config_t::parse_injectargs(std::vector<const char*>& args,
 
 void md_config_t::apply_changes(std::ostream *oss)
 {
-  Mutex::Locker l(lock);
+  rev_obs_map_t rev_obs;
+
+  Mutex::Locker locker(lock);
   /*
    * apply changes until the cluster name is assigned
    */
-  if (cluster.size())
-    _apply_changes(oss);
+  if (cluster.size()) {
+    for_each_change(
+      oss, [this, &rev_obs](md_config_obs_t *obs, const std::string &key) {
+        map_observer_changes(obs, key, &rev_obs);
+      });
+  }
+
+  call_observers(rev_obs);
 }
 
-void md_config_t::_apply_changes(std::ostream *oss)
+void md_config_t::for_each_change(std::ostream *oss, config_gather_cb callback)
 {
-  /* Maps observers to the configuration options that they care about which
-   * have changed. */
-  typedef std::map < md_config_obs_t*, std::set <std::string> > rev_obs_map_t;
-
   // meta expands could have modified anything.  Copy it all out again.
   update_legacy_vals();
 
-  // create the reverse observer mapping, mapping observers to the set of
-  // changed keys that they'll get.
-  rev_obs_map_t robs;
   std::set <std::string> empty_set;
   string val;
   for (changed_set_t::const_iterator c = changed.begin();
@@ -782,26 +796,16 @@ void md_config_t::_apply_changes(std::ostream *oss)
       }
     }
     for (obs_map_t::iterator r = range.first; r != range.second; ++r) {
-      rev_obs_map_t::value_type robs_val(r->second, empty_set);
-      pair < rev_obs_map_t::iterator, bool > robs_ret(robs.insert(robs_val));
-      std::set <std::string> &keys(robs_ret.first->second);
-      keys.insert(key);
+      callback(r->second, key);
     }
   }
 
   changed.clear();
-
-  // Make any pending observer callbacks
-  for (rev_obs_map_t::const_iterator r = robs.begin(); r != robs.end(); ++r) {
-    md_config_obs_t *obs = r->first;
-    obs->handle_conf_change(this, r->second);
-  }
-
 }
 
 void md_config_t::call_all_observers()
 {
-  std::map<md_config_obs_t*,std::set<std::string> > obs;
+  rev_obs_map_t rev_obs;
   // Have the scope of the lock extend to the scope of
   // handle_conf_change since that function expects to be called with
   // the lock held. (And the comment in config.h says that is the
@@ -810,17 +814,14 @@ void md_config_t::call_all_observers()
   // An alternative might be to pass a std::unique_lock to
   // handle_conf_change and have a version of get_var that can take it
   // by reference and lock as appropriate.
-  Mutex::Locker l(lock);
+  Mutex::Locker locker(lock);
   {
     for (auto r = observers.begin(); r != observers.end(); ++r) {
-      obs[r->second].insert(r->first);
+      map_observer_changes(r->second, r->first, &rev_obs);
     }
   }
-  for (auto p = obs.begin();
-       p != obs.end();
-       ++p) {
-    p->first->handle_conf_change(this, p->second);
-  }
+
+  call_observers(rev_obs);
 }
 
 void md_config_t::set_safe_to_start_threads()
@@ -836,7 +837,10 @@ void md_config_t::_clear_safe_to_start_threads()
 int md_config_t::injectargs(const std::string& s, std::ostream *oss)
 {
   int ret;
-  Mutex::Locker l(lock);
+  rev_obs_map_t rev_obs;
+
+  Mutex::Locker locker(lock);
+
   char b[s.length()+1];
   strcpy(b, s.c_str());
   std::vector<const char*> nargs;
@@ -854,14 +858,20 @@ int md_config_t::injectargs(const std::string& s, std::ostream *oss)
     *oss << " failed to parse arguments: ";
     std::string prefix;
     for (std::vector<const char*>::const_iterator i = nargs.begin();
-	 i != nargs.end(); ++i) {
+         i != nargs.end(); ++i) {
       *oss << prefix << *i;
       prefix = ",";
     }
     *oss << "\n";
     ret = -EINVAL;
   }
-  _apply_changes(oss);
+
+  for_each_change(
+    oss, [this, &rev_obs](md_config_obs_t *obs, const std::string &key) {
+      map_observer_changes(obs, key, &rev_obs);
+    });
+
+  call_observers(rev_obs);
   return ret;
 }
 
@@ -1543,3 +1553,30 @@ void md_config_t::complain_about_parse_errors(CephContext *cct)
   ::complain_about_parse_errors(cct, &parse_errors);
 }
 
+void md_config_t::call_observers(rev_obs_map_t &rev_obs) {
+  // observers are notified outside of lock
+  lock.Unlock();
+  for (auto& [obs, keys] : rev_obs) {
+    obs->handle_conf_change(this, keys);
+  }
+  lock.Lock();
+
+  for (auto& rev_ob : rev_obs) {
+    call_gate_leave(rev_ob.first);
+  }
+}
+
+void md_config_t::map_observer_changes(md_config_obs_t *obs, const std::string &key,
+                                       rev_obs_map_t *rev_obs) {
+  assert(lock.is_locked());
+
+  auto p = rev_obs->emplace(obs, std::set<std::string>{});
+
+  p.first->second.emplace(key);
+  if (p.second) {
+    // this needs to be done under lock as once this lock is
+    // dropped (before calling observers) a remove_observer()
+    // can sneak in and cause havoc.
+    call_gate_enter(p.first->first);
+  }
+}
