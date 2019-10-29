@@ -226,6 +226,9 @@
   We have also added:
 
     - whether IPv4 or IPv6 addresses are used for the monitors
+    - whether RADOS cache tiering is enabled (and which mode)
+    - whether pools are replicated or erasure coded, and
+      which erasure code profile plugin and parameters are in use
 
   If you had telemetry enabled, you will need to re-opt-in with::
 
