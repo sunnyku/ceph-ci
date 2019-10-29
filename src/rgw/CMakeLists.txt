@@ -148,7 +148,7 @@ if(WITH_RADOSGW_AMQP_ENDPOINT)
   list(APPEND librgw_common_srcs rgw_amqp.cc)
 endif()
 if(WITH_RADOSGW_KAFKA_ENDPOINT)
-  list(APPEND librgw_common_srcs rgw_kafka.cc)
+  list(APPEND librgw_common_srcs kafka_compat.cc rgw_kafka.cc)
 endif()
 
 add_library(rgw_common OBJECT ${librgw_common_srcs})

@@ -4,6 +4,7 @@
 //#include "include/compat.h"
 #include "rgw_kafka.h"
 #include <librdkafka/rdkafka.h>
+#include "kafka_compat.h"
 #include "include/ceph_assert.h"
 #include <sstream>
 #include <cstring>
