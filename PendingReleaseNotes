@@ -205,3 +205,30 @@
   value determined by the config options, for the average for any of the 3 intervals.
   New admin command ``ceph daemon osd.# dump_osd_network [threshold]`` will
   do the same but only including heartbeats initiated by the specified OSD.
+
+* Because the content of telemetry reports has changed, you will need to
+  either re-opt-in with::
+
+    ceph telemetry on
+
+  You can view exactly what information will be reported first with::
+
+    ceph telemetry show
+
+* The telemetry module now reports more information about CephFS file systems,
+  including:
+
+    - how many MDS daemons (in total and per file system)
+    - which features are (or have been) enabled
+    - how many data pools
+    - approximate file system age (year + month of creation)
+
+  If you had telemetry enabled, you will need to re-opt-in with::
+
+    ceph telemetry on
+
+  You can view exactly what information will be reported first with::
+
+    ceph telemetry show        # see everything
+    ceph telemetry show basic  # basic cluster info, including the new CephFS info
+
