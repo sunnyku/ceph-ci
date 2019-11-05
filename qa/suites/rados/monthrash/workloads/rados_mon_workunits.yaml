@@ -6,6 +6,7 @@ overrides:
     - \(PG_
     - \(MON_DOWN\)
     - \(AUTH_BAD_CAPS\)
+    - \(POOL_NO_REDUNDANCY\)
 tasks:
 - workunit:
     clients:
