@@ -4,3 +4,5 @@
 * Bucket notifications now support Kafka endpoints. This requires librdkafka of
   version 0.9.2 and up. Note that Ubuntu 16.04.6 LTS (Xenial Xerus) has an older
   version of librdkafka, and would require an update to the library.
+
+* The format of MDSs in `ceph fs dump` has changed.
