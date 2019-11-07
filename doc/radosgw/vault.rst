@@ -207,8 +207,8 @@ using the AWS command-line client::
   aws --endpoint=http://radosgw:8000 s3 cp plaintext.txt s3://mybucket/encrypted.txt --sse=aws:kms --sse-kms-key-id myproject/mybucketkey
 
 The Object Gateway will fetch the key from Vault, encrypt the object and store
-it in the bucket. Any request to downlod the object will require the correct key
-ID for the Gateway to successfully decrypt it.
+it in the bucket. Any request to downlod the object will make the Gateway
+automatically retrieve the correspondent key from Vault and decrypt the object.
 
 Note that the secret will be fetched from Vault using a URL constructed by
 concatenating the base address (``rgw crypt vault addr``), the (optional)

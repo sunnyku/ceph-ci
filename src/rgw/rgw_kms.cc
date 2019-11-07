@@ -93,7 +93,7 @@ protected:
       ldout(cct, 0) << "Loading Vault Token from filesystem" << dendl;
       res = load_token_from_file(&vault_token);
       if (res < 0){
-	return res;
+        return res;
       }
     }
 
