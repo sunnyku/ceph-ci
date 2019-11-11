@@ -7958,7 +7958,12 @@ std::vector<Option> get_mds_options() {
     .set_default(0)
     .set_description("set the probability of ephemeral export pinning the loaded subtrees") 
     .set_long_description("probabilistically pin the loaded directory inode and the subtree beneath it to an MDS based on the consistent hash of the inode number. The higher this value the more likely the loaded subtrees get pinned"),
-    
+   
+    Option("mds_export_ephemeral_distributed", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("allow ephemeral distributed pinning of the loaded subtrees")
+    .set_long_description("pin the immediate child directories of the loaded directory inode based on the consistent hash of the child's inode number. "),
+
     Option("mds_bal_sample_interval", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(3.0)
     .set_description("interval in seconds between balancer ticks"),

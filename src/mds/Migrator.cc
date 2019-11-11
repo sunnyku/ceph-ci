@@ -1114,8 +1114,12 @@ void Migrator::dispatch_export_dir(MDRequestRef& mdr, int count)
     total_exporting_size += it->second.approx_size;
 
     // start the freeze, but hold it up with an auth_pin.
-    dir->freeze_tree();
-    ceph_assert(dir->is_freezing_tree());
+    //Ephemeral distributed pinning - Only the current (child) directory should get frozen and pinned
+    if (dir->get_inode()->get_export_ephemeral_distributed_pin() != MDS_RANK_NONE)
+      dir->freeze_dir();
+    else
+      dir->freeze_tree();
+    ceph_assert(dir->is_freezing());
     dir->add_waiter(CDir::WAIT_FROZEN, new C_MDC_ExportFreeze(this, dir, it->second.tid));
     return;
   }
