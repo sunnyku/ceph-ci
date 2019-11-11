@@ -551,6 +551,18 @@ Usage:
             return HandleCommandResult(-errno.EINVAL,
                     stderr="Invalid number of mgrs: require {} > 0".format(num))
 
+        def split_host(host):
+            """Split host into host and name parts"""
+            # TODO: stricter validation
+            return tuple(host.split('=', 1))
+
+        if hosts:
+            try:
+                hosts = list(map(split_host, hosts))
+            except Exception as e:
+                msg = "Failed to parse host list: '{}': {}".format(hosts, e)
+                return HandleCommandResult(-errno.EINVAL, stderr=msg)
+
         completion = self.update_mgrs(num, hosts)
         self._orchestrator_wait([completion])
         orchestrator.raise_if_exception(completion)
@@ -570,11 +582,12 @@ Usage:
         def split_host(host):
             """Split host into host and network parts"""
             # TODO: stricter validation
+            (host, name) = host.split('=', 1)
             parts = host.split(":", 1)
             if len(parts) == 1:
-                return (parts[0], None)
+                return (parts[0], None, name)
             elif len(parts) == 2:
-                return (parts[0], parts[1])
+                return (parts[0], parts[1], name)
             else:
                 raise RuntimeError("Invalid host specification: "
                         "'{}'".format(host))
