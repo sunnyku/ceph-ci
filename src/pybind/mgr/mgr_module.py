@@ -62,7 +62,10 @@ class CPlusPlusHandler(logging.Handler):
         else:
             ceph_level = 0
 
-        self._module._ceph_log(ceph_level, self.format(record))
+        record = self.format(record)
+        if six.PY2 and isinstance(record, six.text_type):
+            record = record.encode('utf-8')
+        self._module._ceph_log(ceph_level, record)
 
 
 def configure_logger(module_inst, module_name):
@@ -629,6 +632,8 @@ class MgrModule(ceph_module.BaseMgrModule):
         :param message: The message to log.
         :type message: str
         """
+        if six.PY2 and isinstance(message, six.text_type):
+            message = message.encode('utf-8')
         self._ceph_cluster_log(channel, priority, message)
 
     @property
