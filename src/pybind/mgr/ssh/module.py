@@ -11,7 +11,7 @@ import tempfile
 import multiprocessing.pool
 
 from ceph.deployment import inventory
-from mgr_module import MgrModule
+from mgr_module import MgrModule, CLICommand, HandleCommandResult
 import orchestrator
 from orchestrator import OrchestratorError
 
@@ -34,6 +34,29 @@ logger = logging.getLogger(__name__)
 DEFAULT_SSH_CONFIG = ('Host *\n'
                       'User root\n'
                       'StrictHostKeyChecking no\n')
+
+def handle_exception(prefix, cmd_args, desc, perm, func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except (orchestrator.OrchestratorError, ImportError) as e:
+            # Do not print Traceback for expected errors.
+            return HandleCommandResult(-errno.ENOENT, stderr=str(e))
+        except NotImplementedError:
+            msg = 'This Orchestrator does not support `{}`'.format(prefix)
+            return HandleCommandResult(-errno.ENOENT, stderr=msg)
+
+    return CLICommand(prefix, cmd_args, desc, perm)(wrapper)
+
+def _cli_command(perm):
+    def inner_cli_command(prefix, cmd_args="", desc=""):
+        return lambda func: handle_exception(prefix, cmd_args, desc, perm, func)
+    return inner_cli_command
+
+_read_cli = _cli_command('r')
+_write_cli = _cli_command('rw')
+
 
 # high-level TODO:
 #  - bring over some of the protections from ceph-deploy that guard against
@@ -140,19 +163,6 @@ class SSHOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
             'type': 'seconds',
             'default': 60,
             'desc': 'seconds to cache service (daemon) inventory',
-        },
-    ]
-
-    COMMANDS = [
-        {
-            'cmd': 'ssh set-ssh-config',
-            'desc': 'Set the ssh_config file (use -i <ssh_config>)',
-            'perm': 'rw'
-        },
-        {
-            'cmd': 'ssh clear-ssh-config',
-            'desc': 'Clear the ssh_config file',
-            'perm': 'rw'
         },
     ]
 
@@ -278,14 +288,6 @@ class SSHOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
             self._ssh_options = None
         self.log.info('ssh_options %s' % ssh_options)
 
-    def handle_command(self, inbuf, command):
-        if command["prefix"] == "ssh set-ssh-config":
-            return self._set_ssh_config(inbuf)
-        elif command["prefix"] == "ssh clear-ssh-config":
-            return self._clear_ssh_config()
-        else:
-            raise NotImplementedError(command["prefix"])
-
     @staticmethod
     def can_run():
         if remoto is not None:
@@ -330,6 +332,8 @@ class SSHOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                 ", ".join(map(lambda h: "'{}'".format(h),
                     unregistered_hosts))))
 
+    @_write_cli(prefix='ssh set-ssh-config',
+                desc='Set the ssh_config file (use -i <ssh_config>)')
     def _set_ssh_config(self, inbuf):
         """
         Set an ssh_config file provided from stdin
@@ -342,6 +346,8 @@ class SSHOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         self.set_store("ssh_config", inbuf)
         return 0, "", ""
 
+    @_write_cli(prefix='ssh clear-ssh-config',
+                desc='Clear the ssh_config file')
     def _clear_ssh_config(self):
         """
         Clear the ssh_config file provided from stdin
