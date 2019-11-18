@@ -8,7 +8,7 @@ HashiCorp `Vault`_ can be used as a secure key management service for
 #. `Vault secrets engines`_
 #. `Vault authentication`_
 #. `Create a key in Vault`_
-#. `Configure Ceph Object Gateway`_
+#. `Configure the Ceph Object Gateway`_
 #. `Upload object`_
 
 Some of the examples below use the Vault command line utility to interact with
@@ -123,7 +123,7 @@ Create a key in Vault
 =====================
 
 .. note:: Keys for server-side encryption must be 256-bit long and base-64
-encoded.
+   encoded.
 
 Using the KV engine
 -------------------
