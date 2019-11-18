@@ -226,6 +226,21 @@ def is_fsid(s):
         return False
     return True
 
+def infer_fsid():
+    """
+    If we only find a single fsid in /var/lib/ceph/*, use that
+    """
+    if not args.fsid:
+        first = None
+        for i in os.listdir(args.data_dir):
+            if is_fsid(i):
+                if first:
+                    break
+                first = i
+        if first:
+            logger.debug('Inferring fsid %s' % first)
+            args.fsid = first
+
 def makedirs(dir, uid, gid, mode):
     # type: (str, int, int, int) -> None
     if not os.path.exists(dir):
@@ -1260,6 +1275,7 @@ def command_run():
 
 def command_shell():
     # type: () -> int
+    infer_fsid()
     if args.fsid:
         make_log_dir(args.fsid)
     if args.name:
@@ -1298,6 +1314,7 @@ def command_shell():
 
 def command_enter():
     # type: () -> int
+    infer_fsid()
     (daemon_type, daemon_id) = args.name.split('.', 1)
     container_args = [] # type: List[str]
     if args.command:
@@ -1317,6 +1334,7 @@ def command_enter():
 
 def command_ceph_volume():
     # type: () -> None
+    infer_fsid()
     make_log_dir(args.fsid)
 
     mounts = get_container_mounts(args.fsid, 'osd', None)
@@ -1359,6 +1377,7 @@ def command_ceph_volume():
 
 def command_unit():
     # type: () -> None
+    infer_fsid()
     (daemon_type, daemon_id) = args.name.split('.', 1)
     unit_name = get_unit_name(args.fsid, daemon_type, daemon_id)
     call_throws([
@@ -1370,6 +1389,7 @@ def command_unit():
 
 def command_logs():
     # type: () -> None
+    infer_fsid()
     cmd = [container_path, 'logs']
     if args.follow:
         cmd.append('-f')
