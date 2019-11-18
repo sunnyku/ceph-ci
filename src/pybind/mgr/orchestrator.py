@@ -633,10 +633,12 @@ class PlacementSpec(object):
     """
     For APIs that need to specify a node subset
     """
-    def __init__(self, label=None, nodes=[]):
+    def __init__(self, label=None, nodes=None):
         self.label = label
-
-        self.nodes = list(map(split_host, nodes))
+        if nodes:
+            self.nodes = [split_host(node) for node in nodes]
+        else:
+            self.nodes = []
 
 def handle_type_error(method):
     @wraps(method)
