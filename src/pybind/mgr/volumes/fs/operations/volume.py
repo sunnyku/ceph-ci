@@ -272,6 +272,9 @@ def open_volume(vc, volname):
     :param volname: volume name
     :return: yields a volume handle (ceph filesystem handle)
     """
+    if vc.is_stopping():
+        raise VolumeException(-errno.ESHUTDOWN, "shutdown in progress")
+
     g_lock = GlobalLock()
     fs_handle = vc.connection_pool.get_fs_handle(volname)
     try:
@@ -282,6 +285,9 @@ def open_volume(vc, volname):
 
 @contextmanager
 def open_volume_lockless(vc, volname):
+    if vc.is_stopping():
+        raise VolumeException(-errno.ESHUTDOWN, "shutdown in progress")
+
     fs_handle = vc.connection_pool.get_fs_handle(volname)
     try:
         yield fs_handle
