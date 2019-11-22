@@ -52,10 +52,11 @@ struct CB_notify_Finish {
       preply_buf_len(_preply_buf_len) {}
 
 
+  // move-only
   CB_notify_Finish(const CB_notify_Finish&) = delete;
-  CB_notify_Finish operator =(const CB_notify_Finish&) = delete;
-  CB_notify_Finish(CB_notify_Finish&&) = delete;
-  CB_notify_Finish operator =(CB_notify_Finish&&) = delete;
+  CB_notify_Finish& operator =(const CB_notify_Finish&) = delete;
+  CB_notify_Finish(CB_notify_Finish&&) = default;
+  CB_notify_Finish& operator =(CB_notify_Finish&&) = default;
 
   void operator()(bs::error_code ec, bufferlist&& reply_bl) {
     ldout(cct, 10) << __func__ << " completed notify (linger op "
@@ -77,7 +78,6 @@ struct CB_notify_Finish {
       preply_bl->claim(reply_bl);
 
     ctx->complete(ceph::from_error_code(ec));
-    linger_op->on_notify_finish.reset();
   }
 };
 
@@ -1556,31 +1556,20 @@ void librados::IoCtxImpl::set_sync_op_version(version_t ver)
   last_objver = ver;
 }
 
+namespace librados {
+void intrusive_ptr_add_ref(IoCtxImpl *p) { p->get(); }
+void intrusive_ptr_release(IoCtxImpl *p) { p->put(); }
+}
+
 struct WatchInfo {
-  librados::IoCtxImpl *ioctx;
+  boost::intrusive_ptr<librados::IoCtxImpl> ioctx;
   object_t oid;
   librados::WatchCtx *ctx;
   librados::WatchCtx2 *ctx2;
-  bool internal = false;
 
   WatchInfo(librados::IoCtxImpl *io, object_t o,
-	    librados::WatchCtx *c, librados::WatchCtx2 *c2,
-            bool inter)
-    : ioctx(io), oid(o), ctx(c), ctx2(c2), internal(inter) {
-    ioctx->get();
-  }
-  ~WatchInfo() {
-    ioctx->put();
-    if (internal) {
-      delete ctx;
-      delete ctx2;
-    }
-  }
-
-  WatchInfo(const WatchInfo&) = delete;
-  WatchInfo& operator =(const WatchInfo&) = delete;
-  WatchInfo(WatchInfo&&) = delete;
-  WatchInfo& operator =(WatchInfo&&) = delete;
+	    librados::WatchCtx *c, librados::WatchCtx2 *c2)
+    : ioctx(io), oid(o), ctx(c), ctx2(c2) {}
 
   void handle_notify(uint64_t notify_id,
 		     uint64_t cookie,
@@ -1623,6 +1612,16 @@ struct WatchInfo {
   }
 };
 
+// internal WatchInfo that owns the context memory
+struct InternalWatchInfo : public WatchInfo {
+  std::unique_ptr<librados::WatchCtx> ctx;
+  std::unique_ptr<librados::WatchCtx2> ctx2;
+
+  InternalWatchInfo(librados::IoCtxImpl *io, object_t o,
+                    librados::WatchCtx *c, librados::WatchCtx2 *c2)
+    : WatchInfo(io, o, c, c2), ctx(c), ctx2(c2) {}
+};
+
 int librados::IoCtxImpl::watch(const object_t& oid, uint64_t *handle,
                                librados::WatchCtx *ctx,
                                librados::WatchCtx2 *ctx2,
@@ -1643,15 +1642,11 @@ int librados::IoCtxImpl::watch(const object_t& oid, uint64_t *handle,
 
   Objecter::LingerOp *linger_op = objecter->linger_register(oid, oloc, 0);
   *handle = linger_op->get_cookie();
-  auto wi = std::make_unique<WatchInfo>(this, oid, ctx, ctx2, internal);
-  linger_op->handle =
-    [wi = std::move(wi)](bs::error_code ec,
-			 uint64_t notify_id,
-			 uint64_t cookie,
-			 uint64_t notifier_id,
-			 bufferlist&& bl) mutable {
-      (*wi)(ec, notify_id, cookie, notifier_id, std::move(bl));
-    };
+  if (internal) {
+    linger_op->handle = InternalWatchInfo(this, oid, ctx, ctx2);
+  } else {
+    linger_op->handle = WatchInfo(this, oid, ctx, ctx2);
+  }
   prepare_assert_ops(&wr);
   wr.watch(*handle, CEPH_OSD_WATCH_OP_WATCH, timeout);
   bufferlist bl;
@@ -1695,15 +1690,11 @@ int librados::IoCtxImpl::aio_watch(const object_t& oid,
 
   ::ObjectOperation wr;
   *handle = linger_op->get_cookie();
-  auto wi = std::make_unique<WatchInfo>(this, oid, ctx, ctx2, internal);
-  linger_op->handle =
-    [wi = std::move(wi)](bs::error_code ec,
-			 uint64_t notify_id,
-			 uint64_t cookie,
-			 uint64_t notifier_id,
-			 bufferlist&& bl) mutable {
-      (*wi)(ec, notify_id, cookie, notifier_id, std::move(bl));
-    };
+  if (internal) {
+    linger_op->handle = InternalWatchInfo(this, oid, ctx, ctx2);
+  } else {
+    linger_op->handle = WatchInfo(this, oid, ctx, ctx2);
+  }
 
   prepare_assert_ops(&wr);
   wr.watch(*handle, CEPH_OSD_WATCH_OP_WATCH, timeout);
@@ -1785,12 +1776,9 @@ int librados::IoCtxImpl::notify(const object_t& oid, bufferlist& bl,
   linger_op->on_notify_finish =
     Objecter::LingerOp::OpComp::create(
       objecter->service.get_executor(),
-      [c = std::make_unique<CB_notify_Finish>(client->cct, &notify_finish_cond,
-					      objecter, linger_op, preply_bl,
-					      preply_buf, preply_buf_len)]
-      (bs::error_code ec, cb::list bl) {
-	std::move(*c)(ec, std::move(bl));
-      });
+      CB_notify_Finish(client->cct, &notify_finish_cond,
+                       objecter, linger_op, preply_bl,
+                       preply_buf, preply_buf_len));
   uint32_t timeout = notify_timeout;
   if (timeout_ms)
     timeout = timeout_ms / 1000;
@@ -1843,13 +1831,10 @@ int librados::IoCtxImpl::aio_notify(const object_t& oid, AioCompletionImpl *c,
   linger_op->on_notify_finish =
     Objecter::LingerOp::OpComp::create(
       objecter->service.get_executor(),
-      [c = std::make_unique<CB_notify_Finish>(client->cct, oncomplete,
-					      objecter, linger_op,
-					      preply_bl, preply_buf,
-					      preply_buf_len)]
-      (bs::error_code ec, cb::list&& bl) {
-	std::move(*c)(ec, std::move(bl));
-      });
+      CB_notify_Finish(client->cct, oncomplete,
+                       objecter, linger_op,
+                       preply_bl, preply_buf,
+                       preply_buf_len));
   Context *onack = new C_aio_notify_Ack(client->cct, oncomplete);
 
   uint32_t timeout = notify_timeout;
