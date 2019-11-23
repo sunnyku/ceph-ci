@@ -293,8 +293,6 @@ function test_kill_daemon() {
         kill_daemon $pidfile TERM || return 1
     done
 
-    ceph osd dump | grep "osd.0 down" || return 1
-
     name_prefix=mgr
     for pidfile in $(find $dir 2>/dev/null | grep $name_prefix'[^/]*\.pid') ; do
         #
