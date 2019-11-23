@@ -37,6 +37,27 @@ DEFAULT_SSH_CONFIG = ('Host *\n'
                       'StrictHostKeyChecking no\n'
                       'UserKnownHostsFile /dev/null\n')
 
+# for py2 compat
+try:
+    from tempfile import TemporaryDirectory # py3
+except ImportError:
+    # define a minimal (but sufficient) equivalent for <= py 3.2
+    class TemporaryDirectory(object): # type: ignore
+        def __init__(self):
+            self.name = tempfile.mkdtemp()
+
+        def __enter__(self):
+            if not self.name:
+                self.name = tempfile.mkdtemp()
+            return self.name
+
+        def cleanup(self):
+            shutil.rmtree(self.name)
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            self.cleanup()
+
+
 # high-level TODO:
 #  - bring over some of the protections from ceph-deploy that guard against
 #    multiple bootstrapping / initialization
@@ -355,7 +376,7 @@ class SSHOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
     def _generate_key(self):
         if not self.ssh_pub or not self.ssh_key:
             self.log.info('Generating ssh key...')
-            tmp_dir = tempfile.TemporaryDirectory()
+            tmp_dir = TemporaryDirectory()
             path = tmp_dir.name + '/key'
             try:
                 subprocess.call([
