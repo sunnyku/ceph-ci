@@ -588,7 +588,7 @@ class SSHOrchestrator(MgrModule, orchestrator.Orchestrator):
                 raise RuntimeError(
                     'ceph-daemon exited with an error code: %d, stderr:%s' % (
                         code, '\n'.join(err)))
-            return out, code
+            return out, err, code
 
         except Exception as ex:
             self.log.exception(ex)
@@ -675,7 +675,7 @@ class SSHOrchestrator(MgrModule, orchestrator.Orchestrator):
 
     @async_map_completion
     def _refresh_host_services(self, host):
-        out, code = self._run_ceph_daemon(
+        out, err, code = self._run_ceph_daemon(
             host, 'mon', 'ls', [], no_fsid=True)
         data = json.loads(''.join(out))
         self.log.error('refreshed host %s services: %s' % (host, data))
@@ -808,7 +808,7 @@ class SSHOrchestrator(MgrModule, orchestrator.Orchestrator):
         }
         name = '%s.%s' % (service_type, service_id)
         for a in actions[action]:
-            out, code = self._run_ceph_daemon(
+            out, err, code = self._run_ceph_daemon(
                 host, name, 'unit',
                 ['--name', name, a],
                 error_ok=True)
@@ -839,7 +839,7 @@ class SSHOrchestrator(MgrModule, orchestrator.Orchestrator):
 
             if host_info.outdated(self.inventory_cache_timeout) or refresh:
                 self.log.info("refresh stale inventory for '{}'".format(host))
-                out, code = self._run_ceph_daemon(
+                out, err, code = self._run_ceph_daemon(
                     host, 'osd',
                     'ceph-volume',
                     ['--', 'inventory', '--format=json'])
@@ -864,8 +864,9 @@ class SSHOrchestrator(MgrModule, orchestrator.Orchestrator):
                     'on' if on else 'off'),
                 '--path', '/dev/' + dev,
             ]
-            out, code = self._run_ceph_daemon(host, 'osd', 'shell', ['--'] + cmd,
-                                              error_ok=True)
+            out, err, code = self._run_ceph_daemon(
+                host, 'osd', 'shell', ['--'] + cmd,
+                error_ok=True)
             if code:
                 raise RuntimeError(
                     'Unable to affect %s light for %s:%s. Command: %s' % (
@@ -905,7 +906,7 @@ class SSHOrchestrator(MgrModule, orchestrator.Orchestrator):
 
         devices = drive_group.data_devices.paths
         for device in devices:
-            out, code = self._run_ceph_daemon(
+            out, err, code = self._run_ceph_daemon(
                 host, 'osd', 'ceph-volume',
                 [
                     '--config-and-keyring', '-',
@@ -919,7 +920,7 @@ class SSHOrchestrator(MgrModule, orchestrator.Orchestrator):
             self.log.debug('ceph-volume prepare: %s' % out)
 
         # check result
-        out, code = self._run_ceph_daemon(
+        out, err, code = self._run_ceph_daemon(
             host, 'osd', 'ceph-volume',
             [
                 '--',
@@ -998,7 +999,7 @@ class SSHOrchestrator(MgrModule, orchestrator.Orchestrator):
                 'crash_keyring': crash_keyring,
             })
 
-            out, code = self._run_ceph_daemon(
+            out, err, code = self._run_ceph_daemon(
                 host, name, 'deploy',
                 [
                     '--name', name,
@@ -1022,7 +1023,7 @@ class SSHOrchestrator(MgrModule, orchestrator.Orchestrator):
         """
         Remove a daemon
         """
-        out, code = self._run_ceph_daemon(
+        out, err, code = self._run_ceph_daemon(
             host, name, 'rm-daemon',
             ['--name', name])
         self.log.debug('_remove_daemon code %s out %s' % (code, out))
