@@ -129,6 +129,8 @@ class MDCache {
   using clock = ceph::coarse_mono_clock;
   using time = ceph::coarse_mono_time;
 
+  set<inodeno_t> consistent_hash_inodes;
+
   // -- discover --
   struct discover_info_t {
     discover_info_t() {}
@@ -207,6 +209,14 @@ class MDCache {
     return (cache_inode_limit > 0 && CInode::count() > cache_inode_limit*cache_health_threshold) || (cache_size() > cache_memory_limit*cache_health_threshold);
   }
 
+  bool get_export_ephemeral_distributed_config(void) const {
+    return export_ephemeral_distributed_config;
+  }
+
+  bool get_export_ephemeral_random_config(void) const {
+    return export_ephemeral_random_config;
+  }
+
   void advance_stray() {
     stray_index = (stray_index+1)%NUM_STRAY;
   }
@@ -222,6 +232,8 @@ class MDCache {
 
     stray_manager.eval_stray(dn);
   }
+
+  mds_rank_t hash_into_rank_bucket(inodeno_t ino, mds_rank_t max_mds);
 
   void maybe_eval_stray(CInode *in, bool delay=false);
   void clear_dirty_bits_for_stray(CInode* diri);
@@ -1273,6 +1285,9 @@ class MDCache {
   uint64_t cache_memory_limit;
   double cache_reservation;
   double cache_health_threshold;
+
+  bool export_ephemeral_distributed_config;
+  bool export_ephemeral_random_config;
 
   std::array<CInode *, NUM_STRAY> strays{}; // my stray dir
 

@@ -524,6 +524,11 @@ void EMetaBlob::fullbit::update_inode(MDSRank *mds, CInode *in)
 {
   in->inode = inode;
   in->xattrs = xattrs;
+  if (in->inode.is_dir()) {
+    in->is_export_ephemeral_distributed = is_export_ephemeral_distributed();
+    in->is_export_ephemeral_random = is_export_ephemeral_random();
+    dout(10) << "I'm in update_inode inside journal.cc and is_export_ephemeral_distrib for inode " << *in << "is" << in->is_export_ephemeral_distributed << dendl;
+  }
   in->maybe_export_pin();
   if (in->inode.is_dir()) {
     if (!(in->dirfragtree == dirfragtree)) {
