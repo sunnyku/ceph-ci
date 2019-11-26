@@ -103,10 +103,8 @@ void MDBalancer::handle_export_pins(void)
     // Making sure the ephemeral pin does not override export pin
     if (in->get_export_pin(false) != MDS_RANK_NONE)
       export_pin = in->get_export_pin(false);
-    else if (in->get_export_ephemeral_distributed_pin() != MDS_RANK_NONE)
-      export_pin = in->get_export_ephemeral_distributed_pin();
-    else if (in->get_export_ephemeral_random_pin(false) != MDS_RANK_NONE)
-      export_pin = in->get_export_ephemeral_random_pin(false);
+    else if (in->get_export_ephemeral_distributed_pin() || in->get_export_ephemeral_random_pin(false))
+      export_pin = mds->mdcache->get_rank_from_ino_in_consistent_hash_ring(in->ino());
     if (export_pin >= mds->mdsmap->get_max_mds()) {
       dout(20) << " delay export pin on " << *in << dendl;
       in->state_clear(CInode::STATE_QUEUEDEXPORTPIN);

@@ -1835,7 +1835,6 @@ bool MDSMonitor::maybe_resize_cluster(FSMap &fsmap, fs_cluster_id_t fscid)
                          "filesystem " << mds_map.fs_name << " as rank "
                       << mds << " (now has " << mds_map.get_num_in_mds() + 1
                       << " ranks)";
-    mds_map.add_rank_node_to_consistent_hash_ring(mds);
     fsmap.promote(newgid, *fs, mds);
     return true;
   } else if (in > max) {
@@ -1847,7 +1846,6 @@ bool MDSMonitor::maybe_resize_cluster(FSMap &fsmap, fs_cluster_id_t fscid)
       auto f = [](auto& info) {
         info.state = MDSMap::STATE_STOPPING;
       };
-      mds_map.remove_rank_node_from_consistent_hash_ring(target);
       fsmap.modify_daemon(info.global_id, f);
       return true;
     } else {
