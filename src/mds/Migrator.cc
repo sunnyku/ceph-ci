@@ -1147,10 +1147,14 @@ void Migrator::dispatch_export_dir(MDRequestRef& mdr, int count)
 
     // start the freeze, but hold it up with an auth_pin.
     //Ephemeral distributed pinning - Only the current (child) directory should get frozen and pinned
-    if (dir->get_inode()->get_export_ephemeral_distributed_pin() != MDS_RANK_NONE)
+    if (dir->get_inode()->is_export_ephemeral_distributed) {
+      dout(10) << "I'm here and I'm freezing the directory" << dendl;
       dir->freeze_dir();
-    else
+    }
+    else {
+      dout(10) << "I'm here and I'm freezing the tree" << dendl;
       dir->freeze_tree();
+    }
     ceph_assert(dir->is_freezing());
     dir->add_waiter(CDir::WAIT_FROZEN, new C_MDC_ExportFreeze(this, dir, it->second.tid));
     return;
@@ -1349,7 +1353,11 @@ void Migrator::export_frozen(CDir *dir, uint64_t tid)
   }
 
   ceph_assert(it->second.state == EXPORT_FREEZING);
-  ceph_assert(dir->is_frozen_tree_root());
+
+  if (dir->get_inode()->is_export_ephemeral_distributed)
+    ceph_assert(dir->is_frozen_dir());
+  else
+    ceph_assert(dir->is_frozen_tree_root());
 
   it->second.mut = new MutationImpl();
 
@@ -3176,7 +3184,7 @@ void Migrator::import_finish(CDir *dir, bool notify, bool last)
     cache->populate_mydir();
 
   // is it empty?
-  if (dir->get_num_head_items() == 0 &&
+  if (!dir->inode->is_export_ephemeral_distributed && dir->get_num_head_items() == 0 &&
       !dir->inode->is_auth()) {
     // reexport!
     export_empty_import(dir);
@@ -3226,6 +3234,9 @@ void Migrator::decode_import_inode(CDentry *dn, bufferlist::const_iterator& blp,
   if (added) {
     cache->add_inode(in);
     dout(10) << "added " << *in << dendl;
+    if (in->is_export_ephemeral_distributed || in->is_export_ephemeral_random)
+      dout(10) << "added consistent hash inode" << *in << dendl;
+      cache->consistent_hash_inodes.emplace(in->ino());
   } else {
     dout(10) << "  had " << *in << dendl;
   }
