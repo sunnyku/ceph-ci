@@ -2014,6 +2014,8 @@ void CInode::encode_lock_ipolicy(bufferlist& bl)
     encode(inode.layout, bl, mdcache->mds->mdsmap->get_up_features());
     encode(inode.quota, bl);
     encode(inode.export_pin, bl);
+    encode(inode.export_ephemeral_distributed_pin, bl);
+    encode(inode.export_ephemeral_random_pin, bl);
   }
   ENCODE_FINISH(bl);
 }
@@ -2031,6 +2033,8 @@ void CInode::decode_lock_ipolicy(bufferlist::const_iterator& p)
     mds_rank_t old_pin = inode.export_pin;
     decode(inode.export_pin, p);
     maybe_export_pin(old_pin != inode.export_pin);
+    decode(inode.export_ephemeral_distributed_pin, p);
+    decode(inode.export_ephemeral_random_pin, p);
   }
   DECODE_FINISH(p);
 }
@@ -5158,10 +5162,10 @@ void CInode::maybe_export_pin(bool update)
       continue;
     if (export_pin != MDS_RANK_NONE) {
       if (dir->is_subtree_root()) {
-	// set auxsubtree bit or export it
-	if (!dir->state_test(CDir::STATE_AUXSUBTREE) ||
-	    export_pin != dir->get_dir_auth().first)
-	  queue = true;
+        // set auxsubtree bit or export it
+        if (!dir->state_test(CDir::STATE_AUXSUBTREE) ||
+            export_pin != dir->get_dir_auth().first)
+            queue = true;
       } else {
 	// create aux subtree or export it
 	queue = true;
@@ -5178,97 +5182,86 @@ void CInode::maybe_export_pin(bool update)
   }
 }
 
-class C_Inode_Update : public MDSLogContextBase {
+class C_Inode_Ephemeral_Distributed_Update : public MDSLogContextBase {
 protected:
   CInode *in; 
-  MutationRef mut; 
   MDSRank *get_mds() override {return in->mdcache->mds;}
   void finish(int r) override {
-    mut->apply();
+    in->is_export_ephemeral_distributed = true;
   }    
 
 public:
-  C_Inode_Update(CInode *i, MutationRef& m) : in(i), mut(m) {}
+  C_Inode_Ephemeral_Distributed_Update(CInode *i) : in(i) {}
+};
+
+class C_Inode_Ephemeral_Random_Update : public MDSLogContextBase {
+protected:
+  CInode *in;
+  MDSRank *get_mds() override {return in->mdcache->mds;}
+  void finish(int r) override {
+    in->is_export_ephemeral_random = true;
+  }
+
+public:
+  C_Inode_Ephemeral_Random_Update(CInode *i) : in(i) {}
 };
 
 void CInode::maybe_export_ephemeral_pin(bool update)
 {
   //If both the configs aren't set then return
-  if (!g_conf().get_val<double>("mds_export_ephemeral_random")
-      && !g_conf().get_val<double>("mds_export_ephemeral_distributed"))
+  if (!mdcache->get_export_ephemeral_distributed_config()
+      && !mdcache->get_export_ephemeral_random_config())
     return;
 
-  mds_rank_t export_ephemeral_random_pin = get_export_ephemeral_random_pin(false);
-  mds_rank_t export_ephemeral_distributed_pin = get_export_ephemeral_distributed_pin();
-  mds_rank_t rank = MDS_RANK_NONE;
+  double export_ephemeral_random_pin = get_export_ephemeral_random_pin(false);
+  //bool export_ephemeral_distributed_pin = get_export_ephemeral_distributed_pin();
 
+  if (update)
+    dout(10) << "I'm here for the update" << dendl;
 
   //Check if it's already ephemerally pinned
-  if (export_ephemeral_random_pin != MDS_RANK_NONE) {
-    /* Case where the rank where it had got pinned has now stopped */
-    if (export_ephemeral_random_pin > mdcache->mds->mdsmap->get_max_mds()) {
-      update = true;
-      rank = mdcache->mds->mdsmap->get_successor_of_rank_in_consistent_hash_ring(export_ephemeral_random_pin);
-    }
-    /* Case where a new rank is added to the cluster */
-    else if (update)
-      rank = mdcache->mds->get_nodeid();
-    else
+  if ((is_export_ephemeral_random || is_export_ephemeral_distributed) && !update)
       return;
-  } else if (export_ephemeral_distributed_pin != MDS_RANK_NONE) {
-      /* Case where the rank where it had got pinned has now stopped */
-      if (export_ephemeral_distributed_pin > mdcache->mds->mdsmap->get_max_mds()) {
-        update = true;
-        rank = mdcache->mds->mdsmap->get_successor_of_rank_in_consistent_hash_ring(export_ephemeral_distributed_pin);
-      }    
-      /* Case where a new rank is added to the cluster */
-      else if (update)
-        rank = mdcache->mds->get_nodeid();
-      else 
-        return;
-  }
 
-  if (g_conf().get_val<double>("mds_export_ephemeral_random")) {
-    if ((g_conf().get_val<double>("mds_export_ephemeral_random") >= 
-	  ceph::util::generate_random_number(0.0, 1.0) || update)
-	&& export_ephemeral_distributed_pin == MDS_RANK_NONE) {
+  if (mdcache->get_export_ephemeral_random_config()) {
+    if ((update || export_ephemeral_random_pin >=
+	  ceph::util::generate_random_number(0.0, 1.0))
+	&& is_export_ephemeral_distributed == false) {
 
-      if(!update) 
-        rank = mdcache->mds->mdsmap->put_ino_in_consistent_hash_ring(ino());
+      dout(10) << "I'm here under ephemeral random because is_export_ephemeral_distributed is" << is_export_ephemeral_distributed << dendl;
 
-      project_inode();
-    
-      MutationRef mut(new MutationImpl());
-
-      set_export_ephemeral_random_pin(rank);
-      mut->add_projected_inode(this);
       MDLog *mdlog = mdcache->mds->mdlog;
 
-      mut->ls = mdlog->get_current_segment();
+      CDentry *pdn = get_projected_parent_dn();
 
-      EUpdate *le = new EUpdate(mdlog, "set export ephemeral random vxattr");
+      EUpdate *le = new EUpdate(mdlog, "export ephemeral random");
       mdlog->start_entry(le);
 
-      mdcache->journal_dirty_inode(mut.get(), &le->metablob, this);
+      le->metablob.add_primary_dentry(pdn, this, false, false, false,
+          false, true);
 
-      mdlog->submit_entry(le, new C_Inode_Update(this, mut));
-      
+      mdlog->submit_entry(le, new C_Inode_Ephemeral_Random_Update(this));
+
+      is_export_ephemeral_random = true;
+
       bool queue = false;
       for (auto p = dirfrags.begin(); p != dirfrags.end(); p++) {
         CDir *dir = p->second;
         if (!dir->is_auth())
           continue;
         if (dir->is_subtree_root()) {
-          // set auxsubtree bit or export it
+	  // set auxsubtree bit or export it
           if (!dir->state_test(CDir::STATE_AUXSUBTREE) ||
-              export_ephemeral_random_pin != dir->get_dir_auth().first)
+            mdcache->hash_into_rank_bucket(ino(), mdcache->mds->mdsmap->get_max_mds()) != dir->get_dir_auth().first)
             queue = true;
         } else {
         // create aux subtree or export it
         queue = true;
         }
         if (queue) {
-          state_set(CInode::STATE_QUEUEDEXPORTPIN);
+	  if (mdcache->hash_into_rank_bucket(ino(), mdcache->mds->mdsmap->get_max_mds()) == mdcache->mds->get_nodeid()) {
+            mdcache->consistent_hash_inodes.emplace(ino());
+	  state_set(CInode::STATE_QUEUEDEXPORTPIN);
           mdcache->export_pin_queue.insert(this);
           break;
         }
@@ -5277,29 +5270,27 @@ void CInode::maybe_export_ephemeral_pin(bool update)
     }
   }
 
-  if (g_conf().get_val<double>("mds_export_ephemeral_distributed")) {
-    //Check if the parent inode has export_ephemeral_distributed enabled and if yes pin the current(child) directory.
-    CInode *parent = get_parent_inode();
-    if (parent->export_ephemeral_distributed == true || update) {
-      if(!update)
-	rank = mdcache->mds->mdsmap->put_ino_in_consistent_hash_ring(ino());
+  if (mdcache->get_export_ephemeral_distributed_config()) {
 
-      project_inode();
+    CDentry *pdn = get_projected_parent_dn();
 
-      MutationRef mut(new MutationImpl());
+    if ((pdn->get_dir()->get_inode() && pdn->get_dir()->get_inode()->get_export_ephemeral_distributed_pin()) || update) {
 
-      set_export_ephemeral_distributed_pin(rank);
-      mut->add_projected_inode(this);
       MDLog *mdlog = mdcache->mds->mdlog;
 
-      mut->ls = mdlog->get_current_segment();
+      //CDentry *pdn = get_parent_dn();
 
-      EUpdate *le = new EUpdate(mdlog, "set export ephemeral distributed vxattr");
+      EUpdate *le = new EUpdate(mdlog, "export ephemeral distributed");
       mdlog->start_entry(le);
 
-      mdcache->journal_dirty_inode(mut.get(), &le->metablob, this);
+      le->metablob.add_primary_dentry(pdn, this, false, false, false,
+          true, false);
 
-      mdlog->submit_entry(le, new C_Inode_Update(this, mut));
+      mdlog->submit_entry(le, new C_Inode_Ephemeral_Distributed_Update(this));
+
+      dout(10) << "Submitted journal entry" << dendl;
+
+      is_export_ephemeral_distributed = true;
 
       bool queue = false;
       for (auto p = dirfrags.begin(); p != dirfrags.end(); p++) {
@@ -5308,39 +5299,42 @@ void CInode::maybe_export_ephemeral_pin(bool update)
 	  continue;
 	if (dir->is_subtree_root()) {
 	  // set auxsubtree bit or export it
-	  if (!dir->state_test(CDir::STATE_AUXSUBTREE) ||
-	      export_ephemeral_distributed_pin != dir->get_dir_auth().first)
-	    queue = true;
-	} else {
-	// create aux subtree or export it
-	queue = true;
-	}
-	if (queue) {
-	  state_set(CInode::STATE_QUEUEDEXPORTPIN);
-	  mdcache->export_pin_queue.insert(this);
-	  break;
-	}
+          if (!dir->state_test(CDir::STATE_AUXSUBTREE) ||
+            mdcache->hash_into_rank_bucket(ino(), mdcache->mds->mdsmap->get_max_mds()) != dir->get_dir_auth().first)
+            queue = true;
+        } else {
+        // create aux subtree or export it
+        queue = true;
+        }
+        if (queue) {
+	  dout(10) << "max_mds is" << mdcache->mds->mdsmap->get_max_mds() << "and target mds is:" << mdcache->hash_into_rank_bucket(ino(), mdcache->mds->mdsmap->get_max_mds()) << dendl;
+          if (mdcache->hash_into_rank_bucket(ino(), mdcache->mds->mdsmap->get_max_mds()) == mdcache->mds->get_nodeid())
+            mdcache->consistent_hash_inodes.emplace(ino());
+	    dout(10) << "Inside if inside the else" << dendl;
+          }
+          dout(10) << "consistent_hash_inodes are:" << mdcache->consistent_hash_inodes << dendl;
+          state_set(CInode::STATE_QUEUEDEXPORTPIN);
+          mdcache->export_pin_queue.insert(this);
+          break;
+        }
       }
       return;
     }
-    else
-      // Mark this inode so that when child CDirs are loaded they may get pinned via ephemeral distributed pin
-      export_ephemeral_distributed = true;
   }
 }
 
-void CInode::set_export_ephemeral_random_pin(mds_rank_t rank)
+void CInode::set_export_ephemeral_random_pin(double probability)
 {
   ceph_assert(is_dir());
   ceph_assert(is_projected());
-  get_projected_inode()->export_ephemeral_random_pin = rank;
+  get_projected_inode()->export_ephemeral_random_pin = probability;
 }
 
-void CInode::set_export_ephemeral_distributed_pin(mds_rank_t rank)
+void CInode::set_export_ephemeral_distributed_pin(bool val)
 {
   ceph_assert(is_dir());
   ceph_assert(is_projected());
-  get_projected_inode()->export_ephemeral_distributed_pin = rank;
+  get_projected_inode()->export_ephemeral_distributed_pin = val;
 }
 
 void CInode::set_export_pin(mds_rank_t rank)
@@ -5377,7 +5371,7 @@ mds_rank_t CInode::get_export_pin(bool inherit) const
   return MDS_RANK_NONE;
 }
 
-mds_rank_t CInode::get_export_ephemeral_random_pin(bool inherit) const
+double CInode::get_export_ephemeral_random_pin(bool inherit) const
 {
   /* An inode that is export pinned may not necessarily be a subtree root, we
    * need to traverse the parents. A base or system inode cannot be pinned.
@@ -5386,35 +5380,42 @@ mds_rank_t CInode::get_export_ephemeral_random_pin(bool inherit) const
    */
   const CInode *in = this;
   while (true) {
+    dout(10) << "Pass 1" << dendl;
     if (in->is_system())
       break;
+    dout(10) << "Pass 2" << dendl;
     const CDentry *pdn = in->get_parent_dn();
+    dout(10) << "Pass 3" << dendl;
     if (!pdn)
       break;
     // ignore export pin for unlinked directory
+    dout(10) << "Pass 4" << dendl;
     if (in->get_inode().nlink == 0)
       break;
+    dout(10) << "Pass 5" << dendl;
     // Check if the inode is projected/dirty
     if (in->is_projected() && in->get_projected_inode()->export_ephemeral_random_pin >= 0)
       return in->get_projected_inode()->export_ephemeral_random_pin;
-    else if (in->get_inode().export_ephemeral_random_pin >= 0)
+    dout(10) << "Pass 6" << dendl;
+    else if (in->get_inode() && in->get_inode().export_ephemeral_random_pin >= 0)
       return in->get_inode().export_ephemeral_random_pin;
+    dout(10) << "Pass 7" << dendl;
 
     if (!inherit)
       break;
     in = pdn->get_dir()->inode;
   }
-  return MDS_RANK_NONE;
+  return 0;
 }
 
-mds_rank_t CInode::get_export_ephemeral_distributed_pin() const
+bool CInode::get_export_ephemeral_distributed_pin() const
 {
-  if (is_projected() && get_projected_inode()->export_ephemeral_distributed_pin >= 0)
+  if (is_projected() && get_projected_inode()->export_ephemeral_distributed_pin)
     return get_projected_inode()->export_ephemeral_distributed_pin;
-  else if (get_inode().export_ephemeral_distributed_pin >= 0)
+  else if (get_inode().export_ephemeral_distributed_pin)
     return get_inode().export_ephemeral_distributed_pin;
   else
-    return MDS_RANK_NONE;
+    return false;
 }
 
 bool CInode::is_exportable(mds_rank_t dest) const
