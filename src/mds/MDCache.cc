@@ -152,6 +152,9 @@ MDCache::MDCache(MDSRank *m, PurgeQueue &purge_queue_) :
   cache_health_threshold = g_conf().get_val<double>("mds_health_cache_threshold");
   forward_all_requests_to_auth = g_conf().get_val<bool>("mds_forward_all_requests_to_auth");
 
+  export_ephemeral_distributed_config =  g_conf().get_val<bool>("mds_export_ephemeral_distributed"); 
+  export_ephemeral_random_config =  g_conf().get_val<bool>("mds_export_ephemeral_random");
+  
   lru.lru_set_midpoint(g_conf().get_val<double>("mds_cache_mid"));
 
   bottom_lru.lru_set_midpoint(0);
@@ -216,6 +219,10 @@ void MDCache::handle_conf_change(const std::set<std::string>& changed, const MDS
     cache_memory_limit = g_conf().get_val<Option::size_t>("mds_cache_memory_limit");
   if (changed.count("mds_cache_reservation"))
     cache_reservation = g_conf().get_val<double>("mds_cache_reservation");
+  if (changed.count("mds_export_ephemeral_distributed"))
+    export_ephemeral_distributed_config = g_conf().get_val<bool>("mds_export_ephemeral_distributed");
+  if (changed.count("mds_export_ephemeral_random"))
+    export_ephemeral_random_config = g_conf().get_val<bool>("mds_export_ephemeral_random");
   if (changed.count("mds_health_cache_threshold"))
     cache_health_threshold = g_conf().get_val<double>("mds_health_cache_threshold");
   if (changed.count("mds_cache_mid"))
@@ -829,6 +836,20 @@ MDSCacheObject *MDCache::get_object(const MDSCacheObjectInfo &info)
 }
 
 
+// ====================================================================
+// consistent hash ring
+
+mds_rank_t MDCache::hash_into_rank_bucket(inodeno_t ino, mds_rank_t max_mds)
+{
+  uint64_t hash = rjhash64(ino);
+  int64_t b = -1, j = 0;
+  while (j < max_mds) {
+    b = j;
+    hash = hash*2862933555777941757ULL + 1;
+    j = (b + 1) * (double(1LL << 31) / double((hash >> 33) + 1));
+  }
+  return mds_rank_t(b);
+}
 
 
 // ====================================================================
@@ -6655,7 +6676,8 @@ std::pair<bool, uint64_t> MDCache::trim(uint64_t count)
 	    dir->is_freezing() || dir->is_frozen())
 	  continue;
 
-	migrator->export_empty_import(dir);
+	if (!diri->is_export_ephemeral_distributed)
+	  migrator->export_empty_import(dir);
         ++trimmed;
       }
     } else {
@@ -13190,21 +13212,23 @@ void MDCache::handle_mdsmap(const MDSMap &mdsmap, const MDSMap &oldmap) {
 
   /* Handle consistent hash ring changes when new mds is active. In the case where an mds is stopped (max_mds is decreased), the subtree migrations are handled as the Inodes are loaded */
   if (mdsmap.get_max_mds() > oldmap.get_max_mds()) {
-    if (g_conf().get_val<double>("mds_export_ephemeral_random")) {
-      for(mds_rank_t rank = oldmap.get_max_mds() + 1; rank <= mdsmap.get_max_mds(); rank++) {
-        vector<inodeno_t> inode_nos = mdsmap.get_inos_from_rank_in_consistent_hash_ring(rank);
-        // Check if the rank is not hashed or if there is no inodes handled by the rank in the consistent hash ring
-        if (inode_nos.empty())
-          return;
-        for(auto it = inode_nos.begin(); it != inode_nos.end(); it++) {
-          auto in = get_inode(*it);
-          if (in == NULL || !(in->is_auth()))
-            dout(10) << "Inode is not auth to this rank" << dendl;
-          else
-            in->maybe_export_ephemeral_pin(true);
-        }
-      }
+    if (export_ephemeral_random_config || 
+        export_ephemeral_distributed_config) {
+            dout(10) << "Max mds is increased. Noted from MDCache side" << dendl;
+            std::set<inodeno_t>::iterator it = consistent_hash_inodes.begin();
+            for ( ;it != consistent_hash_inodes.end(); it++) {
+	      // Migrate if the inodes hash elsewhere
+              if (hash_into_rank_bucket(*it, mdsmap.get_max_mds()) != mds->get_nodeid()) {
+                auto in = get_inode(*it);
+                if (in == NULL || !(in->is_auth()))
+                  dout(10) << "Inode is not auth to this rank" << dendl;
+                else {
+		  dout(10) << "adding inode to export queue" << dendl;
+                  in->maybe_export_ephemeral_pin(true);
+		  consistent_hash_inodes.erase(it);
+		}
+	      }
+            }
     }
   }
 }
-
