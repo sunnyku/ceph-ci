@@ -103,10 +103,9 @@ void MDBalancer::handle_export_pins(void)
     // Making sure the ephemeral pin does not override export pin
     if (in->get_export_pin(false) != MDS_RANK_NONE)
       export_pin = in->get_export_pin(false);
-    else if (in->get_export_ephemeral_distributed_pin() != MDS_RANK_NONE)
-      export_pin = in->get_export_ephemeral_distributed_pin();
-    else if (in->get_export_ephemeral_random_pin(false) != MDS_RANK_NONE)
-      export_pin = in->get_export_ephemeral_random_pin(false);
+    else if (in->is_export_ephemeral_distributed || in->is_export_ephemeral_random)
+      dout(10) << "I should be here inside else if" << dendl;
+      export_pin = mds->mdcache->hash_into_rank_bucket(in->ino(), mds->mdsmap->get_max_mds());
     if (export_pin >= mds->mdsmap->get_max_mds()) {
       dout(20) << " delay export pin on " << *in << dendl;
       in->state_clear(CInode::STATE_QUEUEDEXPORTPIN);
@@ -150,6 +149,7 @@ void MDBalancer::handle_export_pins(void)
 	  dir->state_set(CDir::STATE_AUXSUBTREE);
 	}
       } else {
+	dout(10) << "I should be here" << dendl;
 	mds->mdcache->migrator->export_dir(dir, export_pin);
 	remove = false;
       }
