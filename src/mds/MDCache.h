@@ -129,6 +129,8 @@ class MDCache {
   using clock = ceph::coarse_mono_clock;
   using time = ceph::coarse_mono_time;
 
+  vector<inodeno_t> consistent_hash_inodes;
+
   // -- discover --
   struct discover_info_t {
     discover_info_t() {}
@@ -222,6 +224,18 @@ class MDCache {
 
     stray_manager.eval_stray(dn);
   }
+
+  struct mds_rank_node {
+      mds_rank_t rank;
+      uint32_t hash;
+  };
+
+  std::vector<mds_rank_node> consistent_hash_ring;
+  void init_consistent_hash_ring();
+  void add_rank_node_to_consistent_hash_ring(mds_rank_t rank);
+  mds_rank_t get_rank_from_ino_in_consistent_hash_ring(inodeno_t ino) const; //Get the rank that handles the key i.e inode number
+  mds_rank_t get_successor_of_rank_in_consistent_hash_ring(mds_rank_t rank) const;
+  void remove_rank_node_from_consistent_hash_ring(mds_rank_t rank);
 
   void maybe_eval_stray(CInode *in, bool delay=false);
   void clear_dirty_bits_for_stray(CInode* diri);

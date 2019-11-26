@@ -3197,6 +3197,8 @@ void Migrator::decode_import_inode(CDentry *dn, bufferlist::const_iterator& blp,
   if (added) {
     cache->add_inode(in);
     dout(10) << "added " << *in << dendl;
+    if (in->is_export_ephemeral_distributed || in->is_export_ephemeral_random)
+      cache->consistent_hash_inodes.emplace_back(in->ino());
   } else {
     dout(10) << "  had " << *in << dendl;
   }

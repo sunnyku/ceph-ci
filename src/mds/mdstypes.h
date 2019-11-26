@@ -512,8 +512,8 @@ struct inode_t {
 
   mds_rank_t export_pin = MDS_RANK_NONE;
 
-  mds_rank_t export_ephemeral_random_pin = MDS_RANK_NONE;
-  mds_rank_t export_ephemeral_distributed_pin = MDS_RANK_NONE;
+  double export_ephemeral_random_pin = 0;
+  bool export_ephemeral_distributed_pin = false;
  
   // special stuff
   version_t version = 0;           // auth only
@@ -635,7 +635,7 @@ private:
 template<template<typename> class Allocator>
 void inode_t<Allocator>::encode(bufferlist &bl, uint64_t features) const
 {
-  ENCODE_START(17, 6, bl);
+  ENCODE_START(16, 6, bl);
 
   encode(ino, bl);
   encode(rdev, bl);
@@ -696,7 +696,7 @@ void inode_t<Allocator>::encode(bufferlist &bl, uint64_t features) const
 template<template<typename> class Allocator>
 void inode_t<Allocator>::decode(bufferlist::const_iterator &p)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(17, 6, 6, p);
+  DECODE_START_LEGACY_COMPAT_LEN(16, 6, 6, p);
 
   decode(ino, p);
   decode(rdev, p);
@@ -789,14 +789,10 @@ void inode_t<Allocator>::decode(bufferlist::const_iterator &p)
 
   if (struct_v >= 16) {
     decode(export_ephemeral_random_pin, p);
-  } else {
-    export_ephemeral_random_pin = MDS_RANK_NONE;
-  }
-
-  if (struct_v >= 17) {
     decode(export_ephemeral_distributed_pin, p);
   } else {
-    export_ephemeral_distributed_pin = MDS_RANK_NONE;
+    export_ephemeral_random_pin = 0;
+    export_ephemeral_distributed_pin = false;
   }
 
   DECODE_FINISH(p);
@@ -837,7 +833,7 @@ void inode_t<Allocator>::dump(Formatter *f) const
   f->dump_unsigned("change_attr", change_attr);
   f->dump_int("export_pin", export_pin);
   f->dump_int("export_ephemeral_random_pin", export_ephemeral_random_pin);
-  f->dump_int("export_ephemeral_distributed_pin", export_ephemeral_random_pin);
+  f->dump_int("export_ephemeral_distributed_pin", export_ephemeral_distributed_pin);
 
   f->open_array_section("client_ranges");
   for (const auto &p : client_ranges) {

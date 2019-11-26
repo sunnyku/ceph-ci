@@ -152,6 +152,8 @@ MDCache::MDCache(MDSRank *m, PurgeQueue &purge_queue_) :
   cache_reservation = g_conf().get_val<double>("mds_cache_reservation");
   cache_health_threshold = g_conf().get_val<double>("mds_health_cache_threshold");
 
+  init_consistent_hash_ring();
+
   lru.lru_set_midpoint(g_conf().get_val<double>("mds_cache_mid"));
 
   bottom_lru.lru_set_midpoint(0);
@@ -829,7 +831,92 @@ MDSCacheObject *MDCache::get_object(const MDSCacheObjectInfo &info)
 }
 
 
+// ====================================================================
+// consistent hash ring
 
+void MDCache::init_consistent_hash_ring()
+{
+  int rank = 0;
+  int max_mds = mds->mdsmap->get_max_mds();
+  int count = 0;
+  while (count < max_mds) {
+    add_rank_node_to_consistent_hash_ring(rank);
+    count++;
+  }
+}
+
+void MDCache::add_rank_node_to_consistent_hash_ring(mds_rank_t rank)
+{
+  uint32_t hash = rjhash32(rank);
+  /* Insertion into a sorted Vector - Best possible way would be to find 
+   * position of element greater than the hash via binary search and insert there */
+  auto iter = std::upper_bound( consistent_hash_ring.begin(), consistent_hash_ring.end(), hash,
+         [](uint32_t hash_val, const mds_rank_node &rank_hash1) -> bool 
+         {
+           return hash_val < rank_hash1.hash;
+         });
+
+  consistent_hash_ring.emplace(iter, mds_rank_node{rank, rjhash32(rank)});
+}
+
+mds_rank_t MDCache::get_successor_of_rank_in_consistent_hash_ring(mds_rank_t rank) const
+{
+  uint32_t hash = rjhash32(rank);
+
+  /* If the rank is the last node in the consistent hash ring, then 
+   * successor is the first node in the ring */
+  if (hash == consistent_hash_ring.back().hash)
+    return consistent_hash_ring[0].rank;
+  else {
+    auto iter = std::upper_bound( consistent_hash_ring.begin(), consistent_hash_ring.end(), hash,
+           [](uint32_t hash_val, const mds_rank_node &rank_hash1) -> bool
+           {
+             return hash_val < rank_hash1.hash;
+           });
+
+    return (*iter).rank;
+  }
+}
+
+mds_rank_t MDCache::get_rank_from_ino_in_consistent_hash_ring(inodeno_t ino) const
+{
+  uint32_t hash = rjhash32(ino);
+
+  /* Do a binary search to figure out the first hash greater than or equal to the key hash*/
+  /* This can be done using std::lower_bound() */
+  int index;
+  auto iter = std::lower_bound(consistent_hash_ring.begin(), consistent_hash_ring.end(), hash,
+         [](const mds_rank_node &rank_hash1, uint32_t hash_val) -> bool
+         {
+           return rank_hash1.hash < hash_val;
+         });
+  /* If key hash is greater than last rank i.e lower bound returned end, then wrap to the first rank hash */
+  if (iter == consistent_hash_ring.end())
+    index = 0;
+  else
+    index = iter - consistent_hash_ring.begin();
+
+  return consistent_hash_ring[index].rank;
+}
+
+void MDCache::remove_rank_node_from_consistent_hash_ring(mds_rank_t rank)
+{
+  uint32_t hash = rjhash32(rank);
+
+  /* Do a binary search to get the index of the rank that needs to be removed */
+  auto iter = std::lower_bound(consistent_hash_ring.begin(), consistent_hash_ring.end(), hash,
+         [](const mds_rank_node &rank_hash1, uint32_t hash_val) -> bool
+         {
+           return rank_hash1.hash < hash_val;
+         });
+  if (iter != consistent_hash_ring.end() && !(hash < (*iter).hash))
+    consistent_hash_ring.erase(iter);
+  else {
+    std::ostringstream oss;
+    oss << "rank not hashed in consistent hash ring";
+    return;
+  }
+}
 
 // ====================================================================
 // subtree management
@@ -13110,21 +13197,33 @@ void MDCache::handle_mdsmap(const MDSMap &mdsmap, const MDSMap &oldmap) {
 
   /* Handle consistent hash ring changes when new mds is active. In the case where an mds is stopped (max_mds is decreased), the subtree migrations are handled as the Inodes are loaded */
   if (mdsmap.get_max_mds() > oldmap.get_max_mds()) {
-    if (g_conf().get_val<double>("mds_export_ephemeral_random")) {
-      for(mds_rank_t rank = oldmap.get_max_mds() + 1; rank <= mdsmap.get_max_mds(); rank++) {
-        vector<inodeno_t> inode_nos = mdsmap.get_inos_from_rank_in_consistent_hash_ring(rank);
-        // Check if the rank is not hashed or if there is no inodes handled by the rank in the consistent hash ring
-        if (inode_nos.empty())
-          return;
-        for(auto it = inode_nos.begin(); it != inode_nos.end(); it++) {
-          auto in = get_inode(*it);
-          if (in == NULL || !(in->is_auth()))
-            dout(10) << "Inode is not auth to this rank" << dendl;
-          else
-            in->maybe_export_ephemeral_pin(true);
-        }
+    if (g_conf().get_val<double>("mds_export_ephemeral_random") || 
+        g_conf().get_val<double>("mds_export_ephemeral_distributed")) {
+        for (mds_rank_t rank = oldmap.get_max_mds() + 1; rank <= mdsmap.get_max_mds(); rank++) {
+          add_rank_node_to_consistent_hash_ring(rank);
+          mds_rank_t successor = get_successor_of_rank_in_consistent_hash_ring(rank);
+	  // Am I the successor of the new mds. If yes, I should migrate some inodes to the new mds.
+          if (successor == mds->get_nodeid()) {
+            std::vector<inodeno_t>::iterator it = consistent_hash_inodes.begin();
+	    uint32_t hash = rjhash32(rank);
+            while (it != consistent_hash_inodes.end()) {
+              if (rjhash32(*it) < hash) {
+                auto in = get_inode(*it);
+                if (in == NULL || !(in->is_auth()))
+                  dout(10) << "Inode is not auth to this rank" << dendl;
+                else
+                  in->maybe_export_ephemeral_pin(true);
+	      }
+            }
+	  }
+	}
+    }
+  } else if (mdsmap.get_max_mds() < oldmap.get_max_mds()) {
+      if (g_conf().get_val<double>("mds_export_ephemeral_random") || 
+          g_conf().get_val<double>("mds_export_ephemeral_distributed")) {
+	  for (mds_rank_t rank = mdsmap.get_max_mds() + 1; rank <= oldmap.get_max_mds(); rank++)
+	    remove_rank_node_from_consistent_hash_ring(rank);
       }
     }
-  }
 }
 

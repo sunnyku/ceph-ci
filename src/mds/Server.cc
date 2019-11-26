@@ -5388,6 +5388,51 @@ void Server::handle_set_vxattr(MDRequestRef& mdr, CInode *cur,
     auto &pi = cur->project_inode();
     cur->set_export_pin(rank);
     pip = &pi.inode;
+  } else if (name.find("ceph.dir.random.pin") == 0) {
+    if (!cur->is_dir() || cur->is_root()) {
+      respond_to_request(mdr, -EINVAL);
+      return;
+    }
+
+    double val; 
+    try { 
+      val = boost::lexical_cast<double>(value);
+    } catch (boost::bad_lexical_cast const&) {
+      dout(10) << "bad vxattr value, unable to parse float for " << name << dendl;
+      respond_to_request(mdr, -EINVAL);
+      return;
+    }
+
+    lov.add_xlock(&cur->policylock);
+    if (!mds->locker->acquire_locks(mdr, lov)) 
+      return;
+
+    auto &pi = cur->project_inode();
+    cur->set_export_ephemeral_random_pin(val);
+    pip = &pi.inode;
+  } else if (name.find("ceph.dir.distributed.pin") == 0) {
+    if (!cur->is_dir() || cur->is_root()) {
+      respond_to_request(mdr, -EINVAL);
+      return;
+    }
+
+    bool val; 
+    try { 
+      val = boost::lexical_cast<bool>(value);
+    } catch (boost::bad_lexical_cast const&) {
+      dout(10) << "bad vxattr value, unable to parse bool for " << name << dendl;
+      respond_to_request(mdr, -EINVAL);
+      return;
+    }
+
+    lov.add_xlock(&cur->policylock);
+    if (!mds->locker->acquire_locks(mdr, lov)) 
+      return;
+
+    auto &pi = cur->project_inode();
+    cur->set_export_ephemeral_distributed_pin(val);
+    pip = &pi.inode;
+ 
   } else {
     dout(10) << " unknown vxattr " << name << dendl;
     respond_to_request(mdr, -EINVAL);
