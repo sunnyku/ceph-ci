@@ -1621,6 +1621,37 @@ def command_rm_cluster():
 
 ##################################
 
+def check_time_sync():
+    units = ['chronyd.service', 'systemd-timesyncd.service', 'ntpd.service']
+    for u in units:
+        (enabled, state) = check_unit(u)
+        if enabled and state == 'running':
+            logger.info('Time sync unit %s is enabled and running' % u)
+            return True
+    logger.warning('No time sync service is running; checked for %s' % units)
+    return False
+
+def command_check_host():
+    # caller already checked for docker/podman
+    logger.info('podman|docker (%s) is present' % container_path)
+
+    if not find_program('systemctl'):
+        raise RuntimeError('unable to location systemctl')
+    logger.info('systemctl is present')
+
+    if not find_program('lvcreate'):
+        raise RuntimeError('LVM does not appear to be installed')
+    logger.info('LVM2 is present')
+
+    # check for configured+running chronyd or ntp
+    if not check_time_sync():
+        raise RuntimeError('No time synchronization is active (checked all of %s)' %
+                           units)
+
+    logger.info('Host looks OK')
+
+##################################
+
 def _get_parser():
     # type: () -> argparse.ArgumentParser
     parser = argparse.ArgumentParser(
@@ -1878,7 +1909,7 @@ def _get_parser():
         help='allow overwrite of existing --output-* config/keyring/ssh files')
 
     parser_deploy = subparsers.add_parser(
-    'deploy', help='deploy a daemon')
+        'deploy', help='deploy a daemon')
     parser_deploy.set_defaults(func=command_deploy)
     parser_deploy.add_argument(
         '--name',
@@ -1915,6 +1946,10 @@ def _get_parser():
     parser_deploy.add_argument(
         '--osd-fsid',
         help='OSD uuid, if creating an OSD container')
+
+    parser_check_host = subparsers.add_parser(
+        'check-host', help='check host configuration')
+    parser_check_host.set_defaults(func=command_check_host)
 
     return parser
 
