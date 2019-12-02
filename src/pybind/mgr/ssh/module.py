@@ -541,22 +541,24 @@ class SSHOrchestrator(MgrModule, orchestrator.Orchestrator):
     def _run_ceph_daemon(self, host, entity, command, args,
                          stdin=None,
                          no_fsid=False,
-                         error_ok=False):
+                         error_ok=False,
+                         image=None):
         """
         Run ceph-daemon on the remote host with the given command + args
         """
         conn = self._get_connection(host)
 
         try:
-            # get container image
-            if entity.startswith('rgw.') or entity.startswith('rbd-mirror'):
-                entity = 'client.' + entity
-            ret, image, err = self.mon_command({
-                'prefix': 'config get',
-                'who': entity,
-                'key': 'container_image',
-            })
-            image = image.strip()
+            if not image:
+                # get container image
+                if entity.startswith('rgw.') or entity.startswith('rbd-mirror'):
+                    entity = 'client.' + entity
+                ret, image, err = self.mon_command({
+                    'prefix': 'config get',
+                    'who': entity,
+                    'key': 'container_image',
+                })
+                image = image.strip()
             self.log.debug('%s container image %s' % (entity, image))
 
             final_args = [
@@ -1367,3 +1369,84 @@ class SSHOrchestrator(MgrModule, orchestrator.Orchestrator):
 
     def update_rbd_mirror(self, spec):
         return self._update_service('rbd-mirror', self.add_rbd_mirror, spec)
+
+    def _get_container_image_id(self, image_name):
+        # pick a random host...
+        host = None
+        for host_name in self.inventory_cache:
+            host = host_name
+            break
+        if not host:
+            raise OrchestratorError('no hosts defined')
+        self.log.debug('using host %s' % host)
+        out, code = self._run_ceph_daemon(
+            host, None, 'pull', [],
+            image=image_name,
+            no_fsid=True)
+        return out[0]
+
+    def upgrade_check(self, target):
+        return self._get_services().then(lambda daemons: self._upgrade_check(target, daemons))
+
+    def _upgrade_check(self, target, services):
+        # get service state
+        r = {
+            'global_target_image': target,
+            'needs_update': dict(),
+            'up_to_date': list(),
+        }
+
+        images = set()
+        if target:
+            images.add(target)
+        else:
+            # gather all distinct images
+            ret, out, err = self.mon_command({
+                'prefix': 'config dump',
+                'format': 'json',
+            })
+            self.log.debug('config %s' % out)
+            config = json.loads(out)
+            for opt in config:
+                if opt['name'] == 'container_image':
+                    images.add(opt['value'])
+        if not len(images):
+            # default...
+            ret, out, err = self.mon_command({
+                'prefix': 'config get',
+                'who': 'mon.foo',
+                'key': 'container_image',
+            })
+            images.add(out.strip())
+        self.log.debug('Images: %s' % list(images))
+
+        image_versions = {}  # container image -> ceph version
+        for image in images:
+            image_versions[image] = self._get_container_image_id(image)
+        self.log.debug('Image versions %s' % image_versions)
+        r['latest'] = image_versions
+
+        for s in services:
+            if target:
+                this_target = target
+            else:
+                ret, out, err = self.mon_command({
+                    'prefix': 'config get',
+                    'who': s.entity_name(),
+                    'key': 'container_image',
+                })
+                this_target = out.strip()
+            target_id = image_versions.get(this_target)
+            if not target_id:
+                self.log.debug('s %s target %s id %s' % (s.name(), this_target, target_id))
+                continue # race?
+            if target_id == s.container_image_id:
+                r['up_to_date'].append(s.name())
+            else:
+                r['needs_update'][s.name()] = {
+                    'current': s.container_image_id,
+                    'target': target_id,
+                    'current_name': s.container_image_name,
+                    'target_name': this_target,
+                }
+        return trivial_result(json.dumps(r, indent=4))
