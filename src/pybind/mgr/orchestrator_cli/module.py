@@ -1,5 +1,6 @@
 import errno
 import json
+import re
 from functools import wraps
 
 from ceph.deployment.inventory import Device
@@ -27,6 +28,12 @@ class OrchestratorCli(orchestrator.OrchestratorClientMixin, MgrModule):
             'default': None,
             'desc': 'Orchestrator backend',
             'enum_allowed': ['ssh', 'rook', 'ansible', 'deepsea'],
+            'runtime': True,
+        },
+        {
+            'name': 'container_image_base',
+            'default': 'ceph/ceph',
+            'desc': 'Container image name, without the tag',
             'runtime': True,
         },
     ]
@@ -750,6 +757,8 @@ Usage:
         'name=image,type=CephString,req=false',
         desc='Check service versions vs available and target containers')
     def _upgrade_check(self, image=None):
+        if image and re.search('^\d+\.\d+\.\d+$', image):
+            image = self.container_image_base + ':v' + image
         completion = self.upgrade_check(image)
         self._orchestrator_wait([completion])
         orchestrator.raise_if_exception(completion)
