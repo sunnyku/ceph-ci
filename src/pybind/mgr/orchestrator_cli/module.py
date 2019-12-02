@@ -744,3 +744,13 @@ Usage:
 
         c = orchestrator.TrivialReadCompletion(result=True)
         assert c.has_result
+
+    @orchestrator._cli_write_command(
+        'upgrade check',
+        'name=image,type=CephString,req=false',
+        desc='Check service versions vs available and target containers')
+    def _upgrade_check(self, image=None):
+        completion = self.upgrade_check(image)
+        self._orchestrator_wait([completion])
+        orchestrator.raise_if_exception(completion)
+        return HandleCommandResult(stdout=completion.result_str())
