@@ -980,6 +980,10 @@ class Orchestrator(object):
         """
         raise NotImplementedError()
 
+    def upgrade_check(self, image_name):
+        # type: (string) -> Completion
+        raise NotImplementedError()
+
     @_hide_in_features
     def upgrade_start(self, upgrade_spec):
         # type: (UpgradeSpec) -> Completion
@@ -1119,6 +1123,12 @@ class ServiceDescription(object):
     def __repr__(self):
         return "<ServiceDescription>({n_name}:{s_type})".format(n_name=self.nodename,
                                                                   s_type=self.name())
+
+    def entity_name(self):
+        if self.service_type in ['osd','mon','mgr','mds']:
+            return self.name()
+        else:
+            return 'client.' + self.name()
 
     def to_json(self):
         out = {

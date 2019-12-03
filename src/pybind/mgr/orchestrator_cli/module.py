@@ -22,8 +22,31 @@ import orchestrator
 
 class OrchestratorCli(orchestrator.OrchestratorClientMixin, MgrModule):
     MODULE_OPTIONS = [
-        {'name': 'orchestrator'}
+        {
+            'name': 'orchestrator',
+            'default': None,
+            'desc': 'Orchestrator backend',
+            'enum_allowed': ['ssh', 'rook', 'ansible', 'deepsea'],
+            'runtime': True,
+        },
     ]
+    NATIVE_OPTIONS = []
+
+    def config_notify(self):
+        """
+        This method is called whenever one of our config options is changed.
+        """
+        for opt in self.MODULE_OPTIONS:
+            setattr(self,
+                    opt['name'],
+                    self.get_module_option(opt['name']) or opt['default'])
+            self.log.debug(' mgr option %s = %s',
+                           opt['name'], getattr(self, opt['name']))
+        for opt in self.NATIVE_OPTIONS:
+            setattr(self,
+                    opt,
+                    self.get_ceph_option(opt))
+            self.log.debug(' native option %s = %s', opt, getattr(self, opt))
 
     def __init__(self, *args, **kwargs):
         super(OrchestratorCli, self).__init__(*args, **kwargs)
@@ -31,6 +54,9 @@ class OrchestratorCli(orchestrator.OrchestratorClientMixin, MgrModule):
         self.fault = set()  # type: Set[str]
         self._load()
         self._refresh_health()
+
+        # ensure config options members are initialized; see config_notify()
+        self.config_notify()
 
     def _load(self):
         active = self.get_store('active_devices')
@@ -142,7 +168,7 @@ class OrchestratorCli(orchestrator.OrchestratorClientMixin, MgrModule):
             return self.light_off(light_type, devid, force)
 
     def _select_orchestrator(self):
-        return self.get_module_option("orchestrator")
+        return self.orchestrator
 
     @orchestrator._cli_write_command(
         'orchestrator host add',
@@ -634,6 +660,7 @@ Usage:
 
         if module_name is None or module_name == "":
             self.set_module_option("orchestrator", None)
+            self.orchestrator = None
             return HandleCommandResult()
 
         for module in mgr_map['available_modules']:
@@ -661,6 +688,7 @@ Usage:
                                            stderr="'{0}' is not an orchestrator module".format(module_name))
 
             self.set_module_option("orchestrator", module_name)
+            self.orchestrator = module_name
 
             return HandleCommandResult()
 
@@ -680,7 +708,7 @@ Usage:
         'orchestrator status',
         desc='Report configured backend and its status')
     def _status(self):
-        o = self._select_orchestrator()
+        o = self.orchestrator
         if o is None:
             raise orchestrator.NoOrchestrator()
 
@@ -695,9 +723,9 @@ Usage:
                                        ))
 
     def self_test(self):
-        old_orch = self._select_orchestrator()
+        old_orch = self.orchestrator
         self._set_backend('')
-        assert self._select_orchestrator() is None
+        assert self.orchestrator is None
         self._set_backend(old_orch)
 
         e = self.remote('selftest', 'remote_from_orchestrator_cli_self_test', "ZeroDivisionError")
@@ -716,3 +744,13 @@ Usage:
 
         c = orchestrator.TrivialReadCompletion(result=True)
         assert c.has_result
+
+    @orchestrator._cli_write_command(
+        'upgrade check',
+        'name=image,type=CephString,req=false',
+        desc='Check service versions vs available and target containers')
+    def _upgrade_check(self, image=None):
+        completion = self.upgrade_check(image)
+        self._orchestrator_wait([completion])
+        orchestrator.raise_if_exception(completion)
+        return HandleCommandResult(stdout=completion.result_str())
