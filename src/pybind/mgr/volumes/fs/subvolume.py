@@ -128,7 +128,7 @@ class SubVolume(object):
                 raise VolumeException(-errno.EINVAL, "Provide a valid gid")
 
             try:
-                self.fs.chown(subvolpath, uid, gid)
+                self.fs.chown(subvolpath, int(uid), int(gid))
             except cephfs.InvalidValue:
                 raise VolumeException(-e.args[0], e.args[1])
 
@@ -331,7 +331,7 @@ class SubVolume(object):
                 raise VolumeException(-errno.EINVAL, "Provide a valid gid")
 
             try:
-                self.fs.chown(path, uid, gid)
+                self.fs.chown(path, int(uid), int(gid))
             except cephfs.InvalidValue:
                 raise VolumeException(-e.args[0], e.args[1])
 
