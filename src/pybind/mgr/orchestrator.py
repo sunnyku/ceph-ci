@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 HostSpec = namedtuple('HostSpec', ['hostname', 'network', 'name'])
 
+
 def parse_host_specs(host, require_network=True):
     """
     Split host into host, network, and (optional) daemon name parts.  The network
@@ -1041,12 +1042,16 @@ class PlacementSpec(object):
     For APIs that need to specify a node subset
     """
     def __init__(self, label=None, nodes=None, count=None):
+        # type: (Optional[str], Optional[List], Optional[int]) -> None
         self.label = label
         if nodes:
-            self.nodes = [parse_host_specs(x, require_network=False) for x in nodes if x]
+            if all([isinstance(node, HostSpec) for node in nodes]):
+                self.nodes = nodes
+            else:
+                self.nodes = [parse_host_specs(x, require_network=False) for x in nodes if x]
         else:
             self.nodes = []
-        self.count = count if count else 1
+        self.count = count  # type: Optional[int]
 
     def set_nodes(self, nodes):
         # To backpopulate the .nodes attribute when using labels or count
@@ -1054,14 +1059,16 @@ class PlacementSpec(object):
         self.nodes = nodes
 
     @classmethod
-    def from_yaml(cls, data):
-        return cls(**data)
+    def from_dict(cls, data):
+        _cls = cls(**data)
+        _cls.validate()
+        return _cls
 
     def validate(self):
         if self.nodes and self.label:
             # TODO: a less generic Exception
             raise Exception('Node and label are mutually exclusive')
-        if self.count <= 0:
+        if self.count is not None and self.count <= 0:
             raise Exception("num/count must be > 1")
 
 
@@ -1149,7 +1156,7 @@ class ServiceDescription(object):
 
     def __repr__(self):
         return "<ServiceDescription>({n_name}:{s_type})".format(n_name=self.nodename,
-                                                                  s_type=self.name())
+                                                                s_type=self.name())
 
     def to_json(self):
         out = {
@@ -1176,14 +1183,10 @@ class StatefulServiceSpec(object):
     """ Such as mgrs/mons
     """
     # TODO: create base class for Stateless/Stateful service specs and propertly inherit
-    def __init__(self,
-                 name=None,
-                 placement=None,
-                 count=None,
-                 scheduler=None):
+    def __init__(self, name=None, placement=None):
         self.placement = PlacementSpec() if placement is None else placement
         self.name = name
-        self.count = self.placement.count if self.placement else 1  # for backwards-compatibility
+        self.count = self.placement.count if self.placement is not None else 1  # for backwards-compatibility
 
 
 class StatelessServiceSpec(object):
@@ -1198,8 +1201,7 @@ class StatelessServiceSpec(object):
     # This structure is supposed to be enough information to
     # start the services.
 
-    def __init__(self, name,
-                 placement=None):
+    def __init__(self, name, placement=None):
         self.placement = PlacementSpec() if placement is None else placement
 
         #: Give this set of statelss services a name: typically it would
@@ -1208,7 +1210,7 @@ class StatelessServiceSpec(object):
         self.name = name
 
         #: Count of service instances
-        self.count = self.placement.count if self.placement else 1  # for backwards-compatibility
+        self.count = self.placement.count if self.placement is not None else 1  # for backwards-compatibility
 
     def validate_add(self):
         if not self.name:
@@ -1238,7 +1240,7 @@ class RGWSpec(StatelessServiceSpec):
 
     """
     def __init__(self,
-                 rgw_realm, # type: str
+                 rgw_realm,  # type: str
                  rgw_zone,  # type: str
                  placement=None,
                  hosts=None,  # type: Optional[List[str]]
@@ -1475,7 +1477,6 @@ class OrchestratorClientMixin(Orchestrator):
         mgr.log.debug("_oremote {} -> {}.{}(*{}, **{})".format(mgr.module_name, o, meth, args, kwargs))
         return mgr.remote(o, meth, *args, **kwargs)
 
-
     def _orchestrator_wait(self, completions):
         # type: (List[Completion]) -> None
         """
@@ -1535,7 +1536,6 @@ class OutdatableData(object):
         # drop the 'Z' timezone indication, it's always UTC
         timestr = timestr.rstrip('Z')
         return datetime.datetime.strptime(timestr, cls.DATEFMT)
-
 
     @classmethod
     def from_json(cls, data):
