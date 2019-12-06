@@ -11,7 +11,9 @@ IMAGE_MASTER=${IMAGE_MASTER:-'ceph/daemon-base:latest-master-devel'}
 IMAGE_NAUTILUS=${IMAGE_NAUTILUS:-'ceph/daemon-base:latest-nautilus'}
 IMAGE_MIMIC=${IMAGE_MIMIC:-'ceph/daemon-base:latest-mimic'}
 
-TEST_TARS=${SCRIPT_DIR}/test_ceph_daemon/*.tgz
+CORPUS_GIT_SUBMOD="ceph-daemon-adoption-corpus"
+CORPUS_DIR=${SCRIPT_DIR}/../../${CORPUS_GIT_SUBMOD}/archive
+TEST_TARS=$(find ${CORPUS_DIR} -type f -iname *.tgz)
 
 OSD_IMAGE_NAME="${SCRIPT_NAME%.*}_osd.img"
 OSD_IMAGE_SIZE='6G'
@@ -196,10 +198,6 @@ for tarball in $TEST_TARS; do
     $SUDO tar xzvf $tarball -C $TMP_TAR_DIR
     NAMES=$($SUDO $CEPH_DAEMON ls --legacy-dir $TMP_TAR_DIR | jq -r '.[].name')
     for name in $NAMES; do
-        # TODO: skip osd test for now
-        if [[ $name =~ "osd" ]]; then
-           continue
-        fi
         $SUDO $CEPH_DAEMON --image $IMAGE_MASTER adopt \
                            --style legacy \
                            --legacy-dir $TMP_TAR_DIR \
