@@ -500,9 +500,11 @@ Usage:
 
     @orchestrator._cli_write_command(
         'orchestrator rgw rm',
-        "name=name,type=CephString",
+        'name=realm_name,type=CephString '
+        'name=zone_name,type=CephString,req=false '
         'Remove an RGW service')
-    def _rgw_rm(self, name):
+    def _rgw_rm(self, realm_name, zone_name):
+        name = '.'.join(realm_name, zone_name)
         completion = self.remove_rgw(name)
         self._orchestrator_wait([completion])
         orchestrator.raise_if_exception(completion)
