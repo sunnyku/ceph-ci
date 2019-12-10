@@ -657,9 +657,12 @@ def deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c,
     # type: (str, int, int, str, Union[int, str], CephContainer, bool, bool) -> None
     # cmd
     data_dir = get_data_dir(fsid, daemon_type, daemon_id)
-    with open(data_dir + '/cmd', 'w') as f:
-        f.write('#!/bin/sh\n' + ' '.join(c.run_cmd()) + '\n')
-        os.fchmod(f.fileno(), 0o700)
+    with open(data_dir + '/unit.run', 'w') as f:
+        f.write(' '.join(c.run_cmd()) + '\n')
+        os.fchmod(f.fileno(), 0o600)
+    with open(data_dir + '/unit.poststop', 'w') as f:
+        f.write(' '.join(c.poststop_cmd()) + '\n')
+        os.fchmod(f.fileno(), 0o600)
 
     # systemd
     install_base_units(fsid)
@@ -871,8 +874,9 @@ LimitNPROC=1048576
 EnvironmentFile=-/etc/environment
 ExecStartPre=-{container_path} rm ceph-{fsid}-%i
 ExecStartPre=-{install_path} -d -m0770 -o {uid} -g {gid} /var/run/ceph/{fsid}
-ExecStart=/bin/bash {data_dir}/{fsid}/%i/cmd
+ExecStart=/bin/bash {data_dir}/{fsid}/%i/unit.run
 ExecStop=-{container_path} rm -f ceph-{fsid}-%i
+ExecStopPost=-/bin/bash {data_dir}/{fsid}/%i/unit.poststop
 Restart=on-failure
 RestartSec=10s
 TimeoutStartSec=120
@@ -934,6 +938,10 @@ class CephContainer:
             '--entrypoint', self.entrypoint,
             self.image
         ] + self.args # type: ignore
+
+    def poststop_cmd(self):
+        # type: () -> List[str]
+        return []
 
     def shell_cmd(self, cmd):
         # type: (List[str]) -> List[str]
