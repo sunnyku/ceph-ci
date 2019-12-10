@@ -322,9 +322,11 @@ def copy_file(src, dst, uid=None, gid=None):
     if os.path.isdir(dst):
         dst = os.path.join(dst, os.path.basename(src))
 
-    logger.debug('Copy \'%s\' -> \'%s\'' % (src, dst))
+    logger.debug('copy file \'%s\' -> \'%s\'' % (src, dst))
     shutil.copyfile(src, dst)
-    os.chown(dst, uid, gid)
+
+    logger.debug('chown %s:%s \'%s\'' % (uid, gid, dst))
+    os.chown(dst, uid, gid, follow_symlinks=False)
 
     return dst
 
@@ -346,9 +348,11 @@ def move_file(src, dst, uid=None, gid=None):
         os.symlink(src_rl, dst)
         os.unlink(src)
     else:
-        logger.debug('Move \'%s\' -> \'%s\'' % (src, dst))
+        logger.debug('move file \'%s\' -> \'%s\'' % (src, dst))
         shutil.move(src, dst)
-    os.chown(dst, uid, gid)
+
+    logger.debug('chown %s:%s \'%s\'' % (uid, gid, dst))
+    os.chown(dst, uid, gid, follow_symlinks=False)
 
     return dst
 
