@@ -487,11 +487,11 @@ function activate_virtualenv() {
     . $env_dir/bin/activate
 }
 
-function preload_wheels_for_tox() {
-    local ini=$1
+function preload_wheels() {
+    local dir=$1
     shift
     pushd .
-    cd $(dirname $ini)
+    cd $dir
     local require_files=$(ls *requirements*.txt 2>/dev/null) || true
     local constraint_files=$(ls *constraints*.txt 2>/dev/null) || true
     local require=$(echo -n "$require_files" | sed -e 's/^/-r /')
@@ -525,8 +525,11 @@ if $for_make_check; then
     #
     # preload python modules so that tox can run without network access
     #
-    find . -name tox.ini | while read ini ; do
-        preload_wheels_for_tox $ini
+    find . -name tox.ini | while read req ; do
+        preload_wheels $(dirname $req)
+    done
+    find src/pybind/mgr -name requirements.txt | while read req ; do
+        preload_wheels $(dirname $req)
     done
     for interpreter in python2.7 python3 ; do
         rm -rf $top_srcdir/install-deps-$interpreter
