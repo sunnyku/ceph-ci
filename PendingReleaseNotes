@@ -5,6 +5,42 @@
   python3.6 as the native python3. see the `announcement <https://lists.fedoraproject.org/archives/list/epel-announce@lists.fedoraproject.org/message/EGUMKAIMPK2UD5VSHXM53BH2MBDGDWMO/>_`
   for more details on the background of this change.
 
+* Because the content of telemetry reports has changed, you will need to
+  either re-opt-in with::
+
+    ceph telemetry on
+
+  You can view exactly what information will be reported first with::
+
+    ceph telemetry show
+
+* The telemetry module now reports more information about CephFS file systems,
+  including:
+
+    - how many MDS daemons (in total and per file system)
+    - which features are (or have been) enabled
+    - how many data pools
+    - approximate file system age (year + month of creation)
+    - how much metadata is being cached per file system
+
+  We have also added:
+
+    - whether IPv4 or IPv6 addresses are used for the monitors
+    - whether RADOS cache tiering is enabled (and which mode)
+    - whether pools are replicated or erasure coded, and
+      which erasure code profile plugin and parameters are in use
+    - how many RGW daemons, zones, and zonegroups are present; which RGW frontends are in use
+    - aggregate stats about the CRUSH map, like which algorithms are used, how big buckets are, how many rules are defined, and what tunables are in use
+
+  If you had telemetry enabled, you will need to re-opt-in with::
+
+    ceph telemetry on
+
+  You can view exactly what information will be reported first with::
+
+    ceph telemetry show        # see everything
+    ceph telemetry show basic  # basic cluster info (including all of the new info)
+
 12.2.12
 -------
 * In 12.2.9 and earlier releases, keyring caps were not checked for validity,
@@ -205,3 +241,4 @@
   value determined by the config options, for the average for any of the 3 intervals.
   New admin command ``ceph daemon osd.# dump_osd_network [threshold]`` will
   do the same but only including heartbeats initiated by the specified OSD.
+
