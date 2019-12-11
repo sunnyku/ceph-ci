@@ -266,6 +266,7 @@ Description: dashboard plugin for ceph-mgr
 
 Package: ceph-mgr-diskprediction-local
 Architecture: all
+BuildDepeneds: python-scipy
 Depends: ceph-mgr (= ${binary:Version}),
          python-numpy,
          python-scipy,
