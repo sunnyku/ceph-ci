@@ -843,7 +843,9 @@ void RGWHTTPArgs::append(const string& name, const string& val)
       (name.compare("torrent") == 0) ||
       (name.compare("tagging") == 0) ||
       (name.compare("append") == 0) ||
-      (name.compare("position") == 0)) {
+      (name.compare("position") == 0) ||
+      (name.compare("policyStatus") == 0) ||
+      (name.compare("publicAccessBlock"))) {
     sub_resources[name] = val;
   } else if (name[0] == 'r') { // root of all evil
     if ((name.compare("response-content-type") == 0) ||
@@ -1149,7 +1151,9 @@ bool verify_bucket_permission_no_policy(const DoutPrefixProvider* dpp, struct re
     return false;
 
   if (bucket_acl->verify_permission(dpp, *s->auth.identity, perm, perm,
-                                    s->info.env->get("HTTP_REFERER")))
+                                    s->info.env->get("HTTP_REFERER"),
+                                    s->bucket_access_conf &&
+                                    s->bucket_access_conf->ignore_public_acls()))
     return true;
 
   if (!user_acl)
@@ -1265,7 +1269,10 @@ bool verify_object_permission(const DoutPrefixProvider* dpp, struct req_state * 
     return false;
   }
 
-  bool ret = object_acl->verify_permission(dpp, *s->auth.identity, s->perm_mask, perm);
+  bool ret = object_acl->verify_permission(dpp, *s->auth.identity, s->perm_mask, perm,
+					   nullptr, /* http_referrer */
+					   s->bucket_access_conf &&
+					   s->bucket_access_conf->ignore_public_acls());
   if (ret) {
     return true;
   }
@@ -1313,7 +1320,10 @@ bool verify_object_permission_no_policy(const DoutPrefixProvider* dpp,
     return false;
   }
 
-  bool ret = object_acl->verify_permission(dpp, *s->auth.identity, s->perm_mask, perm);
+  bool ret = object_acl->verify_permission(dpp, *s->auth.identity, s->perm_mask, perm,
+					   nullptr, /* http referrer */
+					   s->bucket_access_conf &&
+					   s->bucket_access_conf->ignore_public_acls());
   if (ret) {
     return true;
   }
