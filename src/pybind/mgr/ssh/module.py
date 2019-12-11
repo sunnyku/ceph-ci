@@ -653,13 +653,22 @@ class SSHOrchestrator(MgrModule, orchestrator.Orchestrator):
         return self.inventory_cache.items_filtered(wanted)
 
     @async_completion
-    def add_host(self, host):
+    def add_host(self, host, labels):
         """
         Add a host to be managed by the orchestrator.
 
         :param host: host name
         """
-        self.inventory[host] = {}
+        if host not in self.inventory:
+            self.inventory[host] = {
+                'labels': labels,
+            }
+        else:
+            if 'labels' not in self.inventory[host]:
+                self.inventory[host]['labels'] = list()
+            for l in labels:
+                if l not in self.inventory[host]['labels']:
+                    self.inventory[host]['labels'].append(l)
         self._save_inventory()
         self.inventory_cache[host] = orchestrator.OutdatableData()
         self.service_cache[host] = orchestrator.OutdatableData()
@@ -689,41 +698,35 @@ class SSHOrchestrator(MgrModule, orchestrator.Orchestrator):
         TODO:
           - InventoryNode probably needs to be able to report labels
         """
-        return [orchestrator.InventoryNode(host_name) for host_name in self.inventory_cache]
+        return [
+            orchestrator.InventoryNode(
+                host_name,
+                labels=meta.get('labels', []))
+            for host_name, meta in self.inventory.items()]
 
-    """
+    @trivial_completion
     def add_host_label(self, host, label):
         if host not in self.inventory:
             raise OrchestratorError('host %s does not exist' % host)
 
-        @log_exceptions
-        def run(host, label):
-            if 'labels' not in self.inventory[host]:
-                self.inventory[host]['labels'] = list()
-            if label not in self.inventory[host]['labels']:
-                self.inventory[host]['labels'].append(label)
-            self._save_inventory()
-            return 'Added label %s to host %s' % (label, host)
+        if 'labels' not in self.inventory[host]:
+            self.inventory[host]['labels'] = list()
+        if label not in self.inventory[host]['labels']:
+            self.inventory[host]['labels'].append(label)
+        self._save_inventory()
+        return 'Added label %s to host %s' % (label, host)
 
-        return SSHWriteCompletion(
-            self._worker_pool.apply_async(run, (host, label)))
-
+    @trivial_completion
     def remove_host_label(self, host, label):
         if host not in self.inventory:
             raise OrchestratorError('host %s does not exist' % host)
 
-        @log_exceptions
-        def run(host, label):
-            if 'labels' not in self.inventory[host]:
-                self.inventory[host]['labels'] = list()
-            if label in self.inventory[host]['labels']:
-                self.inventory[host]['labels'].remove(label)
-            self._save_inventory()
-            return 'Removed label %s to host %s' % (label, host)
-
-        return SSHWriteCompletion(
-            self._worker_pool.apply_async(run, (host, label)))
-    """
+        if 'labels' not in self.inventory[host]:
+            self.inventory[host]['labels'] = list()
+        if label in self.inventory[host]['labels']:
+            self.inventory[host]['labels'].remove(label)
+        self._save_inventory()
+        return 'Removed label %s to host %s' % (label, host)
 
     @async_map_completion
     def _refresh_host_services(self, host):
