@@ -409,10 +409,10 @@ def get_legacy_config_fsid(cluster, legacy_dir=None):
     if legacy_dir is not None:
         config_file = os.path.abspath(legacy_dir + config_file)
 
-    config = read_config(config_file)
-
-    if config.has_section('global') and config.has_option('global', 'fsid'):
-        return config.get('global', 'fsid')
+    if os.path.exists(config_file):
+        config = read_config(config_file)
+        if config.has_section('global') and config.has_option('global', 'fsid'):
+            return config.get('global', 'fsid')
     return None
 
 def get_legacy_daemon_fsid(cluster, daemon_type, daemon_id, legacy_dir=None):
@@ -566,6 +566,35 @@ def get_container(fsid, daemon_type, daemon_id, privileged=False,
     else:
         entrypoint = '/usr/bin/ceph-' + daemon_type
         name = '%s.%s' % (daemon_type, daemon_id)
+    prestart = None
+    poststop = None
+    if daemon_type == 'osd':
+        prestart = CephContainer(
+            image=args.image,
+            entrypoint='/usr/sbin/ceph-volume',
+            args=[
+                'lvm', 'activate',
+                str(daemon_id), args.osd_fsid,
+                '--no-systemd'
+            ],
+            container_args=['--privileged'],
+            volume_mounts=get_container_mounts(fsid, daemon_type, daemon_id),
+            cname='ceph-%s-%s.%s-activate' % (fsid, daemon_type, daemon_id),
+        )
+        """
+        poststop = CephContainer(
+            image=args.image,
+            entrypoint='/usr/sbin/ceph-volume',
+            args=[
+                'lvm', 'deactivate',
+                str(daemon_id), args.osd_fsid,
+                '--no-systemd'
+            ],
+            container_args=['--privileged'],
+            volume_mounts=get_container_mounts(fsid, daemon_type, daemon_id),
+            cname='ceph-%s-%s.%s-deactivate' % (fsid, daemon_type, daemon_id),
+        )
+        """
     return CephContainer(
         image=args.image,
         entrypoint=entrypoint,
@@ -576,6 +605,8 @@ def get_container(fsid, daemon_type, daemon_id, privileged=False,
         container_args=container_args,
         volume_mounts=get_container_mounts(fsid, daemon_type, daemon_id),
         cname='ceph-%s-%s.%s' % (fsid, daemon_type, daemon_id),
+        prestart=prestart,
+        poststop=poststop,
     )
 
 def extract_uid_gid():
@@ -634,21 +665,6 @@ def deploy_daemon(fsid, daemon_type, daemon_id, c, uid, gid,
             uid, gid,
             config, keyring)
 
-    if daemon_type == 'osd' and args.osd_fsid:
-        pc = CephContainer(
-            image=args.image,
-            entrypoint='/usr/sbin/ceph-volume',
-            args=[
-                'lvm', 'activate',
-                str(daemon_id), args.osd_fsid,
-                '--no-systemd'
-            ],
-            container_args=['--privileged'],
-            volume_mounts=get_container_mounts(fsid, daemon_type, daemon_id),
-            cname='ceph-%s-activate-%s.%s' % (fsid, daemon_type, daemon_id),
-        )
-        pc.run()
-
     deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c)
     update_firewalld(daemon_type)
 
@@ -657,9 +673,13 @@ def deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c,
     # type: (str, int, int, str, Union[int, str], CephContainer, bool, bool) -> None
     # cmd
     data_dir = get_data_dir(fsid, daemon_type, daemon_id)
-    with open(data_dir + '/cmd', 'w') as f:
-        f.write('#!/bin/sh\n' + ' '.join(c.run_cmd()) + '\n')
-        os.fchmod(f.fileno(), 0o700)
+    with open(data_dir + '/unit.run', 'w') as f:
+        f.write(' '.join(c.prestart_cmd()) + '\n')
+        f.write(' '.join(c.run_cmd()) + '\n')
+        os.fchmod(f.fileno(), 0o600)
+    with open(data_dir + '/unit.poststop', 'w') as f:
+        f.write(' '.join(c.poststop_cmd()) + '\n')
+        os.fchmod(f.fileno(), 0o600)
 
     # systemd
     install_base_units(fsid)
@@ -871,8 +891,9 @@ LimitNPROC=1048576
 EnvironmentFile=-/etc/environment
 ExecStartPre=-{container_path} rm ceph-{fsid}-%i
 ExecStartPre=-{install_path} -d -m0770 -o {uid} -g {gid} /var/run/ceph/{fsid}
-ExecStart=/bin/bash {data_dir}/{fsid}/%i/cmd
+ExecStart=/bin/bash {data_dir}/{fsid}/%i/unit.run
 ExecStop=-{container_path} rm -f ceph-{fsid}-%i
+ExecStopPost=-/bin/bash {data_dir}/{fsid}/%i/unit.poststop
 Restart=on-failure
 RestartSec=10s
 TimeoutStartSec=120
@@ -900,14 +921,18 @@ class CephContainer:
                  args=[],
                  volume_mounts={},
                  cname='',
-                 container_args=[]):
-        # type: (str, str, List[str], Dict[str, str], str, List[str]) -> None
+                 container_args=[],
+                 prestart=None,
+                 poststop=None):
+        # type: (str, str, List[str], Dict[str, str], str, List[str], Optional[CephContainer], Optional[CephContainer]) -> None
         self.image = image
         self.entrypoint = entrypoint
         self.args = args
         self.volume_mounts = volume_mounts
         self.cname = cname
         self.container_args = container_args
+        self.poststop = poststop
+        self.prestart = prestart
 
     def run_cmd(self):
         # type: () -> List[str]
@@ -934,6 +959,18 @@ class CephContainer:
             '--entrypoint', self.entrypoint,
             self.image
         ] + self.args # type: ignore
+
+    def prestart_cmd(self):
+        # type: () -> List[str]
+        if self.prestart:
+            return self.prestart.run_cmd()
+        return []
+
+    def poststop_cmd(self):
+        # type: () -> List[str]
+        if self.poststop:
+            return self.poststop.run_cmd()
+        return []
 
     def shell_cmd(self, cmd):
         # type: (List[str]) -> List[str]
