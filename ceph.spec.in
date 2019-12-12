@@ -1521,8 +1521,20 @@ if [ $1 -ge 1 ] ; then
 fi
 
 %pre -n cephadm
-getent group cephadm >/dev/null || groupadd -r cephadm
-getent passwd cephadm >/dev/null || useradd -r -g cephadm -s /bin/false -c "cephadm user for mgr/cephadm" -d %{_sharedstatedir}/cephadm cephadm
+getent group cephadm >/dev/null || groupadd cephadm
+getent passwd cephadm >/dev/null || useradd -g cephadm -s /sbin/nologin -c "cephadm user for mgr/cephadm" -d %{_sharedstatedir}/cephadm -m cephadm
+# set up (initially empty) .ssh/authorized_keys file
+CEPHADM_HOME="$(getent passwd cephadm | cut -d: -f6)"
+if ! test -d $CEPHADM_HOME/.ssh ; then
+   mkdir $CEPHADM_HOME/.ssh
+   chown --reference $CEPHADM_HOME $CEPHADM_HOME/.ssh
+   chmod 0700 $CEPHADM_HOME/.ssh
+fi
+if ! test -e $CEPHADM_HOME/.ssh/authorized_keys ; then
+   touch $CEPHADM_HOME/.ssh/authorized_keys
+   chown --reference $CEPHADM_HOME $CEPHADM_HOME/.ssh/authorized_keys
+   chmod 0600 $CEPHADM_HOME/.ssh/authorized_keys
+fi
 exit 0
 
 %postun -n cephadm
@@ -1532,9 +1544,9 @@ exit 0
 %files -n cephadm
 %{_sbindir}/cephadm
 %{_sysconfdir}/sudoers.d/cephadm
-%attr(0700,cephadm,cephadm) %dir %{_sharedstatedir}/cephadm
-%attr(0700,cephadm,cephadm) %dir %{_sharedstatedir}/cephadm/.ssh
-%attr(0600,cephadm,cephadm) %{_sharedstatedir}/cephadm/.ssh/authorized_keys
+%ghost %{_sharedstatedir}/cephadm
+%ghost %{_sharedstatedir}/cephadm/.ssh
+%ghost %{_sharedstatedir}/cephadm/.ssh/authorized_keys
 
 %files common
 %dir %{_docdir}/ceph
