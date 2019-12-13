@@ -144,21 +144,25 @@ void MDSDaemon::asok_command(
   } else if (command == "exit") {
     outbl.append("Exiting...\n");
     r = 0;
-    std::thread t([this](){
+    auto t = new std::thread([this](){
 		    // Wait a little to improve chances of caller getting
 		    // our response before seeing us disappear from mdsmap
 		    sleep(1);
+		    std::lock_guard l(mds_lock);
 		    suicide();
 		  });
+    (void)t;
   } else if (command == "respawn") {
     outbl.append("Respawning...\n");
     r = 0;
-    std::thread t([this](){
+    auto t = new std::thread([this](){
 		    // Wait a little to improve chances of caller getting
 		    // our response before seeing us disappear from mdsmap
 		    sleep(1);
+		    std::lock_guard l(mds_lock);
 		    respawn();
 		  });
+    (void)t;
   } else if (command == "heap") {
     if (!ceph_using_tcmalloc()) {
       ss << "not using tcmalloc";
