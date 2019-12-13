@@ -384,7 +384,7 @@ Usage:
     def _rbd_mirror_add(self, num=None, hosts=None):
         spec = orchestrator.StatelessServiceSpec(
             None,
-            placement=orchestrator.PlacementSpec(nodes=hosts, count=num))
+            placement=orchestrator.PlacementSpec(hosts=hosts, count=num))
         completion = self.add_rbd_mirror(spec)
         self._orchestrator_wait([completion])
         orchestrator.raise_if_exception(completion)
@@ -399,7 +399,7 @@ Usage:
     def _rbd_mirror_update(self, num, label=None, hosts=[]):
         spec = orchestrator.StatelessServiceSpec(
             None,
-            placement=orchestrator.PlacementSpec(nodes=hosts, count=num, label=label))
+            placement=orchestrator.PlacementSpec(hosts=hosts, count=num, label=label))
         completion = self.update_rbd_mirror(spec)
         self._orchestrator_wait([completion])
         orchestrator.raise_if_exception(completion)
@@ -424,7 +424,7 @@ Usage:
     def _mds_add(self, fs_name, num=None, hosts=None):
         spec = orchestrator.StatelessServiceSpec(
             fs_name,
-            placement=orchestrator.PlacementSpec(nodes=hosts, count=num))
+            placement=orchestrator.PlacementSpec(hosts=hosts, count=num))
         completion = self.add_mds(spec)
         self._orchestrator_wait([completion])
         orchestrator.raise_if_exception(completion)
@@ -438,7 +438,7 @@ Usage:
         "name=hosts,type=CephString,n=N,req=false "
         'Update the number of MDS instances for the given fs_name')
     def _mds_update(self, fs_name, num=None, label=None, hosts=[]):
-        placement = orchestrator.PlacementSpec(label=label, count=num, nodes=hosts)
+        placement = orchestrator.PlacementSpec(label=label, count=num, hosts=hosts)
         placement.validate()
 
         spec = orchestrator.StatelessServiceSpec(
@@ -483,7 +483,7 @@ Usage:
         rgw_spec = orchestrator.RGWSpec(
             rgw_realm=realm_name,
             rgw_zone=zone_name,
-            placement=orchestrator.PlacementSpec(nodes=hosts, count=num))
+            placement=orchestrator.PlacementSpec(hosts=hosts, count=num))
 
         completion = self.add_rgw(rgw_spec)
         self._orchestrator_wait([completion])
@@ -502,7 +502,7 @@ Usage:
         spec = orchestrator.RGWSpec(
             rgw_realm=realm_name,
             rgw_zone=zone_name,
-            placement=orchestrator.PlacementSpec(nodes=hosts, label=label, count=num))
+            placement=orchestrator.PlacementSpec(hosts=hosts, label=label, count=num))
         completion = self.update_rgw(spec)
         self._orchestrator_wait([completion])
         orchestrator.raise_if_exception(completion)
