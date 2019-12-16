@@ -32,7 +32,7 @@ class OrchestratorCli(orchestrator.OrchestratorClientMixin, MgrModule):
             'runtime': True,
         },
     ]
-    NATIVE_OPTIONS = []
+    NATIVE_OPTIONS = []  # type: List[dict]
 
     def __init__(self, *args, **kwargs):
         super(OrchestratorCli, self).__init__(*args, **kwargs)
@@ -226,7 +226,7 @@ class OrchestratorCli(orchestrator.OrchestratorClientMixin, MgrModule):
         "name=refresh,type=CephBool,req=false",
         'List devices on a node')
     def _list_devices(self, host=None, format='plain', refresh=False):
-        # type: (List[str], str, bool) -> HandleCommandResult
+        # type: (Optional[List[str]], str, bool) -> HandleCommandResult
         """
         Provide information about storage devices present in cluster hosts
 
@@ -247,13 +247,13 @@ class OrchestratorCli(orchestrator.OrchestratorClientMixin, MgrModule):
         else:
             out = []
 
-            for host in completion.result: # type: orchestrator.InventoryNode
-                out.append('Host {}:'.format(host.name))
+            for host_ in completion.result: # type: orchestrator.InventoryNode
+                out.append('Host {}:'.format(host_.name))
                 table = PrettyTable(
                     ['Path', 'Type', 'Size', 'Available', 'Ceph Device ID', 'Reject Reasons'],
                     border=False)
                 table._align['Path'] = 'l'
-                for d in host.devices.devices:  # type: Device
+                for d in host_.devices.devices:  # type: Device
                     table.add_row(
                         (
                             d.path,
@@ -326,7 +326,7 @@ class OrchestratorCli(orchestrator.OrchestratorClientMixin, MgrModule):
         "name=svc_arg,type=CephString,req=false",
         'Create an OSD service. Either --svc_arg=host:drives or -i <drive_group>')
     def _create_osd(self, svc_arg=None, inbuf=None):
-        # type: (str, str) -> HandleCommandResult
+        # type: (Optional[str], Optional[str]) -> HandleCommandResult
         """Create one or more OSDs"""
 
         usage = """
@@ -525,9 +525,17 @@ Usage:
         "name=svc_arg,type=CephString "
         "name=pool,type=CephString "
         "name=namespace,type=CephString,req=false",
+        'name=num,type=CephInt,req=false '
+        'name=hosts,type=CephString,n=N,req=false '
+        'name=label,type=CephString,req=false',
         'Create an NFS service')
-    def _nfs_add(self, svc_arg, pool, namespace=None):
-        spec = orchestrator.NFSServiceSpec(svc_arg, pool=pool, namespace=namespace)
+    def _nfs_add(self, svc_arg, pool, namespace=None, num=None, label=None, hosts=[]):
+        spec = orchestrator.NFSServiceSpec(
+            svc_arg,
+            pool=pool,
+            namespace=namespace,
+            placement=orchestrator.PlacementSpec(label=label, nodes=hosts, count=num),
+        )
         spec.validate_add()
         completion = self.add_nfs(spec)
         self._orchestrator_wait([completion])
@@ -537,10 +545,16 @@ Usage:
     @orchestrator._cli_write_command(
         'orchestrator nfs update',
         "name=svc_id,type=CephString "
-        "name=num,type=CephInt",
+        'name=num,type=CephInt,req=false '
+        'name=hosts,type=CephString,n=N,req=false '
+        'name=label,type=CephString,req=false',
         'Scale an NFS service')
-    def _nfs_update(self, svc_id, num):
-        spec = orchestrator.NFSServiceSpec(svc_id, count=num)
+    def _nfs_update(self, svc_id, num=None, label=None, hosts=[]):
+        # type: (str, Optional[int], Optional[str], List[str]) -> HandleCommandResult
+        spec = orchestrator.NFSServiceSpec(
+            svc_id,
+            placement=orchestrator.PlacementSpec(label=label, nodes=hosts, count=num),
+        )
         completion = self.update_nfs(spec)
         self._orchestrator_wait([completion])
         return HandleCommandResult(stdout=completion.result_str())
@@ -704,16 +718,16 @@ Usage:
         assert self._select_orchestrator() is None
         self._set_backend(old_orch)
 
-        e = self.remote('selftest', 'remote_from_orchestrator_cli_self_test', "ZeroDivisionError")
+        e1 = self.remote('selftest', 'remote_from_orchestrator_cli_self_test', "ZeroDivisionError")
         try:
-            orchestrator.raise_if_exception(e)
+            orchestrator.raise_if_exception(e1)
             assert False
         except ZeroDivisionError as e:
             assert e.args == ('hello', 'world')
 
-        e = self.remote('selftest', 'remote_from_orchestrator_cli_self_test', "OrchestratorError")
+        e2 = self.remote('selftest', 'remote_from_orchestrator_cli_self_test', "OrchestratorError")
         try:
-            orchestrator.raise_if_exception(e)
+            orchestrator.raise_if_exception(e2)
             assert False
         except orchestrator.OrchestratorError as e:
             assert e.args == ('hello', 'world')
