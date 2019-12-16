@@ -22,7 +22,7 @@ def get_sambas(ctx, roles):
     :param roles: roles for this test (extracted from yaml files)
     """
     for role in roles:
-        assert isinstance(role, basestring)
+        assert isinstance(role, str)
         PREFIX = 'samba.'
         assert role.startswith(PREFIX)
         id_ = role[len(PREFIX):]

@@ -103,7 +103,7 @@ def task(ctx, config):
     # Create scratch dirs for any non-all workunits
     log.info('Making a separate scratch dir for every client...')
     for role in clients.keys():
-        assert isinstance(role, basestring)
+        assert isinstance(role, str)
         if role == "all":
             continue
 
@@ -311,7 +311,7 @@ def _run_tests(ctx, refspec, role, tests, env, basedir,
                     to False is passed, the 'timeout' command is not used.
     """
     testdir = misc.get_testdir(ctx)
-    assert isinstance(role, basestring)
+    assert isinstance(role, str)
     cluster, type_, id_ = misc.split_role(role)
     assert type_ == 'client'
     remote = get_remote_for_role(ctx, role)
