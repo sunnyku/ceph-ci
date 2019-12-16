@@ -804,8 +804,6 @@ class CephadmOrchestrator(MgrModule, orchestrator.Orchestrator):
                        service_id=None):
         self.log.debug('service_action action %s type %s name %s id %s' % (
             action, service_type, service_name, service_id))
-        if action == 'reload':
-            return trivial_result(["Reload is a no-op"])
 
         def _proc_daemons(daemons):
             if service_name is None and service_id is None:
@@ -832,20 +830,12 @@ class CephadmOrchestrator(MgrModule, orchestrator.Orchestrator):
     @async_map_completion
     def _service_action(self, service_type, service_id, host, action):
         if action == 'redeploy':
-            # recreate the systemd unit and then restart
-            if service_type == 'mon':
-                # get mon. key
-                ret, keyring, err = self.mon_command({
-                    'prefix': 'auth get',
-                    'entity': 'mon.',
-                })
-            else:
-                ret, keyring, err = self.mon_command({
-                    'prefix': 'auth get',
-                    'entity': '%s.%s' % (service_type, service_id),
-                })
+            # stop, recreate the container+unit, then restart
             return self._create_daemon(service_type, service_id, host,
-                                       keyring)
+                                       None)
+        elif action == 'reconfig':
+            return self._create_daemon(service_type, service_id, host,
+                                       None, reconfig=True)
 
         actions = {
             'start': ['reset-failed', 'start'],
@@ -1022,16 +1012,34 @@ class CephadmOrchestrator(MgrModule, orchestrator.Orchestrator):
         return self._get_services('osd', service_id=name).then(_search)
 
     def _create_daemon(self, daemon_type, daemon_id, host, keyring,
-                       extra_args=[]):
+                       extra_args=[], extra_config=None,
+                       reconfig=False):
         conn = self._get_connection(host)
         try:
             name = '%s.%s' % (daemon_type, daemon_id)
+
+            # keyring
+            if not keyring:
+                if daemon_type == 'mon':
+                    # get mon. key
+                    ret, keyring, err = self.mon_command({
+                        'prefix': 'auth get',
+                        'entity': 'mon.',
+                    })
+                else:
+                    ret, keyring, err = self.mon_command({
+                        'prefix': 'auth get',
+                        'entity': '%s.%s' % (daemon_type, daemon_id),
+                    })
 
             # generate config
             ret, config, err = self.mon_command({
                 "prefix": "config generate-minimal-conf",
             })
+            if extra_config:
+                config += extra_config
 
+            # crash_keyring
             ret, crash_keyring, err = self.mon_command({
                 'prefix': 'auth get-or-create',
                 'entity': 'client.crash.%s' % host,
@@ -1045,6 +1053,9 @@ class CephadmOrchestrator(MgrModule, orchestrator.Orchestrator):
                 'crash_keyring': crash_keyring,
             })
 
+            if reconfig:
+                extra_args.append('--reconfig')
+
             out, err, code = self._run_cephadm(
                 host, name, 'deploy',
                 [
@@ -1054,7 +1065,8 @@ class CephadmOrchestrator(MgrModule, orchestrator.Orchestrator):
                 stdin=j)
             self.log.debug('create_daemon code %s out %s' % (code, out))
             self.service_cache.invalidate(host)
-            return "(Re)deployed {} on host '{}'".format(name, host)
+            return "{} {} on host '{}'".format(
+                'Reconfigured' if reconfig else 'Deployed', name, host)
 
         except Exception as e:
             self.log.error("create_daemon({}): error: {}".format(host, e))
@@ -1108,17 +1120,18 @@ class CephadmOrchestrator(MgrModule, orchestrator.Orchestrator):
         })
 
         # infer whether this is a CIDR network, addrvec, or plain IP
+        extra_config = '[mon.%s]\n' % name
         if '/' in network:
-            extra_args = ['--mon-network', network]
+            extra_config += 'public network = %s\n' % network
         elif network.startswith('[v') and network.endswith(']'):
-            extra_args = ['--mon-addrv', network]
+            extra_config += 'public addrv = %s\n' % network
         elif ':' not in network:
-            extra_args = ['--mon-ip', network]
+            extra_config += 'public addr = %s\n' % network
         else:
             raise RuntimeError('Must specify a CIDR network, ceph addrvec, or plain IP: \'%s\'' % network)
 
         return self._create_daemon('mon', name or host, host, keyring,
-                                   extra_args=extra_args)
+                                   extra_config=extra_config)
 
     def update_mons(self, spec):
         # type: (orchestrator.StatefulServiceSpec) -> orchestrator.Completion
