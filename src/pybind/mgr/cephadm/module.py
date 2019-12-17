@@ -757,8 +757,9 @@ class CephadmOrchestrator(MgrModule, orchestrator.Orchestrator):
                       node_name=None,
                       refresh=False):
         hosts = []
+        wait_for_hosts = []
         wait_for_args = []
-        in_cache = []
+        services = {}
         keys = None
         if node_name is not None:
             keys = [node_name]
@@ -767,14 +768,14 @@ class CephadmOrchestrator(MgrModule, orchestrator.Orchestrator):
             if host_info.outdated(self.service_cache_timeout) or refresh:
                 self.log.info("refresing stale services for '{}'".format(host))
                 wait_for_args.append((host,))
+                wait_for_hosts.append(host)
             else:
                 self.log.debug('have recent services for %s: %s' % (
                     host, host_info.data))
-                in_cache.append(host_info.data)
+                services[host] = host_info.data
 
         def _get_services_result(results):
-            services = {}
-            for host, data in zip(hosts, results + in_cache):
+            for host, data in zip(wait_for_hosts, results):
                 services[host] = data
 
             result = []
