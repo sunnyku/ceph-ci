@@ -44,6 +44,12 @@ DEFAULT_SSH_CONFIG = ('Host *\n'
                       'StrictHostKeyChecking no\n'
                       'UserKnownHostsFile /dev/null\n')
 
+PYTHONS = [
+    '/usr/bin/python3', 'python3',
+    '/usr/bin/python', 'python',
+    '/usr/bin/python2', 'python2',
+]
+
 # for py2 compat
 try:
     from tempfile import TemporaryDirectory # py3
@@ -632,22 +638,39 @@ class CephadmOrchestrator(MgrModule, orchestrator.Orchestrator):
             final_args += args
 
             if self.mode == 'root':
-                self.log.debug('args: %s' % final_args)
+                self.log.debug('args: %s' % (' '.join(final_args)))
                 self.log.debug('stdin: %s' % stdin)
                 script = 'injected_argv = ' + json.dumps(final_args) + '\n'
                 if stdin:
                     script += 'injected_stdin = ' + json.dumps(stdin) + '\n'
                 script += self._cephadm
-                out, err, code = remoto.process.check(
-                    conn,
-                    ['/usr/bin/python', '-u'],
-                    stdin=script.encode('utf-8'))
+                first_err = None
+                for python in PYTHONS:
+                    try:
+                        out, err, code = remoto.process.check(
+                            conn,
+                            [python, '-u'],
+                            stdin=script.encode('utf-8'))
+                    except RuntimeError as e:
+                        if not first_err:
+                            first_err = e
+                        continue
+                    first_err = None
+                    break
+                if first_err:
+                    if error_ok:
+                        return '', str(first_err), 1
+                    raise first_err
             elif self.mode == 'cephadm-package':
-                out, err, code = remoto.process.check(
-                    conn,
-                    ['sudo', '/usr/bin/cephadm'] + final_args,
-                    stdin=stdin)
-            self.log.debug('exit code %s out %s err %s' % (code, out, err))
+                try:
+                    out, err, code = remoto.process.check(
+                        conn,
+                        ['sudo', '/usr/bin/cephadm'] + final_args,
+                        stdin=stdin)
+                except RuntimeError as e:
+                    if error_ok:
+                        return '', str(e), 1
+                    raise
             if code and not error_ok:
                 raise RuntimeError(
                     'cephadm exited with an error code: %d, stderr:%s' % (
