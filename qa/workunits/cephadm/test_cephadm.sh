@@ -101,6 +101,7 @@ $CEPHADM shell --fsid $FSID -- ceph -v | grep 'ceph version'
 ## bootstrap
 ORIG_CONFIG=`mktemp -p $TMPDIR`
 CONFIG=`mktemp -p $TMPDIR`
+MONCONFIG=`mktemp -p $TMPDIR`
 KEYRING=`mktemp -p $TMPDIR`
 IP=127.0.0.1
 cat <<EOF > $ORIG_CONFIG
@@ -144,9 +145,10 @@ $CEPHADM ls | jq '.[]' | jq 'select(.name == "mgr.x").fsid' \
 
 ## deploy
 # add mon.b
+cp $CONFIG $MONCONFIG
+echo "public addr = $IP:3301" >> $MONCONFIG
 $CEPHADM deploy --name mon.b \
       --fsid $FSID \
-      --mon-ip $IP:3301 \
       --keyring /var/lib/ceph/$FSID/mon.a/keyring \
       --config $CONFIG
 for u in ceph-$FSID@mon.b; do
@@ -168,6 +170,9 @@ for u in ceph-$FSID@mgr.y; do
     systemctl is-enabled $u
     systemctl is-active $u
 done
+
+exit 0
+
 for f in `seq 1 30`; do
     if $CEPHADM shell --fsid $FSID \
 	     --config $CONFIG --keyring $KEYRING -- \
