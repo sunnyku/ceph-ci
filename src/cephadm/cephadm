@@ -276,8 +276,13 @@ def generate_service_id():
 
 def generate_password():
     # type: () -> str
-    return ''.join(random.choice(string.ascii_lowercase + string.digits)
-                   for i in range(10))
+    m = re.compile(r'(.)\1')  # match any repeating character
+    while True:
+        pw = ''.join(random.choice(string.ascii_lowercase + string.digits)
+                     for i in range(10))
+        if [a for a in m.finditer(pw)]:
+            continue
+        return pw
 
 def make_fsid():
     # type: () -> str
