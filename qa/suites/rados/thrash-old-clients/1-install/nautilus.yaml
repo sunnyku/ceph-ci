@@ -7,3 +7,4 @@ tasks:
     branch: nautilus
     exclude_packages:
       - cephadm
+      - ceph-immutable-object-cache
