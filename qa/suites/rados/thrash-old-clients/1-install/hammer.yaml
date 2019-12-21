@@ -27,8 +27,7 @@ tasks:
       - libcephfs-devel
       - libcephfs-dev
       - libradospp-devel
+      - ceph-immutable-object-cache
+      - ceph-base
+      - librados-devel
     extra_packages: ['librados2']
-- install.upgrade:
-    mon.a:
-    mon.b:
-    mon.c:
