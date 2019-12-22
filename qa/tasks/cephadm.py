@@ -312,6 +312,7 @@ def ceph_bootstrap(ctx, config):
             '--output-config', '{}/{}.conf'.format(testdir, cluster_name),
             '--output-keyring', '{}/{}.keyring'.format(testdir, cluster_name),
             '--output-pub-ssh-key', '{}/{}.pub'.format(testdir, cluster_name),
+            '--skip-ping-check',  # FIXME: currently doesn't handle :port suffix
         ]
         if mons[first_mon_role].startswith('['):
             cmd += ['--mon-addrv', mons[first_mon_role]]
