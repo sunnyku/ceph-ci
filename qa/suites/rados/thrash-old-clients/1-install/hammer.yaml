@@ -33,6 +33,7 @@ tasks:
       - python3-rgw
       - python3-rbd
       - python3-cephfs
+      - rbd-mirror
     extra_packages:
       - librados2
       - python-rados
