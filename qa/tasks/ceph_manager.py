@@ -1532,7 +1532,7 @@ class CephManager:
             stdout = StringIO()
 
         if self.cephadm:
-            return self.shell(
+            return shell(
                 self.ctx, self.cluster, self.controller,
                 args=[
                     'ceph', 'daemon', '%s.%s' % (service_type, service_id),
