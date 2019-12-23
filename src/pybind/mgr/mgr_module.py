@@ -5,6 +5,7 @@ try:
 except ImportError:
     # just for type checking
     pass
+import datetime
 import logging
 import errno
 import json
@@ -850,6 +851,22 @@ class MgrModule(ceph_module.BaseMgrModule, MgrModuleLoggingMixin):
             if n > 10 << bits:
                 return str(n >> bits) + ' ' + suffix
         return str(n) + ' '
+
+    @staticmethod
+    def to_pretty_timedelta(n):
+        if n < datetime.timedelta(seconds=120):
+            return str(n.seconds) + 's'
+        if n < datetime.timedelta(minutes=120):
+            return str(n.seconds // 60) + 'm'
+        if n < datetime.timedelta(hours=48):
+            return str(n.seconds // 360) + 'h'
+        if n < datetime.timedelta(days=14):
+            return str(n.days) + 'd'
+        if n < datetime.timedelta(days=7*12):
+            return str(n.days // 7) + 'w'
+        if n < datetime.timedelta(days=365*2):
+            return str(n.days // 30) + 'M'
+        return str(n.days // 365) + 'y'
 
     @staticmethod
     def get_pretty_row(elems, width):
