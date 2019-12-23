@@ -198,7 +198,7 @@ def ceph_log(ctx, config):
                     args=[
                         'sudo',
                         'find',
-                        '/var/log/ceph/' + fsid,
+                        '/var/log/ceph',   # all logs, not just for the cluster
                         '-name',
                         '*.log',
                         '-print0',
@@ -227,7 +227,7 @@ def ceph_log(ctx, config):
                     os.makedirs(sub)
                 except OSError:
                     pass
-                teuthology.pull_directory(remote, '/var/log/ceph/' + fsid,
+                teuthology.pull_directory(remote, '/var/log/ceph',  # everything
                                           os.path.join(sub, 'log'))
 
 @contextlib.contextmanager
