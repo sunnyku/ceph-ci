@@ -1057,8 +1057,11 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
                     result.append(sd)
             return result
 
-        return self._refresh_host_services(wait_for_args).then(
-            _get_services_result)
+        if wait_for_args:
+            return self._refresh_host_services(wait_for_args).then(
+                _get_services_result)
+        else:
+            return trivial_result(_get_services_result({}))
 
     def describe_service(self, service_type=None, service_id=None,
                          node_name=None, refresh=False):
