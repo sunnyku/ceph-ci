@@ -18,7 +18,6 @@ from teuthology import contextutil
 from teuthology.orchestra import run
 from teuthology.orchestra.daemon import DaemonGroup
 from teuthology.config import config as teuth_config
-import ceph_client as cclient
 
 # these items we use from ceph.py should probably eventually move elsewhere
 from tasks.ceph import get_mons, healthy
@@ -620,7 +619,39 @@ def ceph_mdss(ctx, config):
 @contextlib.contextmanager
 def ceph_clients(ctx, config):
     cluster_name = config['cluster']
-    cclient.create_keyring(ctx, cluster_name)
+    testdir = teuthology.get_testdir(ctx)
+
+    log.info('Setting up client nodes...')
+    clients = ctx.cluster.only(teuthology.is_type('client', cluster_name))
+    testdir = teuthology.get_testdir(ctx)
+    coverage_dir = '{tdir}/archive/coverage'.format(tdir=testdir)
+    for remote, roles_for_host in clients.remotes.items():
+        for role in teuthology.cluster_roles_of_type(roles_for_host, 'client',
+                                                     cluster_name):
+            name = teuthology.ceph_role(role)
+            client_keyring = '/etc/ceph/{0}.{1}.keyring'.format(cluster_name,
+                                                                name)
+            r = _shell(
+                ctx=ctx,
+                cluster_name=cluster_name,
+                remote=remote,
+                args=[
+                    'ceph', 'auth',
+                    'get-or-create', name,
+                    'mon', 'allow *',
+                    'osd', 'allow *',
+                    'mds', 'allow *',
+                    'mgr', 'allow *',
+                ],
+                stdout=StringIO(),
+            )
+            keyring = r.stdout.getvalue()
+            teuthology.sudo_write_file(
+                remote=remote,
+                path=client_keyring,
+                data=keyring,
+                perms='0644'
+            )
     yield
 
 @contextlib.contextmanager
