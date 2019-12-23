@@ -18,6 +18,7 @@ from teuthology import contextutil
 from teuthology.orchestra import run
 from teuthology.orchestra.daemon import DaemonGroup
 from teuthology.config import config as teuth_config
+import ceph_client as cclient
 
 # these items we use from ceph.py should probably eventually move elsewhere
 from tasks.ceph import get_mons, healthy
@@ -617,6 +618,12 @@ def ceph_mdss(ctx, config):
     yield
 
 @contextlib.contextmanager
+def ceph_clients(ctx, config):
+    cluster_name = config['cluster']
+    cclient.create_keyring(ctx, cluster_name)
+    yield
+
+@contextlib.contextmanager
 def ceph_initial():
     try:
         yield
@@ -876,6 +883,7 @@ def task(ctx, config):
             lambda: ceph_mgrs(ctx=ctx, config=config),
             lambda: ceph_osds(ctx=ctx, config=config),
             lambda: ceph_mdss(ctx=ctx, config=config),
+            lambda: ceph_clients(ctx=ctx, config=config),
             lambda: distribute_config_and_admin_keyring(ctx=ctx, config=config),
     ):
         ctx.managers[cluster_name] = CephManager(
