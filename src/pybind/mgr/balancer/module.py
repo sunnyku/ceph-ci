@@ -299,12 +299,11 @@ class Module(MgrModule):
         },
         {
             'name': 'upmap_max_deviation',
-            'type': 'float',
-            'default': .01,
-            'min': 0,
-            'max': 1,
+            'type': 'int',
+            'default': 1,
+            'min': 1,
             'desc': 'deviation below which no optimization is attempted',
-            'long_desc': 'If the ratio between the fullest and least-full OSD is below this value then we stop trying to optimize placement.',
+            'long_desc': 'If the number of PGs are within this count then no optimization is attempted',
             'runtime': True,
         },
         {
@@ -980,7 +979,7 @@ class Module(MgrModule):
         self.log.info('prepared %d/%d changes' % (total_did, max_iterations))
         if total_did == 0:
             return -errno.EALREADY, 'Unable to find further optimization, ' \
-                                    'or pool(s)\' pg_num is decreasing, ' \
+                                    'or pool(s) pg_num is decreasing, ' \
                                     'or distribution is already perfect'
         return 0, ''
 
