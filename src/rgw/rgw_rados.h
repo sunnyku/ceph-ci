@@ -30,6 +30,7 @@
 #include "rgw_sync_module.h"
 #include "rgw_sync_log_trim.h"
 #include "common/Throttle.h"
+//#include "rgw_putobj_processor.h"
 
 
 class RGWWatcher;
@@ -2145,6 +2146,7 @@ struct get_obj_data : public RefCountedObject {
   int sequence;
   Mutex cache_lock;
   Mutex l2_lock;
+  Mutex wb_lock;
   std::list<string> pending_oid_list;
   std::map<off_t, librados::CacheRequest*> cache_aio_map;
   char *tmp_data;
@@ -2168,9 +2170,10 @@ struct get_obj_data : public RefCountedObject {
   int add_l1_request(struct librados::L1CacheRequest **cc, bufferlist *pbl, string oid,
       size_t len, off_t ofs, off_t read_ofs, string key, librados::AioCompletion *lc);
   int add_l2_request(struct librados::L2CacheRequest **cc, bufferlist *pbl, string oid,
-      off_t obj_ofs, off_t read_ofs, size_t len, string key, librados::AioCompletion *lc, string location);
+      off_t obj_ofs, off_t read_ofs, size_t len, string key, librados::AioCompletion *lc, string location,string op);
   int add_cache_notifier(std::string oid, librados::AioCompletion *lc);
   void cache_aio_completion_cb(librados::CacheRequest *c);
+  void cache_aio_wb_completion_cb(librados::CacheRequest *c);
   void cache_unmap_io(off_t ofs);
 
   int submit_l1_aio_read(librados::L1CacheRequest *cc);
@@ -3306,6 +3309,9 @@ public:
 		  librados::ObjectOperation& op, RGWObjState **state);
 
 
+  /*ugur*/
+  virtual int issue_remote_wb(librados::L2CacheRequest *cr);
+  virtual int update_directory(string key, string value, string op);
   virtual int flush_read_list(struct get_obj_data *d);
 
   virtual int get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
@@ -3709,6 +3715,8 @@ public:
                          RGWObjVersionTracker *objv_tracker,
                          const ceph::real_time& mtime);
  public:
+ 
+
   string get_mfa_oid(const rgw_user& user);
   int get_mfa_ref(const rgw_user& user, rgw_rados_ref *ref);
   int check_mfa(const rgw_user& user, const string& otp_id, const string& pin);
@@ -3902,6 +3910,8 @@ struct librados::L2CacheRequest : public librados::CacheRequest {
   int stat;
   void *tp;
   string dest;
+  string op;
+  bufferlist bl;
   L2CacheRequest(CephContext *_cct) : CacheRequest(_cct), read(0), stat(-1) {}
   ~L2CacheRequest(){}
   void release (){
@@ -3925,7 +3935,37 @@ struct librados::L2CacheRequest : public librados::CacheRequest {
   }
 };
 
+/*ugur*/
+struct librados::CacheWriteRequest : public librados::CacheRequest {
+  string dest;
+  string op;
+  int len;
+  void *writecache_tp;
+  size_t read;
+  int stat;
+  bufferlist bl;
+  CacheWriteRequest(CephContext *_cct) : CacheRequest(_cct), read(0), stat(-1) {}
+  ~CacheWriteRequest(){}
+  void release (){
+    lock.Lock();
+    lock.Unlock();
+  }
 
+  void cancel_io(){
+    lock.Lock();
+    stat = ECANCELED;
+    lock.Unlock();
+  }
+
+  void finish(){
+    onack->complete(0);
+    release();
+  }
+
+  int status(){return 0;}
+};
+
+/*ugur*/
 
 template <class T>
 class RGWChainedCacheImpl : public RGWChainedCache {

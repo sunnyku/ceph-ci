@@ -47,7 +47,9 @@ ResultList AioThrottle::submit(rgw_rados_ref& ref, const rgw_raw_obj& obj,
   if (cost > window) {
     p->result = -EDEADLK; // would never succeed
     completed.push_back(*p);
-  } else {
+ } 
+
+else {
     get(*p);
     p->result = ref.ioctx.aio_operate(ref.oid, p->completion, op);
     if (p->result < 0) {
@@ -58,6 +60,33 @@ ResultList AioThrottle::submit(rgw_rados_ref& ref, const rgw_raw_obj& obj,
   return std::move(completed);
 }
 
+/*ugur*/
+
+ResultList AioThrottle::submit(rgw_rados_ref& ref,const rgw_raw_obj& obj, uint64_t cost, RGWRados *store, librados::L2CacheRequest *wb_req)
+{
+  auto p = std::make_unique<Pending>();
+  p->obj = obj;
+  p->cost = cost;
+
+  if (cost > window) {
+    p->result = -EDEADLK; // would never succeed
+    completed.push_back(*p);
+ } 
+
+else {
+    get(*p);
+    wb_req->lc = p->completion;
+    int r = ref.ioctx.cache_aio_notifier_wb(wb_req->oid, wb_req);
+    p->result =  store->issue_remote_wb(wb_req); 
+//   p->result = ref.ioctx.aio_operate(ref.oid, p->completion, op);
+    if (p->result < 0) {
+      put(*p);
+    }
+  }
+  p.release();
+  return std::move(completed);
+}
+/*ugur*/
 ResultList AioThrottle::submit(rgw_rados_ref& ref, const rgw_raw_obj& obj,
                                librados::ObjectReadOperation *op,
                                bufferlist *data, uint64_t cost)

@@ -1637,7 +1637,13 @@ int librados::IoCtx::cache_aio_notifier(const std::string& oid, CacheRequest *cc
   object_t obj(oid);
   return io_ctx_impl->cache_aio_operate_read(obj, cc->lc->pc, cc);	
 }
-
+/*ugur*/
+int librados::IoCtx::cache_aio_notifier_wb(const std::string& oid, CacheRequest *cc) {
+  if (!cc) return -1;
+  object_t obj(oid);
+  return io_ctx_impl->cache_aio_operate_write(obj, cc->lc->pc, cc);	
+}
+/*ugur*/
 
 void librados::IoCtx::snap_set_read(snap_t seq)
 {

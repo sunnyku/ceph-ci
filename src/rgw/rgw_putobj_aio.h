@@ -68,6 +68,9 @@ class Aio {
                             librados::ObjectWriteOperation *op,
                             uint64_t cost) = 0;
 
+  /*ugur*/
+ virtual ResultList submit(rgw_rados_ref& ref, const rgw_raw_obj& obj, uint64_t cost, RGWRados *store, librados::L2CacheRequest *wb_req) = 0;
+  /*ugur*/
   // poll for any ready completions without waiting
   virtual ResultList poll() = 0;
 

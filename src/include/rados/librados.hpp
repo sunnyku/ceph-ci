@@ -31,6 +31,8 @@ namespace librados
   class CacheRequest;
   struct L1CacheRequest;
   struct L2CacheRequest;
+  struct CacheWriteRequest; /*ugur*/
+
   class RadosClient;
   struct ListObjectImpl;
   class NObjectIteratorImpl;
@@ -1097,6 +1099,9 @@ namespace librados
     int aio_operate(const std::string& oid, AioCompletion *c, ObjectWriteOperation *op);
     int aio_operate(const std::string& oid, AioCompletion *c, ObjectWriteOperation *op, int flags);
     int cache_aio_notifier(const std::string& oid, CacheRequest *cc);
+    int cache_aio_notifier_wb(const std::string& oid, CacheRequest *cc); //ugur
+
+
     /**
      * Schedule an async write operation with explicit snapshot parameters
      *

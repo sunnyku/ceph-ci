@@ -88,12 +88,13 @@ class RadosWriter : public DataProcessor {
   {}
   ~RadosWriter();
 
+
   // change the current stripe object
   int set_stripe_obj(rgw_raw_obj&& obj);
 
   // write the data at the given offset of the current stripe object
   int process(bufferlist&& data, uint64_t stripe_offset) override;
-
+  
   // write the data as an exclusive create and wait for it to complete
   int write_exclusive(const bufferlist& data);
 

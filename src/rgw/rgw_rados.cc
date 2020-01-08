@@ -10188,6 +10188,7 @@ get_obj_data::get_obj_data(CephContext *_cct)
   client_cb(NULL),
   cache_lock("get_obj_data::cache_lock"), 
   l2_lock("get_obj_data::l2_lock"),
+  wb_lock("get_obj_data::wb_lock"),
   throttle(cct, "get_obj_data", cct->_conf->rgw_get_obj_window_size, false) {}
   
 get_obj_data::~get_obj_data() { } 
@@ -10381,8 +10382,10 @@ string get_obj_data::get_pending_oid()
   return str;
 }
 
+
+
 int get_obj_data::add_l2_request(struct librados::L2CacheRequest **cc, bufferlist *pbl, string oid,
-                off_t obj_ofs, off_t read_ofs, size_t len, string key, librados::AioCompletion *lc, string location)
+                off_t obj_ofs, off_t read_ofs, size_t len, string key, librados::AioCompletion *lc, string location, string op)
 {
   librados::L2CacheRequest *l2request = new librados::L2CacheRequest(cct);
   l2request->sequence = sequence; sequence+=1;
@@ -10394,6 +10397,7 @@ int get_obj_data::add_l2_request(struct librados::L2CacheRequest **cc, bufferlis
   l2request->lc = lc;
   l2request->op_data = this;
   l2request->pbl = pbl;
+  l2request->op = op;
   /*FIXME calcuclate the destination for L2 and update l2request->dest*/
   //l2request->dest=deterministic_hash(oid);
   l2request->dest=location;
@@ -10483,6 +10487,7 @@ void _cache_aio_completion_cb(sigval_t sigval){
   c->op_data->cache_aio_completion_cb(c);
 }
 
+
 void get_obj_data::cache_aio_completion_cb(librados::CacheRequest *c){
   
   int status = c->status();
@@ -10498,6 +10503,28 @@ void get_obj_data::cache_aio_completion_cb(librados::CacheRequest *c){
     l2_lock.Unlock();
   }
 }
+
+/*ugur*/
+
+void get_obj_data::cache_aio_wb_completion_cb(librados::CacheRequest *c){
+
+   ldout(cct, 0) << "uggur: wb_cache_aio_request: status" << dendl;
+  int status = c->status();
+  if (status == ECANCELED) {
+//    cache_unmap_io(c->ofs);
+    ldout(cct, 0) << "engage1: wb_cache_aio_request: status = ECANCLE" << dendl;
+    return;
+  } else if (status == 0) {
+  //  cache_unmap_io(c->ofs);
+    wb_lock.Lock();
+    ldout(cct, 0) << "engage1: wb_cache_aio_completion_cb,inside the finish lock- oid : " << c->oid << ", len:" << std::hex << c->len << dendl;
+    c->finish();
+    wb_lock.Unlock();
+  }
+}
+
+
+
 
 void get_obj_data::cache_unmap_io(off_t ofs){
 	
@@ -10726,6 +10753,17 @@ done:
   return r;
 }
 
+/*ugur*/
+int RGWRados::issue_remote_wb(librados::L2CacheRequest* cr){
+   dout(10) << __func__ << " r=" << cr->oid  << ", canceling all io" << dendl;
+	return 0;
+}
+
+int RGWRados::update_directory(string key, string value, string op){
+   dout(10) << __func__ << " update directory for wb key =" << key  << "value" << dendl;
+	return 0;
+}
+/*ugur*/
 int RGWRados::iterate_obj(RGWObjectCtx& obj_ctx,
                           const RGWBucketInfo& bucket_info, const rgw_obj& obj,
                           off_t ofs, off_t end,

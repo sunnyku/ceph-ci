@@ -73,6 +73,9 @@ class AioThrottle : public Aio {
   ResultList submit(rgw_rados_ref& ref, const rgw_raw_obj& obj,
                     librados::ObjectWriteOperation *op, uint64_t cost) override;
 
+  /*ugur*/
+ ResultList submit(rgw_rados_ref& ref,const rgw_raw_obj& obj, uint64_t cost, RGWRados *store, librados::L2CacheRequest *wb_req);
+ /*ugur*/
   ResultList poll() override;
 
   ResultList wait() override;

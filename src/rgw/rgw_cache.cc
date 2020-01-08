@@ -18,13 +18,67 @@
 #include "rgw_auth_s3.h"
 #include "rgw_op.h"
 
-
 #include <cpp_redis/cpp_redis>
-#include <cstddef>
+
+#include <iostream>
+#include <fstream> // writing to file
+#include <sstream> // writing to memory (a string)
+#include <openssl/hmac.h>
+#include <ctime>
+
 
 class RGWGetObj_CB;
 
 #define dout_subsys ceph_subsys_rgw
+
+static const std::string base64_chars =
+"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+"abcdefghijklmnopqrstuvwxyz"
+"0123456789+/";
+
+
+static inline bool is_base64(unsigned char c) {
+        return (isalnum(c) || (c == '+') || (c == '/'));
+}
+std::string base64_encode(unsigned char const* bytes_to_encode, unsigned int in_len) {
+        std::string ret;
+        int i = 0;
+        int j = 0;
+        unsigned char char_array_3[3];
+        unsigned char char_array_4[4];
+        while (in_len--) {
+                char_array_3[i++] = *(bytes_to_encode++);
+                if (i == 3) {
+                        char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
+                        char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
+                        char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
+                        char_array_4[3] = char_array_3[2] & 0x3f;
+
+                        for(i = 0; (i <4) ; i++)
+                                ret += base64_chars[char_array_4[i]];
+                        i = 0;
+                }
+        }
+
+        if (i)
+        {
+                for(j = i; j < 3; j++)
+                        char_array_3[j] = '\0';
+
+                char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
+                char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
+                char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
+                char_array_4[3] = char_array_3[2] & 0x3f;
+
+                for (j = 0; (j < i + 1); j++)
+                        ret += base64_chars[char_array_4[j]];
+
+                while((i++ < 3))
+                        ret += '=';
+        }
+        return ret;
+}
+
 
 
 int ObjectCache::get(const string& name, ObjectCacheInfo& info, uint32_t mask, rgw_cache_entry_info *cache_info)
@@ -381,6 +435,7 @@ DataCache::DataCache ()
   : index(0), lock("DataCache"), cache_lock("DataCache::Mutex"), req_lock("DataCache::req"), eviction_lock("DataCache::EvictionMutex"), cct(NULL), io_type(ASYNC_IO), free_data_cache_size(0), outstanding_write_size (0)
 {
   tp = new L2CacheThreadPool(32);
+  writecache_tp = new L2CacheThreadPool(32);
 }
 
 int DataCache::io_write(bufferlist& bl ,unsigned int len, std::string oid) {
@@ -411,11 +466,6 @@ int DataCache::io_write(bufferlist& bl ,unsigned int len, std::string oid) {
   chunk_info->set_ctx(cct);
   chunk_info->size = len;
   cache_map.insert(pair<string, ChunkDataInfo*>(oid, chunk_info));
-  r = set_value(oid,cct->_conf->rgw_host);
-  ldout(cct, 0) << "Engage1: DataCache::write: updating redis " << oid << dendl;
-  if (r < 0) {
-		ldout(cct, 0) << "ERROR: DataCache::write: error updating redis entry " << r << dendl;
-  }
   cache_lock.Unlock();
 
   return r;
@@ -432,7 +482,7 @@ void DataCache::cache_aio_write_completion_cb(cacheAioWriteRequest *c){
 
   ChunkDataInfo  *chunk_info = NULL;
 
-  ldout(cct, 0) << "RGW-Cache: cache_aio_write_completion_cb oid:" << c->oid <<dendl;
+  ldout(cct, 0) << "engage: cache_aio_write_completion_cb oid:" << c->oid <<dendl;
 
   /*update cahce_map entries for new chunk in cache*/
   cache_lock.Lock();
@@ -442,11 +492,6 @@ void DataCache::cache_aio_write_completion_cb(cacheAioWriteRequest *c){
   chunk_info->set_ctx(cct);
   chunk_info->size = c->cb->aio_nbytes;
   cache_map.insert(pair<string, ChunkDataInfo*>(c->oid, chunk_info));
-  int r = set_value(c->oid, cct->_conf->rgw_host);
-  ldout(cct, 0) << "RGW-Cache: DataCache::write: updating redis entry" << c->oid << dendl;
-  if (r < 0) {
-	ldout(cct, 0) << "ERROR: DataCache::write: error updating redis entry " << r << dendl;
-  }
   cache_lock.Unlock();
 
   /*update free size*/
@@ -599,7 +644,7 @@ size_t DataCache::random_eviction(){
 size_t DataCache::lru_eviction(){
 
   int n_entries = 0;
-  int random_index = 0;
+//  int random_index = 0;
   size_t freed_size = 0;
   ChunkDataInfo *del_entry;
   string del_oid, location;
@@ -620,10 +665,6 @@ size_t DataCache::lru_eviction(){
   map<string, ChunkDataInfo*>::iterator iter = cache_map.find(del_entry->oid);
   if (iter != cache_map.end()) {
     cache_map.erase(del_oid); // oid
-    int r = remove_value(del_oid, cct->_conf->rgw_host); 
-  	if (r < 0){
-		ldout(cct, 20) << "ERROR: RGW-Cache, delete from redis " << del_oid << dendl;
-	}
   }
   cache_lock.Unlock();
   freed_size = del_entry->size;
@@ -640,7 +681,7 @@ void DataCache::remote_io(struct librados::L2CacheRequest *l2request ) {
 }
 
 
-  std::vector<string> split(const std::string &s, char * delim) {
+std::vector<string> split(const std::string &s, char * delim) {
   stringstream ss(s);
   std::string item;
   std::vector<string> tokens;
@@ -659,38 +700,202 @@ static size_t _l2_response_cb(void *ptr, size_t size, size_t nmemb, void* param)
   req->pbl->append((char *)ptr, size*nmemb);
   return size*nmemb;
 }
+/*Ugur*/
+void DataCache::push_wb_request(struct librados::L2CacheRequest *wbrequest ) {
+	tp->addTask(new HttpL2Request(wbrequest, cct));
+}
+
 
 void HttpL2Request::run() {
 
+ldout(cct, 10) << "ugur HTTP RUN req_wb value "<< dendl;
+if (req->op == "PUT"){
+   ldout(cct, 10) << "ugur PUT HTTP SUBMIT " << dendl;
+   int n_retries =  cct->_conf->rgw_l2_request_thread_num;
+   int r = 0;
+   for (int i=0; i<n_retries; i++ ){
+        if(!(r = submit_http_put_request())){
+	req->finish();
+	return;
+	}
+}}
+if (req->op == "read"){  
+  ldout(cct, 10) << "ugur GET HTTP SUBMIT " << dendl;
   get_obj_data *d = (get_obj_data *)req->op_data;
   int n_retries =  cct->_conf->rgw_l2_request_thread_num;
   int r = 0;
-  
   for (int i=0; i<n_retries; i++ ){
-    if(!(r = submit_http_request())){
+    if(!(r = submit_http_get_request_s3())){
       d->cache_aio_completion_cb(req);
-      return;
-    }
-    if (r == ECANCELED) {
-      return;
-    }
-
+      return;}
+    if (r == ECANCELED) {return;}
   }
 }
+}
+static size_t _l2_writeback_cb(void *data, size_t size, size_t nmemb, void *cb_data)
+{
+  size_t nread = size*nmemb;
+  librados::L2CacheRequest *req = (librados::L2CacheRequest *)cb_data;
+  nread = (req->len < (req->read_ofs + nread)) ? (req->len - req->read_ofs) : nread;
+  memcpy(data, req->bl.c_str() + req->read_ofs, nread);
+  req->read_ofs += nread;
+  return nread;
+}
 
-int HttpL2Request::submit_http_request () {
+string HttpL2Request::get_date(){
+	std::string zone=" GMT";
+        time_t now = time(0);
+        char* dt = ctime(&now);
+        tm *gmtm = gmtime(&now);
+        dt = asctime(gmtm);
+        std::string date(dt);
+        char buffer[80];
+        std::strftime(buffer,80,"%a, %d %b %Y %X %Z",gmtm);
+        puts(buffer);
+	date = buffer;
+	return date;
+}
+string HttpL2Request::sign_s3_request(string HTTP_Verb, string uri, string date, string YourSecretAccessKeyID, string AWSAccessKeyId){
+	std::string Content_Type = "application/x-www-form-urlencoded; charset=utf-8";
+    std::string Content_MD5 ="";	
+	std::string CanonicalizedResource = uri.c_str();
+	std::string StringToSign = HTTP_Verb + "\n" + Content_MD5 + "\n" + Content_Type + "\n" + date + "\n" +CanonicalizedResource;
+    char key[YourSecretAccessKeyID.length()+1] ;
+	strcpy(key, YourSecretAccessKeyID.c_str()); 
+	const char * data = StringToSign.c_str();
+    unsigned char* digest;
+    digest = HMAC(EVP_sha1(), key, strlen(key), (unsigned char*)data, strlen(data), NULL, NULL);
+    std::string signature = base64_encode(digest, 20);
+	return signature;	
+}
 
+int HttpL2Request::submit_http_get_request_s3() {
+	string range = std::to_string(req->ofs + req->read_ofs)+ "-"+ std::to_string(req->ofs + req->read_ofs + req->len - 1);
+  	get_obj_data *d = (get_obj_data *)req->op_data;
+	string auth_token;
+	string req_uri, uri,dest;
+  	if (req->dest == cct->_conf->rgw_wb_cache_location){
+    	std::string YourSecretAccessKeyID=cct->_conf->rgw_wb_cache_secret_key;
+    	std::string AWSAccessKeyId=cct->_conf->rgw_wb_cache_access_key;
+    	uri ="/wb_cache/"+req->oid;
+  	} else {
+    	((RGWGetObj_CB *)(d->client_cb))->get_req_info(dest, req_uri, auth_token);
+		 std::string YourSecretAccessKeyID="";
+		 std::string AWSAccessKeyId="";
+    	 uri = req_uri;
+  	}
+	CURLcode res;
+//	std::string uri = "/wb_cache/"+req->oid;
+	std::string date = get_date();
+	std::string AWSAccessKeyId=cct->_conf->rgw_wb_cache_access_key;	
+	std::string YourSecretAccessKeyID=cct->_conf->rgw_wb_cache_secret_key;	
+	std::string signature = sign_s3_request("GET", uri, date, YourSecretAccessKeyID, AWSAccessKeyId);
+    std::string Authorization = "AWS "+ AWSAccessKeyId +":" + signature;
+	std::string  loc = "http://" + req->dest + uri;		
+//	std::string header = "Authorization: " +Authorization+  ", -H Date:" + date +", -H User-Agent: aws-sdk-java/1.7.4 Linux/3.10.0-514.6.1.el7.x86_64 OpenJDK_64-Bit_Server_VM/24.131-b00/1.7.0_131, -H Content-Type: application/x-www-form-urlencoded; charset=utf-8";
+	std::string auth="Authorization: " + Authorization;
+    std::string timestamp="Date: " + date;
+    std::string user_agent="User-Agent: aws-sdk-java/1.7.4 Linux/3.10.0-514.6.1.el7.x86_64 OpenJDK_64-Bit_Server_VM/24.131-b00/1.7.0_131";
+    std::string content_type="Content-Type: application/x-www-form-urlencoded; charset=utf-8";
+	curl_handle = curl_easy_init();
+	if(curl_handle) {
+	struct curl_slist *chunk = NULL;
+        chunk = curl_slist_append(chunk, auth.c_str());
+        chunk = curl_slist_append(chunk, timestamp.c_str());
+        chunk = curl_slist_append(chunk, user_agent.c_str());
+        chunk = curl_slist_append(chunk, content_type.c_str());
+		if(req->dest != cct->_conf->rgw_wb_cache_location){
+			curl_easy_setopt(curl_handle, CURLOPT_RANGE, range.c_str());
+		}
+        res = curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, chunk); //set headers
+        curl_easy_setopt(curl_handle, CURLOPT_URL, loc.c_str());
+        curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L); //for redirection of the url
+        curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, _l2_response_cb);
+        curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void*)req);
+        res = curl_easy_perform(curl_handle); //run the curl command
+		curl_easy_reset(curl_handle);
+        curl_slist_free_all(chunk);	
+	}if(res != CURLE_OK){
+		ldout(cct,10) << "Ugur: curl_easy_perform() failed " << curl_easy_strerror(res) << " oid " << req->oid << dendl;
+         return -1;
+	}else{return 0;}
+}
+
+string HttpL2Request::sign_s3_request2(string HTTP_Verb, string uri, string date, string YourSecretAccessKeyID, string AWSAccessKeyId, string len){
+	std::string Content_Type = "text/plain";
+    std::string Content_MD5 ="";
+	std::string Content_Length = len;	
+	std::string CanonicalizedResource = uri.c_str();
+	std::string StringToSign = HTTP_Verb + "\n" + Content_MD5 + "\n" + Content_Type + "\n" + Content_Length +"\n"+ date + "\n" +CanonicalizedResource;
+    char key[YourSecretAccessKeyID.length()+1] ;
+	strcpy(key, YourSecretAccessKeyID.c_str()); 
+	const char * data = StringToSign.c_str();
+    unsigned char* digest;
+    digest = HMAC(EVP_sha1(), key, strlen(key), (unsigned char*)data, strlen(data), NULL, NULL);
+    std::string signature = base64_encode(digest, 20);
+	return signature;	
+}
+int HttpL2Request::submit_http_put_request_s3() {
+    //string auth_token;
+   // string req_uri, uri,dest;
+    CURLcode res;
+	std::string date = get_date();
+    std::string uri ="/wb_cache/"+req->oid;
+    std::string AWSAccessKeyId=cct->_conf->rgw_wb_cache_access_key;
+    std::string YourSecretAccessKeyID=cct->_conf->rgw_wb_cache_secret_key;
+    std::string signature = sign_s3_request2("PUT", uri, date, YourSecretAccessKeyID, AWSAccessKeyId, std::to_string(req->len));
+    std::string Authorization = "AWS "+ AWSAccessKeyId +":" + signature;
+    std::string  loc = "http://" + req->dest + uri;	
+    std::string auth = "Authorization: " + Authorization;
+    std::string timestamp="Date: " + date;
+//    std::string user_agent="User-Agent: aws-sdk-java/1.7.4 Linux/3.10.0-514.6.1.el7.x86_64 OpenJDK_64-Bit_Server_VM/24.131-b00/1.7.0_131";
+    std::string content_length = "Content-Length: " +std::to_string(req->len); 
+    std::string content_type="Content-Type: text/plain";
+    librados::L2CacheRequest *l2_req = (librados::L2CacheRequest *)req;
+    curl_handle = curl_easy_init();
+	long response_code;
+    if(curl_handle) {
+	struct curl_slist *chunk = NULL;
+        chunk = curl_slist_append(chunk, auth.c_str());
+        chunk = curl_slist_append(chunk, timestamp.c_str());
+        chunk = curl_slist_append(chunk, content_length.c_str());
+        chunk = curl_slist_append(chunk, content_type.c_str());
+		res = curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, chunk);
+		curl_easy_setopt(curl_handle, CURLOPT_URL, loc.c_str());
+    	curl_easy_setopt(curl_handle, CURLOPT_READFUNCTION, _l2_writeback_cb);
+    	curl_easy_setopt(curl_handle, CURLOPT_READDATA, req);
+    	curl_easy_setopt(curl_handle, CURLOPT_PUT, 1L);
+    	curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
+    	curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L); //for redirection of the url
+    	curl_easy_setopt(curl_handle, CURLOPT_INFILESIZE_LARGE, (curl_off_t)l2_req->len);
+		res = curl_easy_perform(curl_handle);
+		
+    	curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &response_code);
+	    curl_easy_reset(curl_handle);
+    	curl_slist_free_all(chunk);
+	}
+	if (res == CURLE_OK){
+        return 0;
+    }else {
+        ldout(cct, 10) << "Engage1: curl_easy_perform() failed " << response_code<<dendl;
+        return -1;
+    }	
+}
+int HttpL2Request::submit_http_request() {
   CURLcode res;
   string auth_token;
   string range = std::to_string(req->ofs + req->read_ofs)+ "-"+ std::to_string(req->ofs + req->read_ofs + req->len - 1);
-  struct curl_slist *header = NULL;
   get_obj_data *d = (get_obj_data *)req->op_data;
   
-  string req_uri;
-  string uri,dest;
-  ((RGWGetObj_CB *)(d->client_cb))->get_req_info(dest, req_uri, auth_token);
-  uri = "http://" + req->dest + req_uri;
-
+  string req_uri, uri,dest;
+  if (req->dest == cct->_conf->rgw_wb_cache_location){
+  	uri ="http://" + req->dest+"/swift/v1/wb_cache/"+req->oid;
+  	auth_token="X-Auth-Token: AUTH_rgwtk0e00000074657374757365723a7377696674dd0f1be1c57f28f694fa155e113ae73045c93c4d220090207b006c9bc3136705f9f515e7";
+  } else { 
+  	((RGWGetObj_CB *)(d->client_cb))->get_req_info(dest, req_uri, auth_token);
+  	uri = "http://" + req->dest + req_uri;
+  }
+  ldout(cct, 10) << "ugur uri " << uri  << " auth "<< auth_token <<dendl;
   /*struct req_state *s;
   ((RGWGetObj_CB *)(d->client_cb))->get_req_info(req->dest, s->info.request_uri, auth_token);
 
@@ -720,17 +925,16 @@ int HttpL2Request::submit_http_request () {
    sign_request(key, env, info);
   } 
   else if (s->dialect == "swift")*/
-  if(true) {
-    header = curl_slist_append(header, auth_token.c_str());
-  } else {
-    ldout(cct, 10) << "Engage1: curl_easy_perform() failed " << dendl;
-    return -1;
-  }
-
-
+  struct curl_slist *header = NULL;
+  header = curl_slist_append(header, auth_token.c_str());
+  curl_handle = curl_easy_init();
   if(curl_handle) {
-    curl_easy_setopt(curl_handle, CURLOPT_RANGE, range.c_str());
+    if(req->dest != cct->_conf->rgw_wb_cache_location){
+    	 curl_easy_setopt(curl_handle, CURLOPT_RANGE, range.c_str());
+	 ldout(cct, 10) << "ugur range :  "<< range.c_str() << dendl;
+	}
     curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, header); 
+    curl_easy_setopt(curl_handle, CURLOPT_HTTPAUTH, auth_token.c_str());
     curl_easy_setopt(curl_handle, CURLOPT_URL, uri.c_str());
     curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L); 
     curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
@@ -739,13 +943,14 @@ int HttpL2Request::submit_http_request () {
     res = curl_easy_perform(curl_handle); 
     curl_easy_reset(curl_handle);
     curl_slist_free_all(header);
-  }
-  if(res != CURLE_OK)
-  {
-    ldout(cct, 10) << "Engage1: curl_easy_perform() failed " << curl_easy_strerror(res) << " oid " << req->oid << " offset " << req->ofs + req->read_ofs  <<dendl;
-    return -1;
-  }
-  return 0;
+   }
+    if(res == CURLE_OK) {
+	return 0;
+    } else {
+	ldout(cct, 10) << "Engage1: curl_easy_perform() failed " << curl_easy_strerror(res) << " oid " << req->oid << " offset " << req->ofs + req->read_ofs  <<dendl;
+	return -1;
+	}
+ 
 }
 
 /*FIXME: This function should be changed the authentication for S3 has been changed*/
@@ -784,50 +989,60 @@ int HttpL2Request::sign_request(RGWAccessKey& key, RGWEnv& env, req_info& info)
   return 0;
 }
 
-/*std::string DataCache::get_value(string key){
-	std::string readBuffer;
-	std::string uri = "http://127.0.0.1:7379/GET/" + key+ ".txt";
-	readBuffer = connect_redis(uri);
-	if (readBuffer.empty()){
-		ldout(cct, 20) << "Engage1: Miss, not int directory, key " << key <<dendl;
-		return "";
+std::string DataCache::get_key(string key, bool wb_cache){
+	if(!wb_cache){
+		cpp_redis::client client;
+		client.connect();
+		cpp_redis::reply answer;
+		client.send({"smembers", key}, [&answer](cpp_redis::reply &reply) {
+			answer = std::move(reply);
+		});
+		client.sync_commit();
+		vector<string> list;	
+		for(auto &temp : answer.as_array()) {
+			list.push_back(std::move(temp.as_string()));
 		}
-
-	else { return readBuffer; }
-}
-*/
-std::string DataCache::get_value(string key){
-	cpp_redis::client client;
-	client.connect();
-	cpp_redis::reply answer;
-	client.send({"smembers", key}, [&answer](cpp_redis::reply &reply) {
-		answer = std::move(reply);
-	});
-	client.sync_commit();
-	vector<string> list;	
-	for(auto &temp : answer.as_array()) {
-		list.push_back(std::move(temp.as_string()));
-		//ldout(cct, 20) << "ugur get_value" << temp.as_string() <<dendl;    
+		if (list.empty()){return "";}
+		else{return list[rand() % list.size()];}
+	}else{
+		std::size_t found = key.find_last_of("_");
+        	std:: string prefix = key.substr(0,found)+"_";
+		 ldout(cct, 10) << "ugur check wb_cache key " << key << "prefix"<< prefix << dendl;	
+		cpp_redis::client client;
+		client.connect();
+		cpp_redis::reply answer;
+		client.get(prefix, [&answer](cpp_redis::reply& reply) {
+			answer = std::move(reply);
+		});
+		client.sync_commit();
+    		if (answer.is_string()){return answer.as_string();}
+		else{return "";}
 	}
-	if (list.empty()){
-		return "";}
-	else{
-		return list[rand() % list.size()];}
 }
 
-int DataCache::set_value(string key, string location){
-	cpp_redis::client client;
-	client.connect();
-	vector<string> list;
-	list.push_back(location);
-	client.sadd(key, list,[] (cpp_redis::reply& reply){
-		if (reply.is_string() && reply.as_string() == "OK"){ 
-			return  0;
-		} else {
-			return -1;
-		}
-	});
-	client.sync_commit();
+
+
+int DataCache::set_key(string key, string location, bool wb_cache){
+	if(wb_cache){
+		cpp_redis::client client;
+		client.connect();
+		location=rgw_wb_cache_location;
+		client.set(key, location,[] (cpp_redis::reply& reply){
+			if (reply.is_string() && reply.as_string() == "OK"){return 0;}
+		 	else {return -1;}
+		});
+   		client.sync_commit();
+	}else{
+		cpp_redis::client client;
+		client.connect();	
+		vector<string> list;
+		list.push_back(location);
+		client.sadd(key, list,[] (cpp_redis::reply& reply){
+			if (reply.is_string() && reply.as_string() == "OK"){return  0;}
+			else {return -1;}
+		});
+  		client.sync_commit();
+	}
 }
 
 int DataCache::remove_value(string key, string location){
@@ -867,7 +1082,8 @@ std::string DataCache::get_s3_key(string key){
                 return "";
         }
 }
-int::string DataCache::remove_s3_key(string keys){
+
+int DataCache::remove_s3_key(string keys){
         cpp_redis::client client;
         client.connect();
         cpp_redis::reply answer;
@@ -884,4 +1100,89 @@ int::string DataCache::remove_s3_key(string keys){
 }
 
 
+/*ugur*/
+int HttpL2Request::submit_http_put_request() {
+
+  string bucket="wb_cache/";
+  string req_uri = "/swift/v1/wb_cache/"+req->oid;
+  req->dest =  cct->_conf->rgw_wb_cache_location;
+  string uri = "http://" + req->dest + req_uri;
+  
+  CURLcode res;
+  string auth_token="X-Auth-Token: AUTH_rgwtk0e00000074657374757365723a7377696674d1a6a00463e65fcf6012165e180a661c0f9943bb9830a2cf7aeaaf80ac54a37036212ec3";
+  struct curl_slist *header = NULL;
+  curl_handle = curl_easy_init();
+ 
+ librados::L2CacheRequest *l2_req = (librados::L2CacheRequest *)req;
+ if(curl_handle) {
+    header = curl_slist_append(header, auth_token.c_str());
+    curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, header);
+    curl_easy_setopt(curl_handle, CURLOPT_READFUNCTION, _l2_writeback_cb);
+    curl_easy_setopt(curl_handle, CURLOPT_READDATA, req);
+    curl_easy_setopt(curl_handle, CURLOPT_PUT, 1L);
+    curl_easy_setopt(curl_handle, CURLOPT_URL, uri.c_str());
+    curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
+    curl_easy_setopt(curl_handle, CURLOPT_HTTPAUTH, auth_token.c_str());
+    curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L); //for redirection of the url
+    curl_easy_setopt(curl_handle, CURLOPT_INFILESIZE_LARGE, (curl_off_t)l2_req->len);
+
+    res = curl_easy_perform(curl_handle);
+    curl_easy_reset(curl_handle);
+    curl_slist_free_all(header);
+    }
+    if (res == CURLE_OK){
+	return 0;
+    }else { 
+	ldout(cct, 10) << "Engage1: curl_easy_perform() failed " << dendl;
+	return -1;
+    }
+}
+
+
+
+/*
+int DataCache::test_librados_handler(){
+        int ret = 0;
+        const char *pool_name = "ugur_pool2";
+        std::string hello("hello world!");
+        std::string object_name("hello_object2");
+        librados::IoCtx io_ctx;
+        librados::Rados rados;
+
+        {
+        ret = rados.init("admin"); // just use the client.admin keyring
+        if (ret < 0) { // let's handle any error that might have come back
+                ldout(cct, 15)  << "couldn't initialize rados! error " << ret << dendl;
+                ret = EXIT_FAILURE;
+        }
+        ldout(cct, 15)  << "we just set up a rados cluster object " << ret << dendl;
+        }
+
+        ret = rados.conf_read_file("/etc/ceph/ceph.conf");
+        if (ret < 0) {
+        ldout(cct, 0) <<"error" << dendl;
+        }
+
+         {
+    ret = rados.connect();
+    if (ret < 0) {
+    //  std::cerr << "couldn't connect to cluster! error " << ret << std::endl;
+      ret = EXIT_FAILURE;
+    }
+    ldout(cct, 15)  << "we just connected to the rados cluster " << ret << dendl;
+  }
+
+
+ {
+    ret = rados.pool_create(pool_name);
+    if (ret < 0) {
+  //    std::cerr << "couldn't create pool! error " << ret << std::endl;
+        rados.shutdown();
+}
+}
+}
+
+
+
+*/
 

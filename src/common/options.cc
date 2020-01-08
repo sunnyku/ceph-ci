@@ -6319,7 +6319,19 @@ std::vector<Option> get_rgw_options() {
     .set_default("localhost")
     .set_description(""),
 
-    Option("rgw_dynamic_resharding", Option::TYPE_BOOL, Option::LEVEL_BASIC)
+    Option("rgw_wb_cache_location", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("localhost")
+    .set_description(""),
+
+    Option("rgw_wb_cache_secret_key", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("")
+    .set_description("S3 Secret Key for WB Cache"),
+    
+    Option("rgw_wb_cache_access_key", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("")
+    .set_description("S3 Access Key for WB Cache"),
+ 
+   Option("rgw_dynamic_resharding", Option::TYPE_BOOL, Option::LEVEL_BASIC)
     .set_default(true)
     .set_description("Enable dynamic resharding")
     .set_long_description(

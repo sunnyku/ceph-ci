@@ -3545,7 +3545,9 @@ void RGWPutObj::execute()
     }
   }
   tracepoint(rgw_op, before_data_transfer, s->req_id.c_str());
-  do {
+ /*ugur*/
+ /*ugur*/
+ do {
     bufferlist data;
     if (fst > lst)
       break;
@@ -3592,6 +3594,9 @@ void RGWPutObj::execute()
     return;
   }
 
+  
+/*ugur*/
+/*ugur*/
   if (!chunked_upload && ofs != s->content_length) {
     op_ret = -ERR_REQUEST_TIMEOUT;
     return;
@@ -3695,7 +3700,13 @@ void RGWPutObj::execute()
                                (delete_at ? *delete_at : real_time()), if_match, if_nomatch,
                                (user_data.empty() ? nullptr : &user_data), nullptr, nullptr);
   tracepoint(rgw_op, processor_complete_exit, s->req_id.c_str());
-
+ 
+  /*ugur*/
+ if (!chunked_upload && ofs != s->content_length) {
+   ldpp_dout(this, 0) << "ugur object is written " << s->content_length << dendl;
+  }
+  /*ugur*/
+ 
   /* produce torrent */
   if (s->cct->_conf->rgw_torrent_flag && (ofs == torrent.get_data_len()))
   {

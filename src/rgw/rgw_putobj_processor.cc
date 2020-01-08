@@ -17,7 +17,7 @@
 #include "rgw_multi.h"
 
 #define dout_subsys ceph_subsys_rgw
-
+#include <rados/librados.hpp>
 namespace rgw::putobj {
 
 int HeadObjectProcessor::process(bufferlist&& data, uint64_t logical_offset)
@@ -70,6 +70,8 @@ static int process_completed(const ResultList& completed, RawObjSet *written)
   return error.value_or(0);
 }
 
+
+
 int RadosWriter::set_stripe_obj(rgw_raw_obj&& obj)
 {
   rgw_rados_ref ref;
@@ -88,16 +90,38 @@ int RadosWriter::process(bufferlist&& bl, uint64_t offset)
   const uint64_t cost = data.length();
   if (cost == 0) { // no empty writes, use aio directly for creates
     return 0;
-  }
+}
+  ldout(store->ctx(), 5) << "GENERAL ugur PutObj oid " <<stripe_ref.oid<< "offset" << offset << dendl;
+/*ugur*/
+  string s1 = stripe_ref.oid;
+  string s2="shadow";
+  if (s1.find(s2) != std::string::npos) {
+  	ldout(store->ctx(), 5) << "NOTE: ugur  PutObj Process oid " <<stripe_ref.oid<< "offset" << offset << dendl;
+	librados::L2CacheRequest *wb_req =  new librados::L2CacheRequest(store->ctx());
+	wb_req->ofs = offset;
+	wb_req->len = cost;
+	wb_req->op="PUT";
+        wb_req->oid = stripe_ref.oid;
+	wb_req->bl.append(data);
+	auto c =aio->submit(stripe_ref,stripe_obj, cost, store, wb_req);
+  	ldout(store->ctx(), 5) << "ugur PutObj Process after issue_remote_wb " <<stripe_ref.oid<< dendl;
+   return process_completed(c, &written);
+}
+/*ugur*/
+
+else{
   librados::ObjectWriteOperation op;
   if (offset == 0) {
     op.write_full(data);
-  } else {
+  }
+   else {
     op.write(offset, data);
   }
-  auto c = aio->submit(stripe_ref, stripe_obj, &op, cost);
-  return process_completed(c, &written);
+   auto c =aio->submit(stripe_ref, stripe_obj, &op, cost);
+   return process_completed(c, &written);
+  }
 }
+
 
 int RadosWriter::write_exclusive(const bufferlist& data)
 {
@@ -225,7 +249,9 @@ int AtomicObjectProcessor::prepare()
   if (r < 0) {
     return r;
   }
+
   r = writer.set_stripe_obj(std::move(stripe_obj));
+
   if (r < 0) {
     return r;
   }
@@ -289,9 +315,18 @@ int AtomicObjectProcessor::complete(size_t accounted_size,
   if (r < 0) {
     return r;
   }
+   
   if (!obj_op.meta.canceled) {
     // on success, clear the set of objects for deletion
     writer.clear_written();
+	/*ugur*/
+	string bucket_id  = op_target.get_obj().bucket.bucket_id;
+	string prefix = manifest.get_prefix(); 
+  	string oid = bucket_id +"__shadow_"+ prefix;
+	string dest = "";
+	string op = "wb_update";
+	r = store->update_directory(oid,dest,op);
+  	/*ugur*/
   }
   if (pcanceled) {
     *pcanceled = obj_op.meta.canceled;

@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <cpp_redis/cpp_redis> /*directort*/
+#include "rgw_putobj_processor.h" /*wb*/
 
 enum {
   UPDATE_OBJ,
@@ -73,8 +74,9 @@ struct cacheAioWriteRequest{
 	struct aiocb *cb;
 	DataCache *priv_data;
 	CephContext *cct;
+	bool write;
 	
-	cacheAioWriteRequest(CephContext *_cct) : cct(_cct) {}
+	cacheAioWriteRequest(CephContext *_cct) : cct(_cct) , write(false) {}
 	int create_io(bufferlist& bl, unsigned int len, string oid);
 	
 	void release() {
@@ -85,6 +87,15 @@ struct cacheAioWriteRequest{
 		free(cb);
 		free(this);
 	}
+};
+
+/*writecache*/
+struct CacheWriteOp {
+   bufferlist bl;
+   void *op_data;
+   rgw_obj obj;
+   off_t ofs;
+   req_state *s;
 };
 
 struct DataCache {
@@ -107,7 +118,9 @@ private:
   struct sigaction action;
   long long free_data_cache_size = 0;
   long long outstanding_write_size;
+  string rgw_wb_cache_location;
   L2CacheThreadPool *tp;
+  L2CacheThreadPool *writecache_tp;
   struct ChunkDataInfo *head;
   struct ChunkDataInfo *tail;
 
@@ -119,12 +132,16 @@ public:
   ~DataCache() {}
 
   /*directory*/
-  std::string get_value(string key);
+  std::string get_key(string key, bool wb_cache);
   int remove_s3_key(string prefix);
   std::string get_s3_key(string prefix);
-  int set_value(string key, string location);
+  int set_key(string key, string location, bool wb_cache);
   int remove_value(string key, string location);
- 
+  
+  /*write_cache*/
+  //int test_librados_handler();
+  //int create_aio_write_request(bufferlist& bl, unsigned int len, std::string oid, CacheWriteOp *cwo);
+
   bool get(string oid);
   void put(bufferlist& bl, unsigned int len, string obj_key);
   int io_write(bufferlist& bl, unsigned int len, std::string oid);
@@ -137,10 +154,13 @@ public:
   void remote_io(struct librados::L2CacheRequest *l2request); 
   void init_l2_request_cb(librados::completion_t c, void *arg);
   void push_l2_request(librados::L2CacheRequest*l2request);
+  void push_wb_request(librados::L2CacheRequest*l2request);//ugur
+  //int raw_submit_http_put_request(struct librados::CacheWriteRequest *req_wb);
   void l2_http_request(off_t ofs , off_t len, std::string oid);
   void init(CephContext *_cct) {
     cct = _cct;
     free_data_cache_size = cct->_conf->rgw_datacache_size;
+    rgw_wb_cache_location = cct->_conf->rgw_wb_cache_location;
     head = NULL;
     tail = NULL;
   }
@@ -825,6 +845,8 @@ public:
     return 0;
   }
 
+  int issue_remote_wb(librados::L2CacheRequest *cr);
+  int update_directory(string key, string value, string op);
   int flush_read_list(struct get_obj_data *d);
   int get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
       const RGWBucketInfo& bucket_info, const rgw_obj& obj,
@@ -872,6 +894,25 @@ int RGWDataCache<T>::flush_read_list(struct get_obj_data *d) {
   return r;
 
 }
+
+
+template <typename T>
+int RGWDataCache<T>::issue_remote_wb(librados::L2CacheRequest *cc){
+    mydout(10) << "ugur issue " << cc->oid << dendl;
+    data_cache.push_wb_request(cc);
+    return 0;
+}
+
+
+template <typename T>
+int RGWDataCache<T>::update_directory(string key, string value, string op){
+    if (op =="wb_update"){
+    	mydout(10) << "ugur update_directory for wb_cache ,insert " << key<< dendl;
+    	data_cache.set_key(key,value,1);
+    }
+    return 0;
+}
+
 
 template<typename T>
 int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
@@ -933,39 +974,36 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
   d->add_pending_oid(read_obj.oid);
 
     /*directory*/
-	std::string res= data_cache.get_s3_key("78934860-4d17-4a2a-a79f-5df0285c3f6b.4133.1__shadow_.6ult_LjT_bcdETuHvlae3TlDkXERd1-_2");
-	mydout(20) << "RGW-Cache s3 obj " << res << dendl;
-  	std::string loc = data_cache.get_value(read_obj.oid);
-	mydout(20) << "RGW-Cache location " << loc << dendl;
-	if (loc.compare("")==0) {
-		mydout(20) << "rados->get_obj_iterate_cb oid=" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
-		mydout(20) << "RGW-Cache Miss, Backend Hit" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
+	if (data_cache.get(read_obj.oid)) {
+		mydout(20) << "RGW-Cache Hit Local" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
+    librados::L1CacheRequest *cc;
+    d->add_l1_request(&cc, pbl, read_obj.oid, len, obj_ofs, read_ofs, key, c);
+    r = io_ctx.cache_aio_notifier(read_obj.oid, cc);
+    r = d->submit_l1_aio_read(cc);
+    if (r != 0 ){ mydout(0) << "Error cache_aio_read failed err=" << r << dendl; }
+	}else{
+		std::string wb_loc = data_cache.get_key(read_obj.oid,1);
+		std::string loc = data_cache.get_key(read_obj.oid,0);
+		if (!wb_loc.compare("")==0) { // Data in writeback cache
+			 mydout(20) << "RGW-WB-Cache Hit" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
+			 librados::L2CacheRequest *cc;
+			 d->add_l2_request(&cc, pbl, read_obj.oid, obj_ofs, read_ofs , len, key, c, wb_loc, "read");
+			 r = io_ctx.cache_aio_notifier(read_obj.oid, cc);
+			 data_cache.push_l2_request(cc);
+		} else if (!loc.compare("") == 0){ //Data in Remote Cache
+			mydout(20) << "RGW-Cache Hit Remote" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
+      			librados::L2CacheRequest *cc;
+      			d->add_l2_request(&cc, pbl, read_obj.oid, obj_ofs, read_ofs, len, key, c, loc, "read");
+      			r = io_ctx.cache_aio_notifier(read_obj.oid, cc);
+      			data_cache.push_l2_request(cc);
+		} else{
+			mydout(20) << "RGW-Cache Miss, Backend Hit" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
     	op.read(read_ofs, len, pbl, NULL);
     	r = io_ctx.aio_operate(read_obj.oid, c, &op, NULL);
     	mydout(20) << "rados->aio_operate r=" << r << " bl.length=" << pbl->length() << dendl;
-    	if (r < 0) {
-    		mydout(0) << "rados->aio_operate r=" << r << dendl;
-      		goto done_err;
-    	}
+    	if (r < 0) { mydout(0) << "rados->aio_operate r=" << r << dendl; goto done_err;}
+		}
 	}
-	else if(loc.compare(d->cct->_conf->rgw_host) == 0) {
-		mydout(20) << "RGW-Cache Hit Local" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
-		librados::L1CacheRequest *cc;
-		d->add_l1_request(&cc, pbl, read_obj.oid, len, obj_ofs, read_ofs, key, c);
-		r = io_ctx.cache_aio_notifier(read_obj.oid, cc);
-		r = d->submit_l1_aio_read(cc);
-		if (r != 0 ){
-     		mydout(0) << "Error cache_aio_read failed err=" << r << dendl;
-    	}
-	}
-	else{
-		mydout(20) << "RGW-Cache Hit Remote" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
-		librados::L2CacheRequest *cc;
-		d->add_l2_request(&cc, pbl, read_obj.oid, obj_ofs, read_ofs, len, key, c, loc);
-		r = io_ctx.cache_aio_notifier(read_obj.oid, cc);
-		data_cache.push_l2_request(cc);
-	}	
-
   // Flush data to client if there is any
   r = flush_read_list(d);
   if (r < 0)
@@ -980,6 +1018,7 @@ done_err:
 
   return r;
 }
+
 
 class L2CacheThreadPool {
 public:
@@ -1020,6 +1059,10 @@ public:
     pthread_mutex_init(&qmtx,0);
     pthread_cond_init(&wcond, 0);
   }
+  /*HttpL2Request(librados::CacheWriteRequest *_req, CephContext *_cct) : Task(), req_wb(_req), cct(_cct) {
+    pthread_mutex_init(&qmtx,0);
+    pthread_cond_init(&wcond, 0);
+  }*/
   ~HttpL2Request() {
     pthread_mutex_destroy(&qmtx);
     pthread_cond_destroy(&wcond);
@@ -1030,15 +1073,21 @@ public:
   }
 private:
   int submit_http_request();
+  int submit_http_get_request_s3();
+  int submit_http_put_request_s3();
+  int submit_http_put_request();
   int sign_request(RGWAccessKey& key, RGWEnv& env, req_info& info);
+  string sign_s3_request(string HTTP_Verb,string uri,string date, string YourSecretAccessKeyID, string AWSAccessKeyId);
+  string sign_s3_request2(string HTTP_Verb,string uri,string date, string YourSecretAccessKeyID, string AWSAccessKeyId, string len);
+  string get_date();
 private:
   pthread_mutex_t qmtx;
   pthread_cond_t wcond;
   librados::L2CacheRequest *req;
+//  librados::CacheWriteRequest *req_wb;
   CURL *curl_handle;
   CephContext *cct;
 };
-
 
 
 #endif

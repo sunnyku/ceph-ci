@@ -781,7 +781,33 @@ int librados::IoCtxImpl::cache_aio_operate_read(const object_t &oid,
    cc->onack = oncomplete;
    return 0;
 }
-  
+ 
+
+/*ugur*/ 
+int librados::IoCtxImpl::cache_aio_operate_write(const object_t &oid, AioCompletionImpl *c, CacheRequest *cc) {
+
+   FUNCTRACE(client->cct);
+ //  OID_EVENT_TRACE(oid.name.c_str(), "RADOS_WRITE_OP_BEGIN");
+   auto ut = ceph::real_clock::now(); 
+  /* can't write to a snapshot */
+  if (snap_seq != CEPH_NOSNAP)
+    return -EROFS;
+
+
+  Context *oncomplete = new C_aio_Complete(c);
+#if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
+   ((C_aio_Complete *) oncomplete)->oid = oid;
+#endif
+
+   c->io = this;
+   queue_aio_write(c);
+   cc->onack = oncomplete;
+   return 0;
+}
+
+
+
+/*ugur*/ 
 
 int librados::IoCtxImpl::aio_operate(const object_t& oid,
 				     ::ObjectOperation *o, AioCompletionImpl *c,

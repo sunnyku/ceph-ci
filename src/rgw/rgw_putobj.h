@@ -39,6 +39,8 @@ class Pipe : public DataProcessor {
   int process(bufferlist&& data, uint64_t offset) override {
     return next->process(std::move(data), offset);
   }
+  
+
 };
 
 // pipe that writes to the next processor in discrete chunks
