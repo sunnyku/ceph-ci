@@ -241,12 +241,12 @@ class PgRecoveryEvent(Event):
     def which_osds(self):
         return self. _which_osds
 
-    def pg_update(self, pg_dump, log):
+    def pg_update(self, raw_pg_stats, log):
         # FIXME: O(pg_num) in python
         # FIXME: far more fields getting pythonized than we really care about
         # Sanity check to see if there are any missing PGs and to assign
         # empty array and dictionary if there hasn't been any recovery
-        pg_to_state = dict([(p['pgid'], p) for p in pg_dump['pg_stats']])
+        pg_to_state = dict([(p['pgid'], p) for p in raw_pg_stats['pg_stats']])
         if self._original_bytes_recovered is None:
             self._original_bytes_recovered = {}
             missing_pgs = []
@@ -476,7 +476,7 @@ class Module(MgrModule):
                     which_osds=[osd_id],
                     start_epoch=self.get_osdmap().get_epoch()
                     )
-            ev.pg_update(self.get("pg_dump"), self.log)
+            ev.pg_update(self.get("pg_stats"), self.log)
             self._events[ev.id] = ev
 
     def _osdmap_changed(self, old_osdmap, new_osdmap):
@@ -513,11 +513,10 @@ class Module(MgrModule):
             ))
             self._osdmap_changed(old_osdmap, self._latest_osdmap)
         elif notify_type == "pg_summary":
-            data = self.get("pg_dump")
             for ev_id in list(self._events):
                 ev = self._events[ev_id]
                 if isinstance(ev, PgRecoveryEvent):
-                    ev.pg_update(data, self.log)
+                    ev.pg_update(self.get("pg_stats"), self.log)
                     self.maybe_complete(ev)
 
     def maybe_complete(self, event):
