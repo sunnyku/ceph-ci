@@ -488,6 +488,16 @@ def pathify(p):
         return os.path.join(os.getcwd(), p)
     return p
 
+
+def get_podman_version():
+    # type: () -> List[int]
+    if 'podman' not in container_path:
+        raise ValueError('not using podman')
+    out, _, _ = call_throws([container_path, '--version'])
+    _, _, version_str = out.strip().split()
+    return list(map(int, version_str.split('.')))
+
+
 def get_hostname():
     # type: () -> str
     return socket.gethostname()
@@ -2054,10 +2064,16 @@ def list_daemons(detail=True, legacy_dir=None):
                         image_name = None
                         image_id = None
                         version = None
+
+                        if 'podman' in container_path and get_podman_version() < [1, 6, 2]:
+                            image_field = '.ImageID'
+                        else:
+                            image_field = '.Image'
+
                         out, err, code = call(
                             [
                                 container_path, 'inspect',
-                                '--format', '{{.Id}},{{.Config.Image}},{{.Image}}',
+                                '--format', '{{.Id}},{{.Config.Image}},{{%s}}' % image_field,
                                 'ceph-%s-%s' % (fsid, j)
                             ],
                             verbose_on_failure=False)
