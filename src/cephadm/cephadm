@@ -49,7 +49,7 @@ import tempfile
 import time
 import errno
 try:
-    from typing import Dict, List, Tuple, Optional, Union
+    from typing import Dict, List, Tuple, Optional, Union, Any
 except ImportError:
     pass
 import uuid
@@ -68,7 +68,7 @@ if sys.version_info >= (3, 2):
 else:
     from ConfigParser import SafeConfigParser
 
-container_path = None
+container_path = ''
 
 class Error(Exception):
     pass
@@ -353,6 +353,7 @@ class FileLock(object):
 # Popen wrappers, lifted from ceph-volume
 
 def call(command, desc=None, verbose=False, **kwargs):
+    # type: (List[str], Optional[str], bool, Any) -> Tuple[str, str, int]
     """
     Wrap subprocess.Popen to
 
@@ -401,9 +402,11 @@ def call(command, desc=None, verbose=False, **kwargs):
             )
         for fd in reads:
             try:
-                message = os.read(fd, 1024)
-                if not isinstance(message, str):
-                    message = message.decode('utf-8')
+                message_b = os.read(fd, 1024)
+                if isinstance(message_b, bytes):
+                    message = message_b.decode('utf-8')
+                if isinstance(message_b, str):
+                    message = message_b
                 if fd == process.stdout.fileno():
                     out += message
                     message = out_buffer + message
@@ -453,6 +456,7 @@ def call(command, desc=None, verbose=False, **kwargs):
     return out, err, returncode
 
 def call_throws(command, **kwargs):
+    # type: (List[str], Any) -> Tuple[str, str, int]
     out, err, ret = call(command, **kwargs)
     if ret:
         raise RuntimeError('Failed command: %s' % ' '.join(command))
