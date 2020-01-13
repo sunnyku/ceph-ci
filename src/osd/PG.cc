@@ -971,7 +971,7 @@ void PG::prepare_write(
   if (!km.empty())
     t.omap_setkeys(coll, pgmeta_oid, km);
   if (!key_to_remove.empty())
-    t.omap_rmkeys(coll, pgmeta_oid, { key_to_remove });
+    t.omap_rmkey(coll, pgmeta_oid, key_to_remove);
 }
 
 #pragma GCC diagnostic ignored "-Wpragmas"
