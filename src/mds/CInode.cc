@@ -299,6 +299,7 @@ CInode::CInode(MDCache *c, bool auth, snapid_t f, snapid_t l)
     item_dirty_dirfrag_dir(this),
     item_dirty_dirfrag_nest(this),
     item_dirty_dirfrag_dirfragtree(this),
+    consistent_hash_inode(this),
     pop(c->decayrate),
     versionlock(this, &versionlock_type),
     authlock(this, &authlock_type),
@@ -5192,6 +5193,7 @@ void CInode::maybe_export_ephemeral_pin(bool update)
   double export_ephemeral_random_pin = get_export_ephemeral_random_pin(false);
   //bool export_ephemeral_distributed_pin = get_export_ephemeral_distributed_pin();
 
+  dout(10) << "I should be here" << dendl;
   if (update)
     dout(10) << "I'm here for the update" << dendl;
 
@@ -5224,7 +5226,7 @@ void CInode::maybe_export_ephemeral_pin(bool update)
         }
         if (queue) {
 	  if (mdcache->hash_into_rank_bucket(ino(), mdcache->mds->mdsmap->get_max_mds()) == mdcache->mds->get_nodeid()) {
-            mdcache->consistent_hash_inodes.emplace(ino());
+            mdcache->consistent_hash_inodes.push_back(&consistent_hash_inode);
           state_set(CInode::STATE_QUEUEDEXPORTPIN);
           mdcache->export_pin_queue.insert(this);
           break;
@@ -5236,10 +5238,15 @@ void CInode::maybe_export_ephemeral_pin(bool update)
 
   if (mdcache->get_export_ephemeral_distributed_config()) {
 
+    dout(10) << "Under distributed pinning" << dendl;
+
     CDentry *pdn = get_projected_parent_dn();
 
-    if ((pdn->get_dir()->get_inode() && pdn->get_dir()->get_inode()->get_export_ephemeral_distributed_pin()) || update) {
+    dout(10) << "Got parent" << dendl;
 
+    if (update || (pdn->get_dir()->get_inode() && pdn->get_dir()->get_inode()->get_export_ephemeral_distributed_pin())) {
+
+      dout(10) << "I'm here too" << dendl;
       is_export_ephemeral_distributed_migrating = true;
 
       bool queue = false;
@@ -5259,10 +5266,9 @@ void CInode::maybe_export_ephemeral_pin(bool update)
         if (queue) {
 	  dout(10) << "max_mds is" << mdcache->mds->mdsmap->get_max_mds() << "and target mds is:" << mdcache->hash_into_rank_bucket(ino(), mdcache->mds->mdsmap->get_max_mds()) << dendl;
           if (mdcache->hash_into_rank_bucket(ino(), mdcache->mds->mdsmap->get_max_mds()) == mdcache->mds->get_nodeid())
-            mdcache->consistent_hash_inodes.emplace(ino());
+            mdcache->consistent_hash_inodes.push_back(&consistent_hash_inode);
 	    dout(10) << "Inside if inside the else" << dendl;
           }
-          dout(10) << "consistent_hash_inodes are:" << mdcache->consistent_hash_inodes << dendl;
           state_set(CInode::STATE_QUEUEDEXPORTPIN);
           mdcache->export_pin_queue.insert(this);
           break;
@@ -5338,12 +5344,14 @@ double CInode::get_export_ephemeral_random_pin(bool inherit) const
     // ignore export pin for unlinked directory
     if (in->get_inode().nlink == 0)
       break;
+    dout(10) << "In get export_ephemeral_random_pin" << dendl;
     // Check if the inode is projected/dirty
     if (in->is_projected() && in->get_projected_inode()->export_ephemeral_random_pin >= 0)
       return in->get_projected_inode()->export_ephemeral_random_pin;
     else if (in->get_inode().export_ephemeral_random_pin >= 0)
       return in->get_inode().export_ephemeral_random_pin;
 
+    dout(10) << "survived the if" << dendl;
     if (!inherit)
       break;
     in = pdn->get_dir()->inode;
