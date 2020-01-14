@@ -354,7 +354,7 @@ class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CIno
 
   bool is_export_ephemeral_distributed_pinned = false;
   bool is_export_ephemeral_random_pinned = false;
-
+  
   bool is_export_ephemeral_distributed_migrating = false;
   bool is_export_ephemeral_random_migrating = false;
 
