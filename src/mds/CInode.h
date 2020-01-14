@@ -352,6 +352,12 @@ class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CIno
 
   std::map<int, std::unique_ptr<BatchOp>> batch_ops;
 
+  bool is_export_ephemeral_distributed_pinned = false;
+  bool is_export_ephemeral_random_pinned = false;
+
+  bool is_export_ephemeral_distributed_migrating = false;
+  bool is_export_ephemeral_random_migrating = false;
+
   std::string_view pin_name(int p) const override;
 
   ostream& print_db_line_prefix(ostream& out) override;
@@ -899,8 +905,13 @@ class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CIno
   }
 
   void maybe_export_pin(bool update=false);
+  void maybe_export_ephemeral_pin(bool update=false);
   void set_export_pin(mds_rank_t rank);
+  void set_export_ephemeral_random_pin(double probablitiy=0);
+  void set_export_ephemeral_distributed_pin(bool val=false);
   mds_rank_t get_export_pin(bool inherit=true) const;
+  double get_export_ephemeral_random_pin(bool inherit=true) const;
+  bool get_export_ephemeral_distributed_pin() const;
   bool is_exportable(mds_rank_t dest) const;
 
   void print(ostream& out) override;
