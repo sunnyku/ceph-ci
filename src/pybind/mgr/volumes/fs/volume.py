@@ -7,8 +7,8 @@ import cephfs
 
 from .fs_util import listdir
 
-from .operations.volume import ConnectionPool, open_volume, create_volume, \
-    delete_volume, list_volumes
+from .operations.volume import ConnectionPool, open_volume, open_volume_lockless, \
+    create_volume, delete_volume, list_volumes
 from .operations.group import open_group, create_group, remove_group
 from .operations.subvolume import open_subvol, create_subvol, remove_subvol, \
     create_clone
@@ -373,6 +373,18 @@ class VolumeClient(object):
                     with open_subvol(fs_handle, self.volspec, group, clonename,
                                      need_complete=False, expected_types=["clone"]) as subvolume:
                         ret = 0, json.dumps({'status' : subvolume.status}, indent=2), ""
+        except VolumeException as ve:
+            ret = self.volume_exception_to_retval(ve)
+        return ret
+
+    def clone_cancel(self, **kwargs):
+        ret       = 0, "", ""
+        volname   = kwargs['vol_name']
+        clonename = kwargs['clone_name']
+        groupname = kwargs['group_name']
+
+        try:
+            self.cloner.cancel_job(volname, (clonename, groupname))
         except VolumeException as ve:
             ret = self.volume_exception_to_retval(ve)
         return ret
