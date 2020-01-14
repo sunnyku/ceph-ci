@@ -299,6 +299,7 @@ CInode::CInode(MDCache *c, bool auth, snapid_t f, snapid_t l)
     item_dirty_dirfrag_dir(this),
     item_dirty_dirfrag_nest(this),
     item_dirty_dirfrag_dirfragtree(this),
+    consistent_hash_inode(this),
     pop(c->decayrate),
     versionlock(this, &versionlock_type),
     authlock(this, &authlock_type),
@@ -5224,7 +5225,7 @@ void CInode::maybe_export_ephemeral_pin(bool update)
         }
         if (queue) {
 	  if (mdcache->hash_into_rank_bucket(ino(), mdcache->mds->mdsmap->get_max_mds()) == mdcache->mds->get_nodeid()) {
-            mdcache->consistent_hash_inodes.emplace(ino());
+            mdcache->consistent_hash_inodes.push_back(&consistent_hash_inode);
           state_set(CInode::STATE_QUEUEDEXPORTPIN);
           mdcache->export_pin_queue.insert(this);
           break;
@@ -5238,7 +5239,7 @@ void CInode::maybe_export_ephemeral_pin(bool update)
 
     CDentry *pdn = get_projected_parent_dn();
 
-    if ((pdn->get_dir()->get_inode() && pdn->get_dir()->get_inode()->get_export_ephemeral_distributed_pin()) || update) {
+    if (update || (pdn->get_dir()->get_inode() && pdn->get_dir()->get_inode()->get_export_ephemeral_distributed_pin())) {
 
       is_export_ephemeral_distributed_migrating = true;
 
@@ -5259,10 +5260,9 @@ void CInode::maybe_export_ephemeral_pin(bool update)
         if (queue) {
 	  dout(10) << "max_mds is" << mdcache->mds->mdsmap->get_max_mds() << "and target mds is:" << mdcache->hash_into_rank_bucket(ino(), mdcache->mds->mdsmap->get_max_mds()) << dendl;
           if (mdcache->hash_into_rank_bucket(ino(), mdcache->mds->mdsmap->get_max_mds()) == mdcache->mds->get_nodeid())
-            mdcache->consistent_hash_inodes.emplace(ino());
+            mdcache->consistent_hash_inodes.push_back(&consistent_hash_inode);
 	    dout(10) << "Inside if inside the else" << dendl;
           }
-          dout(10) << "consistent_hash_inodes are:" << mdcache->consistent_hash_inodes << dendl;
           state_set(CInode::STATE_QUEUEDEXPORTPIN);
           mdcache->export_pin_queue.insert(this);
           break;
