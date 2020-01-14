@@ -1145,9 +1145,18 @@ void Migrator::dispatch_export_dir(MDRequestRef& mdr, int count)
     it->second.approx_size = results.front().second;
     total_exporting_size += it->second.approx_size;
 
-    // start the freeze, but hold it up with an auth_pin.
-    dir->freeze_tree();
-    ceph_assert(dir->is_freezing_tree());
+    //Ephemeral distributed pinning - Only the current (child) directory should get frozen and pinned
+    if (dir->get_inode()->is_export_ephemeral_distributed_migrating) {
+      dout(10) << "I'm here and I'm freezing the directory" << dendl;
+      dir->freeze_dir();
+      ceph_assert(dir->is_freezing_dir());
+    }
+    else {
+      // start the freeze, but hold it up with an auth_pin.
+      dir->freeze_tree();
+      ceph_assert(dir->is_freezing_tree());
+    }
+
     dir->add_waiter(CDir::WAIT_FROZEN, new C_MDC_ExportFreeze(this, dir, it->second.tid));
     return;
   }
@@ -1345,12 +1354,16 @@ void Migrator::export_frozen(CDir *dir, uint64_t tid)
   }
 
   ceph_assert(it->second.state == EXPORT_FREEZING);
-  ceph_assert(dir->is_frozen_tree_root());
+
+  CInode *diri = dir->get_inode();
+  if (diri->is_export_ephemeral_distributed_migrating)
+    ceph_assert(dir->is_frozen_dir());
+  else
+    ceph_assert(dir->is_frozen_tree_root());
 
   it->second.mut = new MutationImpl();
 
   // ok, try to grab all my locks.
-  CInode *diri = dir->get_inode();
   if ((diri->is_auth() && diri->is_frozen()) ||
       !export_try_grab_locks(dir, it->second.mut)) {
     dout(7) << "export_dir couldn't acquire all needed locks, failing. "
@@ -1364,8 +1377,13 @@ void Migrator::export_frozen(CDir *dir, uint64_t tid)
 
   cache->show_subtrees();
 
-  // CDir::_freeze_tree() should have forced it into subtree.
-  ceph_assert(dir->get_dir_auth() == mds_authority_t(mds->get_nodeid(), mds->get_nodeid()));
+  //if (diri->is_export_ephemeral_distributed_migrating)
+    //ceph_assert(dir->get_dir_auth().first == mds->get_nodeid());    //Need more stricter checks?
+  //else {
+    // CDir::_freeze_tree() should have forced it into subtree.
+  if (!diri->is_export_ephemeral_distributed_migrating)
+    ceph_assert(dir->get_dir_auth() == mds_authority_t(mds->get_nodeid(), mds->get_nodeid()));
+  //}
   // note the bounds.
   set<CDir*> bounds;
   cache->get_subtree_bounds(dir, bounds);
@@ -2686,6 +2704,24 @@ void Migrator::handle_export_dir(const cref_t<MExportDir> &m)
   EImportStart *le = new EImportStart(mds->mdlog, dir->dirfrag(), m->bounds, oldauth);
   mds->mdlog->start_entry(le);
 
+  CInode *in = dir->get_inode();
+
+  if(in) {
+    CDentry *pdn = in->get_projected_parent_dn();
+  
+    if (in->get_export_ephemeral_random_pin(false)) {    // Lazy checks. FIXME
+      le->metablob.add_primary_dentry(pdn, in, false, false, false, false,
+            false, true);
+      in->is_export_ephemeral_random_pinned = true;
+      cache->consistent_hash_inodes.emplace(in->ino());
+    } else if (pdn->get_dir()->get_inode()
+           && pdn->get_dir()->get_inode()->get_export_ephemeral_distributed_pin()) {
+        le->metablob.add_primary_dentry(pdn, in, false, false, false, false,
+            true, false);
+        in->is_export_ephemeral_distributed_pinned = true;
+        cache->consistent_hash_inodes.emplace(in->ino());
+    }
+  }
   le->metablob.add_dir_context(dir);
   
   // adjust auth (list us _first_)
@@ -3172,13 +3208,12 @@ void Migrator::import_finish(CDir *dir, bool notify, bool last)
     cache->populate_mydir();
 
   // is it empty?
-  if (dir->get_num_head_items() == 0 &&
+  if (!dir->inode->is_export_ephemeral_distributed_pinned && dir->get_num_head_items() == 0 &&
       !dir->inode->is_auth()) {
     // reexport!
     export_empty_import(dir);
   }
 }
-
 
 void Migrator::decode_import_inode(CDentry *dn, bufferlist::const_iterator& blp,
 				   mds_rank_t oldauth, LogSegment *ls,
@@ -3223,7 +3258,7 @@ void Migrator::decode_import_inode(CDentry *dn, bufferlist::const_iterator& blp,
     cache->add_inode(in);
     dout(10) << "added " << *in << dendl;
   } else {
-    dout(10) << "  had " << *in << dendl;
+      dout(10) << "  had " << *in << dendl;
   }
 
   if (in->inode.is_dirty_rstat())

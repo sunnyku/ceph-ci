@@ -5195,7 +5195,7 @@ void CInode::maybe_export_ephemeral_pin(bool update)
   if (update)
     dout(10) << "I'm here for the update" << dendl;
 
-  //Check if it's already ephemerally pinned
+  // Check if it's already ephemerally pinned
   if ((is_export_ephemeral_random_pinned || is_export_ephemeral_distributed_pinned) && !update)
       return;
 
@@ -5238,7 +5238,7 @@ void CInode::maybe_export_ephemeral_pin(bool update)
 
     CDentry *pdn = get_projected_parent_dn();
 
-    if ((pdn->get_dir()->get_inode() && pdn->get_dir()->get_inode()->get_export_ephemeral_distributed_pin()) || update) {
+    if (update || (pdn->get_dir()->get_inode() && pdn->get_dir()->get_inode()->get_export_ephemeral_distributed_pin())) {
 
       is_export_ephemeral_distributed_migrating = true;
 
