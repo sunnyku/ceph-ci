@@ -152,6 +152,9 @@ MDCache::MDCache(MDSRank *m, PurgeQueue &purge_queue_) :
   cache_health_threshold = g_conf().get_val<double>("mds_health_cache_threshold");
   forward_all_requests_to_auth = g_conf().get_val<bool>("mds_forward_all_requests_to_auth");
 
+  export_ephemeral_distributed_config =  g_conf().get_val<bool>("mds_export_ephemeral_distributed"); 
+  export_ephemeral_random_config =  g_conf().get_val<bool>("mds_export_ephemeral_random");
+
   lru.lru_set_midpoint(g_conf().get_val<double>("mds_cache_mid"));
 
   bottom_lru.lru_set_midpoint(0);
@@ -216,6 +219,10 @@ void MDCache::handle_conf_change(const std::set<std::string>& changed, const MDS
     cache_memory_limit = g_conf().get_val<Option::size_t>("mds_cache_memory_limit");
   if (changed.count("mds_cache_reservation"))
     cache_reservation = g_conf().get_val<double>("mds_cache_reservation");
+  if (changed.count("mds_export_ephemeral_distributed"))
+    export_ephemeral_distributed_config = g_conf().get_val<bool>("mds_export_ephemeral_distributed");
+  if (changed.count("mds_export_ephemeral_random"))
+    export_ephemeral_random_config = g_conf().get_val<bool>("mds_export_ephemeral_random");
   if (changed.count("mds_health_cache_threshold"))
     cache_health_threshold = g_conf().get_val<double>("mds_health_cache_threshold");
   if (changed.count("mds_cache_mid"))
@@ -829,6 +836,20 @@ MDSCacheObject *MDCache::get_object(const MDSCacheObjectInfo &info)
 }
 
 
+// ====================================================================
+// consistent hash ring
+
+mds_rank_t MDCache::hash_into_rank_bucket(inodeno_t ino, mds_rank_t max_mds)
+{
+  uint64_t hash = rjhash64(ino);
+  int64_t b = -1, j = 0;
+  while (j < max_mds) {
+    b = j;
+    hash = hash*2862933555777941757ULL + 1;
+    j = (b + 1) * (double(1LL << 31) / double((hash >> 33) + 1));
+  }
+  return mds_rank_t(b);
+}
 
 
 // ====================================================================
