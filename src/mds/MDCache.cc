@@ -6676,8 +6676,9 @@ std::pair<bool, uint64_t> MDCache::trim(uint64_t count)
 	    dir->is_freezing() || dir->is_frozen())
 	  continue;
 
-	migrator->export_empty_import(dir);
-        ++trimmed;
+        if (!diri->is_export_ephemeral_distributed_pinned)
+	  migrator->export_empty_import(dir);
+	++trimmed;
       }
     } else {
       if (!diri->is_auth()) {
@@ -7740,6 +7741,23 @@ bool MDCache::shutdown_pass()
     }
 
     migrator->clear_export_queue();
+
+    if (export_ephemeral_random_config ||
+        export_ephemeral_distributed_config) {
+       dout(10) << "Migrating ephemerally pinned inodes due to shutdown" << dendl;
+       std::set<inodeno_t>::iterator it = consistent_hash_inodes.begin();
+       while (it != consistent_hash_inodes.end()) {
+         auto in = get_inode(*it);
+         if (in == NULL || !(in->is_auth()))
+           dout(10) << "Inode is not auth to this rank" << dendl;
+         else {
+           dout(10) << "adding inode to export queue" << dendl;
+           in->maybe_export_ephemeral_pin(true);
+         }
+         it++;
+       }
+    }
+
     for (const auto& dir : ls) {
       mds_rank_t dest = dir->get_inode()->authority().first;
       if (dest > 0 && !mds->mdsmap->is_active(dest))
@@ -13191,7 +13209,7 @@ bool MDCache::dump_inode(Formatter *f, uint64_t number) {
   return true;
 }
 
-void MDCache::handle_mdsmap(const MDSMap &mdsmap) {
+void MDCache::handle_mdsmap(const MDSMap &mdsmap, const MDSMap &oldmap) {
   // process export_pin_delayed_queue whenever a new MDSMap received
   auto &q = export_pin_delayed_queue;
   for (auto it = q.begin(); it != q.end(); ) {
@@ -13207,6 +13225,28 @@ void MDCache::handle_mdsmap(const MDSMap &mdsmap) {
     in->state_clear(CInode::STATE_DELAYEDEXPORTPIN);
     it = q.erase(it);
     in->maybe_export_pin();
+  }
+
+  /* Handle consistent hash ring changes when new mds is active. In the case where an mds is stopped (max_mds is decreased), the subtree migrations are handled as the Inodes are loaded */
+  if (mdsmap.get_max_mds() > oldmap.get_max_mds()) {
+    if (export_ephemeral_random_config ||
+        export_ephemeral_distributed_config) {
+            dout(10) << "Max mds is increased. Noted from MDCache side" << dendl;
+            std::set<inodeno_t>::iterator it = consistent_hash_inodes.begin();
+            while (it != consistent_hash_inodes.end()) {
+	      // Migrate if the inodes hash elsewhere
+              if (hash_into_rank_bucket(*it, mdsmap.get_max_mds()) != mds->get_nodeid()) {
+                auto in = get_inode(*it);
+                if (in == NULL || !(in->is_auth()))
+                  dout(10) << "Inode is not auth to this rank" << dendl;
+                else {
+                  dout(10) << "adding inode to export queue" << dendl;
+                  in->maybe_export_ephemeral_pin(true);
+                  consistent_hash_inodes.erase(it++);
+                }
+              }
+            }
+    }
   }
 }
 
