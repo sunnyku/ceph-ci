@@ -1148,6 +1148,7 @@ void Migrator::dispatch_export_dir(MDRequestRef& mdr, int count)
     // start the freeze, but hold it up with an auth_pin.
     dir->freeze_tree();
     ceph_assert(dir->is_freezing_tree());
+
     dir->add_waiter(CDir::WAIT_FROZEN, new C_MDC_ExportFreeze(this, dir, it->second.tid));
     return;
   }
@@ -1349,8 +1350,8 @@ void Migrator::export_frozen(CDir *dir, uint64_t tid)
 
   it->second.mut = new MutationImpl();
 
-  // ok, try to grab all my locks.
   CInode *diri = dir->get_inode();
+  // ok, try to grab all my locks.
   if ((diri->is_auth() && diri->is_frozen()) ||
       !export_try_grab_locks(dir, it->second.mut)) {
     dout(7) << "export_dir couldn't acquire all needed locks, failing. "
@@ -2686,6 +2687,24 @@ void Migrator::handle_export_dir(const cref_t<MExportDir> &m)
   EImportStart *le = new EImportStart(mds->mdlog, dir->dirfrag(), m->bounds, oldauth);
   mds->mdlog->start_entry(le);
 
+  CInode *in = dir->get_inode();
+
+  if(in) {
+    CDentry *pdn = in->get_projected_parent_dn();
+  
+    if (in->get_export_ephemeral_random_pin(false)) {    // Lazy checks. FIXME
+      le->metablob.add_primary_dentry(pdn, in, false, false, false, false,
+            false, true);
+      in->is_export_ephemeral_random_pinned = true;
+      cache->consistent_hash_inodes.push_back(&in->consistent_hash_inode);
+    } else if (pdn->get_dir()->get_inode()
+           && pdn->get_dir()->get_inode()->get_export_ephemeral_distributed_pin()) {
+        le->metablob.add_primary_dentry(pdn, in, false, false, false, false,
+            true, false);
+        in->is_export_ephemeral_distributed_pinned = true;
+        cache->consistent_hash_inodes.push_back(&in->consistent_hash_inode);
+    }
+  }
   le->metablob.add_dir_context(dir);
   
   // adjust auth (list us _first_)
@@ -3179,7 +3198,6 @@ void Migrator::import_finish(CDir *dir, bool notify, bool last)
   }
 }
 
-
 void Migrator::decode_import_inode(CDentry *dn, bufferlist::const_iterator& blp,
 				   mds_rank_t oldauth, LogSegment *ls,
 				   map<CInode*, map<client_t,Capability::Export> >& peer_exports,
@@ -3223,7 +3241,7 @@ void Migrator::decode_import_inode(CDentry *dn, bufferlist::const_iterator& blp,
     cache->add_inode(in);
     dout(10) << "added " << *in << dendl;
   } else {
-    dout(10) << "  had " << *in << dendl;
+      dout(10) << "  had " << *in << dendl;
   }
 
   if (in->inode.is_dirty_rstat())

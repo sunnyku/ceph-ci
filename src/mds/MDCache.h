@@ -136,7 +136,7 @@ class MDCache {
   using clock = ceph::coarse_mono_clock;
   using time = ceph::coarse_mono_time;
 
-  set<inodeno_t> consistent_hash_inodes;
+  elist<CInode*> consistent_hash_inodes;
 
   // -- discover --
   struct discover_info_t {
