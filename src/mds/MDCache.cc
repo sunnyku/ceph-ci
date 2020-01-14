@@ -1298,8 +1298,10 @@ void MDCache::remove_subtree(CDir *dir)
 
 void MDCache::get_subtree_bounds(CDir *dir, set<CDir*>& bounds)
 {
-  ceph_assert(subtrees.count(dir));
-  bounds = subtrees[dir];
+  if (dir->get_inode()->is_export_ephemeral_distributed_migrating) {
+    ceph_assert(subtrees.count(dir));
+    bounds = subtrees[dir];
+  }
 }
 
 void MDCache::get_wouldbe_subtree_bounds(CDir *dir, set<CDir*>& bounds)
