@@ -300,6 +300,7 @@ endif()
 set(libcommon_files
   ${CMAKE_BINARY_DIR}/src/include/ceph_ver.h
   ceph_ver.c
+  global/global_context.cc
   xxHash/xxhash.c
   log/Log.cc
   mon/MonCap.cc
@@ -342,7 +343,6 @@ set(ceph_common_objs
   $<TARGET_OBJECTS:compressor_objs>
   $<TARGET_OBJECTS:common-objs>
   $<TARGET_OBJECTS:common_mountcephfs_objs>
-  $<TARGET_OBJECTS:global_common_objs>
   $<TARGET_OBJECTS:crush_objs>)
 set(ceph_common_deps
   json_spirit erasure_code arch crc32
@@ -703,6 +703,12 @@ if(WITH_RBD)
   add_subdirectory(rbd_replay)
 endif(WITH_RBD)
 
+if(WITH_BOOST_CONTEXT)
+  set(SPAWN_BUILD_TESTS OFF CACHE INTERNAL "disable building of spawn unit tests")
+  set(SPAWN_INSTALL OFF CACHE INTERNAL "disable installation of spawn headers")
+  add_subdirectory(spawn)
+endif()
+
 # RadosGW
 if(WITH_KVS)
   add_subdirectory(key_value_store)
@@ -767,8 +773,8 @@ if (WITH_CEPHFS)
   add_dependencies(vstart ceph-mds cephfs cython_cephfs)
 endif()
 if(WITH_RADOSGW)
-  add_dependencies(vstart radosgw radosgw-admin)
-endif(WITH_RADOSGW)
+  add_dependencies(vstart radosgwd radosgw-admin)
+endif()
 
 if(WITH_LTTNG)
   add_dependencies(vstart tracepoint_libraries)
