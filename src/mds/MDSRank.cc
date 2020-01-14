@@ -2391,7 +2391,7 @@ void MDSRankDispatcher::handle_mds_map(
       scrubstack->scrub_abort(c);
     }
   }
-  mdcache->handle_mdsmap(*mdsmap);
+  mdcache->handle_mdsmap(*mdsmap, oldmap);
 }
 
 void MDSRank::handle_mds_recovery(mds_rank_t who)
@@ -3513,6 +3513,8 @@ const char** MDSRankDispatcher::get_tracked_conf_keys() const
     "mds_dump_cache_threshold_file",
     "mds_dump_cache_threshold_formatter",
     "mds_enable_op_tracker",
+    "mds_export_ephemeral_random"
+    "mds_export_ephemeral_distributed"
     "mds_health_cache_threshold",
     "mds_inject_migrator_session_race",
     "mds_log_pause",
