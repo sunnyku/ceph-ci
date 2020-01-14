@@ -2678,11 +2678,15 @@ void CDir::set_dir_auth(const mds_authority_t &a)
 
   // new subtree root?
   if (!was_subtree && is_subtree_root()) {
-    dout(10) << " new subtree root, adjusting auth_pins" << dendl;
+    dout(9) << " new subtree root, adjusting auth_pins" << dendl;
 
     if (freeze_tree_state) {
-      // only by CDir::_freeze_tree()
-      ceph_assert(is_freezing_tree_root());
+      if (inode->is_export_ephemeral_distributed_migrating)
+	ceph_assert(is_freezing_dir() || is_frozen_dir());
+      else {
+        // only by CDir::_freeze_tree()
+        ceph_assert(is_freezing_tree_root());
+      }
     }
 
     inode->num_subtree_roots++;   
