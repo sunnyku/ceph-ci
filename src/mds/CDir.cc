@@ -3154,6 +3154,9 @@ void CDir::_freeze_dir()
 
   if (is_auth() && !is_subtree_root())
     inode->auth_pin(this);  // auth_pin for duration of freeze
+
+  if (get_inode()->is_export_ephemeral_distributed_migrating)
+    auth = authority();
 }
 
 
