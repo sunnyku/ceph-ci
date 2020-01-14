@@ -354,7 +354,7 @@ class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CIno
 
   bool is_export_ephemeral_distributed_pinned = false;
   bool is_export_ephemeral_random_pinned = false;
-
+  
   bool is_export_ephemeral_distributed_migrating = false;
   bool is_export_ephemeral_random_migrating = false;
 
@@ -951,6 +951,8 @@ class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CIno
 
   // list item node for when we have unpropagated rstat data
   elist<CInode*>::item dirty_rstat_item;
+
+  elist<CInode*>::item consistent_hash_inode;
 
   mempool::mds_co::set<client_t> client_snap_caps;
   mempool::mds_co::compact_map<snapid_t, mempool::mds_co::set<client_t> > client_need_snapflush;
