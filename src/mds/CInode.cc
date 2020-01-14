@@ -5238,7 +5238,7 @@ void CInode::maybe_export_ephemeral_pin(bool update)
 
     CDentry *pdn = get_projected_parent_dn();
 
-    if ((pdn->get_dir()->get_inode() && pdn->get_dir()->get_inode()->get_export_ephemeral_distributed_pin()) || update) {
+    if (update || (pdn->get_dir()->get_inode() && pdn->get_dir()->get_inode()->get_export_ephemeral_distributed_pin())) {
 
       is_export_ephemeral_distributed_migrating = true;
 
