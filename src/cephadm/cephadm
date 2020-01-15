@@ -49,7 +49,7 @@ import tempfile
 import time
 import errno
 try:
-    from typing import Dict, List, Tuple, Optional, Union
+    from typing import Dict, List, Tuple, Optional, Union, Any
 except ImportError:
     pass
 import uuid
@@ -68,7 +68,7 @@ if sys.version_info >= (3, 2):
 else:
     from ConfigParser import SafeConfigParser
 
-container_path = None
+container_path = ''
 
 class Error(Exception):
     pass
@@ -368,6 +368,7 @@ class FileLock(object):
 # Popen wrappers, lifted from ceph-volume
 
 def call(command, desc=None, verbose=False, **kwargs):
+    # type: (List[str], Optional[str], bool, Any) -> Tuple[str, str, int]
     """
     Wrap subprocess.Popen to
 
@@ -416,9 +417,11 @@ def call(command, desc=None, verbose=False, **kwargs):
             )
         for fd in reads:
             try:
-                message = os.read(fd, 1024)
-                if not isinstance(message, str):
-                    message = message.decode('utf-8')
+                message_b = os.read(fd, 1024)
+                if isinstance(message_b, bytes):
+                    message = message_b.decode('utf-8')
+                if isinstance(message_b, str):
+                    message = message_b
                 if fd == process.stdout.fileno():
                     out += message
                     message = out_buffer + message
@@ -468,6 +471,7 @@ def call(command, desc=None, verbose=False, **kwargs):
     return out, err, returncode
 
 def call_throws(command, **kwargs):
+    # type: (List[str], Any) -> Tuple[str, str, int]
     out, err, ret = call(command, **kwargs)
     if ret:
         raise RuntimeError('Failed command: %s' % ' '.join(command))
@@ -502,6 +506,16 @@ def pathify(p):
     if not p.startswith('/'):
         return os.path.join(os.getcwd(), p)
     return p
+
+
+def get_podman_version():
+    # type: () -> List[int]
+    if 'podman' not in container_path:
+        raise ValueError('not using podman')
+    out, _, _ = call_throws([container_path, '--version'])
+    _, _, version_str = out.strip().split()
+    return list(map(int, version_str.split('.')))
+
 
 def get_hostname():
     # type: () -> str
@@ -2086,10 +2100,16 @@ def list_daemons(detail=True, legacy_dir=None):
                         image_name = None
                         image_id = None
                         version = None
+
+                        if 'podman' in container_path and get_podman_version() < [1, 6, 2]:
+                            image_field = '.ImageID'
+                        else:
+                            image_field = '.Image'
+
                         out, err, code = call(
                             [
                                 container_path, 'inspect',
-                                '--format', '{{.Id}},{{.Config.Image}},{{.Image}}',
+                                '--format', '{{.Id}},{{.Config.Image}},{{%s}}' % image_field,
                                 'ceph-%s-%s' % (fsid, j)
                             ],
                             verbose_on_failure=False)
