@@ -24,9 +24,6 @@
 #include <gtest/gtest.h>
 
 #include "include/stringify.h"
-#include "common/ceph_argparse.h"
-#include "global/global_init.h"
-#include "global/global_context.h"
 #include "include/Context.h"
 #include "osd/osd_types.h"
 
@@ -1436,20 +1433,6 @@ TEST(CrushWrapper, try_remap_rule) {
   }
 }
 
-int main(int argc, char **argv) {
-  vector<const char*> args;
-  argv_to_vec(argc, (const char **)argv, args);
-
-  map<string,string> defaults = {
-    { "debug_crush", "0" }
-  };
-  auto cct = global_init(&defaults, args, CEPH_ENTITY_TYPE_CLIENT,
-			 CODE_ENVIRONMENT_UTILITY,
-			 CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
-  common_init_finish(g_ceph_context);
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
 // Local Variables:
 // compile-command: "cd ../../../build ; make -j4 unittest_crush_wrapper && valgrind --tool=memcheck bin/unittest_crush_wrapper"
 // End:
