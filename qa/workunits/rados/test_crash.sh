@@ -4,6 +4,9 @@ set -x
 
 # run on a single-node three-OSD cluster
 
+# disable core dumps
+ulimit -c 0
+
 sudo killall -ABRT ceph-osd
 sleep 5
 
