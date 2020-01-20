@@ -286,19 +286,30 @@ bool ConfigMonitor::preprocess_command(MonOpRequestRef op)
       &src);
 
     if (cmd_getval(g_ceph_context, cmdmap, "key", name)) {
-      // get a single value
-      auto p = config.find(name);
-      if (p != config.end()) {
-	odata.append(p->second);
-	odata.append("\n");
-	goto reply;
-      }
       const Option *opt = g_conf().find_option(name);
       if (!opt) {
 	opt = mon->mgrmon()->find_module_option(name);
       }
       if (!opt) {
 	err = -ENOENT;
+	goto reply;
+      }
+      if (opt->has_flag(Option::FLAG_NO_MON_UPDATE)) {
+	// handle special options
+	if (name == "fsid") {
+	  odata.append(stringify(mon->monmap->get_fsid()));
+	  odata.append("\n");
+	  goto reply;
+	}
+	err = -EINVAL;
+	ss << name << " is special and cannot be stored by the mon";
+	goto reply;
+      }
+      // get a single value
+      auto p = config.find(name);
+      if (p != config.end()) {
+	odata.append(p->second);
+	odata.append("\n");
 	goto reply;
       }
       if (!entity.is_client() &&
@@ -494,14 +505,18 @@ bool ConfigMonitor::prepare_command(MonOpRequestRef op)
 	goto reply;
       }
 
-      if (opt) {
-	Option::value_t real_value;
-	string errstr;
-	err = opt->parse_value(value, &real_value, &errstr, &value);
-	if (err < 0) {
-	  ss << "error parsing value: " << errstr;
-	  goto reply;
-	}
+      Option::value_t real_value;
+      string errstr;
+      err = opt->parse_value(value, &real_value, &errstr, &value);
+      if (err < 0) {
+	ss << "error parsing value: " << errstr;
+	goto reply;
+      }
+
+      if (opt->has_flag(Option::FLAG_NO_MON_UPDATE)) {
+	err = -EINVAL;
+	ss << name << " is special and cannot be stored by the mon";
+	goto reply;
       }
     }
 
