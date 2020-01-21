@@ -3,6 +3,9 @@ meta:
 tasks:
 - install:
     branch: nautilus
+    exclude_packages:
+      - cephadm
+      - ceph-mgr-cephadm
 - print: "**** done install nautilus"
 - ceph:
     conf:
