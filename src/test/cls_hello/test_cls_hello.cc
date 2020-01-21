@@ -77,8 +77,39 @@ TEST(ClsHello, RecordHello) {
   ASSERT_EQ(0, destroy_one_pool_pp(pool_name, cluster));
 }
 
+static string _get_required_osd_release(Rados& cluster)
+{
+  bufferlist inbl;
+  string cmd = string("{\"prefix\": \"osd dump\",\"format\":\"json\"}");
+  bufferlist outbl;
+  int r = cluster.mon_command(cmd, inbl, &outbl, NULL);
+  ceph_assert(r >= 0);
+  string outstr(outbl.c_str(), outbl.length());
+  json_spirit::Value v;
+  if (!json_spirit::read(outstr, v)) {
+    cerr <<" unable to parse json " << outstr << std::endl;
+    return "";
+  }
+
+  json_spirit::Object& o = v.get_obj();
+  for (json_spirit::Object::size_type i=0; i<o.size(); i++) {
+    json_spirit::Pair& p = o[i];
+    if (p.name_ == "require_osd_release") {
+      cout << "require_osd_release = " << p.value_.get_str() << std::endl;
+      return p.value_.get_str();
+    }
+  }
+  cerr << "didn't find require_osd_release in " << outstr << std::endl;
+  return "";
+}
+
 TEST(ClsHello, WriteReturnData) {
   Rados cluster;
+  // skip test if not yet mimic
+  if (_get_required_osd_release(cluster) < "octopus") {
+    cout << "cluster is not yet octopus, skipping test" << std::endl;
+    return;
+  }
   std::string pool_name = get_temp_pool_name();
   ASSERT_EQ("", create_one_pool_pp(pool_name, cluster));
   IoCtx ioctx;
