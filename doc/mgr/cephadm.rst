@@ -37,3 +37,29 @@ To clear this value use the command:
 ::
 
     # ceph cephadm clear-ssh-config
+
+Health checks
+-------------
+
+CEPHADM_UNREGISTERED_HOST
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+One or more hosts have running Ceph daemons but are not registered as
+hosts managed by *cephadm*.  This means that these services cannot
+currently be managed by cephadm (e.g., restarted, upgraded, included
+in `ceph orchestrator service ls`).
+
+You can manage the host(s) with::
+
+  ceph orchestrator host add *<hostname>*
+
+Note that you may need to configure SSH access to the remote host
+before this will work.
+
+Alternatively, you can manually connect to the host and ensure that
+services on that host are removed and/or migrated to a host that is
+managed by *cephadm*.
+
+You can also disable this warning entirely with::
+
+  ceph config set mgr mgr/cephadm/warn_on_unregistered_hosts false
