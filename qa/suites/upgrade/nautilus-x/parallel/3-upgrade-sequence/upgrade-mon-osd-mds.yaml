@@ -23,6 +23,10 @@ upgrade-sequence:
        daemons: [mon.c]
        wait-for-healthy: false
        mon-health-to-clog: false
+   - exec:
+       mon.a:
+         - for f in `ceph osd pool ls` ; do ceph osd pool set $f pg_autoscale_mode off ; done
+         - ceph config set global mon_warn_on_msgr2_not_enabled false
    - ceph.healthy:
    - sleep:
        duration: 60
