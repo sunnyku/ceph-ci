@@ -1256,6 +1256,9 @@ int RGWRados::init_complete()
   data_notifier = new RGWDataNotifier(this);
   data_notifier->start();
 
+  binfo_cache = new RGWChainedCacheImpl<bucket_info_entry>;
+  binfo_cache->init(svc.cache);
+
   lc = new RGWLC();
   lc->initialize(cct, this->store);
 
@@ -1272,9 +1275,6 @@ int RGWRados::init_complete()
       << get_max_bucket_shards() << dendl;
   }
   ldout(cct, 20) << __func__ << " bucket index max shards: " << bucket_index_max_shards << dendl;
-
-  binfo_cache = new RGWChainedCacheImpl<bucket_info_entry>;
-  binfo_cache->init(svc.cache);
 
   bool need_tombstone_cache = !svc.zone->get_zone_data_notify_to_map().empty(); /* have zones syncing from us */
 
@@ -4827,6 +4827,10 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y)
     store->cls_obj_check_mtime(op, params.unmod_since, params.high_precision_time, CLS_RGW_CHECK_TIME_MTIME_LE);
   }
   uint64_t obj_accounted_size = state->accounted_size;
+
+  if(params.abortmp) {
+    obj_accounted_size = params.parts_accounted_size;
+  }
 
   if (!real_clock::is_zero(params.expiration_time)) {
     bufferlist bl;
