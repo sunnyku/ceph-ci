@@ -50,7 +50,7 @@ tasks:
     mon.a:
     - ceph osd dump -f json-pretty
     - ceph versions
-    - ceph osd require-osd-release nautilus
+    - ceph osd require-osd-release octopus
     #- ceph osd set-require-min-compat-client nautilus
 - ceph.healthy:
 - print: "**** done ceph.restart"
