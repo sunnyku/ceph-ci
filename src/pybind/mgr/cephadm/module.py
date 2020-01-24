@@ -331,6 +331,8 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         self.run = True
         self.event = Event()
 
+        self._cons = {}
+
         self.config_notify()
 
         path = self.get_ceph_option('cephadm_path')
@@ -769,6 +771,22 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         elif self.mode == 'cephadm-package':
             self.ssh_user = 'cephadm'
 
+        self._reset_cons()
+
+    def _reset_con(self, host):
+        conn, r = self._cons.get(host, None)
+        if conn:
+            self.log.debug('_reset_con close %s' % host)
+            conn.exit()
+            del self._cons[host]
+
+    def _reset_cons(self):
+        for host, conn_and_r in self._cons.items():
+            self.log.debug('_reset_cons close %s' % host)
+            conn, r = conn_and_r
+            conn.exit()
+        self._cons = {}
+
     @staticmethod
     def can_run():
         if remoto is not None:
@@ -900,6 +918,10 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         """
         Setup a connection for running commands on remote host.
         """
+        conn_and_r = self._cons.get(host)
+        if conn_and_r:
+            self.log.debug('Have connection to %s' % host)
+            return conn_and_r
         n = self.ssh_user + '@' + host
         self.log.info("Opening connection to {} with ssh options '{}'".format(
             n, self._ssh_options))
@@ -909,6 +931,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
             ssh_options=self._ssh_options)
 
         r = conn.import_module(remotes)
+        self._cons[host] = conn, r
 
         return conn, r
 
@@ -975,6 +998,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                         [python, '-u'],
                         stdin=script.encode('utf-8'))
                 except RuntimeError as e:
+                    self._reset_con(host)
                     if error_ok:
                         return '', str(e), 1
                     raise
@@ -985,6 +1009,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                         ['sudo', '/usr/bin/cephadm'] + final_args,
                         stdin=stdin)
                 except RuntimeError as e:
+                    self._reset_con(host)
                     if error_ok:
                         return '', str(e), 1
                     raise
@@ -997,9 +1022,6 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         except Exception as ex:
             self.log.exception(ex)
             raise
-
-        finally:
-            conn.exit()
 
     def _get_hosts(self, wanted=None):
         return self.inventory_cache.items_filtered(wanted)
@@ -1034,6 +1056,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         self._save_inventory()
         del self.inventory_cache[host]
         del self.service_cache[host]
+        self._reset_con(host)
         self.event.set()  # refresh stray health check
         return "Removed host '{}'".format(host)
 
