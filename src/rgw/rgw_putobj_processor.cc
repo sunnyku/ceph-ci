@@ -94,7 +94,8 @@ int RadosWriter::process(bufferlist&& bl, uint64_t offset)
   ldout(store->ctx(), 5) << "GENERAL ugur PutObj oid " <<stripe_ref.oid<< "offset" << offset << dendl;
 /*ugur*/
   string s1 = stripe_ref.oid;
-  string s2="shadow";
+  string s2="ugur";
+  //string s2="shadow";
   if (s1.find(s2) != std::string::npos) {
   	ldout(store->ctx(), 5) << "NOTE: ugur  PutObj Process oid " <<stripe_ref.oid<< "offset" << offset << dendl;
 	librados::L2CacheRequest *wb_req =  new librados::L2CacheRequest(store->ctx());
@@ -325,7 +326,9 @@ int AtomicObjectProcessor::complete(size_t accounted_size,
   	string oid = bucket_id +"__shadow_"+ prefix;
 	string dest = "";
 	string op = "wb_update";
-	r = store->update_directory(oid,dest,op);
+	rgw_obj src_obj;
+        RGWRados::Object src_op_target(store, bucket_info, obj_ctx, src_obj);
+	r = store->update_directory(oid,dest,op,store);
   	/*ugur*/
   }
   if (pcanceled) {

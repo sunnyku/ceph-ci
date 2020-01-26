@@ -28,6 +28,7 @@
 #include <iostream>
 #include <cpp_redis/cpp_redis> /*directort*/
 #include "rgw_putobj_processor.h" /*wb*/
+#include "rgw_rest_client.h"
 
 enum {
   UPDATE_OBJ,
@@ -137,7 +138,12 @@ public:
   std::string get_s3_key(string prefix);
   int set_key(string key, string location, bool wb_cache);
   int remove_value(string key, string location);
-  
+ 
+
+  /**/
+  //void flush(const RGWBucketInfo& bucket_info, RGWObjectCtx *ctx, const rgw_obj& obj); 
+  void flush(RGWRados *store); 
+  //void flush(const rgw_obj& obj); 
   /*write_cache*/
   //int test_librados_handler();
   //int create_aio_write_request(bufferlist& bl, unsigned int len, std::string oid, CacheWriteOp *cwo);
@@ -846,7 +852,7 @@ public:
   }
 
   int issue_remote_wb(librados::L2CacheRequest *cr);
-  int update_directory(string key, string value, string op);
+  int update_directory(string key, string value, string op, RGWRados *store);
   int flush_read_list(struct get_obj_data *d);
   int get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
       const RGWBucketInfo& bucket_info, const rgw_obj& obj,
@@ -905,10 +911,15 @@ int RGWDataCache<T>::issue_remote_wb(librados::L2CacheRequest *cc){
 
 
 template <typename T>
-int RGWDataCache<T>::update_directory(string key, string value, string op){
+int RGWDataCache<T>::update_directory(string key, string value, string op, RGWRados *store){
     if (op =="wb_update"){
     	mydout(10) << "ugur update_directory for wb_cache ,insert " << key<< dendl;
-    	data_cache.set_key(key,value,1);
+//    	data_cache.set_key(key,value,1);
+        string a = data_cache.get_key("test_1",1);
+	if (a != ""){
+    		mydout(10) << "ugur iflush girdi update_directory for wb_cache ,insert " << key<< dendl;
+		data_cache.flush(store);
+}
     }
     return 0;
 }
@@ -972,7 +983,18 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
   librados::IoCtx io_ctx(d->io_ctx);
   io_ctx.locator_set_key(read_obj.loc);
   d->add_pending_oid(read_obj.oid);
+  
+  rgw_user user_id("test","test:swift");
+  real_time mtime= real_clock::now();
+  map<string, bufferlist> src_attrs;
+  rgw_obj dest_obj(obj.bucket, "copy_file");
+  RGWRESTStreamS3PutObj *out_stream_req;
+//  RGWRados *store;
+  RGWBucketInfo dest_bucket_info;
+//  RGWRados::Object src_op_target(store, dest_bucket_info, ctx, read_obj);
 
+//  int ret = d->rados->rest_master_conn->put_obj_async(user_id, dest_obj, astate->size, src_attrs, true, &out_stream_req);
+//  data_cache.flush(d->rados);
     /*directory*/
 	if (data_cache.get(read_obj.oid)) {
 		mydout(20) << "RGW-Cache Hit Local" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
@@ -1005,7 +1027,7 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
 		}
 	}
   // Flush data to client if there is any
-  r = flush_read_list(d);
+  //r = flush_read_list(d->rados, ctx);
   if (r < 0)
     return r;
 
@@ -1076,6 +1098,7 @@ private:
   int submit_http_get_request_s3();
   int submit_http_put_request_s3();
   int submit_http_put_request();
+  int submit_http_copy_request();
   int sign_request(RGWAccessKey& key, RGWEnv& env, req_info& info);
   string sign_s3_request(string HTTP_Verb,string uri,string date, string YourSecretAccessKeyID, string AWSAccessKeyId);
   string sign_s3_request2(string HTTP_Verb,string uri,string date, string YourSecretAccessKeyID, string AWSAccessKeyId, string len);

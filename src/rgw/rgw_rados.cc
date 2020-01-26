@@ -7760,7 +7760,6 @@ set_err_state:
   return ret;
 }
 
-
 int RGWRados::copy_obj_to_remote_dest(RGWObjState *astate,
                                       map<string, bufferlist>& src_attrs,
                                       RGWRados::Object::Read& read_op,
@@ -10759,7 +10758,7 @@ int RGWRados::issue_remote_wb(librados::L2CacheRequest* cr){
 	return 0;
 }
 
-int RGWRados::update_directory(string key, string value, string op){
+int RGWRados::update_directory(string key, string value, string op,RGWRados *store){
    dout(10) << __func__ << " update directory for wb key =" << key  << "value" << dendl;
 	return 0;
 }

@@ -3310,8 +3310,9 @@ public:
 
 
   /*ugur*/
+  //virtual int issue_remote_wb(librados::L2CacheRequest *cr, RGWRados *store);
   virtual int issue_remote_wb(librados::L2CacheRequest *cr);
-  virtual int update_directory(string key, string value, string op);
+  virtual int update_directory(string key, string value, string op, RGWRados *store);
   virtual int flush_read_list(struct get_obj_data *d);
 
   virtual int get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,

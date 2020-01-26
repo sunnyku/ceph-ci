@@ -2,6 +2,7 @@
 // vim: ts=8 sw=2 smarttab
 
 #include "rgw_cache.h"
+#include "rgw_rados.h"
 
 #include <errno.h>
 
@@ -25,7 +26,6 @@
 #include <sstream> // writing to memory (a string)
 #include <openssl/hmac.h>
 #include <ctime>
-
 
 class RGWGetObj_CB;
 
@@ -530,6 +530,62 @@ done:
   return r;
 }
 
+void DataCache::flush(RGWRados *store){
+
+  RGWBucketInfo src_bucket_info;
+  RGWBucketInfo dest_bucket_info;
+  RGWObjectCtx obj_ctx(store);
+  map<string, bufferlist> dest_attrs;
+  map<string, bufferlist> src_attrs;
+  const string src_tenant_name = "";
+  const string src_bucket_name = "mytest";
+  const string src_obj_name="file.txt";
+  rgw_user user_id("testuser");
+  string url = "http://172.10.5.41:80";
+//  string url ="http://" +  cct->_conf->rgw_l2_hosts;
+  std::string YourSecretAccessKeyID=cct->_conf->rgw_wb_cache_secret_key;
+  std::string AWSAccessKeyId=cct->_conf->rgw_wb_cache_access_key;
+  string etag;
+  real_time *mtime;
+  
+  int ret = store->get_bucket_info(obj_ctx, src_tenant_name, src_bucket_name, src_bucket_info, NULL, &src_attrs);
+  rgw_obj src_obj(src_bucket_info.bucket, src_obj_name);
+  dest_bucket_info = src_bucket_info;
+  dest_attrs = src_attrs;
+  rgw_bucket dest_bucket = dest_bucket_info.bucket;
+  rgw_obj dest_obj(dest_bucket, src_obj_name);
+  uint64_t obj_size;
+  RGWRados::Object src_op_target(store, src_bucket_info, obj_ctx, src_obj);
+  RGWRados::Object::Read read_op(&src_op_target); 
+  read_op.params.attrs = &src_attrs;
+  read_op.params.obj_size = &obj_size;
+  ret = read_op.prepare(); 
+  if (ret < 0) {
+    ret = -1;
+  }
+  RGWObjState *astate = NULL;
+  ret = store->get_obj_state(&obj_ctx, src_bucket_info, src_obj, &astate, NULL);
+  //param_vec_t params;
+  param_vec_t headers;
+  headers.push_back(pair<string, string>("Content-Length", std::to_string(astate->size)));
+  //headers.push_back(pair<string, string>("Content-Length", "0"));
+  HostStyle host_style = PathStyle;
+  ldout(cct, 20) << "Engage1: We are in DataCache::flush() bucket: " << src_bucket_name << " object "<< src_obj_name <<dendl;
+  RGWRESTStreamS3PutObj *wr = new RGWRESTStreamS3PutObj(cct, "PUT", url, &headers, NULL, host_style);
+  RGWAccessKey accesskey(AWSAccessKeyId,YourSecretAccessKeyID);
+  ret = wr->put_obj_init(accesskey, dest_obj, astate->size, src_attrs, true);
+  if (ret < 0) {
+    delete wr;
+  }
+  
+ ret = read_op.iterate(0, astate->size - 1, wr->get_out_cb());
+  if (ret < 0) {
+    delete wr;
+  }
+  ret = wr->complete_request(&etag, nullptr);
+
+}
+
 void DataCache::put(bufferlist& bl, unsigned int len, std::string oid){
 
   int r = 0;
@@ -890,7 +946,7 @@ int HttpL2Request::submit_http_request() {
   string req_uri, uri,dest;
   if (req->dest == cct->_conf->rgw_wb_cache_location){
   	uri ="http://" + req->dest+"/swift/v1/wb_cache/"+req->oid;
-  	auth_token="X-Auth-Token: AUTH_rgwtk0e00000074657374757365723a7377696674dd0f1be1c57f28f694fa155e113ae73045c93c4d220090207b006c9bc3136705f9f515e7";
+  	auth_token="X-Auth-Token: AUTH_rgwtk0e00000074657374757365723a7377696674702b3837190921e73571175e9c34072fe3015177bc3a5e8db688fd6b609df3cb557091c2";
   } else { 
   	((RGWGetObj_CB *)(d->client_cb))->get_req_info(dest, req_uri, auth_token);
   	uri = "http://" + req->dest + req_uri;
@@ -990,6 +1046,7 @@ int HttpL2Request::sign_request(RGWAccessKey& key, RGWEnv& env, req_info& info)
 }
 
 std::string DataCache::get_key(string key, bool wb_cache){
+
 	if(!wb_cache){
 		cpp_redis::client client;
 		client.connect();
@@ -1007,7 +1064,7 @@ std::string DataCache::get_key(string key, bool wb_cache){
 	}else{
 		std::size_t found = key.find_last_of("_");
         	std:: string prefix = key.substr(0,found)+"_";
-		 ldout(cct, 10) << "ugur check wb_cache key " << key << "prefix"<< prefix << dendl;	
+		 ldout(cct, 10) << "ugur check wb_cache key " << key << " prefix "<< prefix << dendl;	
 		cpp_redis::client client;
 		client.connect();
 		cpp_redis::reply answer;
@@ -1109,7 +1166,7 @@ int HttpL2Request::submit_http_put_request() {
   string uri = "http://" + req->dest + req_uri;
   
   CURLcode res;
-  string auth_token="X-Auth-Token: AUTH_rgwtk0e00000074657374757365723a7377696674d1a6a00463e65fcf6012165e180a661c0f9943bb9830a2cf7aeaaf80ac54a37036212ec3";
+  string auth_token="X-Auth-Token: AUTH_rgwtk0e00000074657374757365723a7377696674702b3837190921e73571175e9c34072fe3015177bc3a5e8db688fd6b609df3cb557091c2";
   struct curl_slist *header = NULL;
   curl_handle = curl_easy_init();
  
@@ -1138,7 +1195,55 @@ int HttpL2Request::submit_http_put_request() {
     }
 }
 
+static size_t _copy_cb(void *data, size_t size, size_t nmemb, void *cb_data)
+{
+  size_t nread = size*nmemb;
+  librados::L2CacheRequest *req = (librados::L2CacheRequest *)cb_data;
+  nread = (req->len < (req->read_ofs + nread)) ? (req->len - req->read_ofs) : nread;
+  memcpy(data, req->bl.c_str() + req->read_ofs, nread);
+  req->read_ofs += nread;
+  return nread;
+}
 
+int HttpL2Request::submit_http_copy_request() {
+
+  string bucket="wb_cache/";
+  string req_uri = "/swift/v1/wb_cache/myfile";
+  string dest = "172.10.5.41:80";
+//  req->dest =  cct->_conf->rgw_wb_cache_location;
+  string uri = "http://" + dest + req_uri;
+  
+  CURLcode res;
+  string auth_token="X-Auth-Token: AUTH_rgwtk0e00000074657374757365723a73776966743496a32208d84fb8c1e9185ecd8f042a487bc333ddbb96a5433521a9d34c0890ca5090d5";
+  struct curl_slist *header = NULL;
+  curl_handle = curl_easy_init();
+
+  librados::L2CacheRequest *l2_req = (librados::L2CacheRequest *)req; 
+  if(curl_handle) {
+    curl_off_t uploadsize = 20971520;
+    header = curl_slist_append(header, auth_token.c_str());
+    curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, header);
+    curl_easy_setopt(curl_handle, CURLOPT_READFUNCTION, _copy_cb);
+    curl_easy_setopt(curl_handle, CURLOPT_READDATA, req);
+    curl_easy_setopt(curl_handle, CURLOPT_PUT, 1L);
+    curl_easy_setopt(curl_handle, CURLOPT_URL, uri.c_str());
+    curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
+    curl_easy_setopt(curl_handle, CURLOPT_HTTPAUTH, auth_token.c_str());
+    curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L); //for redirection of the url
+    curl_easy_setopt(curl_handle, CURLOPT_INFILESIZE_LARGE, uploadsize);
+
+
+    res = curl_easy_perform(curl_handle);
+    curl_easy_reset(curl_handle);
+    curl_slist_free_all(header);
+    }
+    if (res == CURLE_OK){
+	return 0;
+    }else { 
+	ldout(cct, 10) << "Engage1: curl_easy_perform() failed " << dendl;
+	return -1;
+    }
+}
 
 /*
 int DataCache::test_librados_handler(){
