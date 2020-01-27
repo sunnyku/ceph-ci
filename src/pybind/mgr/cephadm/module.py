@@ -1186,7 +1186,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                         'name': '*',
                         'service_type': '*',
                         'service_instance': '*',
-                        'style': 'cephadm',
+                        'style': 'cephadm:v1',
                         'fsid': self._cluster_fsid,
                     },
                 ]
