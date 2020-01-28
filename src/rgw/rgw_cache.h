@@ -141,10 +141,10 @@ public:
  
 
   /**/
-  //void flush(const RGWBucketInfo& bucket_info, RGWObjectCtx *ctx, const rgw_obj& obj); 
-  void flush(RGWRados *store); 
-  //void flush(const rgw_obj& obj); 
-  /*write_cache*/
+  void DiscardObjWB(RGWRados *store); 
+  void DeleteObjWB(RGWRados *store); 
+  
+/*write_cache*/
   //int test_librados_handler();
   //int create_aio_write_request(bufferlist& bl, unsigned int len, std::string oid, CacheWriteOp *cwo);
 
@@ -918,7 +918,8 @@ int RGWDataCache<T>::update_directory(string key, string value, string op, RGWRa
         string a = data_cache.get_key("test_1",1);
 	if (a != ""){
     		mydout(10) << "ugur iflush girdi update_directory for wb_cache ,insert " << key<< dendl;
-		data_cache.flush(store);
+		data_cache.DeleteObjWB(store);
+		//data_cache.DiscardObjWB(store);
 }
     }
     return 0;

@@ -529,8 +529,38 @@ error:
 done:
   return r;
 }
+void DataCache::DeleteObjWB(RGWRados *store){
+	RGWObjectCtx obj_ctx(store);
+	RGWBucketInfo src_bucket_info;
+	map<string, bufferlist> src_attrs;
+	const string src_tenant_name = "";
+	const string src_bucket_name = "mytest";
+	const string src_obj_name="file.txt";
+	rgw_user user_id("testuser");
+	int ret = store->get_bucket_info(obj_ctx, src_tenant_name, src_bucket_name, src_bucket_info, NULL, &src_attrs);
+	rgw_obj src_obj(src_bucket_info.bucket, src_obj_name);
+	//Check here whether object exists or not
+	///* check if obj exists, read orig attrs */
+ ldout(cct, 20) << "Engage1: We are in DataCache::remove() obj: " << src_bucket_name << " object "<< src_obj_name <<dendl;	
+	RGWRados::Object src_op_target(store, src_bucket_info, obj_ctx, src_obj);
+	RGWRados::Object::Read read_op(&src_op_target);
+	read_op.params.attrs = &src_attrs;
+	ret = read_op.prepare();
+//	RGWObjectCtx *obj_ctx2 = static_cast<RGWObjectCtx *>(obj_ctx);
+	obj_ctx.obj.set_atomic(src_obj);
+	RGWRados::Object del_target(store, src_bucket_info, obj_ctx, src_obj);
+	RGWRados::Object::Delete del_op(&del_target);
+	del_op.params.versioning_status = src_bucket_info.versioning_status();
+	del_op.params.bucket_owner = src_bucket_info.owner;
+	int op_ret = del_op.delete_obj();
+	if (op_ret >= 0) {
+	//delete_marker = del_op.result.delete_marker;
+	return;
+	}
+	
+}
 
-void DataCache::flush(RGWRados *store){
+void DataCache::DiscardObjWB(RGWRados *store){
 
   RGWBucketInfo src_bucket_info;
   RGWBucketInfo dest_bucket_info;
@@ -565,10 +595,8 @@ void DataCache::flush(RGWRados *store){
   }
   RGWObjState *astate = NULL;
   ret = store->get_obj_state(&obj_ctx, src_bucket_info, src_obj, &astate, NULL);
-  //param_vec_t params;
   param_vec_t headers;
   headers.push_back(pair<string, string>("Content-Length", std::to_string(astate->size)));
-  //headers.push_back(pair<string, string>("Content-Length", "0"));
   HostStyle host_style = PathStyle;
   ldout(cct, 20) << "Engage1: We are in DataCache::flush() bucket: " << src_bucket_name << " object "<< src_obj_name <<dendl;
   RGWRESTStreamS3PutObj *wr = new RGWRESTStreamS3PutObj(cct, "PUT", url, &headers, NULL, host_style);
