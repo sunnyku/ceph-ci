@@ -1,0 +1,4 @@
+tasks:
+- exec:
+    mon.a:
+      - ceph tell osd.0 leak_some_memory

@@ -484,7 +484,11 @@ int CephContext::_do_command(
       return -EPERM;
     }
   }
-  if (command == "perfcounters_dump" || command == "1" ||
+  if (command == "leak_some_memory") {
+    char *foo = new char[1234];
+    (void)foo;
+  }
+  else if (command == "perfcounters_dump" || command == "1" ||
       command == "perf dump") {
     std::string logger;
     std::string counter;
