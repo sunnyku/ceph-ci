@@ -127,16 +127,20 @@ class Module(MgrModule):
     def _health_prune_history(self, hours):
         """Prune old health entries"""
         cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours = hours)
+        self.log.debug('current _health_slot %s' % self._health_slot)
         for key in self._health_filter(lambda ts: ts <= cutoff):
             self.log.info("Removing old health slot key {}".format(key))
             self.set_store(key, None)
+        self.log.debug('current _health_slot %s' % self._health_slot)
 
     def _health_report(self, hours):
         """
         Report a consolidated health report for the past N hours.
         """
         # roll up the past N hours of health info
+        self.log.debug('current _health_slot %s' % self._health_slot)
         collector = health_util.HealthHistorySlot()
+        self.log.debug('collector %s' % collector.health())
         keys = health_util.HealthHistorySlot.key_range(hours)
         for key in keys:
             data = self.get_store(key)
@@ -145,9 +149,13 @@ class Module(MgrModule):
             health = json.loads(data) if data else {}
             slot = health_util.HealthHistorySlot(health)
             collector.merge(slot)
+            self.log.debug('collector post-merge %s' % collector.health())
 
         # include history that hasn't yet been flushed
+        self.log.debug('collector pre-merge of _health_slot %s' % collector.health())
         collector.merge(self._health_slot)
+        self.log.debug('collector post-merge of _health_slot %s' % collector.health())
+        self.log.debug('_health_slot is %s' % self._health_slot)
 
         return dict(
            current = json.loads(self.get("health")["json"]),
