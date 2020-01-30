@@ -2286,12 +2286,28 @@ def command_adopt():
         move_files(glob(os.path.join(data_dir_src, '*')),
                    data_dir_dst,
                    uid=uid, gid=gid)
-        logger.info('Chowning content...')
-        call_throws(['chown', '-c', '-R', '%d.%d' % (uid, gid), data_dir_dst])
         logger.debug('Remove dir \'%s\'' % (data_dir_src))
         if os.path.ismount(data_dir_src):
             call_throws(['umount', data_dir_src])
         os.rmdir(data_dir_src)
+
+        logger.info('Chowning content...')
+        call_throws(['chown', '-c', '-R', '%d.%d' % (uid, gid), data_dir_dst])
+
+        if daemon_type == 'mon':
+            # rename *.ldb -> *.sst, in case they are coming from ubuntu
+            store = os.path.join(data_dir_dst, 'store.db')
+            num_renamed = 0
+            if os.path.exists(store):
+                for f in os.listdir(store):
+                    if f.endswith('.ldb'):
+                        n = f.replace('.ldb', '.sst')
+                        fp = os.path.join(store, f)
+                        np = os.path.join(store, n)
+                        logger.debug('Renaming %s -> %s' % (np, fp))
+                        os.rename(fp, np)
+            if num_renamed:
+                log.info('Renamed %d leveldb *.ldb files to *.sst', num_renamed)
 
         # config
         config_src = '/etc/ceph/%s.conf' % (args.cluster)
