@@ -1982,12 +1982,17 @@ def command_bootstrap():
         logger.info('Generating a dashboard self-signed certificate...')
         cli(['dashboard', 'create-self-signed-cert'])
 
+        pwd_update_flag = '--pwd_update_required=True'
+        if args.dashboard_password_noupdate:
+            pwd_update_flag = '--pwd_update_required=False'
+
         logger.info('Creating initial admin user...')
         password = args.initial_dashboard_password or generate_password()
         cli(['dashboard', 'ac-user-create',
              args.initial_dashboard_user, password,
              'administrator',
-             '--force-password'])
+             '--force-password',
+             pwd_update_flag])
         logger.info('Fetching dashboard port number...')
         out = cli(['config', 'get', 'mgr', 'mgr/dashboard/ssl_server_port'])
         port = int(out)
@@ -3244,6 +3249,10 @@ def _get_parser():
         '--skip-dashboard',
         action='store_true',
         help='do not enable the Ceph Dashboard')
+    parser_bootstrap.add_argument(
+        '--dashboard-password-noupdate',
+        action='store_true',
+        help='stop forced dashboard password change')
     parser_bootstrap.add_argument(
         '--no-minimize-config',
         action='store_true',
