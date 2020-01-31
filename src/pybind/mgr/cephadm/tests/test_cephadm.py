@@ -60,7 +60,7 @@ class TestCephadm(object):
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('[]'))
     def test_service_ls(self, cephadm_module):
         with self._with_host(cephadm_module, 'test'):
-            c = cephadm_module.describe_service()
+            c = cephadm_module.describe_service(refresh=True)
             assert wait(cephadm_module, c) == []
 
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('[]'))
@@ -88,6 +88,8 @@ class TestCephadm(object):
         cephadm_module._cluster_fsid = "fsid"
         cephadm_module.service_cache_timeout = 10
         with self._with_host(cephadm_module, 'test'):
+            c = cephadm_module.describe_service(refresh=True)
+            wait(cephadm_module, c)
             c = cephadm_module.service_action('redeploy', 'rgw', service_id='myrgw.foobar')
             assert wait(cephadm_module, c) == ["Deployed rgw.myrgw.foobar on host 'test'"]
 
@@ -143,6 +145,8 @@ class TestCephadm(object):
     def test_remove_osds(self, cephadm_module):
         cephadm_module._cluster_fsid = "fsid"
         with self._with_host(cephadm_module, 'test'):
+            c = cephadm_module.describe_service(refresh=True)
+            wait(cephadm_module, c)
             c = cephadm_module.remove_osds(['0'])
             out = wait(cephadm_module, c)
             assert out == ["Removed osd.0 from host 'test'"]
@@ -186,6 +190,8 @@ class TestCephadm(object):
     def test_remove_rgw(self, cephadm_module):
         cephadm_module._cluster_fsid = "fsid"
         with self._with_host(cephadm_module, 'test'):
+            c = cephadm_module.describe_service(refresh=True)
+            wait(cephadm_module, c)
             c = cephadm_module.remove_rgw('myrgw')
             out = wait(cephadm_module, c)
             assert out == ["Removed rgw.myrgw.foobar from host 'test'"]
