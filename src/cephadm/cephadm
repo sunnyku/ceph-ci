@@ -1508,7 +1508,11 @@ class CephContainer:
         cname = ['--name', self.cname] if self.cname else []
         priv = []
         if self.privileged:
-            priv = ['--privileged']
+            priv = [
+                '--privileged',
+                # let OSD etc read block devs that haven't been chowned
+                '--group-add=disk',
+            ]
         return [
             str(container_path),
             'run',
