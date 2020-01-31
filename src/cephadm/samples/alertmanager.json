@@ -1,0 +1,20 @@
+{
+    "alertmanager.yml": [
+        "global:",
+        "    resolve_timeout: 5m",
+        "route:",
+        "    group_by: ['alertname']",
+        "    group_wait: 10s",
+        "    group_interval: 10s",
+        "    repeat_interval: 1h",
+        "    receiver: 'ceph-dashboard'",
+        "receivers:",
+        "- name: 'ceph-dashboard'",
+        "  webhook_configs:",
+        "  - url: https://bootstrap.storage.lab:8443/api/prometheus_receiver"
+    ],
+    "_peers":[
+        "10.90.90.150:9094",
+        "10.90.90.146:9094"
+    ]
+}
