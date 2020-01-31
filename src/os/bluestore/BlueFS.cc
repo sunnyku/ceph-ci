@@ -832,6 +832,37 @@ int BlueFS::_check_new_allocations(const bluefs_fnode_t& fnode,
   return 0;
 }
 
+int BlueFS::_verify_alloc_granularity(
+  __u8 id, uint64_t offset, uint64_t length, const char *op)
+{
+  if ((offset & (alloc_size[id] - 1)) ||
+      (length & (alloc_size[id] - 1))) {
+    derr << __func__ << " " << op << " of " << (int)id
+	 << ":0x" << std::hex << offset << "~" << length << std::dec
+	 << " does not align to alloc_size 0x"
+	 << std::hex << alloc_size[id] << std::dec << dendl;
+    // be helpful
+    auto need = alloc_size[id];
+    while (need && ((offset & (need - 1)) ||
+		    (length & (need - 1)))) {
+      need >>= 1;
+    }
+    if (need) {
+      const char *which;
+      if (id == BDEV_SLOW ||
+	  (id == BDEV_DB && !bdev[BDEV_SLOW])) {
+	which = "bluefs_shared_alloc_size";
+      } else {
+	which = "bluefs_alloc_size";
+      }
+      derr << "work-around by setting " << which << " = " << need
+	   << " for this OSD" << dendl;
+    }
+    return -EFAULT;
+  }
+  return 0;
+}
+
 int BlueFS::_replay(bool noop, bool to_stdout)
 {
   dout(10) << __func__ << (noop ? " NO-OP" : "") << dendl;
@@ -1051,8 +1082,11 @@ int BlueFS::_replay(bool noop, bool to_stdout)
                       << ":0x" << std::hex << offset << "~" << length << std::dec
                       << std::endl;
           }
-
+	  int r = _verify_alloc_granularity(id, offset, length, "op_alloc_add");
 	  if (!noop) {
+	    if (r < 0) {
+	      return r;
+	    }
 	    block_all[id].insert(offset, length);
 	    alloc[id]->init_add_free(offset, length);
 
@@ -1108,8 +1142,11 @@ int BlueFS::_replay(bool noop, bool to_stdout)
                       << ":0x" << std::hex << offset << "~" << length << std::dec
                       << std::endl;
           }
-
+	  int r = _verify_alloc_granularity(id, offset, length, "op_alloc_rm");
 	  if (!noop) {
+	    if (r < 0) {
+	      return r;
+	    }
 	    block_all[id].erase(offset, length);
 	    alloc[id]->init_rm_free(offset, length);
             if (cct->_conf->bluefs_log_replay_check_allocations) {
