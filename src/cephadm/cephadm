@@ -166,11 +166,13 @@ class NFSGanesha(object):
                  fsid,
                  daemon_type,
                  daemon_id,
-                 config_json):
-        # type: (str, str, Union[int, str], Dict) -> None
+                 config_json,
+                 image=DEFAULT_IMAGE):
+        # type: (str, str, Union[int, str], Dict, str) -> None
         self.fsid = fsid
         self.daemon_type = daemon_type # TODO: need this? always 'nfs'?
         self.daemon_id = daemon_id
+        self.image = image
 
         def json_get(key, default=None, require=False):
             if require and not key in config_json.keys():
@@ -185,7 +187,8 @@ class NFSGanesha(object):
     @classmethod
     def init(cls, fsid, daemon_type, daemon_id):
         # type: (str, str, Union[int, str]) -> NFSGanesha
-        return cls(fsid, daemon_type, daemon_id, get_parm(args.config_json))
+        return cls(fsid, daemon_type, daemon_id,
+                   get_parm(args.config_json), args.image)
 
     @staticmethod
     def get_container_mounts(data_dir):
@@ -200,6 +203,13 @@ class NFSGanesha(object):
     def get_daemon_name(self):
         # type: () -> str
         return '%s.%s' % (self.daemon_type, self.daemon_id)
+
+    def get_container_name(self, desc=None):
+        # type: (Optional[str]) -> str
+        cname = 'ceph-%s-%s' % (self.fsid, self.get_daemon_name())
+        if desc:
+            cname = '%s-%s' % (cname, desc)
+        return cname
 
     def get_ganesha_config_object(self):
         # type: () -> str
@@ -275,6 +285,44 @@ RADOS_URLS {{
             os.fchown(f.fileno(), uid, gid)
             os.fchmod(f.fileno(), 0o600)
             f.write(self.get_ganesha_config())
+
+    def create_rados_config_object(self):
+        # type: () -> None
+        """Create an empty config object for the new ganesha server"""
+        config_obj = self.get_ganesha_config_object()
+
+        entrypoint = '/usr/bin/rados'
+
+        assert self.pool
+        args = ['--pool', self.pool]
+        if self.namespace:
+            args += ['--namespace', self.namespace]
+
+        data_dir = get_data_dir(self.fsid, self.daemon_type, self.daemon_id)
+        volume_mounts = self.get_container_mounts(data_dir)
+
+        # stat rados config object
+        c = CephContainer(
+            image=self.image,
+            entrypoint=entrypoint,
+            args=args + ['stat', config_obj],
+            volume_mounts=volume_mounts,
+            cname=self.get_container_name(desc='rados-stat-conf')
+        )
+        out, err, ret = call(c.run_cmd(), desc=c.entrypoint, timeout=30)
+
+        if ret == 0:
+            # TODO: fail instead of assuming the object already exists?
+            return
+
+        # create rados config object
+        out = CephContainer(
+            image=self.image,
+            entrypoint=entrypoint,
+            args=args + ['create', config_obj],
+            volume_mounts=volume_mounts,
+            cname=self.get_container_name(desc='rados-create-conf')
+        ).run()
 
 ##################################
 
@@ -1367,6 +1415,11 @@ def deploy_daemon(fsid, daemon_type, daemon_id, c, uid, gid,
             fsid, daemon_type, daemon_id,
             uid, gid,
             config, keyring)
+
+    if daemon_type in NFSGanesha.components:
+        # create the ganesha config object
+        nfs_ganesha = NFSGanesha.init(fsid, daemon_type, daemon_id)
+        nfs_ganesha.create_rados_config_object()
 
     if not reconfig:
         deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c,
