@@ -162,6 +162,31 @@ class NFSGanesha(object):
     entrypoint = '/usr/bin/ganesha.nfsd'
     daemon_args = ['-F', '-L', 'STDERR']
 
+    def __init__(self,
+                 fsid,
+                 daemon_type,
+                 daemon_id,
+                 config_json):
+        # type: (str, str, Union[int, str], Dict) -> None
+        self.fsid = fsid
+        self.daemon_type = daemon_type
+        self.daemon_id = daemon_id
+
+        def json_get(key, default=None, require=False):
+            if require and not key in config_json.keys():
+                raise ValueError('{} missing from config-json'.format(key))
+            return config_json.get(key, default)
+
+        # rados config options
+        self.user = json_get('user', 'admin') # TODO: require?
+        self.pool = json_get('pool', require=True)
+        self.namespace = json_get('namespace')
+
+    @classmethod
+    def init(cls, fsid, daemon_type, daemon_id):
+        # type: (str, str, Union[int, str]) -> NFSGanesha
+        return cls(fsid, daemon_type, daemon_id, get_parm(args.config_json))
+
     @staticmethod
     def get_container_mounts(data_dir):
         # type: (str) -> Dict[str, str]
@@ -169,7 +194,87 @@ class NFSGanesha(object):
         mounts[os.path.join(data_dir, 'config')] = '/etc/ceph/ceph.conf:z'
         # TODO: `ceph auth get-or-create` instead of admin keyring?
         mounts[os.path.join(data_dir, 'keyring')] = '/etc/ceph/keyring:z'
+        mounts[os.path.join(data_dir, 'ganesha.conf')] = '/etc/ganesha/ganesha.conf'
         return mounts
+
+    def get_daemon_name(self):
+        # type: () -> str
+        return '%s.%s' % (self.daemon_type, self.daemon_id)
+
+    def get_ganesha_config_object(self):
+        # type: () -> str
+        return 'conf-%s' % (self.get_daemon_name())
+
+    def get_rados_url(self):
+        # type: () -> str
+        url = 'rados://%s/' % (self.pool)
+        if self.namespace:
+            url += self.namespace + '/'
+        url += self.get_ganesha_config_object()
+        return url
+
+    def get_ganesha_config(self):
+        # type: () -> str
+        """Returns a ganesha.conf string"""
+        ceph_conf_path = '/etc/ceph/ceph.conf'
+        return '''
+NFS_CORE_PARAM {{
+        Enable_NLM = false;
+        Enable_RQUOTA = false;
+        Protocols = 4;
+}}
+
+CACHEINODE {{
+        Dir_Chunk = 0;
+        NParts = 1;
+        Cache_Size = 1;
+}}
+
+EXPORT_DEFAULTS {{
+        Attr_Expiration_Time = 0;
+}}
+
+NFSv4 {{
+        Delegations = false;
+        RecoveryBackend = 'rados_cluster';
+        Minor_Versions = 1, 2;
+}}
+
+RADOS_KV {{
+        ceph_conf = '{ceph_conf_path}';
+        userid = {userid};
+        nodeid = {nodeid};
+        pool = "{pool}";
+        namespace = "{namespace}";
+}}
+
+RADOS_URLS {{
+        ceph_conf = '{ceph_conf_path}';
+        userid = {userid};
+        watch_url = '{url}';
+}}
+
+%url    {url}
+'''.format(userid=self.user,
+           nodeid=self.get_daemon_name(),
+           url=self.get_rados_url(),
+           pool=self.pool,
+           namespace=self.namespace if self.namespace else '',
+           ceph_conf_path=ceph_conf_path)
+
+    def create_daemon_dirs(self, data_dir, uid, gid):
+        # type: (str, int, int) -> None
+        """Create files under the container data dir"""
+        if not os.path.isdir(data_dir):
+            raise ValueError('data_dir is not a directory: %s' % (data_dir))
+
+        # write ganesha.conf
+        ganesha_conf_file = os.path.join(data_dir, 'ganesha.conf')
+        with open(ganesha_conf_file, 'w') as f:
+            # TODO: chown ganesha uid/gid?
+            os.fchown(f.fileno(), uid, gid)
+            os.fchmod(f.fileno(), 0o600)
+            f.write(self.get_ganesha_config())
 
 ##################################
 
@@ -992,12 +1097,14 @@ def create_daemon_dirs(fsid, daemon_type, daemon_id, uid, gid,
     make_log_dir(fsid, uid=uid, gid=gid)
 
     if config:
-        with open(data_dir + '/config', 'w') as f:
+        config_path = os.path.join(data_dir, 'config')
+        with open(config_path, 'w') as f:
             os.fchown(f.fileno(), uid, gid)
             os.fchmod(f.fileno(), 0o600)
             f.write(config)
     if keyring:
-        with open(data_dir + '/keyring', 'w') as f:
+        keyring_path = os.path.join(data_dir, 'keyring')
+        with open(keyring_path, 'w') as f:
             os.fchmod(f.fileno(), 0o600)
             os.fchown(f.fileno(), uid, gid)
             f.write(keyring)
@@ -1039,6 +1146,10 @@ def create_daemon_dirs(fsid, daemon_type, daemon_id, uid, gid,
                 os.fchown(f.fileno(), uid, gid)
                 os.fchmod(f.fileno(), 0o600)
                 f.write(content)
+
+    if daemon_type in NFSGanesha.components:
+        nfs_ganesha = NFSGanesha.init(fsid, daemon_type, daemon_id)
+        nfs_ganesha.create_daemon_dirs(data_dir, uid, gid)
 
 def get_parm(option):
     # type: (str) -> Dict[str, str]
