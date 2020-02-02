@@ -43,7 +43,7 @@ class RGWMultisiteTests(Task):
 
         # create the test user
         log.info('creating test user..')
-        user = multisite.User('rgw-multisite-test-user')
+        user = multisite.User('rgw-multisite-test-user', 'tenanted')
         user.create(master_zone, ['--display-name', 'Multisite Test User',
                                   '--gen-access-key', '--gen-secret'])
 

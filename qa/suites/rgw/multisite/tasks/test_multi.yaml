@@ -24,3 +24,4 @@ tasks:
 - rgw-multisite-tests:
     config:
       reconfigure_delay: 60
+      tenant: tenanted
