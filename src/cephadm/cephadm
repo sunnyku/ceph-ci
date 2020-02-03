@@ -166,6 +166,10 @@ class NFSGanesha(object):
 
     required_files = ['ganesha.conf']
 
+    port_map = {
+        "nfs" : 2049,
+    }
+
     def __init__(self,
                  fsid,
                  daemon_id,
@@ -193,6 +197,14 @@ class NFSGanesha(object):
     def init(cls, fsid, daemon_id):
         # type: (str, Union[int, str]) -> NFSGanesha
         return cls(fsid, daemon_id, get_parm(args.config_json), args.image)
+
+    @staticmethod
+    def port_in_use():
+        # type () -> None
+        for (srv, port) in NFSGanesha.port_map.items():
+            if port_in_use(port):
+                msg = 'TCP port {} required for {} is already in use'.format(port, srv)
+                raise Error(msg)
 
     @staticmethod
     def get_container_mounts(data_dir):
@@ -2340,6 +2352,7 @@ def command_deploy():
                       reconfig=args.reconfig)
 
     elif daemon_type == NFSGanesha.daemon_type:
+        NFSGanesha.port_in_use()
         (config, keyring) = get_config_and_keyring()
         # TODO: extract ganesha uid/gid (997, 994) ?
         (uid, gid) = extract_uid_gid()
