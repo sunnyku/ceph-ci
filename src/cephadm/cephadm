@@ -324,6 +324,29 @@ RADOS_URLS {{
             cname=self.get_container_name(desc='rados-create-conf')
         ).run()
 
+    def get_rados_grace_container(self, action):
+        # type: (str) -> CephContainer
+        """Container for a ganesha action on the grace db"""
+        entrypoint = '/usr/bin/ganesha-rados-grace'
+
+        assert self.pool
+        args=['--pool', self.pool]
+        if self.namespace:
+            args += ['--ns', self.namespace]
+        args += [action, self.get_daemon_name()]
+
+        data_dir = get_data_dir(self.fsid, self.daemon_type, self.daemon_id)
+        volume_mounts = self.get_container_mounts(data_dir)
+
+        c = CephContainer(
+            image=self.image,
+            entrypoint=entrypoint,
+            args=args,
+            volume_mounts=volume_mounts,
+            cname=self.get_container_name(desc='grace-%s' % (action))
+        )
+        return c
+
 ##################################
 
 def get_supported_daemons():
@@ -1440,6 +1463,7 @@ def deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c,
     # cmd
     data_dir = get_data_dir(fsid, daemon_type, daemon_id)
     with open(data_dir + '/unit.run', 'w') as f:
+        # pre-start cmd(s)
         if daemon_type == 'osd':
             # osds have a pre-start step
             assert osd_fsid
@@ -1456,8 +1480,17 @@ def deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c,
                 cname='ceph-%s-%s.%s-activate' % (fsid, daemon_type, daemon_id),
             )
             f.write(' '.join(prestart.run_cmd()) + '\n')
+        elif daemon_type in NFSGanesha.components:
+            # add nfs to the rados grace db
+            nfs_ganesha = NFSGanesha.init(fsid, daemon_type, daemon_id)
+            prestart = nfs_ganesha.get_rados_grace_container('add')
+            f.write(' '.join(prestart.run_cmd()) + '\n')
+
+        # container run command
         f.write(' '.join(c.run_cmd()) + '\n')
         os.fchmod(f.fileno(), 0o600)
+
+    # post-stop command(s)
     with open(data_dir + '/unit.poststop', 'w') as f:
         if daemon_type == 'osd':
             assert osd_fsid
@@ -1473,6 +1506,11 @@ def deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c,
                 cname='ceph-%s-%s.%s-deactivate' % (fsid, daemon_type,
                                                     daemon_id),
             )
+            f.write(' '.join(poststop.run_cmd()) + '\n')
+        elif daemon_type in NFSGanesha.components:
+            # remove nfs from the rados grace db
+            nfs_ganesha = NFSGanesha.init(fsid, daemon_type, daemon_id)
+            poststop = nfs_ganesha.get_rados_grace_container('remove')
             f.write(' '.join(poststop.run_cmd()) + '\n')
         os.fchmod(f.fileno(), 0o600)
 
