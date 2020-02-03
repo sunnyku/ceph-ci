@@ -29,6 +29,8 @@
 #include <cpp_redis/cpp_redis> /*directort*/
 #include "rgw_putobj_processor.h" /*wb*/
 #include "rgw_rest_client.h"
+#include "rgw_tools.h" /*wb*/
+#include "rgw_user.h" /*wb*/
 
 enum {
   UPDATE_OBJ,
@@ -141,8 +143,9 @@ public:
  
 
   /**/
-  void DiscardObjWB(RGWRados *store); 
+  void DiscardObjWB(RGWRados *store, string userid); 
   void DeleteObjWB(RGWRados *store); 
+  int get_s3_credentials(RGWRados *store, string userid); 
   
 /*write_cache*/
   //int test_librados_handler();
@@ -918,8 +921,8 @@ int RGWDataCache<T>::update_directory(string key, string value, string op, RGWRa
         string a = data_cache.get_key("test_1",1);
 	if (a != ""){
     		mydout(10) << "ugur iflush girdi update_directory for wb_cache ,insert " << key<< dendl;
-		data_cache.DeleteObjWB(store);
-		//data_cache.DiscardObjWB(store);
+//		data_cache.DeleteObjWB(store);
+	data_cache.DiscardObjWB(store,"testuser");
 }
     }
     return 0;
