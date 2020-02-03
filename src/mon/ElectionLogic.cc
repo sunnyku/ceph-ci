@@ -188,8 +188,8 @@ bool ElectionLogic::propose_classic_prefix(int from, epoch_t mepoch)
       elector->trigger_new_election();
     } else {
       ldout(cct, 5) << " ignoring old propose" << dendl;
-      return true;
     }
+    return true;
   }
   return false;
 }
@@ -334,8 +334,8 @@ void ElectionLogic::propose_connectivity_handler(int from, epoch_t mepoch,
       elector->trigger_new_election();
     } else {
       ldout(cct, 5) << " ignoring old propose" << dendl;
-      return;
     }
+    return;
   }
 
   int my_rank = elector->get_my_rank();
