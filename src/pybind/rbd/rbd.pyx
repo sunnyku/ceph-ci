@@ -176,7 +176,7 @@ cdef extern from "rbd/librbd.h" nogil:
         char *uuid
         rbd_mirror_peer_direction_t direction
         char *site_name
-        char *fsid
+        char *mirror_uuid
         char *client_name
         time_t last_seen
 
@@ -207,7 +207,7 @@ cdef extern from "rbd/librbd.h" nogil:
         _MIRROR_IMAGE_STATUS_STATE_STOPPED "MIRROR_IMAGE_STATUS_STATE_STOPPED"
 
     ctypedef struct rbd_mirror_image_site_status_t:
-        char *fsid
+        char *mirror_uuid
         rbd_mirror_image_status_state_t state
         char *description
         time_t last_update
@@ -2475,7 +2475,7 @@ cdef class MirrorPeerIterator(object):
 
     * ``site_name`` (str) - cluster name of the peer
 
-    * ``fsid`` (str) - fsid of the peer
+    * ``mirror_uuid`` (str) - mirror uuid of the peer
 
     * ``client_name`` (str) - client name of the peer
     """
@@ -2509,7 +2509,7 @@ cdef class MirrorPeerIterator(object):
                 'direction'    : int(self.peers[i].direction),
                 'site_name'    : decode_cstr(self.peers[i].site_name),
                 'cluster_name' : decode_cstr(self.peers[i].site_name),
-                'fsid'         : decode_cstr(self.peers[i].fsid),
+                'mirror_uuid'  : decode_cstr(self.peers[i].mirror_uuid),
                 'client_name'  : decode_cstr(self.peers[i].client_name),
                 }
 
@@ -2542,7 +2542,7 @@ cdef class MirrorImageStatusIterator(object):
 
         * ``remote_statuses`` (array) -
 
-        *   ``fsid`` (str) - remote fsid
+        *   ``mirror uuid`` (str) - remote mirror uuid
 
         *   ``state`` (int) - status mirror state
 
@@ -2588,11 +2588,11 @@ cdef class MirrorImageStatusIterator(object):
                         'last_update' : datetime.utcfromtimestamp(s_status.last_update),
                         'up'          : s_status.up,
                         }
-                    fsid = decode_cstr(s_status.fsid)
-                    if fsid == '':
+                    mirror_uuid = decode_cstr(s_status.mirror_uuid)
+                    if mirror_uuid == '':
                         local_status = site_status
                     else:
-                        site_status['fsid'] = fsid
+                        site_status['mirror_uuid'] = mirror_uuid
                         site_statuses += site_status
 
                 status = {
@@ -4625,7 +4625,7 @@ written." % (self.name, ret, length))
 
             * ``remote_statuses`` (array) -
 
-            *   ``fsid`` (str) - remote fsid
+            *   ``mirror_uuid`` (str) - remote mirror uuid
 
             *   ``state`` (int) - status mirror state
 
@@ -4655,11 +4655,11 @@ written." % (self.name, ret, length))
                     'last_update' : datetime.utcfromtimestamp(s_status.last_update),
                     'up'          : s_status.up,
                     }
-                fsid = decode_cstr(s_status.fsid)
-                if fsid == '':
+                mirror_uuid = decode_cstr(s_status.mirror_uuid)
+                if mirror_uuid == '':
                     local_status = site_status
                 else:
-                    site_statuses['fsid'] = fsid
+                    site_statuses['mirror_uuid'] = mirror_uuid
                     site_statuses += site_status
             status = {
                 'name': decode_cstr(c_status.name),
