@@ -7,7 +7,7 @@ from functools import wraps
 
 import string
 try:
-    from typing import List, Dict, Optional, Callable, Tuple, TypeVar, Type, Any
+    from typing import List, Dict, Optional, Callable, Tuple, TypeVar, Type, Any, Union
     from typing import TYPE_CHECKING
 except ImportError:
     TYPE_CHECKING = False  # just for type checking
@@ -769,6 +769,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         pass
 
     def get_unique_name(self, host, existing, prefix=None, forcename=None):
+        # type: (str, List[orchestrator.ServiceDescription], Optional[str], Optional[str]) -> str
         """
         Generate a unique random service name
         """
@@ -1693,8 +1694,9 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
             # Improve Error message. Point to parse_host_spec examples
             raise orchestrator.OrchestratorValidationError("Mons need a host spec. (host, network, name(opt))")
 
-        spec = NodeAssignment(spec=spec, get_hosts_func=self._get_hosts, service_type='mon').load()
-        return self._update_mons(spec)
+        assigned_spec = NodeAssignment(spec=spec, get_hosts_func=self._get_hosts, service_type='mon').load()
+        assert isinstance(assigned_spec, orchestrator.StatefulServiceSpec)
+        return self._update_mons(assigned_spec)
 
     def _update_mons(self, spec):
         # type: (orchestrator.StatefulServiceSpec) -> orchestrator.Completion
@@ -1754,12 +1756,13 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         return self._create_daemon('mgr', name, host, keyring=keyring)
 
     @with_services('mgr')
-    def update_mgrs(self, spec, services):
+    def update_mgrs(self, unassigned_spec, services):
         # type: (orchestrator.StatefulServiceSpec, List[orchestrator.ServiceDescription]) -> orchestrator.Completion
         """
         Adjust the number of cluster managers.
         """
-        spec = NodeAssignment(spec=spec, get_hosts_func=self._get_hosts, service_type='mgr').load()
+        spec = NodeAssignment(spec=unassigned_spec, get_hosts_func=self._get_hosts, service_type='mgr').load()
+        assert isinstance(spec, orchestrator.StatefulServiceSpec)
 
         num_mgrs = len(services)
         if spec.count == num_mgrs:
@@ -1834,6 +1837,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
     def add_mds(self, spec):
         # type: (orchestrator.StatelessServiceSpec) -> AsyncCompletion
         count = len(spec.placement.hosts) if spec.placement.count is None else spec.placement.count
+        count = max(count, 1)
         if not spec.placement.hosts or len(spec.placement.hosts) < count:
             raise orchestrator.OrchestratorValidationError("must specify at least %d hosts" % count)
         # ensure mds_join_fs is set for these daemons
@@ -1846,10 +1850,12 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         return self._get_services('mds').then(lambda ds: self._add_mds(ds, spec))
 
     def _add_mds(self, daemons, spec):
+        # type: (List[orchestrator.ServiceDescription], orchestrator.StatelessServiceSpec) -> AsyncCompletion
         args = []
+        max_count = len(spec.placement.hosts) if spec.placement.count is None else spec.placement.count
         num_added = 0
         for host, _, name in spec.placement.hosts:
-            if num_added >= spec.count:
+            if num_added >= max_count:
                 break
             mds_id = self.get_unique_name(host, daemons, spec.name, name)
             self.log.debug('placing mds.%s on host %s' % (mds_id, host))
@@ -1864,7 +1870,10 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         return self._create_mds(args)
 
     def update_mds(self, spec):
-        spec = NodeAssignment(spec=spec, get_hosts_func=self._get_hosts, service_type='mds').load()
+        # type: (orchestrator.StatelessServiceSpec) -> AsyncCompletion
+        assigned_spec = NodeAssignment(spec=spec, get_hosts_func=self._get_hosts, service_type='mds').load()
+        assert isinstance(assigned_spec, orchestrator.StatefulServiceSpec)
+
         return self._update_service('mds', self.add_mds, spec)
 
     @async_map_completion
@@ -2192,19 +2201,19 @@ class NodeAssignment(object):
     """
 
     def __init__(self,
-                 spec=None,  # type: Optional[orchestrator.StatefulServiceSpec]
+                 spec=None,  # type: Optional[Union[orchestrator.StatefulServiceSpec, orchestrator.StatelessServiceSpec]]
                  scheduler=None,  # type: Optional[BaseScheduler]
                  get_hosts_func=None,  # type: Optional[Callable]
                  service_type=None,  # type: Optional[str]
                  ):
         assert spec and get_hosts_func and service_type
-        self.spec = spec  # type: orchestrator.StatefulServiceSpec
+        self.spec = spec  # type: Union[orchestrator.StatefulServiceSpec, orchestrator.StatelessServiceSpec]
         self.scheduler = scheduler if scheduler else SimpleScheduler(self.spec.placement)
         self.get_hosts_func = get_hosts_func
         self.service_type = service_type
 
     def load(self):
-        # type: () -> orchestrator.StatefulServiceSpec
+        # type: () -> Union[orchestrator.StatefulServiceSpec, orchestrator.StatelessServiceSpec]
         """
         Load nodes into the spec.placement.nodes container.
         """
