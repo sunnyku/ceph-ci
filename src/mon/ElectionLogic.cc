@@ -247,6 +247,7 @@ void ElectionLogic::propose_disallow_handler(int from, epoch_t mepoch)
       // ignore them!
       ldout(cct, 5) << "no, we already acked " << leader_acked << dendl;
     }
+    return;
   }
 }
 

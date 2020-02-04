@@ -3731,13 +3731,23 @@ void BlueStore::Collection::split_cache(
       ldout(store->cct, 20) << __func__ << " moving " << o << " " << o->oid
 			    << dendl;
 
-      onode_map.cache->_rm(p->second);
+      // move the onode to the new map before futzing with the cache
+      // shard, ensuring that nref is always >= 2, and no racing
+      // thread can trigger a pin or unpin (which does *not* behave
+      // well when we are clearing and resetting the 's' shard
+      // pointer!).
       p = onode_map.onode_map.erase(p);
-
-      o->c = dest;
-      dest->onode_map.cache->_add(o, 1);
       dest->onode_map.onode_map[o->oid] = o;
-      dest->onode_map.cache = dest->onode_map.cache;
+
+      if (onode_map.cache != dest->onode_map.cache) {
+	// move onode to a different cache shard
+	onode_map.cache->_rm(o);
+	o->c = dest;
+	dest->onode_map.cache->_add(o, 1);
+      } else {
+	// the onode is in the same cache shard, making our move simpler.
+	o->c = dest;
+      }
 
       // move over shared blobs and buffers.  cover shared blobs from
       // both extent map and spanning blob map (the full extent map
@@ -5872,12 +5882,12 @@ int BlueStore::allocate_bluefs_freespace(
   return 0;
 }
 
-size_t BlueStore::available_freespace(uint64_t alloc_size) {
-  size_t total = 0;
-  auto iterated_allocation = [&](size_t off, size_t len) {
+uint64_t BlueStore::available_freespace(uint64_t alloc_size) {
+  uint64_t total = 0;
+  auto iterated_allocation = [&](uint64_t off, uint64_t len) {
     //only count in size that is alloc_size aligned
-    size_t dist_to_alignment;
-    size_t offset_in_block = off & (alloc_size - 1);
+    uint64_t dist_to_alignment;
+    uint64_t offset_in_block = off & (alloc_size - 1);
     if (offset_in_block == 0)
       dist_to_alignment = 0;
     else
@@ -6089,6 +6099,20 @@ void BlueStore::_fsck_collections(int64_t* errors)
       }
     }
   }
+}
+
+void BlueStore::_set_per_pool_omap()
+{
+  per_pool_omap = false;
+  bufferlist bl;
+  db->get(PREFIX_SUPER, "per_pool_omap", &bl);
+  if (bl.length()) {
+    per_pool_omap = true;
+    dout(10) << __func__ << " per_pool_omap=1" << dendl;
+  } else {
+    dout(10) << __func__ << " per_pool_omap not present" << dendl;
+  }
+  _check_no_per_pool_omap_alert();
 }
 
 void BlueStore::_open_statfs()
@@ -6954,16 +6978,23 @@ int BlueStore::_mount(bool kv_only, bool open_db)
 
   mempool_thread.init();
 
-  if (!per_pool_stat_collection &&
+  if ((!per_pool_stat_collection || !per_pool_omap) &&
     cct->_conf->bluestore_fsck_quick_fix_on_mount == true) {
+
+    bool was_per_pool_omap = per_pool_omap;
+
     dout(1) << __func__ << " quick-fix on mount" << dendl;
     _fsck_on_open(FSCK_SHALLOW, true);
 
     //reread statfs
     //FIXME minor: replace with actual open/close?
     _open_statfs();
-
     _check_legacy_statfs_alert();
+
+    //set again as hopefully it has been fixed
+    if (!was_per_pool_omap) {
+      _set_per_pool_omap();
+    }
   }
 
   mounted = true;
@@ -7058,6 +7089,19 @@ int BlueStore::cold_close()
   _close_path();
   return 0;
 }
+
+// derr wrapper to limit enormous output and avoid log flooding.
+// Of limited use where such output is expected for now
+#define fsck_derr(err_cnt, threshold) \
+  if (err_cnt <= threshold) {         \
+    bool need_skip_print = err_cnt == threshold; \
+    derr
+
+#define fsck_dendl \
+    dendl;          \
+    if (need_skip_print) \
+      derr << "more error lines skipped..." << dendl; \
+  }
 
 int _fsck_sum_extents(
   const PExtentVector& extents,
@@ -7229,7 +7273,6 @@ void BlueStore::_fsck_check_pool_statfs(
     ++errors;
   }
   if (!per_pool_stat_collection &&
-      cct->_conf->bluestore_fsck_error_on_no_per_pool_stats &&
       repairer) {
     // by virtue of running this method, we correct the top-level
     // error of having global stats
@@ -7418,6 +7461,11 @@ BlueStore::OnodeRef BlueStore::fsck_check_objects_shallow(
         *res_statfs);
     }
   } // for (auto& i : ref_map)
+
+  if (o->onode.has_omap()) {
+    _fsck_check_object_omap(depth, o, ctx);
+  }
+
   return o;
 }
 
@@ -7541,9 +7589,7 @@ public:
         batch->num_sharded_objects,
         batch->num_spanning_blobs,
         nullptr, // used_blocks
-        nullptr, // used_omap_head;
-        nullptr, // used_per_pool_omap_head;
-        nullptr, // used_pgmeta_omap_head;
+        nullptr, //used_omap_head
         sb_info_lock,
         *sb_info,
         batch->expected_store_statfs,
@@ -7654,6 +7700,7 @@ public:
         ctx.num_blobs += batch.num_blobs;
         ctx.num_sharded_objects += batch.num_sharded_objects;
         ctx.num_spanning_blobs += batch.num_spanning_blobs;
+
         ctx.expected_store_statfs.add(batch.expected_store_statfs);
 
         for (auto it = batch.expected_pool_statfs.begin();
@@ -7666,20 +7713,92 @@ public:
   };
 };
 
+void BlueStore::_fsck_check_object_omap(FSCKDepth depth,
+  OnodeRef& o,
+  const BlueStore::FSCK_ObjectCtx& ctx)
+{
+  auto& errors = ctx.errors;
+  auto& warnings = ctx.warnings;
+  auto repairer = ctx.repairer;
+
+  ceph_assert(o->onode.has_omap());
+  if (!o->onode.is_perpool_omap() && !o->onode.is_pgmeta_omap()) {
+    if (per_pool_omap) {
+      fsck_derr(errors, MAX_FSCK_ERROR_LINES)
+        << "fsck error: " << o->oid
+        << " has omap that is not per-pool or pgmeta"
+        << fsck_dendl;
+      ++errors;
+    } else {
+      const char* w;
+      int64_t num;
+      if (cct->_conf->bluestore_fsck_error_on_no_per_pool_omap) {
+        ++errors;
+        num = errors;
+        w = "error";
+      } else {
+        ++warnings;
+        num = warnings;
+        w = "warning";
+      }
+      fsck_derr(num, MAX_FSCK_ERROR_LINES)
+        << "fsck " << w << ": " << o->oid
+        << " has omap that is not per-pool or pgmeta"
+        << fsck_dendl;
+    }
+  }
+  if (repairer &&
+    !o->onode.is_perpool_omap() &&
+    !o->onode.is_pgmeta_omap()) {
+    dout(10) << "fsck converting " << o->oid << " omap to per-pool" << dendl;
+    bufferlist h;
+    map<string, bufferlist> kv;
+    int r = _onode_omap_get(o, &h, &kv);
+    if (r < 0) {
+      derr << " got " << r << " " << cpp_strerror(r) << dendl;
+    } else {
+      KeyValueDB::Transaction txn = db->get_transaction();
+      // remove old keys
+      const string& old_omap_prefix = o->get_omap_prefix();
+      string old_head, old_tail;
+      o->get_omap_header(&old_head);
+      o->get_omap_tail(&old_tail);
+      txn->rm_range_keys(old_omap_prefix, old_head, old_tail);
+      txn->rmkey(old_omap_prefix, old_tail);
+      // set flag
+      o->onode.set_flag(bluestore_onode_t::FLAG_PERPOOL_OMAP);
+      _record_onode(o, txn);
+      const string& new_omap_prefix = o->get_omap_prefix();
+      // head
+      if (h.length()) {
+        string new_head;
+        o->get_omap_header(&new_head);
+        txn->set(new_omap_prefix, new_head, h);
+      }
+      // tail
+      string new_tail;
+      o->get_omap_tail(&new_tail);
+      bufferlist empty;
+      txn->set(new_omap_prefix, new_tail, empty);
+      // values
+      string final_key;
+      o->get_omap_key(string(), &final_key);
+      size_t base_key_len = final_key.size();
+      for (auto& i : kv) {
+        final_key.resize(base_key_len);
+        final_key += i.first;
+        txn->set(new_omap_prefix, final_key, i.second);
+      }
+      db->submit_transaction_sync(txn);
+      repairer->inc_repaired();
+    }
+  }
+}
+
 void BlueStore::_fsck_check_objects(FSCKDepth depth,
   BlueStore::FSCK_ObjectCtx& ctx)
 {
-  //no need for the below lock when in non-shallow mode as
-  // there is no multithreading in this case
-  if (depth != FSCK_SHALLOW) {
-    ctx.sb_info_lock = nullptr;
-  }
-
   auto& errors = ctx.errors;
-  auto& warnings = ctx.warnings;
-  auto used_omap_head = ctx.used_omap_head;
-  auto used_per_pool_omap_head = ctx.used_per_pool_omap_head;
-  auto used_pgmeta_omap_head = ctx.used_pgmeta_omap_head;
   auto sb_info_lock = ctx.sb_info_lock;
   auto& sb_info = ctx.sb_info;
   auto repairer = ctx.repairer;
@@ -7887,91 +8006,15 @@ void BlueStore::_fsck_check_objects(FSCKDepth depth,
         }
         // omap
         if (o->onode.has_omap()) {
-          ceph_assert(used_omap_head);
-          ceph_assert(used_per_pool_omap_head);
-          ceph_assert(used_pgmeta_omap_head);
-          auto m =
-            o->onode.is_pgmeta_omap() ? used_pgmeta_omap_head :
-            (o->onode.is_perpool_omap() ? used_per_pool_omap_head : used_omap_head);
-          if (m->count(o->onode.nid)) {
-            derr << "fsck error: " << oid << " omap_head " << o->onode.nid
-              << " already in use" << dendl;
+          ceph_assert(ctx.used_omap_head);
+          if (ctx.used_omap_head->count(o->onode.nid)) {
+            derr << "fsck error: " << o->oid << " omap_head " << o->onode.nid
+                 << " already in use" << dendl;
             ++errors;
+          } else {
+            ctx.used_omap_head->insert(o->onode.nid);
           }
-          else {
-            m->insert(o->onode.nid);
-          }
-          if (!o->onode.is_perpool_omap() && !o->onode.is_pgmeta_omap()) {
-            if (per_pool_omap) {
-              derr << "fsck error: " << oid
-                << " has omap that is not per-pool or pgmeta" << dendl;
-              ++errors;
-            }
-            else {
-              const char* w;
-              if (cct->_conf->bluestore_fsck_error_on_no_per_pool_omap) {
-                ++errors;
-                w = "error";
-              }
-              else {
-                ++warnings;
-                w = "warning";
-              }
-              derr << "fsck " << w << ": " << oid
-                << " has omap that is not per-pool or pgmeta" << dendl;
-            }
-          }
-          if (repairer &&
-            o->onode.has_omap() &&
-            !o->onode.is_perpool_omap() &&
-            !o->oid.is_pgmeta()) {
-            derr << "fsck converting " << oid << " omap to per-pool" << dendl;
-            used_omap_head->erase(o->onode.nid);
-            used_per_pool_omap_head->insert(o->onode.nid);
-            bufferlist h;
-            map<string, bufferlist> kv;
-            int r = _omap_get(c.get(), oid, &h, &kv);
-            if (r < 0) {
-              derr << " got " << r << " " << cpp_strerror(r) << dendl;
-            }
-            else {
-              KeyValueDB::Transaction txn = db->get_transaction();
-              // remove old keys
-              const string& old_omap_prefix = o->get_omap_prefix();
-              string old_head, old_tail;
-              o->get_omap_header(&old_head);
-              o->get_omap_tail(&old_tail);
-              txn->rm_range_keys(old_omap_prefix, old_head, old_tail);
-              txn->rmkey(old_omap_prefix, old_tail);
-              // set flag
-              o->onode.set_flag(bluestore_onode_t::FLAG_PERPOOL_OMAP);
-              _record_onode(o, txn);
-              const string& new_omap_prefix = o->get_omap_prefix();
-              // head
-              if (h.length()) {
-                string new_head;
-                o->get_omap_header(&new_head);
-                txn->set(new_omap_prefix, new_head, h);
-              }
-              // tail
-              string new_tail;
-              o->get_omap_tail(&new_tail);
-              bufferlist empty;
-              txn->set(new_omap_prefix, new_tail, empty);
-              // values
-              string final_key;
-              o->get_omap_key(string(), &final_key);
-              size_t base_key_len = final_key.size();
-              for (auto& i : kv) {
-                final_key.resize(base_key_len);
-                final_key += i.first;
-                txn->set(new_omap_prefix, final_key, i.second);
-              }
-              db->submit_transaction_sync(txn);
-              repairer->inc_repaired();
-            }
-          }
-        } // if (depth != FSCK_SHALLOW && o->onode.has_omap())
+        } // if (o->onode.has_omap())
         if (depth == FSCK_DEEP) {
           bufferlist bl;
           uint64_t max_read_block = cct->_conf->bluestore_fsck_read_bytes_cap;
@@ -8130,8 +8173,6 @@ int BlueStore::_fsck_on_open(BlueStore::FSCKDepth depth, bool repair)
   unsigned repaired = 0;
 
   uint64_t_btree_t used_omap_head;
-  uint64_t_btree_t used_per_pool_omap_head;
-  uint64_t_btree_t used_pgmeta_omap_head;
   uint64_t_btree_t used_sbids;
 
   mempool_dynamic_bitset used_blocks;
@@ -8260,15 +8301,15 @@ int BlueStore::_fsck_on_open(BlueStore::FSCKDepth depth, bool repair)
       num_spanning_blobs,
       &used_blocks,
       &used_omap_head,
-      &used_per_pool_omap_head,
-      &used_pgmeta_omap_head,
-      &sb_info_lock,
+      //no need for the below lock when in non-shallow mode as
+      // there is no multithreading in this case
+      depth == FSCK_SHALLOW ? &sb_info_lock : nullptr,
       sb_info,
       expected_store_statfs,
       expected_pool_statfs,
       repair ? &repairer : nullptr);
-    _fsck_check_objects(depth,
-      ctx);
+
+    _fsck_check_objects(depth, ctx);
   }
 
   dout(1) << __func__ << " checking shared_blobs" << dendl;
@@ -8592,7 +8633,7 @@ int BlueStore::_fsck_on_open(BlueStore::FSCKDepth depth, bool repair)
 			  errors, warnings, repair ? &repairer : nullptr);
 
   if (depth != FSCK_SHALLOW) {
-    dout(1) << __func__ << " checking for stray omap data" << dendl;
+    dout(1) << __func__ << " checking for stray omap data " << dendl;
     it = db->get_iterator(PREFIX_OMAP);
     if (it) {
       uint64_t last_omap_head = 0;
@@ -8601,8 +8642,9 @@ int BlueStore::_fsck_on_open(BlueStore::FSCKDepth depth, bool repair)
         _key_decode_u64(it->key().c_str(), &omap_head);
         if (used_omap_head.count(omap_head) == 0 &&
 	    omap_head != last_omap_head) {
-	  derr << "fsck error: found stray omap data on omap_head "
-	       << omap_head << dendl;
+          fsck_derr(errors, MAX_FSCK_ERROR_LINES)
+            << "fsck error: found stray omap data on omap_head "
+            << omap_head << " " << last_omap_head << " " << used_omap_head.count(omap_head)<< fsck_dendl;
 	  ++errors;
 	  last_omap_head = omap_head;
         }
@@ -8614,11 +8656,12 @@ int BlueStore::_fsck_on_open(BlueStore::FSCKDepth depth, bool repair)
       for (it->lower_bound(string()); it->valid(); it->next()) {
         uint64_t omap_head;
         _key_decode_u64(it->key().c_str(), &omap_head);
-        if (used_pgmeta_omap_head.count(omap_head) == 0 &&
+        if (used_omap_head.count(omap_head) == 0 &&
 	    omap_head != last_omap_head) {
-	  derr << "fsck error: found stray (pgmeta) omap data on omap_head "
-	       << omap_head << dendl;
-	  last_omap_head = omap_head;
+          fsck_derr(errors, MAX_FSCK_ERROR_LINES)
+            << "fsck error: found stray (pgmeta) omap data on omap_head "
+            << omap_head << " " << last_omap_head << " " << used_omap_head.count(omap_head) << fsck_dendl;
+          last_omap_head = omap_head;
 	  ++errors;
         }
       }
@@ -8633,11 +8676,12 @@ int BlueStore::_fsck_on_open(BlueStore::FSCKDepth depth, bool repair)
         const char *c = k.c_str();
         c = _key_decode_u64(c, &pool);
         c = _key_decode_u64(c, &omap_head);
-        if (used_per_pool_omap_head.count(omap_head) == 0 &&
+        if (used_omap_head.count(omap_head) == 0 &&
 	    omap_head != last_omap_head) {
-	  derr << "fsck error: found stray (per-pool) omap data on omap_head "
-	       << omap_head << dendl;
-	  ++errors;
+          fsck_derr(errors, MAX_FSCK_ERROR_LINES)
+            << "fsck error: found stray (per-pool) omap data on omap_head "
+            << omap_head << " " << last_omap_head << " " << used_omap_head.count(omap_head) << fsck_dendl;
+          ++errors;
 	  last_omap_head = omap_head;
         }
       }
@@ -8759,8 +8803,7 @@ int BlueStore::_fsck_on_open(BlueStore::FSCKDepth depth, bool repair)
     }
   }
   if (repair) {
-    if (!per_pool_omap &&
-	depth != FSCK_SHALLOW) {
+    if (!per_pool_omap) {
       dout(5) << __func__ << " marking per_pool_omap=1" << dendl;
       repairer.fix_per_pool_omap(db);
     }
@@ -8786,7 +8829,12 @@ out_scan:
 	  << repaired << " repaired, "
 	  << (errors + warnings - (int)repaired) << " remaining in "
 	  << duration << " seconds" << dendl;
-  return errors - (int)repaired;
+
+  // In non-repair mode we should return error count only as
+  // it indicates if store status is OK.
+  // In repair mode both errors and warnings are taken into account
+  // since repaired counter relates to them both.
+  return repair ? errors + warnings - (int)repaired : errors;
 }
 
 /// methods to inject various errors fsck can repair
@@ -8857,6 +8905,37 @@ void BlueStore::inject_false_free(coll_t cid, ghobject_t oid)
   ceph_assert(injected);
   db->submit_transaction_sync(txn);
 }
+
+void BlueStore::inject_legacy_omap()
+{
+  dout(1) << __func__ << dendl;
+  per_pool_omap = false;
+  KeyValueDB::Transaction txn;
+  txn = db->get_transaction();
+  txn->rmkey(PREFIX_SUPER, "per_pool_omap");
+  db->submit_transaction_sync(txn);
+}
+
+void BlueStore::inject_legacy_omap(coll_t cid, ghobject_t oid)
+{
+  dout(1) << __func__ << " "
+          << cid << " " << oid
+          <<dendl;
+  KeyValueDB::Transaction txn;
+  OnodeRef o;
+  CollectionRef c = _get_collection(cid);
+  ceph_assert(c);
+  {
+    std::unique_lock l{ c->lock }; // just to avoid internal asserts
+    o = c->get_onode(oid, false);
+    ceph_assert(o);
+  }
+  o->onode.clear_flag(bluestore_onode_t::FLAG_PERPOOL_OMAP | bluestore_onode_t::FLAG_PGMETA_OMAP);
+  txn = db->get_transaction();
+  _record_onode(o, txn);
+  db->submit_transaction_sync(txn);
+}
+
 
 void BlueStore::inject_statfs(const string& key, const store_statfs_t& new_statfs)
 {
@@ -9961,7 +10040,7 @@ int BlueStore::fiemap(
   interval_set<uint64_t> m;
   int r = _fiemap(c_, oid, offset, length, m);
   if (r >= 0) {
-    m.move_into(destmap);
+    destmap = std::move(m).detach();
   }
   return r;
 }
@@ -10464,6 +10543,24 @@ int BlueStore::_omap_get(
     r = -ENOENT;
     goto out;
   }
+  r = _onode_omap_get(o, header, out);
+ out:
+  dout(10) << __func__ << " " << c->get_cid() << " oid " << oid << " = " << r
+	   << dendl;
+  return r;
+}
+
+int BlueStore::_onode_omap_get(
+  const OnodeRef &o,           ///< [in] Object containing omap
+  bufferlist *header,          ///< [out] omap header
+  map<string, bufferlist> *out /// < [out] Key to value map
+)
+{
+  int r = 0;
+  if (!o || !o->exists) {
+    r = -ENOENT;
+    goto out;
+  }
   if (!o->onode.has_omap())
     goto out;
   o->flush();
@@ -10476,24 +10573,22 @@ int BlueStore::_omap_get(
     it->lower_bound(head);
     while (it->valid()) {
       if (it->key() == head) {
-	dout(30) << __func__ << "  got header" << dendl;
-	*header = it->value();
+        dout(30) << __func__ << "  got header" << dendl;
+        *header = it->value();
       } else if (it->key() >= tail) {
-	dout(30) << __func__ << "  reached tail" << dendl;
-	break;
+        dout(30) << __func__ << "  reached tail" << dendl;
+        break;
       } else {
-	string user_key;
-	o->decode_omap_key(it->key(), &user_key);
-	dout(20) << __func__ << "  got " << pretty_binary_string(it->key())
-		 << " -> " << user_key << dendl;
-	(*out)[user_key] = it->value();
+        string user_key;
+        o->decode_omap_key(it->key(), &user_key);
+        dout(20) << __func__ << "  got " << pretty_binary_string(it->key())
+          << " -> " << user_key << dendl;
+        (*out)[user_key] = it->value();
       }
       it->next();
     }
   }
- out:
-  dout(10) << __func__ << " " << c->get_cid() << " oid " << oid << " = " << r
-	   << dendl;
+out:
   return r;
 }
 
@@ -10830,17 +10925,7 @@ int BlueStore::_open_super_meta()
 	     << std::dec << dendl;
   }
 
-  {
-    bufferlist bl;
-    db->get(PREFIX_SUPER, "per_pool_omap", &bl);
-    if (bl.length()) {
-      per_pool_omap = true;
-      dout(10) << __func__ << " per_pool_omap=1" << dendl;
-    } else {
-      dout(10) << __func__ << " per_pool_omap not present" << dendl;
-    }
-    _check_no_per_pool_omap_alert();
-  }
+  _set_per_pool_omap();
 
   _open_statfs();
   _set_alloc_sizes();
@@ -12700,7 +12785,7 @@ void BlueStore::_pad_zeros(
     bufferptr z = buffer::create_small_page_aligned(chunk_size);
     z.zero(0, front_pad, false);
     pad_count += front_pad;
-    bl->copy(0, front_copy, z.c_str() + front_pad);
+    bl->begin().copy(front_copy, z.c_str() + front_pad);
     if (front_copy + front_pad < chunk_size) {
       back_pad = chunk_size - (length + front_pad);
       z.zero(front_pad + length, back_pad, false);
@@ -12723,7 +12808,7 @@ void BlueStore::_pad_zeros(
     back_pad = chunk_size - back_copy;
     ceph_assert(back_copy <= length);
     bufferptr tail(chunk_size);
-    bl->copy(length - back_copy, back_copy, tail.c_str());
+    bl->begin(length - back_copy).copy(back_copy, tail.c_str());
     tail.zero(back_copy, back_pad, false);
     bufferlist old;
     old.swap(*bl);

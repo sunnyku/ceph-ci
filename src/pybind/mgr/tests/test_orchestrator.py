@@ -27,6 +27,7 @@ from orchestrator import parse_host_specs
 def test_parse_host_specs(test_input, expected, require_network):
     ret = parse_host_specs(test_input, require_network=require_network)
     assert ret == expected
+    assert str(ret) == test_input
 
 @pytest.mark.parametrize("test_input",
                          # wrong subnet
@@ -176,7 +177,7 @@ def test_progress():
     mgr.remote.assert_called_with('progress', 'update', c.progress_reference.progress_id, 'hello world', 0.0, [('origin', 'orchestrator')])
 
     c.finalize()
-    mgr.remote.assert_called_with('progress', 'update', c.progress_reference.progress_id, 'hello world', 0.5, [('origin', 'orchestrator')])
+    mgr.remote.assert_called_with('progress', 'complete', c.progress_reference.progress_id)
 
     c.progress_reference.update()
     mgr.remote.assert_called_with('progress', 'update', c.progress_reference.progress_id, 'hello world', progress_val, [('origin', 'orchestrator')])
@@ -227,6 +228,11 @@ def test_fail():
     c = Completion().then(lambda _: 3)
     c._first_promise.fail(KeyError())
     assert isinstance(c.exception, KeyError)
+
+    with pytest.raises(ValueError,
+                  match='Invalid State: called fail, but Completion is already finished: {}'.format(
+                      str(ZeroDivisionError()))):
+        c._first_promise.fail(ZeroDivisionError())
 
 
 def test_pretty_print():

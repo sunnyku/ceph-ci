@@ -19,10 +19,19 @@ export class NavigationComponent implements OnInit {
   permissions: Permissions;
   summaryData: any;
   icons = Icons;
-  isCollapsed = true;
+
   isAlertmanagerConfigured = false;
   isPrometheusConfigured = false;
   enabledFeature$: FeatureTogglesMap$;
+
+  isCollapsed = true;
+  showMenuSidebar = true;
+  displayedSubMenu = '';
+  isPwdDisplayed = false;
+
+  simplebar = {
+    autoHide: false
+  };
 
   constructor(
     private authStorageService: AuthStorageService,
@@ -31,21 +40,26 @@ export class NavigationComponent implements OnInit {
     private featureToggles: FeatureTogglesService
   ) {
     this.permissions = this.authStorageService.getPermissions();
-    this.enabledFeature$ = this.featureToggles.get();
   }
 
   ngOnInit() {
+    this.enabledFeature$ = this.featureToggles.get();
     this.summaryService.subscribe((data: any) => {
       if (!data) {
         return;
       }
       this.summaryData = data;
     });
-    this.prometheusService.ifAlertmanagerConfigured(() => {
-      this.isAlertmanagerConfigured = true;
-    });
-    this.prometheusService.ifPrometheusConfigured(() => {
-      this.isPrometheusConfigured = true;
+    if (this.permissions.configOpt.read) {
+      this.prometheusService.ifAlertmanagerConfigured(() => {
+        this.isAlertmanagerConfigured = true;
+      });
+      this.prometheusService.ifPrometheusConfigured(() => {
+        this.isPrometheusConfigured = true;
+      });
+    }
+    this.authStorageService.isPwdDisplayed$.subscribe((isDisplayed) => {
+      this.isPwdDisplayed = isDisplayed;
     });
   }
 
@@ -56,6 +70,16 @@ export class NavigationComponent implements OnInit {
       } else if (this.summaryData.rbd_mirroring.warnings > 0) {
         return { color: '#f0ad4e' };
       }
+    }
+
+    return undefined;
+  }
+
+  toggleSubMenu(menu: string) {
+    if (this.displayedSubMenu === menu) {
+      this.displayedSubMenu = '';
+    } else {
+      this.displayedSubMenu = menu;
     }
   }
 }

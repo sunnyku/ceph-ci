@@ -15,7 +15,7 @@ Simple usage (assuming teuthology and ceph checked out in ~/git):
 Alternative usage:
 
     # Alternatively, if you use different paths, specify them as follows:
-    LD_LIBRARY_PATH=`pwd`/lib PYTHONPATH=~/git/teuthology:~/git/ceph/qa:`pwd`/../src/pybind:`pwd`/lib/cython_modules/lib.2 python ~/git/ceph/qa/tasks/vstart_runner.py
+    LD_LIBRARY_PATH=`pwd`/lib PYTHONPATH=~/git/teuthology:~/git/ceph/qa:`pwd`/../src/pybind:`pwd`/lib/cython_modules/lib.3 python ~/git/ceph/qa/tasks/vstart_runner.py
 
     # If you wish to drop to a python shell on failures, use --interactive:
     python ~/git/ceph/qa/tasks/vstart_runner.py --interactive
@@ -49,7 +49,7 @@ import platform
 from teuthology.orchestra.run import Raw, quote
 from teuthology.orchestra.daemon import DaemonGroup
 from teuthology.config import config as teuth_config
-
+import six
 import logging
 
 def init_log():
@@ -80,7 +80,7 @@ def respawn_in_path(lib_path, python_paths):
     else:
         lib_path_var = "LD_LIBRARY_PATH"
 
-    py_binary = os.environ.get("PYTHON", "python")
+    py_binary = os.environ.get("PYTHON", sys.executable)
 
     if lib_path_var in os.environ:
         if lib_path not in os.environ[lib_path_var]:
@@ -100,7 +100,7 @@ if os.path.exists("./CMakeCache.txt") and os.path.exists("./bin"):
     # A list of candidate paths for each package we need
     guesses = [
         ["~/git/teuthology", "~/scm/teuthology", "~/teuthology"],
-        ["lib/cython_modules/lib.2"],
+        ["lib/cython_modules/lib.3"],
         ["../src/pybind"],
     ]
 
@@ -176,6 +176,7 @@ class LocalRemoteProcess(object):
                 return
 
         out, err = self.subproc.communicate()
+        out, err = out.decode(), err.decode()
         self.stdout.write(out)
         self.stderr.write(err)
 
@@ -283,7 +284,7 @@ class LocalRemote(object):
     def _perform_checks_and_return_list_of_args(self, args, omit_sudo):
         # Since Python's shell simulation can only work when commands are
         # provided as a list of argumensts...
-        if isinstance(args, str) or isinstance(args, unicode):
+        if isinstance(args, str) or isinstance(args, six.text_type):
             args = args.split()
 
         # We'll let sudo be a part of command even omit flag says otherwise in
@@ -360,7 +361,7 @@ class LocalRemote(object):
         else:
             # Sanity check that we've got a list of strings
             for arg in args:
-                if not isinstance(arg, basestring):
+                if not isinstance(arg, six.string_types):
                     raise RuntimeError("Oops, can't handle arg {0} type {1}".format(
                         arg, arg.__class__
                     ))
@@ -373,7 +374,7 @@ class LocalRemote(object):
                                        env=env)
 
         if stdin:
-            if not isinstance(stdin, basestring):
+            if not isinstance(stdin, six.string_types):
                 raise RuntimeError("Can't handle non-string stdins on a vstart cluster")
 
             # Hack: writing to stdin is not deadlock-safe, but it "always" works
@@ -390,6 +391,11 @@ class LocalRemote(object):
 
         return proc
 
+    def sh(self, command, log_limit=1024, cwd=None, env=None):
+        from teuthology.misc import sh as teuth_sh
+
+        return teuth_sh(command=command, log_limit=log_limit, cwd=cwd,
+                        env=env)
 
 class LocalDaemon(object):
     def __init__(self, daemon_type, daemon_id):

@@ -1985,6 +1985,7 @@ void MDSRank::recovery_done(int oldstate)
     return;
 
   mdcache->start_recovered_truncates();
+  mdcache->start_purge_inodes();
   mdcache->do_file_recover();
 
   // tell connected clients
@@ -2384,6 +2385,12 @@ void MDSRankDispatcher::handle_mds_map(
   if (mdsmap->get_inline_data_enabled() && !oldmap.get_inline_data_enabled())
     dout(0) << "WARNING: inline_data support has been deprecated and will be removed in a future release" << dendl;
 
+  if (scrubstack->is_scrubbing()) {
+    if (mdsmap->get_max_mds() > 1) {
+      auto c = new C_MDSInternalNoop;
+      scrubstack->scrub_abort(c);
+    }
+  }
   mdcache->handle_mdsmap(*mdsmap);
 }
 
@@ -2442,7 +2449,7 @@ void MDSRankDispatcher::handle_asok_command(
     }
   } else if (command == "osdmap barrier") {
     int64_t target_epoch = 0;
-    bool got_val = cmd_getval(g_ceph_context, cmdmap, "target_epoch", target_epoch);
+    bool got_val = cmd_getval(cmdmap, "target_epoch", target_epoch);
 
     if (!got_val) {
       ss << "no target epoch given";
@@ -2463,7 +2470,7 @@ void MDSRankDispatcher::handle_asok_command(
 	     command == "client ls") {
     std::lock_guard l(mds_lock);
     std::vector<std::string> filter_args;
-    cmd_getval(g_ceph_context, cmdmap, "filters", filter_args);
+    cmd_getval(cmdmap, "filters", filter_args);
     SessionFilter filter;
     r = filter.parse(filter_args, &ss);
     if (r != 0) {
@@ -2474,7 +2481,7 @@ void MDSRankDispatcher::handle_asok_command(
 	     command == "client evict") {
     std::lock_guard l(mds_lock);
     std::vector<std::string> filter_args;
-    cmd_getval(g_ceph_context, cmdmap, "filters", filter_args);
+    cmd_getval(cmdmap, "filters", filter_args);
 
     SessionFilter filter;
     r = filter.parse(filter_args, &ss);
@@ -2486,7 +2493,7 @@ void MDSRankDispatcher::handle_asok_command(
     return;
   } else if (command == "session kill") {
     std::string client_id;
-    if (!cmd_getval(g_ceph_context, cmdmap, "client_id", client_id)) {
+    if (!cmd_getval(cmdmap, "client_id", client_id)) {
       ss << "Invalid client_id specified";
       r = -ENOENT;
       goto out;
@@ -2504,9 +2511,9 @@ void MDSRankDispatcher::handle_asok_command(
     std::string option;
     std::string value;
 
-    cmd_getval(g_ceph_context, cmdmap, "client_id", client_id);
-    cmd_getval(g_ceph_context, cmdmap, "option", option);
-    bool got_value = cmd_getval(g_ceph_context, cmdmap, "value", value);
+    cmd_getval(cmdmap, "client_id", client_id);
+    cmd_getval(cmdmap, "option", option);
+    bool got_value = cmd_getval(cmdmap, "value", value);
 
     std::lock_guard l(mds_lock);
     r = config_client(client_id, !got_value, option, value, ss);
@@ -2515,9 +2522,17 @@ void MDSRankDispatcher::handle_asok_command(
     string path;
     string tag;
     vector<string> scrubop_vec;
-    cmd_getval(g_ceph_context, cmdmap, "scrubops", scrubop_vec);
-    cmd_getval(g_ceph_context, cmdmap, "path", path);
-    cmd_getval(g_ceph_context, cmdmap, "tag", tag);
+    cmd_getval(cmdmap, "scrubops", scrubop_vec);
+    cmd_getval(cmdmap, "path", path);
+    cmd_getval(cmdmap, "tag", tag);
+
+    /* Multiple MDS scrub is not currently supported. See also: https://tracker.ceph.com/issues/12274 */
+    if (mdsmap->get_max_mds() > 1) {
+      ss << "Scrub is not currently supported for multiple active MDS. Please reduce max_mds to 1 and then scrub.";
+      r = -EINVAL;
+      goto out;
+    }
+
     finisher->queue(
       new LambdaContext(
 	[this, on_finish, f, path, tag, scrubop_vec](int r) {
@@ -2568,13 +2583,13 @@ void MDSRankDispatcher::handle_asok_command(
     command_scrub_status(f);
   } else if (command == "tag path") {
     string path;
-    cmd_getval(g_ceph_context, cmdmap, "path", path);
+    cmd_getval(cmdmap, "path", path);
     string tag;
-    cmd_getval(g_ceph_context, cmdmap, "tag", tag);
+    cmd_getval(cmdmap, "tag", tag);
     command_tag_path(f, path, tag);
   } else if (command == "flush_path") {
     string path;
-    cmd_getval(g_ceph_context, cmdmap, "path", path);
+    cmd_getval(cmdmap, "path", path);
     command_flush_path(f, path);
   } else if (command == "flush journal") {
     command_flush_journal(f);
@@ -2582,13 +2597,13 @@ void MDSRankDispatcher::handle_asok_command(
     command_get_subtrees(f);
   } else if (command == "export dir") {
     string path;
-    if(!cmd_getval(g_ceph_context, cmdmap, "path", path)) {
+    if(!cmd_getval(cmdmap, "path", path)) {
       ss << "malformed path";
       r = -EINVAL;
       goto out;
     }
     int64_t rank;
-    if(!cmd_getval(g_ceph_context, cmdmap, "rank", rank)) {
+    if(!cmd_getval(cmdmap, "rank", rank)) {
       ss << "malformed rank";
       r = -EINVAL;
       goto out;
@@ -2597,14 +2612,14 @@ void MDSRankDispatcher::handle_asok_command(
   } else if (command == "dump cache") {
     std::lock_guard l(mds_lock);
     string path;
-    if (!cmd_getval(g_ceph_context, cmdmap, "path", path)) {
+    if (!cmd_getval(cmdmap, "path", path)) {
       r = mdcache->dump_cache(f);
     } else {
       r = mdcache->dump_cache(path);
     }
   } else if (command == "cache drop") {
     int64_t timeout = 0;
-    cmd_getval(g_ceph_context, cmdmap, "timeout", timeout);
+    cmd_getval(cmdmap, "timeout", timeout);
     finisher->queue(
       new LambdaContext(
 	[this, on_finish, f, timeout](int r) {
@@ -2628,7 +2643,7 @@ void MDSRankDispatcher::handle_asok_command(
   } else if (command == "dump snaps") {
     std::lock_guard l(mds_lock);
     string server;
-    cmd_getval(g_ceph_context, cmdmap, "server", server);
+    cmd_getval(cmdmap, "server", server);
     if (server == "--server") {
       if (mdsmap->get_tableserver() == whoami) {
 	snapserver->dump(f);
@@ -2658,7 +2673,7 @@ void MDSRankDispatcher::handle_asok_command(
   } else if (command == "damage rm") {
     std::lock_guard l(mds_lock);
     damage_entry_id_t id = 0;
-    if (!cmd_getval(g_ceph_context, cmdmap, "damage_id", (int64_t&)id)) {
+    if (!cmd_getval(cmdmap, "damage_id", (int64_t&)id)) {
       r = -EINVAL;
       goto out;
     }
@@ -2894,8 +2909,8 @@ void MDSRank::command_dump_tree(const cmdmap_t &cmdmap, std::ostream &ss, Format
 {
   std::string root;
   int64_t depth;
-  cmd_getval(g_ceph_context, cmdmap, "root", root);
-  if (!cmd_getval(g_ceph_context, cmdmap, "depth", depth))
+  cmd_getval(cmdmap, "root", root);
+  if (!cmd_getval(cmdmap, "depth", depth))
     depth = -1;
   std::lock_guard l(mds_lock);
   CInode *in = mdcache->cache_traverse(filepath(root.c_str()));
@@ -2913,14 +2928,14 @@ CDir *MDSRank::_command_dirfrag_get(
     std::ostream &ss)
 {
   std::string path;
-  bool got = cmd_getval(g_ceph_context, cmdmap, "path", path);
+  bool got = cmd_getval(cmdmap, "path", path);
   if (!got) {
     ss << "missing path argument";
     return NULL;
   }
 
   std::string frag_str;
-  if (!cmd_getval(g_ceph_context, cmdmap, "frag", frag_str)) {
+  if (!cmd_getval(cmdmap, "frag", frag_str)) {
     ss << "missing frag argument";
     return NULL;
   }
@@ -2963,7 +2978,7 @@ bool MDSRank::command_dirfrag_split(
 {
   std::lock_guard l(mds_lock);
   int64_t by = 0;
-  if (!cmd_getval(g_ceph_context, cmdmap, "bits", by)) {
+  if (!cmd_getval(cmdmap, "bits", by)) {
     ss << "missing bits argument";
     return false;
   }
@@ -2989,14 +3004,14 @@ bool MDSRank::command_dirfrag_merge(
 {
   std::lock_guard l(mds_lock);
   std::string path;
-  bool got = cmd_getval(g_ceph_context, cmdmap, "path", path);
+  bool got = cmd_getval(cmdmap, "path", path);
   if (!got) {
     ss << "missing path argument";
     return false;
   }
 
   std::string frag_str;
-  if (!cmd_getval(g_ceph_context, cmdmap, "frag", frag_str)) {
+  if (!cmd_getval(cmdmap, "frag", frag_str)) {
     ss << "missing frag argument";
     return false;
   }
@@ -3025,7 +3040,7 @@ bool MDSRank::command_dirfrag_ls(
 {
   std::lock_guard l(mds_lock);
   std::string path;
-  bool got = cmd_getval(g_ceph_context, cmdmap, "path", path);
+  bool got = cmd_getval(cmdmap, "path", path);
   if (!got) {
     ss << "missing path argument";
     return false;
@@ -3066,7 +3081,7 @@ void MDSRank::command_dump_inode(Formatter *f, const cmdmap_t &cmdmap, std::ostr
 {
   std::lock_guard l(mds_lock);
   int64_t number;
-  bool got = cmd_getval(g_ceph_context, cmdmap, "number", number);
+  bool got = cmd_getval(cmdmap, "number", number);
   if (!got) {
     ss << "missing inode number";
     return;
@@ -3503,6 +3518,7 @@ const char** MDSRankDispatcher::get_tracked_conf_keys() const
     "mds_log_pause",
     "mds_max_export_size",
     "mds_max_purge_files",
+    "mds_forward_all_requests_to_auth",
     "mds_max_purge_ops",
     "mds_max_purge_ops_per_pg",
     "mds_max_snaps_per_dir",

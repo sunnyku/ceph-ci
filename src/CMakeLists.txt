@@ -108,6 +108,11 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
   endif()
 endif(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
 
+CHECK_C_COMPILER_FLAG("-D_GLIBCXX_ASSERTIONS" HAS_GLIBCXX_ASSERTIONS)
+if(HAS_GLIBCXX_ASSERTIONS AND CMAKE_BUILD_TYPE STREQUAL Debug)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GLIBCXX_ASSERTIONS")
+endif()
+
 include(SIMDExt)
 if(HAVE_INTEL)
   set(CMAKE_ASM_COMPILER  ${PROJECT_SOURCE_DIR}/src/yasm-wrapper)
@@ -218,42 +223,9 @@ if(WITH_CEPHFS_JAVA)
 endif()
 
 # Python stuff
-option(WITH_PYTHON2 "build python2 bindings" ON)
+option(WITH_PYTHON2 "build python2 bindings" OFF)
 if(WITH_PYTHON2)
-  find_package(Python2 REQUIRED
-    COMPONENTS Interpreter Development)
-endif()
-
-set(WITH_PYTHON3 "OFF" CACHE STRING "build python3 bindings with specified python3 version")
-if(WITH_PYTHON3)
-  if(WITH_PYTHON3 MATCHES "^(1|ON|YES|TRUE|Y)$")
-    set(WITH_PYTHON3 "3")
-  endif()
-  if(NOT WITH_PYTHON3 STREQUAL "3")
-    set(find_python3_exact "EXACT")
-  endif()
-  find_package(Python3 ${WITH_PYTHON3} ${find_python3_exact} REQUIRED
-    COMPONENTS Interpreter Development)
-  unset(find_python3_exact)
-endif()
-
-# the major version of the python bindings as a dependency of other
-# targets
-if(WITH_PYTHON2)
-  set(PY_BINDING_INFIX 2)
-else()
-  set(PY_BINDING_INFIX 3)
-endif()
-# use python2 by default for python bindings, tools and tests, before
-# switching to python3
-# Python_EXECUTABLE` can be set by `find_package(Python ...)` also. and we do
-# call `find_package(Python ...)` in `ceph/CMakeLists.txt`. but we do so before
-# `add_subdirectory(src)` where `Python_EXECUTABLE` is set. so it's safe to
-# use this variable name and call `find_package(Python ...)`.
-if(WITH_PYTHON2)
-  set(Python_EXECUTABLE ${Python2_EXECUTABLE})
-else()
-  set(Python_EXECUTABLE ${Python3_EXECUTABLE})
+  message(FATAL_ERROR "Python 2 is not supported anymore")
 endif()
 
 # sort out which allocator to use
@@ -333,6 +305,7 @@ endif()
 set(libcommon_files
   ${CMAKE_BINARY_DIR}/src/include/ceph_ver.h
   ceph_ver.c
+  global/global_context.cc
   xxHash/xxhash.c
   log/Log.cc
   mon/MonCap.cc
@@ -375,7 +348,6 @@ set(ceph_common_objs
   $<TARGET_OBJECTS:compressor_objs>
   $<TARGET_OBJECTS:common-objs>
   $<TARGET_OBJECTS:common_mountcephfs_objs>
-  $<TARGET_OBJECTS:global_common_objs>
   $<TARGET_OBJECTS:crush_objs>)
 set(ceph_common_deps
   json_spirit erasure_code arch crc32
@@ -736,6 +708,12 @@ if(WITH_RBD)
   add_subdirectory(rbd_replay)
 endif(WITH_RBD)
 
+if(WITH_BOOST_CONTEXT)
+  set(SPAWN_BUILD_TESTS OFF CACHE INTERNAL "disable building of spawn unit tests")
+  set(SPAWN_INSTALL OFF CACHE INTERNAL "disable installation of spawn headers")
+  add_subdirectory(spawn)
+endif()
+
 # RadosGW
 if(WITH_KVS)
   add_subdirectory(key_value_store)
@@ -787,21 +765,21 @@ add_custom_target(vstart-base DEPENDS
     monmaptool
     crushtool
     rados
-    cython${PY_BINDING_INFIX}_rados)
+    cython_rados)
 if (WITH_MGR)
   add_dependencies(vstart-base ceph-mgr)
 endif()
 
 add_custom_target(vstart DEPENDS vstart-base)
-if (WITH_RBD)
-  add_dependencies(vstart cython${PY_BINDING_INFIX}_rbd)
+if(WITH_RBD)
+  add_dependencies(vstart cython_rbd)
 endif()
 if (WITH_CEPHFS)
-  add_dependencies(vstart ceph-mds cephfs cython${PY_BINDING_INFIX}_cephfs)
+  add_dependencies(vstart ceph-mds cephfs cython_cephfs)
 endif()
 if(WITH_RADOSGW)
-  add_dependencies(vstart radosgw radosgw-admin)
-endif(WITH_RADOSGW)
+  add_dependencies(vstart radosgwd radosgw-admin)
+endif()
 
 if(WITH_LTTNG)
   add_dependencies(vstart tracepoint_libraries)
@@ -819,7 +797,7 @@ endif()
 add_custom_target(cephfs_testing DEPENDS
     vstart
     rados
-    cython${PY_BINDING_INFIX}_modules
+    cython_modules
     cephfs
     cls_cephfs
     ceph-fuse

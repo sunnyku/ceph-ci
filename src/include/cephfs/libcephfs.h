@@ -356,6 +356,16 @@ int ceph_release(struct ceph_mount_info *cmount);
 void ceph_shutdown(struct ceph_mount_info *cmount);
 
 /**
+ * Return associated client addresses
+ *
+ * @param cmount the mount handle
+ * @param addrs the output addresses
+ * @returns 0 on success, a negative error code on failure
+ * @note the returned addrs should be free by the caller
+ */
+int ceph_getaddrs(struct ceph_mount_info *cmount, char** addrs);
+
+/**
  * Get a global id for current instance
  *
  * The handle should not be mounted. This should be called on completion of
@@ -615,7 +625,7 @@ int64_t ceph_telldir(struct ceph_mount_info *cmount, struct ceph_dir_result *dir
  * @param cmount the ceph mount handle to use for performing the seekdir.
  * @param dirp the directory stream pointer to move.
  * @param offset the position to move the directory stream to.  This offset should be
- *        a value returned by seekdir.  Note that this value does not refer to the nth
+ *        a value returned by telldir.  Note that this value does not refer to the nth
  *        entry in a directory, and can not be manipulated with plus or minus.
  */
 void ceph_seekdir(struct ceph_mount_info *cmount, struct ceph_dir_result *dirp, int64_t offset);

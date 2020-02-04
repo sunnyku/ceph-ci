@@ -2334,9 +2334,9 @@ void PeeringState::activate(
 
   auto &missing = pg_log.get_missing();
 
+  min_last_complete_ondisk = eversion_t(0,0);  // we don't know (yet)!
   if (is_primary()) {
     last_update_ondisk = info.last_update;
-    min_last_complete_ondisk = eversion_t(0,0);  // we don't know (yet)!
   }
   last_update_applied = info.last_update;
   last_rollback_info_trimmed_to_applied = pg_log.get_can_rollback_to();
@@ -2484,7 +2484,8 @@ void PeeringState::activate(
 	  last_peering_reset /* epoch to create pg at */);
 
 	// send some recent log, so that op dup detection works well.
-	m->log.copy_up_to(cct, pg_log.get_log(), cct->_conf->osd_min_pg_log_entries);
+	m->log.copy_up_to(cct, pg_log.get_log(),
+			  cct->_conf->osd_max_pg_log_entries);
 	m->info.log_tail = m->log.tail;
 	pi.log_tail = m->log.tail;  // sigh...
 
@@ -3202,6 +3203,16 @@ void PeeringState::update_calc_stats()
   info.stats.avail_no_missing.clear();
   info.stats.object_location_counts.clear();
 
+  // We should never hit this condition, but if end up hitting it,
+  // make sure to update num_objects and set PG_STATE_INCONSISTENT.
+  if (info.stats.stats.sum.num_objects < 0) {
+    psdout(0) << __func__ << " negative num_objects = "
+              << info.stats.stats.sum.num_objects << " setting it to 0 "
+              << dendl;
+    info.stats.stats.sum.num_objects = 0;
+    state_set(PG_STATE_INCONSISTENT);
+  }
+
   if ((is_remapped() || is_undersized() || !is_clean()) &&
       (is_peered()|| is_activating())) {
     psdout(20) << __func__ << " actingset " << actingset << " upset "
@@ -3773,6 +3784,7 @@ void PeeringState::append_log(
   const vector<pg_log_entry_t>& logv,
   eversion_t trim_to,
   eversion_t roll_forward_to,
+  eversion_t mlcod,
   ObjectStore::Transaction &t,
   bool transaction_applied,
   bool async)
@@ -3836,6 +3848,9 @@ void PeeringState::append_log(
   // update the local pg, pg log
   dirty_info = true;
   write_if_dirty(t);
+
+  if (!is_primary())
+    min_last_complete_ondisk = mlcod;
 }
 
 void PeeringState::recover_got(
@@ -4029,15 +4044,7 @@ void PeeringState::complete_write(eversion_t v, eversion_t lc)
 
 void PeeringState::calc_trim_to()
 {
-  size_t target = cct->_conf->osd_min_pg_log_entries;
-  if (is_degraded() ||
-      state_test(PG_STATE_RECOVERING |
-                 PG_STATE_RECOVERY_WAIT |
-                 PG_STATE_BACKFILLING |
-                 PG_STATE_BACKFILL_WAIT |
-                 PG_STATE_BACKFILL_TOOFULL)) {
-    target = cct->_conf->osd_max_pg_log_entries;
-  }
+  size_t target = pl->get_target_pg_log_entries();
 
   eversion_t limit = std::min(
     min_last_complete_ondisk,
@@ -4071,15 +4078,8 @@ void PeeringState::calc_trim_to()
 
 void PeeringState::calc_trim_to_aggressive()
 {
-  size_t target = cct->_conf->osd_min_pg_log_entries;
-  if (is_degraded() ||
-      state_test(PG_STATE_RECOVERING |
-		 PG_STATE_RECOVERY_WAIT |
-		 PG_STATE_BACKFILLING |
-		 PG_STATE_BACKFILL_WAIT |
-		 PG_STATE_BACKFILL_TOOFULL)) {
-    target = cct->_conf->osd_max_pg_log_entries;
-  }
+  size_t target = pl->get_target_pg_log_entries();
+
   // limit pg log trimming up to the can_rollback_to value
   eversion_t limit = std::min(
     pg_log.get_head(),
@@ -5352,7 +5352,14 @@ PeeringState::Recovering::react(const RequestBackfill &evt)
   ps->state_clear(PG_STATE_FORCED_RECOVERY);
   pl->cancel_local_background_io_reservation();
   pl->publish_stats_to_osd();
-  // XXX: Is this needed?
+  // transit any async_recovery_targets back into acting
+  // so pg won't have to stay undersized for long
+  // as backfill might take a long time to complete..
+  if (!ps->async_recovery_targets.empty()) {
+    pg_shard_t auth_log_shard;
+    bool history_les_bound = false;
+    ps->choose_acting(auth_log_shard, true, &history_les_bound);
+  }
   return transit<WaitLocalBackfillReserved>();
 }
 
@@ -6052,6 +6059,8 @@ void PeeringState::ReplicaActive::exit()
   pl->cancel_remote_recovery_reservation();
   utime_t dur = ceph_clock_now() - enter_time;
   pl->get_peering_perf().tinc(rs_replicaactive_latency, dur);
+
+  ps->min_last_complete_ondisk = eversion_t();
 }
 
 /*-------Stray---*/
@@ -7004,9 +7013,7 @@ ostream &operator<<(ostream &out, const PeeringState &ps) {
   if (ps.last_complete_ondisk != ps.info.last_complete)
     out << " lcod " << ps.last_complete_ondisk;
 
-  if (ps.is_primary()) {
-    out << " mlcod " << ps.min_last_complete_ondisk;
-  }
+  out << " mlcod " << ps.min_last_complete_ondisk;
 
   out << " " << pg_state_string(ps.get_state());
   if (ps.should_send_notify())

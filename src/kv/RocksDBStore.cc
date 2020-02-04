@@ -255,6 +255,9 @@ int RocksDBStore::ParseOptionsFromStringStatic(
   rocksdb::Options& opt,
   function<int(const string&, const string&, rocksdb::Options&)> interp)
 {
+  // keep aligned with func tryInterpret
+  const set<string> need_interp_keys = {"compaction_threads", "flusher_threads", "compact_on_mount", "disableWAL"};
+
   map<string, string> str_map;
   int r = get_str_map(opt_str, &str_map, ",\n;");
   if (r < 0)
@@ -265,7 +268,11 @@ int RocksDBStore::ParseOptionsFromStringStatic(
     rocksdb::Status status =
       rocksdb::GetOptionsFromString(opt, this_opt, &opt);
     if (!status.ok()) {
-      r = interp != nullptr ? interp(it->first, it->second, opt) : -1;
+      if (interp != nullptr) {
+	r = interp(it->first, it->second, opt);
+      } else if (!need_interp_keys.count(it->first)) {
+	r = -1;
+      }
       if (r < 0) {
         derr << status.ToString() << dendl;
         return -EINVAL;
@@ -667,10 +674,12 @@ void RocksDBStore::close()
   // stop compaction thread
   compact_queue_lock.lock();
   if (compact_thread.is_started()) {
+    dout(1) << __func__ << " waiting for compaction thread to stop" << dendl;
     compact_queue_stop = true;
     compact_queue_cond.notify_all();
     compact_queue_lock.unlock();
     compact_thread.join();
+    dout(1) << __func__ << " compaction thread to stopped" << dendl;    
   } else {
     compact_queue_lock.unlock();
   }
@@ -1222,8 +1231,9 @@ void RocksDBStore::compact()
 void RocksDBStore::compact_thread_entry()
 {
   std::unique_lock l{compact_queue_lock};
+  dout(10) << __func__ << " enter" << dendl;
   while (!compact_queue_stop) {
-    while (!compact_queue.empty()) {
+    if (!compact_queue.empty()) {
       pair<string,string> range = compact_queue.front();
       compact_queue.pop_front();
       logger->set(l_rocksdb_compact_queue_len, compact_queue.size());
@@ -1237,8 +1247,10 @@ void RocksDBStore::compact_thread_entry()
       l.lock();
       continue;
     }
+    dout(10) << __func__ << " waiting" << dendl;
     compact_queue_cond.wait(l);
   }
+  dout(10) << __func__ << " exit" << dendl;
 }
 
 void RocksDBStore::compact_range_async(const string& start, const string& end)

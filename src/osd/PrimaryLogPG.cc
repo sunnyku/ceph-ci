@@ -491,6 +491,20 @@ void PrimaryLogPG::schedule_recovery_work(
   osd->queue_recovery_context(this, c);
 }
 
+void PrimaryLogPG::replica_clear_repop_obc(
+  const vector<pg_log_entry_t> &logv,
+  ObjectStore::Transaction &t)
+{
+  for (auto &&e: logv) {
+    /* Have to blast all clones, they share a snapset */
+    object_contexts.clear_range(
+      e.soid.get_object_boundary(), e.soid.get_head());
+    ceph_assert(
+      snapset_contexts.find(e.soid.get_head()) ==
+      snapset_contexts.end());
+  }
+}
+
 bool PrimaryLogPG::should_send_op(
   pg_shard_t peer,
   const hobject_t &hoid) {
@@ -942,7 +956,7 @@ void PrimaryLogPG::do_command(
   std::function<void(int,const std::string&,bufferlist&)> on_finish)
 {
   string format;
-  cmd_getval(cct, cmdmap, "format", format);
+  cmd_getval(cmdmap, "format", format);
   std::unique_ptr<Formatter> f(Formatter::create(
 				 format, "json-pretty", "json-pretty"));
   int ret = 0;
@@ -954,7 +968,7 @@ void PrimaryLogPG::do_command(
   // - ceph tell <pgid> foo -> prefix=foo
   string prefix(orig_prefix);
   string command;
-  cmd_getval(cct, cmdmap, "cmd", command);
+  cmd_getval(cmdmap, "cmd", command);
   if (command.size()) {
     prefix = command;
   }
@@ -980,7 +994,7 @@ void PrimaryLogPG::do_command(
 
   else if (prefix == "mark_unfound_lost") {
     string mulcmd;
-    cmd_getval(cct, cmdmap, "mulcmd", mulcmd);
+    cmd_getval(cmdmap, "mulcmd", mulcmd);
     int mode = -1;
     if (mulcmd == "revert") {
       if (pool.info.is_erasure()) {
@@ -1026,7 +1040,7 @@ void PrimaryLogPG::do_command(
     hobject_t offset;
     string offset_json;
     bool show_offset = false;
-    if (cmd_getval(cct, cmdmap, "offset", offset_json)) {
+    if (cmd_getval(cmdmap, "offset", offset_json)) {
       json_spirit::Value v;
       try {
 	if (!json_spirit::read(offset_json, v))
@@ -1087,7 +1101,7 @@ void PrimaryLogPG::do_command(
 	   prefix == "deep_scrub") {
     bool deep = (prefix == "deep_scrub");
     int64_t time;
-    cmd_getval(cct, cmdmap, "time", time, (int64_t)0);
+    cmd_getval(cmdmap, "time", time, (int64_t)0);
 
     if (is_primary()) {
       const pg_pool_t *p = &pool.info;
@@ -2112,6 +2126,19 @@ void PrimaryLogPG::do_op(OpRequestRef& op)
     return;
   }
 
+  if (!is_primary()) {
+    if (!recovery_state.can_serve_replica_read(oid)) {
+      dout(20) << __func__ << ": oid " << oid
+	       << " unstable write on replica, bouncing to primary."
+	       << *m << dendl;
+      osd->reply_op_error(op, -EAGAIN);
+      return;
+    } else {
+      dout(20) << __func__ << ": serving replica read on oid" << oid
+	       << dendl;
+    }
+  }
+
   int r = find_object_context(
     oid, &obc, can_create,
     m->has_flag(CEPH_OSD_FLAG_MAP_SNAP_CLONE),
@@ -2998,8 +3025,9 @@ struct C_ProxyChunkRead : public Context {
 	} else {
 	  copy_offset = 0;
 	}
-	prdop->ops[op_index].outdata.copy_in(copy_offset, obj_op->ops[0].outdata.length(),
-					     obj_op->ops[0].outdata.c_str());
+	prdop->ops[op_index].outdata.begin(copy_offset).copy_in(
+          obj_op->ops[0].outdata.length(),
+          obj_op->ops[0].outdata.c_str());
       } 	
       
       pg->finish_proxy_read(oid, tid, r);
@@ -5574,7 +5602,7 @@ int PrimaryLogPG::do_sparse_read(OpContext *ctx, OSDOp& osd_op) {
     }
 
     bufferlist data_bl;
-    r = pgbackend->objects_readv_sync(soid, m, op.flags, &data_bl);
+    r = pgbackend->objects_readv_sync(soid, std::move(m), op.flags, &data_bl);
     if (r == -EIO) {
       r = rep_repair_primary_object(soid, ctx);
     }
@@ -5660,6 +5688,7 @@ int PrimaryLogPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
     case CEPH_OSD_OP_CACHE_TRY_FLUSH:
     case CEPH_OSD_OP_UNDIRTY:
     case CEPH_OSD_OP_COPY_FROM:  // we handle user_version update explicitly
+    case CEPH_OSD_OP_COPY_FROM2:
     case CEPH_OSD_OP_CACHE_PIN:
     case CEPH_OSD_OP_CACHE_UNPIN:
     case CEPH_OSD_OP_SET_REDIRECT:
@@ -7657,6 +7686,7 @@ int PrimaryLogPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
       break;
 
     case CEPH_OSD_OP_COPY_FROM:
+    case CEPH_OSD_OP_COPY_FROM2:
       ++ctx->num_write;
       result = 0;
       {
@@ -7667,12 +7697,20 @@ int PrimaryLogPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	bool have_truncate = false;
 	snapid_t src_snapid = (uint64_t)op.copy_from.snapid;
 	version_t src_version = op.copy_from.src_version;
+
+	if ((op.op == CEPH_OSD_OP_COPY_FROM2) &&
+	    (op.copy_from.flags & ~CEPH_OSD_COPY_FROM_FLAGS)) {
+	  dout(20) << "invalid copy-from2 flags 0x"
+		  << std::hex << (int)op.copy_from.flags << std::dec << dendl;
+	  result = -EINVAL;
+	  break;
+	}
 	try {
 	  decode(src_name, bp);
 	  decode(src_oloc, bp);
 	  // check if client sent us truncate_seq and truncate_size
-	  if ((op.copy_from.flags & CEPH_OSD_COPY_FROM_FLAG_TRUNCATE_SEQ) &&
-	      !bp.end()) {
+	  if ((op.op == CEPH_OSD_OP_COPY_FROM2) &&
+	      (op.copy_from.flags & CEPH_OSD_COPY_FROM_FLAG_TRUNCATE_SEQ)) {
 	    decode(truncate_seq, bp);
 	    decode(truncate_size, bp);
 	    have_truncate = true;
@@ -11239,14 +11277,19 @@ int PrimaryLogPG::find_object_context(const hobject_t& oid,
     if (pmissing)
       *pmissing = soid;
     put_snapset_context(ssc);
-    if (is_degraded_or_backfilling_object(soid)) {
-      dout(20) << __func__ << " clone is degraded or backfilling " << soid << dendl;
-      return -EAGAIN;
-    } else if (is_degraded_on_async_recovery_target(soid)) {
-      dout(20) << __func__ << " clone is recovering " << soid << dendl;
-      return -EAGAIN;
+    if (is_primary()) {
+      if (is_degraded_or_backfilling_object(soid)) {
+	dout(20) << __func__ << " clone is degraded or backfilling " << soid << dendl;
+	return -EAGAIN;
+      } else if (is_degraded_on_async_recovery_target(soid)) {
+	dout(20) << __func__ << " clone is recovering " << soid << dendl;
+	return -EAGAIN;
+      } else {
+	dout(20) << __func__ << " missing clone " << soid << dendl;
+	return -ENOENT;
+      }
     } else {
-      dout(20) << __func__ << " missing clone " << soid << dendl;
+      dout(20) << __func__ << " replica missing clone" << soid << dendl;
       return -ENOENT;
     }
   }

@@ -662,6 +662,9 @@ public:
 	return awaiting.second.get() == pg;
       });
   }
+
+  unsigned get_target_pg_log_entries() const;
+  
   // delayed pg activation
   void queue_for_recovery(PG *pg) {
     std::lock_guard l(recovery_lock);
@@ -1000,7 +1003,6 @@ struct OSDShard {
   ceph::mutex sdata_wait_lock;
   ceph::condition_variable sdata_cond;
 
-  string osdmap_lock_name;
   ceph::mutex osdmap_lock;  ///< protect shard_osdmap updates vs users w/o shard_lock
   OSDMapRef shard_osdmap;
 
@@ -1671,9 +1673,6 @@ protected:
     ThreadPool::TPHandle &handle);
 
   void enqueue_peering_evt(
-    spg_t pgid,
-    PGPeeringEventRef ref);
-  void enqueue_peering_evt_front(
     spg_t pgid,
     PGPeeringEventRef ref);
   void dequeue_peering_evt(

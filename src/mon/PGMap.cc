@@ -1595,7 +1595,7 @@ void PGMap::dump_pool_stats(ceph::Formatter *f) const
   f->close_section();
 }
 
-void PGMap::dump_osd_stats(ceph::Formatter *f) const
+void PGMap::dump_osd_stats(ceph::Formatter *f, bool with_net) const
 {
   f->open_array_section("osd_stats");
   for (auto q = osd_stat.begin();
@@ -1603,7 +1603,7 @@ void PGMap::dump_osd_stats(ceph::Formatter *f) const
        ++q) {
     f->open_object_section("osd_stat");
     f->dump_int("osd", q->first);
-    q->second.dump(f);
+    q->second.dump(f, with_net);
     f->close_section();
   }
   f->close_section();
@@ -3381,6 +3381,28 @@ void PGMap::get_health_checks(
   }
 }
 
+void PGMap::print_summary(ceph::Formatter *f, ostream *out) const
+{
+  if (f) {
+    f->open_array_section("pgs_by_pool_state");
+    for (auto& i: num_pg_by_pool_state) {
+      f->open_object_section("per_pool_pgs_by_state");
+      f->dump_int("pool_id", i.first);
+      f->open_array_section("pg_state_counts");
+      for (auto& j : i.second) {
+        f->open_object_section("pg_state_count");
+        f->dump_string("state_name", pg_state_string(j.first));
+        f->dump_int("count", j.second);
+        f->close_section();
+      }
+      f->close_section();
+      f->close_section();
+    }
+    f->close_section();
+  }
+  PGMapDigest::print_summary(f, out);
+}
+
 int process_pg_map_command(
   const string& orig_prefix,
   const cmdmap_t& orig_cmdmap,
@@ -3395,7 +3417,7 @@ int process_pg_map_command(
 
   string omap_stats_note =
       "\n* NOTE: Omap statistics are gathered during deep scrub and "
-      "may be inaccurate soon afterwards depending on utilisation. See "
+      "may be inaccurate soon afterwards depending on utilization. See "
       "http://docs.ceph.com/docs/master/dev/placement-group/#omap-statistics "
       "for further details.\n";
   bool omap_stats_note_required = false;
@@ -3422,7 +3444,7 @@ int process_pg_map_command(
   } else if (prefix == "pg ls-by-pool") {
     prefix = "pg ls";
     string poolstr;
-    cmd_getval(g_ceph_context, cmdmap, "poolstr", poolstr);
+    cmd_getval(cmdmap, "poolstr", poolstr);
     int64_t pool = osdmap.lookup_pg_pool_name(poolstr.c_str());
     if (pool < 0) {
       *ss << "pool " << poolstr << " does not exist";
@@ -3455,7 +3477,7 @@ int process_pg_map_command(
     string val;
     vector<string> dumpcontents;
     set<string> what;
-    if (cmd_getval(g_ceph_context, cmdmap, "dumpcontents", dumpcontents)) {
+    if (cmd_getval(cmdmap, "dumpcontents", dumpcontents)) {
       copy(dumpcontents.begin(), dumpcontents.end(),
            inserter(what, what.end()));
     }
@@ -3531,9 +3553,9 @@ int process_pg_map_command(
     int64_t pool = -1;
     vector<string>states;
     set<pg_t> pgs;
-    cmd_getval(g_ceph_context, cmdmap, "pool", pool);
-    cmd_getval(g_ceph_context, cmdmap, "osd", osd);
-    cmd_getval(g_ceph_context, cmdmap, "states", states);
+    cmd_getval(cmdmap, "pool", pool);
+    cmd_getval(cmdmap, "osd", osd);
+    cmd_getval(cmdmap, "states", states);
     if (pool >= 0 && !osdmap.have_pg_pool(pool)) {
       *ss << "pool " << pool << " does not exist";
       return -ENOENT;
@@ -3581,11 +3603,11 @@ int process_pg_map_command(
 
   if (prefix == "pg dump_stuck") {
     vector<string> stuckop_vec;
-    cmd_getval(g_ceph_context, cmdmap, "stuckops", stuckop_vec);
+    cmd_getval(cmdmap, "stuckops", stuckop_vec);
     if (stuckop_vec.empty())
       stuckop_vec.push_back("unclean");
     int64_t threshold;
-    cmd_getval(g_ceph_context, cmdmap, "threshold", threshold,
+    cmd_getval(cmdmap, "threshold", threshold,
                g_conf().get_val<int64_t>("mon_pg_stuck_threshold"));
 
     if (pg_map.dump_stuck_pg_stats(ds, f, (int)threshold, stuckop_vec) < 0) {
@@ -3599,7 +3621,7 @@ int process_pg_map_command(
 
   if (prefix == "pg debug") {
     string debugop;
-    cmd_getval(g_ceph_context, cmdmap, "debugop", debugop,
+    cmd_getval(cmdmap, "debugop", debugop,
 	       string("unfound_objects_exist"));
     if (debugop == "unfound_objects_exist") {
       bool unfound_objects_exist = false;

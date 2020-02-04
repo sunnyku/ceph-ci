@@ -430,7 +430,6 @@ std::vector<Option> get_global_options() {
     Option("mon_dns_srv_name", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("ceph-mon")
     .set_description("name of DNS SRV record to check for monitor addresses")
-    .set_flag(Option::FLAG_NO_MON_UPDATE)
     .set_flag(Option::FLAG_STARTUP)
     .add_service("common")
     .add_tag("network")
@@ -2604,7 +2603,7 @@ std::vector<Option> get_global_options() {
     .add_service("mon"),
 
     Option("osd_pool_default_pg_num", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
-    .set_default(16)
+    .set_default(32)
     .set_description("number of PGs for new pools")
     .set_flag(Option::FLAG_RUNTIME)
     .add_service("mon"),
@@ -2956,9 +2955,12 @@ std::vector<Option> get_global_options() {
     .set_default(false)
     .set_description(""),
 
-    Option("osd_recover_clone_overlap_limit", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    // Only use clone_overlap for recovery if there are fewer than
+    // osd_recover_clone_overlap_limit entries in the overlap set
+    Option("osd_recover_clone_overlap_limit", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
     .set_default(10)
-    .set_description(""),
+    .set_description("")
+    .set_flag(Option::FLAG_RUNTIME),
 
     Option("osd_debug_feed_pullee", Option::TYPE_INT, Option::LEVEL_DEV)
     .set_default(-1)
@@ -3333,15 +3335,21 @@ std::vector<Option> get_global_options() {
     .set_default(40)
     .set_description(""),
 
+    Option("osd_target_pg_log_entries_per_osd", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(3000 * 100)
+    .set_description("target number of PG entries total on an OSD")
+    .add_see_also("osd_max_pg_log_entries")
+    .add_see_also("osd_min_pg_log_entries"),
+
     Option("osd_min_pg_log_entries", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
-    .set_default(3000)
+    .set_default(250)
     .set_description("minimum number of entries to maintain in the PG log")
     .add_service("osd")
     .add_see_also("osd_max_pg_log_entries")
     .add_see_also("osd_pg_log_dups_tracked"),
 
     Option("osd_max_pg_log_entries", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
-    .set_default(3000)
+    .set_default(10000)
     .set_description("maximum number of entries to maintain in the PG log when degraded before we trim")
     .add_service("osd")
     .add_see_also("osd_min_pg_log_entries")
@@ -4187,7 +4195,7 @@ std::vector<Option> get_global_options() {
     .set_long_description("A smaller allocation size generally means less data is read and then rewritten when a copy-on-write operation is triggered (e.g., when writing to something that was recently snapshotted).  Similarly, less data is journaled before performing an overwrite (writes smaller than min_alloc_size must first pass through the BlueStore journal).  Larger values of min_alloc_size reduce the amount of metadata required to describe the on-disk layout and reduce overall fragmentation."),
 
     Option("bluestore_min_alloc_size_hdd", Option::TYPE_SIZE, Option::LEVEL_ADVANCED)
-    .set_default(4_K)
+    .set_default(64_K)
     .set_flag(Option::FLAG_CREATE)
     .set_description("Default min_alloc_size value for rotational media")
     .add_see_also("bluestore_min_alloc_size"),
@@ -7195,6 +7203,12 @@ static std::vector<Option> get_rbd_options() {
     .set_default(true)
     .set_description("when writing a object, it will issue a hint to osd backend to indicate the expected size object need"),
 
+    Option("rbd_compression_hint", Option::TYPE_STR, Option::LEVEL_BASIC)
+    .set_enum_allowed({"none", "compressible", "incompressible"})
+    .set_default("none")
+    .set_description("Compression hint to send to the OSDs during writes")
+    .set_flag(Option::FLAG_RUNTIME),
+
     Option("rbd_tracing", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)
     .set_description("true if LTTng-UST tracepoints should be enabled"),
@@ -7586,6 +7600,11 @@ std::vector<Option> get_mds_options() {
     .set_flag(Option::FLAG_NO_MON_UPDATE)
     .set_description("path to MDS data and keyring"),
 
+    Option("mds_join_fs", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("")
+    .set_description("force mds daemon to join a specific fs")
+    .set_flag(Option::FLAG_RUNTIME),
+
     Option("mds_max_xattr_pairs_size", Option::TYPE_SIZE, Option::LEVEL_ADVANCED)
     .set_default(64_K)
     .set_description("maximum aggregate size of extended attributes on a file"),
@@ -7744,6 +7763,11 @@ std::vector<Option> get_mds_options() {
     Option("mds_client_prealloc_inos", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(1000)
     .set_description("number of unused inodes to pre-allocate to clients for file creation"),
+
+    Option("mds_client_delegate_inos_pct", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(50)
+    .set_flag(Option::FLAG_RUNTIME)
+    .set_description("percentage of preallocated inos to delegate to client"),
 
     Option("mds_early_reply", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(true)
@@ -8072,6 +8096,11 @@ std::vector<Option> get_mds_options() {
     .set_default(5)
     .set_description("maximum number of scrub operations performed in parallel"),
 
+    Option("mds_forward_all_requests_to_auth", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_flag(Option::FLAG_RUNTIME)
+    .set_description("always process op on auth mds"),
+    
     Option("mds_damage_table_max_entries", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(10000)
     .set_description("maximum number of damage table entries"),
@@ -8294,7 +8323,8 @@ std::vector<Option> get_mds_client_options() {
 
     Option("fuse_default_permissions", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)
-    .set_description("pass default_permisions to FUSE on mount"),
+    .set_description("pass default_permisions to FUSE on mount")
+    .set_flag(Option::FLAG_STARTUP),
 
     Option("fuse_big_writes", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)

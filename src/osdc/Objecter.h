@@ -1105,6 +1105,21 @@ struct ObjectOperation {
     encode(src, osd_op.indata);
     encode(src_oloc, osd_op.indata);
   }
+  void copy_from2(object_t src, snapid_t snapid, object_locator_t src_oloc,
+		 version_t src_version, unsigned flags,
+		 uint32_t truncate_seq, uint64_t truncate_size,
+		 unsigned src_fadvise_flags) {
+    using ceph::encode;
+    OSDOp& osd_op = add_op(CEPH_OSD_OP_COPY_FROM2);
+    osd_op.op.copy_from.snapid = snapid;
+    osd_op.op.copy_from.src_version = src_version;
+    osd_op.op.copy_from.flags = flags;
+    osd_op.op.copy_from.src_fadvise_flags = src_fadvise_flags;
+    encode(src, osd_op.indata);
+    encode(src_oloc, osd_op.indata);
+    encode(truncate_seq, osd_op.indata);
+    encode(truncate_size, osd_op.indata);
+  }
 
   /**
    * writeback content to backing tier
@@ -1422,6 +1437,12 @@ public:
       return r == 0 || (r > 0 && h < end);
     }
 
+    bool respects_full() const {
+      return
+	(flags & (CEPH_OSD_FLAG_WRITE | CEPH_OSD_FLAG_RWORDERED)) &&
+	!(flags & (CEPH_OSD_FLAG_FULL_TRY | CEPH_OSD_FLAG_FULL_FORCE));
+    }
+
     void dump(ceph::Formatter *f) const;
   };
 
@@ -1519,12 +1540,6 @@ public:
 
     bool operator<(const Op& other) const {
       return tid < other.tid;
-    }
-
-    bool respects_full() const {
-      return
-	(target.flags & (CEPH_OSD_FLAG_WRITE | CEPH_OSD_FLAG_RWORDERED)) &&
-	!(target.flags & (CEPH_OSD_FLAG_FULL_TRY | CEPH_OSD_FLAG_FULL_FORCE));
     }
 
   private:
@@ -1953,6 +1968,7 @@ public:
   bool osdmap_full_flag() const;
   bool osdmap_pool_full(const int64_t pool_id) const;
 
+
  private:
 
   /**
@@ -1962,7 +1978,9 @@ public:
    *         the global full flag is set, else false
    */
   bool _osdmap_pool_full(const int64_t pool_id) const;
-  bool _osdmap_pool_full(const pg_pool_t &p) const;
+  bool _osdmap_pool_full(const pg_pool_t &p) const {
+    return p.has_flag(pg_pool_t::FLAG_FULL) && honor_pool_full;
+  }
   void update_pool_full_map(std::map<int64_t, bool>& pool_full_map);
 
   std::map<uint64_t, LingerOp*> linger_ops;
@@ -3089,12 +3107,17 @@ public:
 		  0, 0, op_flags);
     } else {
       C_GatherBuilder gcom(cct, oncommit);
+      auto it = bl.cbegin();
       for (auto p = extents.begin(); p != extents.end(); ++p) {
 	ceph::buffer::list cur;
 	for (auto bit = p->buffer_extents.begin();
 	     bit != p->buffer_extents.end();
-	     ++bit)
-	  bl.copy(bit->first, bit->second, cur);
+	     ++bit) {
+	  if (it.get_off() != bit->first) {
+	    it.seek(bit->first);
+	  }
+	  it.copy(bit->second, cur);
+	}
 	ceph_assert(cur.length() == p->length);
 	write_trunc(p->oid, p->oloc, p->offset, p->length,
 	      snapc, cur, mtime, flags, p->truncate_size, trunc_seq,

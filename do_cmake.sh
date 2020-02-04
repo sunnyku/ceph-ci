@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -x
+set -ex
 
 git submodule update --init --recursive
 
@@ -16,8 +16,9 @@ if [ -r /etc/os-release ]; then
   source /etc/os-release
   case "$ID" in
       fedora)
-          if [ "$VERSION_ID" -ge "29" ] ; then
-              PYBUILD="3.7"
+          PYBUILD="3.7"
+          if [ "$VERSION_ID" -ge "32" ] ; then
+              PYBUILD="3.8"
           fi
           ;;
       rhel|centos)
@@ -42,7 +43,7 @@ else
 fi
 
 if [[ "$PYBUILD" =~ ^3(\..*)?$ ]] ; then
-    ARGS+=" -DWITH_PYTHON2=OFF -DWITH_PYTHON3=${PYBUILD} -DMGR_PYTHON_VERSION=${PYBUILD}"
+    ARGS+=" -DWITH_PYTHON3=${PYBUILD}"
 fi
 
 if type ccache > /dev/null 2>&1 ; then

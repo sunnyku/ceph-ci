@@ -13,3 +13,6 @@ tasks:
          client.0:
            - rados/test_crash.sh
   - ceph.restart: [osd.*]
+  - exec:
+      mon.a:
+        - find $TESTDIR/archive/coredump -type f -exec rm -f {} \;

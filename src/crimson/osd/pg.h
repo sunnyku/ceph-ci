@@ -119,29 +119,7 @@ public:
     bool dirty_info,
     bool dirty_big_info,
     bool need_write_epoch,
-    ceph::os::Transaction &t) final {
-    std::map<string,bufferlist> km;
-    if (dirty_big_info || dirty_info) {
-      int ret = prepare_info_keymap(
-	shard_services.get_cct(),
-	&km,
-	get_osdmap_epoch(),
-	info,
-	last_written_info,
-	past_intervals,
-	dirty_big_info,
-	need_write_epoch,
-	true,
-	nullptr,
-	this);
-      ceph_assert(ret == 0);
-    }
-    pglog.write_log_and_missing(
-      t, &km, coll, pgmeta_oid,
-      peering_state.get_pool().info.require_rollback());
-    if (!km.empty())
-      t.omap_setkeys(coll, pgmeta_oid, km);
-  }
+    ceph::os::Transaction &t) final;
 
   void on_info_history_change() final {
     // Not needed yet -- mainly for scrub scheduling
@@ -262,6 +240,8 @@ public:
 			    ceph::timespan delay) final;
   void recheck_readable() final;
 
+  unsigned get_target_pg_log_entries() const final;
+
   void on_pool_change() final {
     // Not needed yet
   }
@@ -290,9 +270,7 @@ public:
   void on_removal(ceph::os::Transaction &t) final {
     // TODO
   }
-  void do_delete_work(ceph::os::Transaction &t) final {
-    // TODO
-  }
+  void do_delete_work(ceph::os::Transaction &t) final;
 
   // merge/split not ready
   void clear_ready_to_merge() final {}
@@ -467,8 +445,8 @@ public:
     F &&f) {
     auto [oid, type] = get_oid_and_lock(*m, op_info);
     return get_locked_obc(op, oid, type)
-      .safe_then([this, f=std::forward<F>(f), type](auto obc) {
-	return f(obc).finally([this, obc, type] {
+      .safe_then([this, f=std::forward<F>(f), type=type](auto obc) {
+	return f(obc).finally([this, obc, type=type] {
 	  obc->put_lock_type(type);
 	  return load_obc_ertr::now();
 	});

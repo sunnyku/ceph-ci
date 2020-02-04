@@ -34,7 +34,7 @@ int ActivePyModule::load(ActivePyModules *py_modules)
   // with us in logging etc.
   auto pThisPtr = PyCapsule_New(this, nullptr, nullptr);
   auto pPyModules = PyCapsule_New(py_modules, nullptr, nullptr);
-  auto pModuleName = PyString_FromString(get_name().c_str());
+  auto pModuleName = PyUnicode_FromString(get_name().c_str());
   auto pArgs = PyTuple_Pack(3, pModuleName, pPyModules, pThisPtr);
 
   pClassInstance = PyObject_CallObject(py_module->pClass, pArgs);
@@ -209,7 +209,7 @@ int ActivePyModule::handle_command(
   cmdmap_dump(cmdmap, &f);
   PyObject *py_cmd = f.get();
   string instr;
-  inbuf.copy(0, inbuf.length(), instr);
+  inbuf.begin().copy(inbuf.length(), instr);
 
   ceph_assert(m_session == nullptr);
   m_command_perms = module_command.perm;
@@ -230,9 +230,9 @@ int ActivePyModule::handle_command(
               "returned wrong type!" << dendl;
       r = -EINVAL;
     } else {
-      r = PyInt_AsLong(PyTuple_GetItem(pResult, 0));
-      *ds << PyString_AsString(PyTuple_GetItem(pResult, 1));
-      *ss << PyString_AsString(PyTuple_GetItem(pResult, 2));
+      r = PyLong_AsLong(PyTuple_GetItem(pResult, 0));
+      *ds << PyUnicode_AsUTF8(PyTuple_GetItem(pResult, 1));
+      *ss << PyUnicode_AsUTF8(PyTuple_GetItem(pResult, 2));
     }
 
     Py_DECREF(pResult);

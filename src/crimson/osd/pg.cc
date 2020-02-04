@@ -194,6 +194,30 @@ void PG::recheck_readable()
   }
 }
 
+unsigned PG::get_target_pg_log_entries() const
+{
+  const unsigned num_pgs = shard_services.get_pg_num();
+  const unsigned target =
+    local_conf().get_val<uint64_t>("osd_target_pg_log_entries_per_osd");
+  const unsigned min_pg_log_entries =
+    local_conf().get_val<uint64_t>("osd_min_pg_log_entries");
+  if (num_pgs > 0 && target > 0) {
+    // target an even spread of our budgeted log entries across all
+    // PGs.  note that while we only get to control the entry count
+    // for primary PGs, we'll normally be responsible for a mix of
+    // primary and replica PGs (for the same pool(s) even), so this
+    // will work out.
+    const unsigned max_pg_log_entries =
+      local_conf().get_val<uint64_t>("osd_max_pg_log_entries");
+    return std::clamp(target / num_pgs,
+		      min_pg_log_entries,
+		      max_pg_log_entries);
+  } else {
+    // fall back to a per-pg value.
+    return min_pg_log_entries;
+  }
+}
+
 void PG::on_activate(interval_set<snapid_t>)
 {
   projected_last_update = peering_state.get_info().last_update;
@@ -231,6 +255,50 @@ void PG::on_activate_complete()
       get_osdmap_epoch(),
       PeeringState::AllReplicasRecovered{});
   }
+}
+
+void PG::prepare_write(pg_info_t &info,
+		       pg_info_t &last_written_info,
+		       PastIntervals &past_intervals,
+		       PGLog &pglog,
+		       bool dirty_info,
+		       bool dirty_big_info,
+		       bool need_write_epoch,
+		       ceph::os::Transaction &t)
+{
+  std::map<string,bufferlist> km;
+  std::string key_to_remove;
+  if (dirty_big_info || dirty_info) {
+    int ret = prepare_info_keymap(
+      shard_services.get_cct(),
+      &km,
+      &key_to_remove,
+      get_osdmap_epoch(),
+      info,
+      last_written_info,
+      past_intervals,
+      dirty_big_info,
+      need_write_epoch,
+      true,
+      nullptr,
+      this);
+    ceph_assert(ret == 0);
+  }
+  pglog.write_log_and_missing(
+    t, &km, coll, pgmeta_oid,
+    peering_state.get_pool().info.require_rollback());
+  if (!km.empty()) {
+    t.omap_setkeys(coll, pgmeta_oid, km);
+  }
+  if (!key_to_remove.empty()) {
+    t.omap_rmkey(coll, pgmeta_oid, key_to_remove);
+  }
+}
+
+void PG::do_delete_work(ceph::os::Transaction &t)
+{
+  // TODO
+  shard_services.dec_pg_num();
 }
 
 void PG::log_state_enter(const char *state) {
@@ -683,7 +751,7 @@ PG::get_locked_obc(
       auto &[head_obc, head_existed] = p;
       if (oid.is_head()) {
 	if (head_existed) {
-	  return head_obc->get_lock_type(op, type).then([head_obc] {
+	  return head_obc->get_lock_type(op, type).then([head_obc=head_obc] {
 	    ceph_assert(head_obc->loaded);
 	    return load_obc_ertr::make_ready_future<ObjectContextRef>(head_obc);
 	  });
@@ -693,14 +761,14 @@ PG::get_locked_obc(
 	}
       } else {
 	return head_obc->get_lock_type(op, RWState::RWREAD).then(
-	  [this, head_obc, op, oid, type] {
+	  [this, head_obc=head_obc, op, oid, type] {
 	    ceph_assert(head_obc->loaded);
 	    return get_or_load_clone_obc(oid, head_obc);
-	  }).safe_then([this, head_obc, op, oid, type](auto p) {
+	  }).safe_then([this, head_obc=head_obc, op, oid, type](auto p) {
 	      auto &[obc, existed] = p;
 	      if (existed) {
 		return load_obc_ertr::future<>(
-		  obc->get_lock_type(op, type)).safe_then([obc] {
+		  obc->get_lock_type(op, type)).safe_then([obc=obc] {
 		  ceph_assert(obc->loaded);
 		  return load_obc_ertr::make_ready_future<ObjectContextRef>(obc);
 		});
@@ -708,7 +776,7 @@ PG::get_locked_obc(
 		obc->degrade_excl_to(type);
 		return load_obc_ertr::make_ready_future<ObjectContextRef>(obc);
 	      }
-	  }).safe_then([head_obc](auto obc) {
+	  }).safe_then([head_obc=head_obc](auto obc) {
 	    head_obc->put_lock_type(RWState::RWREAD);
 	    return load_obc_ertr::make_ready_future<ObjectContextRef>(obc);
 	  });

@@ -24,10 +24,13 @@ OSD_TO_CREATE=6
 OSD_VG_NAME=${SCRIPT_NAME%.*}
 OSD_LV_NAME=${SCRIPT_NAME%.*}
 
+CEPHADM_SRC_DIR=${SCRIPT_DIR}/../../../src/cephadm
+CEPHADM_SAMPLES_DIR=${CEPHADM_SRC_DIR}/samples
+
 [ -z "$SUDO" ] && SUDO=sudo
 
 if [ -z "$CEPHADM" ]; then
-    CEPHADM=${SCRIPT_DIR}/../../../src/cephadm/cephadm
+    CEPHADM=${CEPHADM_SRC_DIR}/cephadm
 fi
 
 # at this point, we need $CEPHADM set
@@ -37,25 +40,34 @@ if ! [ -x "$CEPHADM" ]; then
 fi
 
 # respawn ourselves with a shebang
-PYTHONS="python3 python2"  # which pythons we test
 if [ -z "$PYTHON_KLUDGE" ]; then
-   TMPBINDIR=$(mktemp -d)
-   trap "rm -rf $TMPBINDIR" EXIT
-   ORIG_CEPHADM="$CEPHADM"
-   CEPHADM="$TMPBINDIR/cephadm"
-   for p in $PYTHONS; do
-       echo "=== re-running with $p ==="
-       ln -s `which $p` $TMPBINDIR/python
-       echo "#!$TMPBINDIR/python" > $CEPHADM
-       cat $ORIG_CEPHADM >> $CEPHADM
-       chmod 700 $CEPHADM
-       $TMPBINDIR/python --version
-       PYTHON_KLUDGE=1 CEPHADM=$CEPHADM $0
-       rm $TMPBINDIR/python
-   done
-   rm -rf $TMPBINDIR
-   echo "PASS with all of: $PYTHONS"
-   exit 0
+    # see which pythons we should test with
+    PYTHONS=""
+    which python3 && PYTHONS="$PYTHONS python3"
+    which python2 && PYTHONS="$PYTHONS python2"
+    echo "PYTHONS $PYTHONS"
+    if [ -z "$PYTHONS" ]; then
+	echo "No PYTHONS found!"
+	exit 1
+    fi
+
+    TMPBINDIR=$(mktemp -d)
+    trap "rm -rf $TMPBINDIR" EXIT
+    ORIG_CEPHADM="$CEPHADM"
+    CEPHADM="$TMPBINDIR/cephadm"
+    for p in $PYTHONS; do
+	echo "=== re-running with $p ==="
+	ln -s `which $p` $TMPBINDIR/python
+	echo "#!$TMPBINDIR/python" > $CEPHADM
+	cat $ORIG_CEPHADM >> $CEPHADM
+	chmod 700 $CEPHADM
+	$TMPBINDIR/python --version
+	PYTHON_KLUDGE=1 CEPHADM=$CEPHADM $0
+	rm $TMPBINDIR/python
+    done
+    rm -rf $TMPBINDIR
+    echo "PASS with all of: $PYTHONS"
+    exit 0
 fi
 
 # add image to args
@@ -68,7 +80,7 @@ CEPHADM="$SUDO $CEPHADM_BIN $CEPHADM_ARGS"
 # clean up previous run(s)?
 $CEPHADM rm-cluster --fsid $FSID --force
 $CEPHADM rm-cluster --fsid $FSID_LEGACY --force
-vgchange -an $OSD_VG_NAME || true
+$SUDO vgchange -an $OSD_VG_NAME || true
 loopdev=$($SUDO losetup -a | grep $(basename $OSD_IMAGE_NAME) | awk -F : '{print $1}')
 if ! [ "$loopdev" = "" ]; then
     $SUDO losetup -d $loopdev
@@ -101,6 +113,7 @@ $CEPHADM shell --fsid $FSID -- ceph -v | grep 'ceph version'
 ## bootstrap
 ORIG_CONFIG=`mktemp -p $TMPDIR`
 CONFIG=`mktemp -p $TMPDIR`
+MONCONFIG=`mktemp -p $TMPDIR`
 KEYRING=`mktemp -p $TMPDIR`
 IP=127.0.0.1
 cat <<EOF > $ORIG_CONFIG
@@ -144,9 +157,10 @@ $CEPHADM ls | jq '.[]' | jq 'select(.name == "mgr.x").fsid' \
 
 ## deploy
 # add mon.b
+cp $CONFIG $MONCONFIG
+echo "public addr = $IP:3301" >> $MONCONFIG
 $CEPHADM deploy --name mon.b \
       --fsid $FSID \
-      --mon-ip $IP:3301 \
       --keyring /var/lib/ceph/$FSID/mon.a/keyring \
       --config $CONFIG
 for u in ceph-$FSID@mon.b; do
@@ -168,6 +182,7 @@ for u in ceph-$FSID@mgr.y; do
     systemctl is-enabled $u
     systemctl is-active $u
 done
+
 for f in `seq 1 30`; do
     if $CEPHADM shell --fsid $FSID \
 	     --config $CONFIG --keyring $KEYRING -- \
@@ -191,6 +206,31 @@ for id in `seq 0 $((--OSD_TO_CREATE))`; do
             ceph orchestrator osd create \
                 $(hostname):/dev/$OSD_VG_NAME/$OSD_LV_NAME.$id
 done
+
+# add node-exporter
+$CEPHADM --image 'prom/node-exporter:latest' \
+    deploy --name node-exporter.a --fsid $FSID
+sleep 90
+out=$(curl 'http://localhost:9100')
+echo $out | grep -q 'Node Exporter'
+
+# add prometheus
+cat ${CEPHADM_SAMPLES_DIR}/prometheus.json | \
+        $CEPHADM --image 'prom/prometheus:latest' \
+            deploy --name prometheus.a --fsid $FSID \
+                   --config-json -
+sleep 90
+out=$(curl 'localhost:9095/api/v1/query?query=up')
+echo $out | jq -e '.["status"] == "success"'
+
+# add grafana
+cat ${CEPHADM_SAMPLES_DIR}/grafana.json | \
+        $CEPHADM --image 'pcuzner/ceph-grafana-el8:latest' \
+            deploy --name grafana.a --fsid $FSID \
+                   --config-json -
+sleep 90
+out=$(curl --insecure option 'https://localhost:3000')
+echo $out | grep -q 'grafana'
 
 ## run
 # WRITE ME
@@ -228,6 +268,8 @@ $CEPHADM unit --fsid $FSID --name mon.a -- is-enabled
 ## shell
 $CEPHADM shell --fsid $FSID -- true
 $CEPHADM shell --fsid $FSID -- test -d /var/log/ceph
+expect_false $CEPHADM --timeout 1 shell --fsid $FSID -- sleep 10
+$CEPHADM --timeout 10 shell --fsid $FSID -- sleep 1
 
 ## enter
 expect_false $CEPHADM enter
@@ -236,6 +278,8 @@ $CEPHADM enter --fsid $FSID --name mgr.x -- test -d /var/lib/ceph/mgr/ceph-x
 $CEPHADM enter --fsid $FSID --name mon.a -- pidof ceph-mon
 expect_false $CEPHADM enter --fsid $FSID --name mgr.x -- pidof ceph-mon
 $CEPHADM enter --fsid $FSID --name mgr.x -- pidof ceph-mgr
+expect_false $CEPHADM --timeout 1 enter --fsid $FSID --name mon.a -- sleep 10
+$CEPHADM --timeout 10 enter --fsid $FSID --name mon.a -- sleep 1
 
 ## ceph-volume
 $CEPHADM ceph-volume --fsid $FSID -- inventory --format=json \

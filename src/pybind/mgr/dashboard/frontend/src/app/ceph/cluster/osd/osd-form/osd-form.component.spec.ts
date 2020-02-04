@@ -61,8 +61,8 @@ describe('OsdFormComponent', () => {
     const event: DevicesSelectionChangeEvent = {
       type: type,
       filters: [],
-      filterInDevices: devices,
-      filterOutDevices: []
+      data: devices,
+      dataOut: []
     };
     component.onDevicesSelected(event);
     if (type === 'data') {
@@ -149,7 +149,7 @@ describe('OsdFormComponent', () => {
 
     it('should display form', () => {
       fixtureHelper.expectElementVisible('cd-alert-panel', false);
-      fixtureHelper.expectElementVisible('.col-sm-10 form', true);
+      fixtureHelper.expectElementVisible('.cd-col-form form', true);
     });
 
     describe('without data devices selected', () => {

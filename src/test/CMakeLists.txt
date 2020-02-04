@@ -302,6 +302,10 @@ target_link_libraries(ceph_test_librgw_file_nfsns
   ${UNITTEST_LIBS}
   ${EXTRALIBS}
   )
+if(WITH_BOOST_CONTEXT)
+  target_link_libraries(ceph_test_librgw_file_nfsns spawn)
+endif()
+
 
 # ceph_test_librgw_file_aw (nfs write transaction [atomic write] tests)
 add_executable(ceph_test_librgw_file_aw
@@ -326,6 +330,9 @@ target_link_libraries(ceph_test_librgw_file_marker
   ${UNITTEST_LIBS}
   ${EXTRALIBS}
   )
+if(WITH_BOOST_CONTEXT)
+  target_link_libraries(ceph_test_librgw_file_marker spawn)
+endif()
 
 # ceph_test_rgw_token
 add_executable(ceph_test_rgw_token
@@ -509,7 +516,7 @@ add_dependencies(tests
   ceph_test_objectstore
   ceph_erasure_code_non_regression
   ceph_erasure_code
-  cython${PY_BINDING_INFIX}_modules)
+  cython_modules)
 if (WITH_CEPHFS)
   add_dependencies(tests ceph-mds)
 endif()
@@ -523,8 +530,8 @@ if(WITH_RBD)
   endif(FREEBSD)
 endif(WITH_RBD)
 if(WITH_RADOSGW)
-  add_dependencies(tests radosgw radosgw-admin)
-endif(WITH_RADOSGW)
+  add_dependencies(tests radosgwd radosgw-admin)
+endif()
 #add dependency from fio just to ensure the plugin build isn't failing
 if(WITH_FIO OR WITH_SYSTEM_FIO)
   add_dependencies(tests fio_ceph_objectstore)

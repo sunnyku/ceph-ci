@@ -34,7 +34,15 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-HostSpec = namedtuple('HostSpec', ['hostname', 'network', 'name'])
+class HostSpec(namedtuple('HostSpec', ['hostname', 'network', 'name'])):
+    def __str__(self):
+        res = ''
+        res += self.hostname
+        if self.network:
+            res += ':' + self.network
+        if self.name:
+            res += '=' + self.name
+        return res
 
 
 def parse_host_specs(host, require_network=True):
@@ -265,7 +273,8 @@ class _Promise(object):
 
         :param value: new value.
         """
-        assert self._state in (self.INITIALIZED, self.RUNNING)
+        if self._state not in (self.INITIALIZED, self.RUNNING):
+            raise ValueError('finalize: {} already finished. {}'.format(repr(self), value))
 
         self._state = self.RUNNING
 
@@ -318,6 +327,9 @@ class _Promise(object):
         Sets the whole completion to be faild with this exception and end the
         evaluation.
         """
+        if self._state == self.FINISHED:
+            raise ValueError(
+                'Invalid State: called fail, but Completion is already finished: {}'.format(str(e)))
         assert self._state in (self.INITIALIZED, self.RUNNING)
         logger.exception('_Promise failed')
         self._exception = e
@@ -391,8 +403,7 @@ class ProgressReference(object):
 
     def __call__(self, arg):
         self._completion_has_result = True
-        if self.progress == 0.0:
-            self.progress = 0.5
+        self.progress = 1.0
         return arg
 
     @property
@@ -401,6 +412,7 @@ class ProgressReference(object):
 
     @progress.setter
     def progress(self, progress):
+        assert progress <= 1.0
         self._progress = progress
         try:
             if self.effective:
@@ -639,7 +651,7 @@ def raise_if_exception(c):
         try:
             e = copy_to_this_subinterpreter(c.exception)
         except (KeyError, AttributeError):
-            raise Exception(str(c.exception))
+            raise Exception('{}: {}'.format(type(c.exception), c.exception))
         raise e
 
 
@@ -849,7 +861,7 @@ class Orchestrator(object):
         * If using service_id, perform the action on a single specific daemon
           instance.
 
-        :param action: one of "start", "stop", "reload", "restart", "redeploy"
+        :param action: one of "start", "stop", "restart", "redeploy", "reconfig"
         :param service_type: e.g. "mds", "rgw", ...
         :param service_name: name of logical service ("cephfs", "us-east", ...)
         :param service_id: service daemon instance (usually a short hostname)
@@ -860,7 +872,7 @@ class Orchestrator(object):
         #assert not (service_name and service_id)
         raise NotImplementedError()
 
-    def create_osds(self, drive_group):
+    def create_osds(self, drive_groups):
         # type: (DriveGroupSpec) -> Completion
         """
         Create one or more OSDs within a single Drive Group.
@@ -870,7 +882,7 @@ class Orchestrator(object):
         finer-grained OSD feature enablement (choice of backing store,
         compression/encryption, etc).
 
-        :param drive_group: DriveGroupSpec
+        :param drive_groups: a list of DriveGroupSpec
         :param all_hosts: TODO, this is required because the orchestrator methods are not composable
                 Probably this parameter can be easily removed because each orchestrator can use
                 the "get_inventory" method and the "drive_group.host_pattern" attribute
@@ -996,12 +1008,22 @@ class Orchestrator(object):
         # type: (Optional[str], Optional[str]) -> Completion
         raise NotImplementedError()
 
-    @_hide_in_features
-    def upgrade_start(self, upgrade_spec):
-        # type: (UpgradeSpec) -> Completion
+    def upgrade_start(self, image, version):
+        # type: (Optional[str], Optional[str]) -> Completion
         raise NotImplementedError()
 
-    @_hide_in_features
+    def upgrade_pause(self):
+        # type: () -> Completion
+        raise NotImplementedError()
+
+    def upgrade_resume(self):
+        # type: () -> Completion
+        raise NotImplementedError()
+
+    def upgrade_stop(self):
+        # type: () -> Completion
+        raise NotImplementedError()
+
     def upgrade_status(self):
         # type: () -> Completion
         """
@@ -1023,17 +1045,11 @@ class Orchestrator(object):
         raise NotImplementedError()
 
 
-class UpgradeSpec(object):
-    # Request to orchestrator to initiate an upgrade to a particular
-    # version of Ceph
-    def __init__(self):
-        self.target_version = None
-
-
 class UpgradeStatusSpec(object):
     # Orchestrator's report on what's going on with any ongoing upgrade
     def __init__(self):
         self.in_progress = False  # Is an upgrade underway?
+        self.target_image = None
         self.services_complete = []  # Which daemon types are fully updated?
         self.message = ""  # Freeform description
 
@@ -1042,22 +1058,23 @@ class PlacementSpec(object):
     """
     For APIs that need to specify a node subset
     """
-    def __init__(self, label=None, nodes=None, count=None):
+    def __init__(self, label=None, hosts=None, count=None):
         # type: (Optional[str], Optional[List], Optional[int]) -> None
         self.label = label
-        if nodes:
-            if all([isinstance(node, HostSpec) for node in nodes]):
-                self.nodes = nodes
+        if hosts:
+            if all([isinstance(host, HostSpec) for host in hosts]):
+                self.hosts = hosts  # type: List[HostSpec]
             else:
-                self.nodes = [parse_host_specs(x, require_network=False) for x in nodes if x]
+                self.hosts = [parse_host_specs(x, require_network=False) for x in hosts if x]
         else:
-            self.nodes = []
+            self.hosts = []
+
         self.count = count  # type: Optional[int]
 
-    def set_nodes(self, nodes):
-        # To backpopulate the .nodes attribute when using labels or count
+    def set_hosts(self, hosts):
+        # To backpopulate the .hosts attribute when using labels or count
         # in the orchestrator backend.
-        self.nodes = nodes
+        self.hosts = hosts
 
     @classmethod
     def from_dict(cls, data):
@@ -1066,7 +1083,7 @@ class PlacementSpec(object):
         return _cls
 
     def validate(self):
-        if self.nodes and self.label:
+        if self.hosts and self.label:
             # TODO: a less generic Exception
             raise Exception('Node and label are mutually exclusive')
         if self.count is not None and self.count <= 0:
@@ -1150,6 +1167,9 @@ class ServiceDescription(object):
         # Service status description when status == -1.
         self.status_desc = status_desc
 
+        # datetime when this info was last refreshed
+        self.last_refresh = None   # type: Optional[datetime.datetime]
+
     def name(self):
         if self.service_instance:
             return '%s.%s' % (self.service_type, self.service_instance)
@@ -1185,9 +1205,15 @@ class StatefulServiceSpec(object):
     """
     # TODO: create base class for Stateless/Stateful service specs and propertly inherit
     def __init__(self, name=None, placement=None):
-        self.placement = PlacementSpec() if placement is None else placement
+        # type: (Optional[str], Optional[PlacementSpec]) -> None
+        self.placement = PlacementSpec() if placement is None else placement  # type: PlacementSpec
         self.name = name
-        self.count = self.placement.count if self.placement is not None else 1  # for backwards-compatibility
+
+        # for backwards-compatibility
+        if self.placement is not None and self.placement.count is not None:
+            self.count = self.placement.count
+        else:
+            self.count = 1
 
 
 class StatelessServiceSpec(object):
@@ -1203,12 +1229,12 @@ class StatelessServiceSpec(object):
     # start the services.
 
     def __init__(self, name, placement=None):
-        self.placement = PlacementSpec() if placement is None else placement
+        self.placement = PlacementSpec() if placement is None else placement  # type: PlacementSpec
 
         #: Give this set of statelss services a name: typically it would
         #: be the name of a CephFS filesystem, RGW zone, etc.  Must be unique
         #: within one ceph cluster.
-        self.name = name
+        self.name = name  # type: str
 
         #: Count of service instances
         self.count = self.placement.count if self.placement is not None else 1  # for backwards-compatibility
@@ -1265,7 +1291,7 @@ class RGWSpec(StatelessServiceSpec):
 
         #: List of hosts where RGWs should run. Not for Rook.
         if hosts:
-            self.placement.hosts = hosts
+            self.placement = PlacementSpec(hosts=hosts)
 
         #: is multisite
         self.rgw_multisite = rgw_multisite
@@ -1398,7 +1424,7 @@ class InventoryNode(object):
         return self.name == other.name and self.devices == other.devices
 
 
-class DeviceLightLoc(namedtuple('DeviceLightLoc', ['host', 'dev'])):
+class DeviceLightLoc(namedtuple('DeviceLightLoc', ['host', 'dev', 'path'])):
     """
     Describes a specific device on a specific host. Used for enabling or disabling LEDs
     on devices.
@@ -1441,6 +1467,16 @@ class OrchestratorClientMixin(Orchestrator):
     ...        self._orchestrator_wait([completion])
     ...        self.log.debug(completion.result)
 
+    .. note:: Orchestrator implementations should not inherit from `OrchestratorClientMixin`.
+        Reason is, that OrchestratorClientMixin magically redirects all methods to the
+        "real" implementation of the orchestrator.
+
+
+    >>> import mgr_module
+    >>> class MyImplentation(mgr_module.MgrModule, Orchestrator):
+    ...     def __init__(self, ...):
+    ...         self.orch_client = OrchestratorClientMixin()
+    ...         self.orch_client.set_mgr(self.mgr))
     """
 
     def set_mgr(self, mgr):

@@ -87,6 +87,10 @@ option {
   display: flex;
   align-items: center;
 }
+.horizontal-align {
+  display: flex;
+  justify-content: center;
+}
 .loading {
   position: absolute;
   top: 50%;
@@ -275,19 +279,14 @@ a {
 .noscript p {
   color: $color-noscript-text;
 }
-.required {
-  color: $color-required-text;
-}
 /* Forms */
-.form-group > .col-form-label > span.required,
-.form-group > .col-sm-12 > .col-form-label > span.required {
-  @extend .fa;
-  @extend .fa-asterisk;
-  @extend .required;
-  font-size: 6px;
+.required::after {
+  color: $color-required-text;
+  content: '*';
+  font-size: 14px;
   padding-left: 4px;
-  vertical-align: text-top;
 }
+
 .form-control {
   display: table-cell;
 
@@ -300,6 +299,41 @@ a {
 
 .custom-checkbox {
   padding-top: 7px;
+}
+
+.cd-col-form {
+  @extend .col-12;
+  @extend .col-lg-8;
+  @extend .col-xl-6;
+}
+
+.cd-col-form-label {
+  @extend .col-form-label;
+  @extend .col-sm-4;
+  @extend .col-md-4;
+  @extend .col-lg-3;
+}
+
+.cd-col-form-input {
+  @extend .col-sm-8;
+  @extend .col-md-8;
+  @extend .col-lg-9;
+}
+
+.cd-col-form-offset {
+  @extend .offset-sm-4;
+  @extend .offset-lg-3;
+  @extend .cd-col-form-input;
+}
+
+cd-modal {
+  .cd-col-form-label {
+    @extend .col-lg-4;
+  }
+
+  .cd-col-form-input {
+    @extend .col-lg-8;
+  }
 }
 
 /* Card */
@@ -404,30 +438,30 @@ bfv-messages {
 }
 
 //Displaying the password strength
-.passwordStrengthLevel {
+.password-strength-level {
   flex: 100%;
   margin-top: 2px;
-  .passwordStrengthLevel1,
-  .passwordStrengthLevel2,
-  .passwordStrengthLevel3,
-  .passwordStrengthLevel4 {
+  .weak,
+  .ok,
+  .strong,
+  .very-strong {
     border-radius: 0.25rem;
     height: 13px;
   }
 
-  .passwordStrengthLevel1 {
+  .weak {
     width: 25%;
     background: $color-solid-red;
   }
-  .passwordStrengthLevel2 {
+  .ok {
     width: 50%;
     background: $color-bright-yellow;
   }
-  .passwordStrengthLevel3 {
+  .strong {
     width: 75%;
     background: $color-bright-green;
   }
-  .passwordStrengthLevel4 {
+  .very-strong {
     width: 100%;
     background: $color-green;
   }

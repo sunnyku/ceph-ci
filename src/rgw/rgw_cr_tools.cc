@@ -137,7 +137,7 @@ int RGWBucketCreateLocalCR::Request::_send_request()
   bucket_owner.set_id(user);
   bucket_owner.set_name(user_info->display_name);
   if (bucket_exists) {
-    ret = rgw_op_get_bucket_policy_from_attr(cct, store->ctl()->user, bucket_info,
+    ret = rgw_op_get_bucket_policy_from_attr(cct, store, bucket_info,
                                              bucket_attrs, &old_policy);
     if (ret >= 0)  {
       if (old_policy.get_owner().get_id().compare(user) != 0) {
@@ -269,6 +269,23 @@ int RGWBucketLifecycleConfigCR::Request::_send_request()
   if (ret < 0) {
     lderr(cct) << "ERROR: failed to set lifecycle on bucke: " << cpp_strerror(-ret) << dendl;
     return -ret;
+  }
+
+  return 0;
+}
+
+template<>
+int RGWBucketGetSyncPolicyHandlerCR::Request::_send_request()
+{
+  CephContext *cct = store->ctx();
+
+  int r = store->ctl()->bucket->get_sync_policy_handler(params.zone,
+                                                        params.bucket,
+                                                        &result->policy_handler,
+                                                        null_yield);
+  if (r < 0) {
+    lderr(cct) << "ERROR: " << __func__ << "(): get_sync_policy_handler() returned " << r << dendl;
+    return  r;
   }
 
   return 0;

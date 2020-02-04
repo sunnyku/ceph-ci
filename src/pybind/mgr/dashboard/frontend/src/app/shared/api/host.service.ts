@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { CdDevice } from '../models/devices';
+import { SmartDataResponseV1 } from '../models/smart';
 import { DeviceService } from '../services/device.service';
 import { ApiModule } from './api.module';
 
@@ -20,11 +21,11 @@ export class HostService {
     return this.http.get(this.baseURL);
   }
 
-  add(hostname) {
+  add(hostname: string) {
     return this.http.post(this.baseURL, { hostname: hostname }, { observe: 'response' });
   }
 
-  remove(hostname) {
+  remove(hostname: string) {
     return this.http.delete(`${this.baseURL}/${hostname}`, { observe: 'response' });
   }
 
@@ -34,7 +35,7 @@ export class HostService {
       .pipe(map((devices) => devices.map((device) => this.deviceService.prepareDevice(device))));
   }
 
-  getSmartData(hostname) {
-    return this.http.get(`${this.baseURL}/${hostname}/smart`);
+  getSmartData(hostname: string) {
+    return this.http.get<SmartDataResponseV1>(`${this.baseURL}/${hostname}/smart`);
   }
 }

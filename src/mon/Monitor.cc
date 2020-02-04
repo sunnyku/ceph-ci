@@ -314,7 +314,7 @@ int Monitor::do_admin_command(
     _quorum_status(f, out);
   } else if (command == "sync_force") {
     string validate;
-    if ((!cmd_getval(g_ceph_context, cmdmap, "validate", validate)) ||
+    if ((!cmd_getval(cmdmap, "validate", validate)) ||
 	(validate != "--yes-i-really-mean-it")) {
       err << "are you SURE? this will mean the monitor store will be erased "
 	"the next time the monitor is restarted.  pass "
@@ -340,7 +340,7 @@ int Monitor::do_admin_command(
   } else if (command == "sessions") {
     f->open_array_section("sessions");
     for (auto p : session_map.sessions) {
-      f->dump_stream("session") << *p;
+      f->dump_object("session", *p);
     }
     f->close_section();
   } else if (command == "dump_historic_ops") {
@@ -360,7 +360,7 @@ int Monitor::do_admin_command(
     }
   } else if (command == "quorum") {
     string quorumcmd;
-    cmd_getval(g_ceph_context, cmdmap, "quorumcmd", quorumcmd);
+    cmd_getval(cmdmap, "quorumcmd", quorumcmd);
     if (quorumcmd == "exit") {
       start_election();
       elector.stop_participating();
@@ -388,7 +388,7 @@ int Monitor::do_admin_command(
     elector.notify_clear_peer_state();
   } else if (command == "smart") {
     string want_devid;
-    cmd_getval(cct, cmdmap, "devid", want_devid);
+    cmd_getval(cmdmap, "devid", want_devid);
 
     string devname = store->get_devname();
     set<string> devnames;
@@ -420,7 +420,7 @@ int Monitor::do_admin_command(
       goto abort;
     }
     string cmd;
-    if (!cmd_getval(cct, cmdmap, "heapcmd", cmd)) {
+    if (!cmd_getval(cmdmap, "heapcmd", cmd)) {
       err << "unable to get value for command \"" << cmd << "\"";
       r = -EINVAL;
       goto abort;
@@ -428,11 +428,21 @@ int Monitor::do_admin_command(
     std::vector<std::string> cmd_vec;
     get_str_vec(cmd, cmd_vec);
     string val;
-    if (cmd_getval(cct, cmdmap, "value", val)) {
+    if (cmd_getval(cmdmap, "value", val)) {
       cmd_vec.push_back(val);
     }
     ceph_heap_profiler_handle_command(cmd_vec, out);
-  } else {
+  } else if (command == "compact") {
+    dout(1) << "triggering manual compaction" << dendl;
+    auto start = ceph::coarse_mono_clock::now();
+    store->compact_async();
+    auto end = ceph::coarse_mono_clock::now();
+    auto duration = ceph::to_seconds<double>(end - start);
+    dout(1) << "finished manual compaction in "
+	    << duration << " seconds" << dendl;
+    out << "compacted " << g_conf().get_val<std::string>("mon_keyvaluedb")
+	<< " in " << duration << " seconds";
+ } else {
     ceph_abort_msg("bad AdminSocket command binding");
   }
   (read_only ? audit_clog->debug() : audit_clog->info())
@@ -854,81 +864,22 @@ int Monitor::preinit()
 
   // unlock while registering to avoid mon_lock -> admin socket lock dependency.
   l.unlock();
-
-  r = admin_socket->register_command("mon_status", admin_hook,
-				     "show current monitor status");
-  ceph_assert(r == 0);
-  r = admin_socket->register_command("quorum_status",
-				     admin_hook, "show current quorum status");
-  ceph_assert(r == 0);
-  r = admin_socket->register_command(
-    "sync_force "
-    //"name=yes_i_really_mean_it,type=CephBool,req=false",
-    "name=validate,type=CephChoices,strings=--yes-i-really-mean-it,req=false",
-    admin_hook,
-    "force sync of and clear monitor store");
-  ceph_assert(r == 0);
-  r = admin_socket->register_command("add_bootstrap_peer_hint name=addr,"
-				     "type=CephIPAddr",
-				     admin_hook,
-				     "add peer address as potential bootstrap"
-				     " peer for cluster bringup");
-  ceph_assert(r == 0);
-  r = admin_socket->register_command("add_bootstrap_peer_hintv name=addrv,"
-				     "type=CephString",
-				     admin_hook,
-				     "add peer address vector as potential bootstrap"
-				     " peer for cluster bringup");
-  ceph_assert(r == 0);
-  r = admin_socket->register_command("quorum enter",
-                                     admin_hook,
-                                     "force monitor back into quorum");
-  ceph_assert(r == 0);
-  r = admin_socket->register_command("quorum exit",
-                                     admin_hook,
-                                     "force monitor out of the quorum");
-  ceph_assert(r == 0);
-  r = admin_socket->register_command("ops",
-                                     admin_hook,
-                                     "show the ops currently in flight");
-  ceph_assert(r == 0);
-  r = admin_socket->register_command("sessions",
-                                     admin_hook,
-                                     "list existing sessions");
-  ceph_assert(r == 0);
-  r = admin_socket->register_command("dump_historic_ops",
-                                     admin_hook,
-                                    "show recent ops");
-  ceph_assert(r == 0);
-  r = admin_socket->register_command("dump_historic_ops_by_duration",
-                                     admin_hook,
-                                    "show recent ops, sorted by duration");
-  ceph_assert(r == 0);
-  r = admin_socket->register_command("dump_historic_slow_ops",
-                                     admin_hook,
-                                    "show recent slow ops");
-  ceph_assert(r == 0);
-  r = admin_socket->register_command("smart name=devid,type=CephString,req=false",
-                                     admin_hook,
-                                     "probe OSD devices for SMART data.");
-  ceph_assert(r == 0);
-  r = admin_socket->register_command(
-    "heap " \
-    "name=heapcmd,type=CephChoices,strings="				\
-    "dump|start_profiler|stop_profiler|release|get_release_rate|set_release_rate|stats " \
-    "name=value,type=CephString,req=false",
-    admin_hook,
-    "show heap usage info (available only if compiled with tcmalloc)");
-  ceph_assert(r == 0);
-
-  r = admin_socket->register_command("connection scores dump",
-				     admin_hook,
-				     "show the scores used in CONNECTIVITY-based elections");
-  ceph_assert(r == 0);
-  r = admin_socket->register_command("connection scores reset",
-				     admin_hook,
-				     "reset the scores used in CONNECTIVITY-based elections");
-  ceph_assert(r == 0);
+  // register tell/asock commands
+  for (const auto& command : local_mon_commands) {
+    if (!command.is_tell()) {
+      continue;
+    }
+    const auto prefix = cmddesc_get_prefix(command.cmdstring);
+    if (prefix == "injectargs" ||
+	prefix == "version" ||
+	prefix == "tell") {
+      // not registerd by me
+      continue;
+    }
+    r = admin_socket->register_command(prefix, admin_hook,
+				       command.helpstring);
+    ceph_assert(r == 0);
+  }
   l.lock();
 
   // add ourselves as a conf observer
@@ -1283,7 +1234,7 @@ bool Monitor::_add_bootstrap_peer_hint(std::string_view cmd,
 
   entity_addrvec_t addrs;
   string addrstr;
-  if (cmd_getval(g_ceph_context, cmdmap, "addr", addrstr)) {
+  if (cmd_getval(cmdmap, "addr", addrstr)) {
     dout(10) << "_add_bootstrap_peer_hint '" << cmd << "' addr '"
 	     << addrstr << "'" << dendl;
 
@@ -1309,7 +1260,7 @@ bool Monitor::_add_bootstrap_peer_hint(std::string_view cmd,
 	addrs.v[0].set_type(entity_addr_t::TYPE_MSGR2);
       }
     }
-  } else if (cmd_getval(g_ceph_context, cmdmap, "addrv", addrstr)) {
+  } else if (cmd_getval(cmdmap, "addrv", addrstr)) {
     dout(10) << "_add_bootstrap_peer_hintv '" << cmd << "' addrv '"
 	     << addrstr << "'" << dendl;
     const char *end = 0;
@@ -2362,21 +2313,11 @@ void Monitor::collect_metadata(Metadata *m)
   string devname = store->get_devname();
   set<string> devnames;
   get_raw_devices(devname, &devnames);
-  (*m)["devices"] = stringify(devnames);
-  string devids;
-  for (auto& devname : devnames) {
-    string err;
-    string id = get_device_id(devname, &err);
-    if (id.size()) {
-      if (!devids.empty()) {
-	devids += ",";
-      }
-      devids += devname + "=" + id;
-    } else {
-      derr << "failed to get devid for " << devname << ": " << err << dendl;
-    }
+  map<string,string> errs;
+  get_device_metadata(devnames, m, &errs);
+  for (auto& i : errs) {
+    dout(1) << __func__ << " " << i.first << ": " << i.second << dendl;
   }
-  (*m)["device_ids"] = devids;
 }
 
 void Monitor::finish_election()
@@ -3031,8 +2972,8 @@ void Monitor::get_cluster_status(stringstream &ss, Formatter *f)
 	mgrmon()->get_map().print_summary(nullptr, &ss);
 	ss << "\n";
       }
-      if (mdsmon()->get_fsmap().filesystem_count() > 0) {
-	ss << "    mds: " << spacing << mdsmon()->get_fsmap() << "\n";
+      if (mdsmon()->should_print_status()) {
+        ss << "    mds: " << spacing << mdsmon()->get_fsmap() << "\n";
       }
       ss << "    osd: " << spacing;
       osdmon()->osdmap.print_summary(NULL, ss, string(maxlen + 6, ' '));
@@ -3086,7 +3027,7 @@ void Monitor::_generate_command_map(cmdmap_t& cmdmap,
       continue;
     if (p->first == "caps") {
       vector<string> cv;
-      if (cmd_getval(g_ceph_context, cmdmap, "caps", cv) &&
+      if (cmd_getval(cmdmap, "caps", cv) &&
 	  cv.size() % 2 == 0) {
 	for (unsigned i = 0; i < cv.size(); i += 2) {
 	  string k = string("caps_") + cv[i];
@@ -3181,35 +3122,42 @@ void Monitor::handle_tell_command(MonOpRequestRef op)
   MCommand *m = static_cast<MCommand*>(op->get_req());
   if (m->fsid != monmap->fsid) {
     dout(0) << "handle_command on fsid " << m->fsid << " != " << monmap->fsid << dendl;
-    reply_command(op, -EACCES, "wrong fsid", 0);
-    return;
+    return reply_tell_command(op, -EACCES, "wrong fsid");
   }
   MonSession *session = op->get_session();
   if (!session) {
     dout(5) << __func__ << " dropping stray message " << *m << dendl;
     return;
   }
-  if (!session->caps.is_allow_all()) {
-    // see if command is whitelisted
-    cmdmap_t cmdmap;
-    stringstream ss;
-    if (!cmdmap_from_json(m->cmd, &cmdmap, ss)) {
-      reply_command(op, -EINVAL, ss.str(), 0);
+  cmdmap_t cmdmap;
+  if (stringstream ss; !cmdmap_from_json(m->cmd, &cmdmap, ss)) {
+    return reply_tell_command(op, -EINVAL, ss.str());
+  }
+  map<string,string> param_str_map;
+  _generate_command_map(cmdmap, param_str_map);
+  string prefix;
+  if (!cmd_getval(cmdmap, "prefix", prefix)) {
+    return reply_tell_command(op, -EINVAL, "no prefix");
+  }
+  if (auto cmd = _get_moncommand(prefix,
+				 get_local_commands(quorum_mon_features));
+      cmd) {
+    if (cmd->is_obsolete() ||
+	(cct->_conf->mon_debug_deprecated_as_obsolete &&
+	 cmd->is_deprecated())) {
+      return reply_tell_command(op, -ENOTSUP,
+				"command is obsolete; "
+				"please check usage and/or man page");
     }
-    map<string,string> param_str_map;
-    _generate_command_map(cmdmap, param_str_map);
-    string prefix;
-    if (!cmd_getval(g_ceph_context, cmdmap, "prefix", prefix)) {
-      reply_command(op, -EINVAL, "no prefix", 0);
-    }
-    if (!session->caps.is_capable(
-	  g_ceph_context,
-	  session->entity_name,
-	  "mon", prefix, param_str_map,
-	  true, true, true,
-	  session->get_peer_socket_addr())) {
-      reply_tell_command(op, -EACCES, "insufficient caps");
-    }
+  }
+  // see if command is whitelisted
+  if (!session->caps.is_capable(
+      g_ceph_context,
+      session->entity_name,
+      "mon", prefix, param_str_map,
+      true, true, true,
+      session->get_peer_socket_addr())) {
+    return reply_tell_command(op, -EACCES, "insufficient caps");
   }
   // pass it to asok
   cct->get_admin_socket()->queue_tell_command(m);
@@ -3257,7 +3205,7 @@ void Monitor::handle_command(MonOpRequestRef op)
 
   // check return value. If no prefix parameter provided,
   // return value will be false, then return error info.
-  if (!cmd_getval(g_ceph_context, cmdmap, "prefix", prefix)) {
+  if (!cmd_getval(cmdmap, "prefix", prefix)) {
     reply_command(op, -EINVAL, "command prefix not found", 0);
     return;
   }
@@ -3307,7 +3255,7 @@ void Monitor::handle_command(MonOpRequestRef op)
   dout(0) << "handle_command " << *m << dendl;
 
   string format;
-  cmd_getval(g_ceph_context, cmdmap, "format", format, string("plain"));
+  cmd_getval(cmdmap, "format", format, string("plain"));
   boost::scoped_ptr<Formatter> f(Formatter::create(format));
 
   get_str_vec(prefix, fullcmd);
@@ -3457,10 +3405,8 @@ void Monitor::handle_command(MonOpRequestRef op)
 
   if (module == "mon" &&
       /* Let the Monitor class handle the following commands:
-       *  'mon compact'
        *  'mon scrub'
        */
-      prefix != "mon compact" &&
       prefix != "mon scrub" &&
       prefix != "mon metadata" &&
       prefix != "mon versions" &&
@@ -3508,7 +3454,7 @@ void Monitor::handle_command(MonOpRequestRef op)
     return;
   }
 
-  if (prefix == "scrub" || prefix == "mon scrub") {
+  if (prefix == "mon scrub") {
     wait_for_paxos_write();
     if (is_leader()) {
       int r = scrub_start();
@@ -3521,18 +3467,7 @@ void Monitor::handle_command(MonOpRequestRef op)
     return;
   }
 
-  if (prefix == "compact" || prefix == "mon compact") {
-    dout(1) << "triggering manual compaction" << dendl;
-    auto start = ceph::coarse_mono_clock::now();
-    store->compact_async();
-    auto end = ceph::coarse_mono_clock::now();
-    double duration = std::chrono::duration<double>(end-start).count();
-    dout(1) << "finished manual compaction in " << duration << " seconds" << dendl;
-    ostringstream oss;
-    oss << "compacted " << g_conf().get_val<std::string>("mon_keyvaluedb") << " in " << duration << " seconds";
-    rs = oss.str();
-    r = 0;
-  } else if (prefix == "time-sync-status") {
+  if (prefix == "time-sync-status") {
     if (!f)
       f.reset(Formatter::create("json-pretty"));
     f->open_object_section("time_sync");
@@ -3569,7 +3504,7 @@ void Monitor::handle_command(MonOpRequestRef op)
 	     prefix == "health" ||
 	     prefix == "df") {
     string detail;
-    cmd_getval(g_ceph_context, cmdmap, "detail", detail);
+    cmd_getval(cmdmap, "detail", detail);
 
     if (prefix == "status") {
       // get_cluster_status handles f == NULL
@@ -3623,7 +3558,7 @@ void Monitor::handle_command(MonOpRequestRef op)
     f->dump_stream("timestamp") << ceph_clock_now();
 
     vector<string> tagsvec;
-    cmd_getval(g_ceph_context, cmdmap, "tags", tagsvec);
+    cmd_getval(cmdmap, "tags", tagsvec);
     string tagstr = str_join(tagsvec, " ");
     if (!tagstr.empty())
       tagstr = tagstr.substr(0, tagstr.find_last_of(' '));
@@ -3648,7 +3583,7 @@ void Monitor::handle_command(MonOpRequestRef op)
     r = 0;
   } else if (prefix == "osd last-stat-seq") {
     int64_t osd;
-    cmd_getval(g_ceph_context, cmdmap, "id", osd);
+    cmd_getval(cmdmap, "id", osd);
     uint64_t seq = mgrstatmon()->get_last_osd_stat_seq(osd);
     if (f) {
       f->dump_unsigned("seq", seq);
@@ -3661,7 +3596,7 @@ void Monitor::handle_command(MonOpRequestRef op)
     r = 0;
   } else if (prefix == "node ls") {
     string node_type("all");
-    cmd_getval(g_ceph_context, cmdmap, "type", node_type);
+    cmd_getval(cmdmap, "type", node_type);
     if (!f)
       f.reset(Formatter::create("json-pretty"));
     if (node_type == "all") {
@@ -3707,7 +3642,7 @@ void Monitor::handle_command(MonOpRequestRef op)
       f.reset(Formatter::create("json-pretty"));
 
     string name;
-    bool all = !cmd_getval(g_ceph_context, cmdmap, "id", name);
+    bool all = !cmd_getval(cmdmap, "id", name);
     if (!all) {
       // Dump a single mon's metadata
       int mon = monmap->get_rank(name);
@@ -3758,7 +3693,7 @@ void Monitor::handle_command(MonOpRequestRef op)
     if (!f)
       f.reset(Formatter::create("json-pretty"));
     string field;
-    cmd_getval(g_ceph_context, cmdmap, "property", field);
+    cmd_getval(cmdmap, "property", field);
     count_metadata(field, f.get());
     f->flush(ds);
     rdata.append(ds);
@@ -3777,7 +3712,7 @@ void Monitor::handle_command(MonOpRequestRef op)
     r = 0;
   } else if (prefix == "mon ok-to-stop") {
     vector<string> ids;
-    if (!cmd_getval(g_ceph_context, cmdmap, "ids", ids)) {
+    if (!cmd_getval(cmdmap, "ids", ids)) {
       r = -EINVAL;
       goto out;
     }
@@ -3809,7 +3744,7 @@ void Monitor::handle_command(MonOpRequestRef op)
     r = 0;
   } else if (prefix == "mon ok-to-rm") {
     string id;
-    if (!cmd_getval(g_ceph_context, cmdmap, "id", id)) {
+    if (!cmd_getval(cmdmap, "id", id)) {
       r = -EINVAL;
       rs = "must specify a monitor id";
       goto out;
@@ -4330,7 +4265,6 @@ void Monitor::_ms_dispatch(Message *m)
         // exist only while the op is being handled.
         remove_session(s);
       }
-      s->put();
       s = nullptr;
     }
   }

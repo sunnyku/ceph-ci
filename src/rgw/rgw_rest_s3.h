@@ -101,6 +101,27 @@ public:
   void send_response() override;
 };
 
+class RGWGetBucketReplication_ObjStore_S3 : public RGWGetBucketReplication_ObjStore
+{
+public:
+  void send_response_data() override;
+};
+
+class RGWPutBucketReplication_ObjStore_S3 : public RGWPutBucketReplication_ObjStore
+{
+public:
+  int get_params() override;
+  void send_response() override;
+};
+
+class RGWDeleteBucketReplication_ObjStore_S3 : public RGWDeleteBucketReplication_ObjStore
+{
+protected:
+  void update_sync_policy(rgw_sync_policy_info *policy) override;
+public:
+  void send_response() override;
+};
+
 class RGWListBuckets_ObjStore_S3 : public RGWListBuckets_ObjStore {
 public:
   RGWListBuckets_ObjStore_S3() {}
@@ -652,6 +673,9 @@ protected:
     }
     return false;
   }
+  bool is_replication_op() const {
+    return s->info.args.exists("replication");
+  }
 
   RGWOp *get_obj_op(bool get_data) const;
 
@@ -723,6 +747,10 @@ class RGWHandler_REST_Obj_S3Website;
 
 static inline bool looks_like_ip_address(const char *bucket)
 {
+  struct in6_addr a;
+  if (inet_pton(AF_INET6, bucket, static_cast<void*>(&a)) == 1) {
+    return true;
+  }
   int num_periods = 0;
   bool expect_period = false;
   for (const char *b = bucket; *b; ++b) {

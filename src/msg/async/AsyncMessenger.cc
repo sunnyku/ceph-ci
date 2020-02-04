@@ -201,6 +201,7 @@ void Processor::accept()
 	accept_error_num = 0;
 	continue;
       } else {
+	--w->references;
 	if (r == -EINTR) {
 	  continue;
 	} else if (r == -EAGAIN) {
@@ -313,7 +314,6 @@ AsyncMessenger::~AsyncMessenger()
 {
   delete reap_handler;
   ceph_assert(!did_bind); // either we didn't bind or we shut down the Processor
-  local_connection->mark_down();
   for (auto &&p : processors)
     delete p;
 }
@@ -346,7 +346,8 @@ int AsyncMessenger::shutdown()
     p->stop();
   mark_down_all();
   // break ref cycles on the loopback connection
-  local_connection->set_priv(NULL);
+  local_connection->clear_priv();
+  local_connection->mark_down();
   did_bind = false;
   lock.lock();
   stop_cond.notify_all();

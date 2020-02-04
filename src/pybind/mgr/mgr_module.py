@@ -5,6 +5,7 @@ try:
 except ImportError:
     # just for type checking
     pass
+import datetime
 import logging
 import errno
 import json
@@ -150,6 +151,10 @@ class OSDMap(ceph_module.BasePyOSDMap):
         d = self._dump()
         return d['erasure_code_profiles'].get(name, None)
 
+    def get_require_osd_release(self):
+        d = self._dump()
+        return d['require_osd_release']
+
 
 class OSDMapIncremental(ceph_module.BasePyOSDMapIncremental):
     def get_epoch(self):
@@ -223,7 +228,7 @@ class CRUSHMap(ceph_module.BasePyCRUSH):
         try:
             first_take = [s for s in rule['steps'] if s['op'] == 'take'][0]
         except IndexError:
-            self.log.warn("CRUSH rule '{0}' has no 'take' step".format(
+            logging.warning("CRUSH rule '{0}' has no 'take' step".format(
                 rule_name))
             return None
         else:

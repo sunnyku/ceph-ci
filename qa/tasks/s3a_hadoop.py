@@ -14,8 +14,8 @@ def task(ctx, config):
       -tasks:
          ceph-ansible:
          s3a-hadoop:
-           maven-version: '3.3.9' (default)
-           hadoop-version: '2.7.3'
+           maven-version: '3.6.3' (default)
+           hadoop-version: '2.9.2'
            bucket-name: 's3atest' (default)
            access-key: 'anykey' (uses a default value)
            secret-key: 'secretkey' ( uses a default value)
@@ -40,7 +40,7 @@ def task(ctx, config):
 
     # get versions
     maven_major = config.get('maven-major', 'maven-3')
-    maven_version = config.get('maven-version', '3.6.2')
+    maven_version = config.get('maven-version', '3.6.3')
     hadoop_ver = config.get('hadoop-version', '2.9.2')
     bucket_name = config.get('bucket-name', 's3atest')
     access_key = config.get('access-key', 'EGAQRD2ULOIFKFSKCT4F')
@@ -136,7 +136,7 @@ def setup_user_bucket(client, dns_name, access_key, secret_key, bucket_name, tes
             'create',
             run.Raw('--uid'),
             's3a',
-            run.Raw('--display-name=s3a cephtests'),
+            run.Raw('--display-name="s3a cephtests"'),
             run.Raw('--access-key={access_key}'.format(access_key=access_key)),
             run.Raw('--secret-key={secret_key}'.format(secret_key=secret_key)),
             run.Raw('--email=s3a@ceph.com'),

@@ -91,9 +91,9 @@ public:
       auto set_fn = PyObject_GetAttrString(python_completion, "complete");
       ceph_assert(set_fn != nullptr);
 
-      auto pyR = PyInt_FromLong(r);
-      auto pyOutBl = PyString_FromString(outbl.to_str().c_str());
-      auto pyOutS = PyString_FromString(outs.c_str());
+      auto pyR = PyLong_FromLong(r);
+      auto pyOutBl = PyUnicode_FromString(outbl.to_str().c_str());
+      auto pyOutS = PyUnicode_FromString(outs.c_str());
       auto args = PyTuple_Pack(3, pyR, pyOutBl, pyOutS);
       Py_DECREF(pyR);
       Py_DECREF(pyOutBl);
@@ -287,26 +287,27 @@ ceph_set_health_checks(BaseMgrModule *self, PyObject *args)
       }
       string ks(k);
       if (ks == "severity") {
-	if (auto [vs, valid] = PyString_ToString(v); !valid) {
+	if (!PyUnicode_Check(v)) {
 	  derr << __func__ << " check " << check_name
 	       << " severity value not string" << dendl;
 	  continue;
-	} else if (vs == "warning") {
+	}
+	if (const string vs = PyUnicode_AsUTF8(v); vs == "warning") {
 	  severity = HEALTH_WARN;
 	} else if (vs == "error") {
 	  severity = HEALTH_ERR;
 	}
       } else if (ks == "summary") {
-	if (auto [vs, valid] = PyString_ToString(v); !valid) {
+	if (!PyUnicode_Check(v)) {
 	  derr << __func__ << " check " << check_name
 	       << " summary value not [unicode] string" << dendl;
 	  continue;
 	} else {
-	  summary = std::move(vs);
+	  summary = PyUnicode_AsUTF8(v);
 	}
       } else if (ks == "count") {
-	if (PyInt_Check(v)) {
-	  count = PyInt_AsLong(v);
+	if (PyLong_Check(v)) {
+	  count = PyLong_AsLong(v);
 	} else {
 	  derr << __func__ << " check " << check_name
 	       << " count value not int" << dendl;
@@ -320,12 +321,12 @@ ceph_set_health_checks(BaseMgrModule *self, PyObject *args)
 	}
 	for (int k = 0; k < PyList_Size(v); ++k) {
 	  PyObject *di = PyList_GET_ITEM(v, k);
-	  if (auto [vs, valid] = PyString_ToString(di); !valid) {
+	  if (!PyUnicode_Check(di)) {
 	    derr << __func__ << " check " << check_name
 		 << " detail item " << k << " not a [unicode] string" << dendl;
 	    continue;
 	  } else {
-	    detail.push_back(std::move(vs));
+	    detail.push_back(PyUnicode_AsUTF8(di));
 	  }
 	}
       } else {
@@ -383,7 +384,7 @@ ceph_get_server(BaseMgrModule *self, PyObject *args)
 static PyObject*
 ceph_get_mgr_id(BaseMgrModule *self, PyObject *args)
 {
-  return PyString_FromString(g_conf()->name.get_id().c_str());
+  return PyUnicode_FromString(g_conf()->name.get_id().c_str());
 }
 
 static PyObject*
@@ -398,13 +399,23 @@ ceph_option_get(BaseMgrModule *self, PyObject *args)
   const Option *opt = g_conf().find_option(string(what));
   if (opt) {
     std::string value;
-    int r = g_conf().get_val(string(what), &value);
-    assert(r >= 0);
+    switch (int r = g_conf().get_val(string(what), &value); r) {
+    case -ENOMEM:
+      PyErr_NoMemory();
+      return nullptr;
+    case -ENAMETOOLONG:
+      PyErr_SetString(PyExc_ValueError, "value too long");
+      return nullptr;
+    default:
+      ceph_assert(r == 0);
+      break;
+    }
     dout(10) << "ceph_option_get " << what << " found: " << value << dendl;
     return get_python_typed_option_value(opt->type, value);
   } else {
     dout(4) << "ceph_option_get " << what << " not found " << dendl;
-    Py_RETURN_NONE;
+    PyErr_Format(PyExc_KeyError, "option not found: %s", what);
+    return nullptr;
   }
 }
 
@@ -477,7 +488,7 @@ ceph_store_get(BaseMgrModule *self, PyObject *args)
       what, &value);
   if (found) {
     dout(10) << "ceph_store_get " << what << " found: " << value.c_str() << dendl;
-    return PyString_FromString(value.c_str());
+    return PyUnicode_FromString(value.c_str());
   } else {
     dout(4) << "ceph_store_get " << what << " not found " << dendl;
     Py_RETURN_NONE;
@@ -570,13 +581,13 @@ ceph_cluster_log(BaseMgrModule *self, PyObject *args)
 static PyObject *
 ceph_get_version(BaseMgrModule *self, PyObject *args)
 {
-  return PyString_FromString(pretty_version_to_str().c_str());
+  return PyUnicode_FromString(pretty_version_to_str().c_str());
 }
 
 static PyObject *
 ceph_get_release_name(BaseMgrModule *self, PyObject *args)
 {
-  return PyString_FromString(ceph_release_to_str());
+  return PyUnicode_FromString(ceph_release_to_str());
 }
 
 static PyObject *
@@ -849,12 +860,12 @@ ceph_add_osd_perf_query(BaseMgrModule *self, PyObject *args)
             Py_RETURN_NONE;
           }
           if (param_name == NAME_SUB_KEY_TYPE) {
-            if (!PyString_Check(param_value)) {
+            if (!PyUnicode_Check(param_value)) {
               derr << __func__ << " query " << query_param_name << " item " << j
                    << " contains invalid param " << param_name << dendl;
               Py_RETURN_NONE;
             }
-            auto type = PyString_AsString(param_value);
+            auto type = PyUnicode_AsUTF8(param_value);
             auto it = sub_key_types.find(type);
             if (it == sub_key_types.end()) {
               derr << __func__ << " query " << query_param_name << " item " << j
@@ -863,12 +874,12 @@ ceph_add_osd_perf_query(BaseMgrModule *self, PyObject *args)
             }
             d.type = it->second;
           } else if (param_name == NAME_SUB_KEY_REGEX) {
-            if (!PyString_Check(param_value)) {
+            if (!PyUnicode_Check(param_value)) {
               derr << __func__ << " query " << query_param_name << " item " << j
                    << " contains invalid param " << param_name << dendl;
               Py_RETURN_NONE;
             }
-            d.regex_str = PyString_AsString(param_value);
+            d.regex_str = PyUnicode_AsUTF8(param_value);
             try {
               d.regex = d.regex_str.c_str();
             } catch (const std::regex_error& e) {
@@ -903,12 +914,12 @@ ceph_add_osd_perf_query(BaseMgrModule *self, PyObject *args)
       }
       for (int j = 0; j < PyList_Size(query_param_val); j++) {
         PyObject *py_type = PyList_GET_ITEM(query_param_val, j);
-        if (!PyString_Check(py_type)) {
+        if (!PyUnicode_Check(py_type)) {
           derr << __func__ << " query " << query_param_name << " item " << j
                << " not a string" << dendl;
           Py_RETURN_NONE;
         }
-        auto type = PyString_AsString(py_type);
+        auto type = PyUnicode_AsUTF8(py_type);
         auto it = counter_types.find(type);
         if (it == counter_types.end()) {
           derr << __func__ << " query " << query_param_name << " item " << type
@@ -939,12 +950,12 @@ ceph_add_osd_perf_query(BaseMgrModule *self, PyObject *args)
         }
 
         if (limit_param_name == NAME_LIMIT_ORDER_BY) {
-          if (!PyString_Check(limit_param_val)) {
+          if (!PyUnicode_Check(limit_param_val)) {
             derr << __func__ << " " << limit_param_name << " not a string"
                  << dendl;
             Py_RETURN_NONE;
           }
-          auto order_by = PyString_AsString(limit_param_val);
+          auto order_by = PyUnicode_AsUTF8(limit_param_val);
           auto it = counter_types.find(order_by);
           if (it == counter_types.end()) {
             derr << __func__ << " limit " << limit_param_name
@@ -953,12 +964,12 @@ ceph_add_osd_perf_query(BaseMgrModule *self, PyObject *args)
           }
           limit->order_by = it->second;
         } else if (limit_param_name == NAME_LIMIT_MAX_COUNT) {
-          if (!PyInt_Check(limit_param_val)) {
+          if (!PyLong_Check(limit_param_val)) {
             derr << __func__ << " " << limit_param_name << " not an int"
                  << dendl;
             Py_RETURN_NONE;
           }
-          limit->max_count = PyInt_AsLong(limit_param_val);
+          limit->max_count = PyLong_AsLong(limit_param_val);
         } else {
           derr << __func__ << " unknown limit param: " << limit_param_name
                << dendl;

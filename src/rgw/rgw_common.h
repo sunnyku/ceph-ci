@@ -32,6 +32,7 @@
 #include "rgw_website.h"
 #include "rgw_object_lock.h"
 #include "rgw_tag.h"
+#include "rgw_sync_policy.h"
 #include "cls/version/cls_version_types.h"
 #include "cls/user/cls_user_types.h"
 #include "cls/rgw/cls_rgw_types.h"
@@ -41,8 +42,11 @@ namespace ceph {
   class Formatter;
 }
 
-using ceph::crypto::MD5;
+namespace rgw::sal {
+  class RGWUser;
+}
 
+using ceph::crypto::MD5;
 
 #define RGW_ATTR_PREFIX  "user.rgw."
 
@@ -527,6 +531,9 @@ enum RGWOpType {
   RGW_OP_GET_BUCKET_TAGGING,
   RGW_OP_PUT_BUCKET_TAGGING,
   RGW_OP_DELETE_BUCKET_TAGGING,
+  RGW_OP_GET_BUCKET_REPLICATION,
+  RGW_OP_PUT_BUCKET_REPLICATION,
+  RGW_OP_DELETE_BUCKET_REPLICATION,
 };
 
 class RGWAccessControlPolicy;
@@ -614,7 +621,7 @@ public:
      decode(caps, bl);
      DECODE_FINISH(bl);
   }
-  int check_cap(const string& cap, uint32_t perm);
+  int check_cap(const string& cap, uint32_t perm) const;
   bool is_valid_cap_type(const string& tp);
   void dump(Formatter *f) const;
   void dump(Formatter *f, const char *name) const;
@@ -843,7 +850,7 @@ struct RGWUserInfo
      ENCODE_FINISH(bl);
   }
   void decode(bufferlist::const_iterator& bl) {
-     DECODE_START_LEGACY_COMPAT_LEN_32(20, 9, 9, bl);
+     DECODE_START_LEGACY_COMPAT_LEN_32(21, 9, 9, bl);
      if (struct_v >= 2) {
        uint64_t old_auid;
        decode(old_auid, bl);
@@ -933,134 +940,6 @@ struct RGWUserInfo
 };
 WRITE_CLASS_ENCODER(RGWUserInfo)
 
-struct rgw_pool {
-  std::string name;
-  std::string ns;
-
-  rgw_pool() = default;
-  rgw_pool(const rgw_pool& _p) : name(_p.name), ns(_p.ns) {}
-  rgw_pool(rgw_pool&&) = default;
-  rgw_pool(const string& _s) {
-    from_str(_s);
-  }
-  rgw_pool(const string& _name, const string& _ns) : name(_name), ns(_ns) {}
-
-  string to_str() const;
-  void from_str(const string& s);
-
-  void init(const string& _s) {
-    from_str(_s);
-  }
-
-  bool empty() const {
-    return name.empty();
-  }
-
-  int compare(const rgw_pool& p) const {
-    int r = name.compare(p.name);
-    if (r != 0) {
-      return r;
-    }
-    return ns.compare(p.ns);
-  }
-
-  void encode(bufferlist& bl) const {
-     ENCODE_START(10, 10, bl);
-    encode(name, bl);
-    encode(ns, bl);
-    ENCODE_FINISH(bl);
-  }
-
-  void decode_from_bucket(bufferlist::const_iterator& bl);
-
-  void decode(bufferlist::const_iterator& bl) {
-    DECODE_START_LEGACY_COMPAT_LEN(10, 3, 3, bl);
-
-    decode(name, bl);
-
-    if (struct_v < 10) {
-
-    /*
-     * note that rgw_pool can be used where rgw_bucket was used before
-     * therefore we inherit rgw_bucket's old versions. However, we only
-     * need the first field from rgw_bucket. unless we add more fields
-     * in which case we'll need to look at struct_v, and check the actual
-     * version. Anything older than 10 needs to be treated as old rgw_bucket
-     */
-
-    } else {
-      decode(ns, bl);
-    }
-
-    DECODE_FINISH(bl);
-  }
-
-  rgw_pool& operator=(const rgw_pool&) = default;
-
-  bool operator==(const rgw_pool& p) const {
-    return (compare(p) == 0);
-  }
-  bool operator!=(const rgw_pool& p) const {
-    return !(*this == p);
-  }
-  bool operator<(const rgw_pool& p) const {
-    int r = name.compare(p.name);
-    if (r == 0) {
-      return (ns.compare(p.ns) < 0);
-    }
-    return (r < 0);
-  }
-};
-WRITE_CLASS_ENCODER(rgw_pool)
-
-struct rgw_data_placement_target {
-  rgw_pool data_pool;
-  rgw_pool data_extra_pool;
-  rgw_pool index_pool;
-
-  rgw_data_placement_target() = default;
-  rgw_data_placement_target(const rgw_data_placement_target&) = default;
-  rgw_data_placement_target(rgw_data_placement_target&&) = default;
-
-  rgw_data_placement_target(const rgw_pool& data_pool,
-                            const rgw_pool& data_extra_pool,
-                            const rgw_pool& index_pool)
-    : data_pool(data_pool),
-      data_extra_pool(data_extra_pool),
-      index_pool(index_pool) {
-  }
-
-  rgw_data_placement_target&
-  operator=(const rgw_data_placement_target&) = default;
-
-  const rgw_pool& get_data_extra_pool() const {
-    if (data_extra_pool.empty()) {
-      return data_pool;
-    }
-    return data_extra_pool;
-  }
-
-  int compare(const rgw_data_placement_target& t) {
-    int c = data_pool.compare(t.data_pool);
-    if (c != 0) {
-      return c;
-    }
-    c = data_extra_pool.compare(t.data_extra_pool);
-    if (c != 0) {
-      return c;
-    }
-    return index_pool.compare(t.index_pool);
-  };
-
-  void dump(Formatter *f) const;
-  void decode_json(JSONObj *obj);
-};
-
-inline ostream& operator<<(ostream& out, const rgw_pool& p) {
-  out << p.to_str();
-  return out;
-}
-
 struct rgw_raw_obj {
   rgw_pool pool;
   std::string oid;
@@ -1135,175 +1014,6 @@ inline ostream& operator<<(ostream& out, const rgw_raw_obj& o) {
   out << o.pool << ":" << o.oid;
   return out;
 }
-
-struct rgw_bucket_key {
-  std::string tenant;
-  std::string name;
-  std::string bucket_id;
-
-  rgw_bucket_key(const std::string& _tenant,
-                 const std::string& _name,
-                 const std::string& _bucket_id) : tenant(_tenant),
-                                                  name(_name),
-                                                  bucket_id(_bucket_id) {}
-  rgw_bucket_key(const std::string& _tenant,
-                 const std::string& _name) : tenant(_tenant),
-                                             name(_name) {}
-}; 
-
-struct rgw_bucket {
-  std::string tenant;
-  std::string name;
-  std::string marker;
-  std::string bucket_id;
-  rgw_data_placement_target explicit_placement;
-
-  rgw_bucket() { }
-  // cppcheck-suppress noExplicitConstructor
-  explicit rgw_bucket(const rgw_user& u, const cls_user_bucket& b) :
-    tenant(u.tenant),
-    name(b.name),
-    marker(b.marker),
-    bucket_id(b.bucket_id),
-    explicit_placement(b.explicit_placement.data_pool,
-                       b.explicit_placement.data_extra_pool,
-                       b.explicit_placement.index_pool) {}
-  rgw_bucket(const rgw_bucket_key& bk) : tenant(bk.tenant),
-                                         name(bk.name),
-                                         bucket_id(bk.bucket_id) {}
-  rgw_bucket(const rgw_bucket&) = default;
-  rgw_bucket(rgw_bucket&&) = default;
-
-  void convert(cls_user_bucket *b) const {
-    b->name = name;
-    b->marker = marker;
-    b->bucket_id = bucket_id;
-    b->explicit_placement.data_pool = explicit_placement.data_pool.to_str();
-    b->explicit_placement.data_extra_pool = explicit_placement.data_extra_pool.to_str();
-    b->explicit_placement.index_pool = explicit_placement.index_pool.to_str();
-  }
-
-  void encode(bufferlist& bl) const {
-     ENCODE_START(10, 10, bl);
-    encode(name, bl);
-    encode(marker, bl);
-    encode(bucket_id, bl);
-    encode(tenant, bl);
-    bool encode_explicit = !explicit_placement.data_pool.empty();
-    encode(encode_explicit, bl);
-    if (encode_explicit) {
-      encode(explicit_placement.data_pool, bl);
-      encode(explicit_placement.data_extra_pool, bl);
-      encode(explicit_placement.index_pool, bl);
-    }
-    ENCODE_FINISH(bl);
-  }
-  void decode(bufferlist::const_iterator& bl) {
-    DECODE_START_LEGACY_COMPAT_LEN(10, 3, 3, bl);
-    decode(name, bl);
-    if (struct_v < 10) {
-      decode(explicit_placement.data_pool.name, bl);
-    }
-    if (struct_v >= 2) {
-      decode(marker, bl);
-      if (struct_v <= 3) {
-        uint64_t id;
-        decode(id, bl);
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%" PRIu64, id);
-        bucket_id = buf;
-      } else {
-        decode(bucket_id, bl);
-      }
-    }
-    if (struct_v < 10) {
-      if (struct_v >= 5) {
-        decode(explicit_placement.index_pool.name, bl);
-      } else {
-        explicit_placement.index_pool = explicit_placement.data_pool;
-      }
-      if (struct_v >= 7) {
-        decode(explicit_placement.data_extra_pool.name, bl);
-      }
-    }
-    if (struct_v >= 8) {
-      decode(tenant, bl);
-    }
-    if (struct_v >= 10) {
-      bool decode_explicit = !explicit_placement.data_pool.empty();
-      decode(decode_explicit, bl);
-      if (decode_explicit) {
-        decode(explicit_placement.data_pool, bl);
-        decode(explicit_placement.data_extra_pool, bl);
-        decode(explicit_placement.index_pool, bl);
-      }
-    }
-    DECODE_FINISH(bl);
-  }
-
-  void update_bucket_id(const string& new_bucket_id) {
-    bucket_id = new_bucket_id;
-  }
-
-  // format a key for the bucket/instance. pass delim=0 to skip a field
-  std::string get_key(char tenant_delim = '/',
-                      char id_delim = ':',
-                      size_t reserve = 0) const;
-
-  const rgw_pool& get_data_extra_pool() const {
-    return explicit_placement.get_data_extra_pool();
-  }
-
-  void dump(Formatter *f) const;
-  void decode_json(JSONObj *obj);
-  static void generate_test_instances(list<rgw_bucket*>& o);
-
-  rgw_bucket& operator=(const rgw_bucket&) = default;
-
-  bool operator<(const rgw_bucket& b) const {
-    if (tenant == b.tenant) {
-      return name < b.name;
-    } else {
-      return tenant < b.tenant;
-    }
-  }
-
-  bool operator==(const rgw_bucket& b) const {
-    return (tenant == b.tenant) && (name == b.name) && \
-           (bucket_id == b.bucket_id);
-  }
-  bool operator!=(const rgw_bucket& b) const {
-    return (tenant != b.tenant) || (name != b.name) ||
-           (bucket_id != b.bucket_id);
-  }
-};
-WRITE_CLASS_ENCODER(rgw_bucket)
-
-inline ostream& operator<<(ostream& out, const rgw_bucket &b) {
-  out << b.tenant << ":" << b.name << "[" << b.marker << "])";
-  return out;
-}
-
-struct rgw_bucket_shard {
-  rgw_bucket bucket;
-  int shard_id;
-
-  rgw_bucket_shard() : shard_id(-1) {}
-  rgw_bucket_shard(const rgw_bucket& _b, int _sid) : bucket(_b), shard_id(_sid) {}
-
-  std::string get_key(char tenant_delim = '/', char id_delim = ':',
-                      char shard_delim = ':') const;
-
-  bool operator<(const rgw_bucket_shard& b) const {
-    if (bucket < b.bucket) {
-      return true;
-    }
-    if (b.bucket < bucket) {
-      return false;
-    }
-    return shard_id < b.shard_id;
-  }
-};
 
 struct rgw_bucket_placement {
   rgw_placement_rule placement_rule;
@@ -1388,6 +1098,8 @@ inline ostream& operator<<(ostream& out, const RGWBucketIndexType &index_type)
   }
 }
 
+class RGWSI_Zone;
+
 struct RGWBucketInfo {
   enum BIShardsHashType {
     MOD = 0
@@ -1395,11 +1107,11 @@ struct RGWBucketInfo {
 
   rgw_bucket bucket;
   rgw_user owner;
-  uint32_t flags;
+  uint32_t flags{0};
   string zonegroup;
   ceph::real_time creation_time;
   rgw_placement_rule placement_rule;
-  bool has_instance_obj;
+  bool has_instance_obj{false};
   RGWObjVersionTracker objv_tracker; /* we don't need to serialize this, for runtime tracking */
   RGWQuotaInfo quota;
 
@@ -1407,22 +1119,22 @@ struct RGWBucketInfo {
   //   - value of 0 indicates there is no sharding (this is by default before this
   //     feature is implemented).
   //   - value of UINT32_T::MAX indicates this is a blind bucket.
-  uint32_t num_shards;
+  uint32_t num_shards{0};
 
   // Represents the bucket index shard hash type.
-  uint8_t bucket_index_shard_hash_type;
+  uint8_t bucket_index_shard_hash_type{MOD};
 
   // Represents the shard number for blind bucket.
   const static uint32_t NUM_SHARDS_BLIND_BUCKET;
 
-  bool requester_pays;
+  bool requester_pays{false};
 
-  bool has_website;
+  bool has_website{false};
   RGWBucketWebsiteConf website_conf;
 
   RGWBucketIndexType index_type = RGWBIType_Normal;
 
-  bool swift_versioning;
+  bool swift_versioning{false};
   string swift_ver_location;
 
   map<string, uint32_t> mdsearch_config;
@@ -1430,114 +1142,16 @@ struct RGWBucketInfo {
 
 
   /* resharding */
-  uint8_t reshard_status;
+  uint8_t reshard_status{0};
   string new_bucket_instance_id;
 
   RGWObjectLock obj_lock;
 
-  void encode(bufferlist& bl) const {
-     ENCODE_START(20, 4, bl);
-     encode(bucket, bl);
-     encode(owner.id, bl);
-     encode(flags, bl);
-     encode(zonegroup, bl);
-     uint64_t ct = real_clock::to_time_t(creation_time);
-     encode(ct, bl);
-     encode(placement_rule, bl);
-     encode(has_instance_obj, bl);
-     encode(quota, bl);
-     encode(num_shards, bl);
-     encode(bucket_index_shard_hash_type, bl);
-     encode(requester_pays, bl);
-     encode(owner.tenant, bl);
-     encode(has_website, bl);
-     if (has_website) {
-       encode(website_conf, bl);
-     }
-     encode((uint32_t)index_type, bl);
-     encode(swift_versioning, bl);
-     if (swift_versioning) {
-       encode(swift_ver_location, bl);
-     }
-     encode(creation_time, bl);
-     encode(mdsearch_config, bl);
-     encode(reshard_status, bl);
-     encode(new_bucket_instance_id, bl);
-     if (obj_lock_enabled()) {
-       encode(obj_lock, bl);
-     }
-     ENCODE_FINISH(bl);
-  }
-  void decode(bufferlist::const_iterator& bl) {
-    DECODE_START_LEGACY_COMPAT_LEN_32(20, 4, 4, bl);
-     decode(bucket, bl);
-     if (struct_v >= 2) {
-       string s;
-       decode(s, bl);
-       owner.from_str(s);
-     }
-     if (struct_v >= 3)
-       decode(flags, bl);
-     if (struct_v >= 5)
-       decode(zonegroup, bl);
-     if (struct_v >= 6) {
-       uint64_t ct;
-       decode(ct, bl);
-       if (struct_v < 17)
-	 creation_time = ceph::real_clock::from_time_t((time_t)ct);
-     }
-     if (struct_v >= 7)
-       decode(placement_rule, bl);
-     if (struct_v >= 8)
-       decode(has_instance_obj, bl);
-     if (struct_v >= 9)
-       decode(quota, bl);
-     if (struct_v >= 10)
-       decode(num_shards, bl);
-     if (struct_v >= 11)
-       decode(bucket_index_shard_hash_type, bl);
-     if (struct_v >= 12)
-       decode(requester_pays, bl);
-     if (struct_v >= 13)
-       decode(owner.tenant, bl);
-     if (struct_v >= 14) {
-       decode(has_website, bl);
-       if (has_website) {
-         decode(website_conf, bl);
-       } else {
-         website_conf = RGWBucketWebsiteConf();
-       }
-     }
-     if (struct_v >= 15) {
-       uint32_t it;
-       decode(it, bl);
-       index_type = (RGWBucketIndexType)it;
-     } else {
-       index_type = RGWBIType_Normal;
-     }
-     swift_versioning = false;
-     swift_ver_location.clear();
-     if (struct_v >= 16) {
-       decode(swift_versioning, bl);
-       if (swift_versioning) {
-         decode(swift_ver_location, bl);
-       }
-     }
-     if (struct_v >= 17) {
-       decode(creation_time, bl);
-     }
-     if (struct_v >= 18) {
-       decode(mdsearch_config, bl);
-     }
-     if (struct_v >= 19) {
-       decode(reshard_status, bl);
-       decode(new_bucket_instance_id, bl);
-     }
-     if (struct_v >= 20 && obj_lock_enabled()) {
-       decode(obj_lock, bl);
-     }
-     DECODE_FINISH(bl);
-  }
+  std::optional<rgw_sync_policy_info> sync_policy;
+
+  void encode(bufferlist& bl) const;
+  void decode(bufferlist::const_iterator& bl);
+
   void dump(Formatter *f) const;
   static void generate_test_instances(list<RGWBucketInfo*>& o);
 
@@ -1555,8 +1169,12 @@ struct RGWBucketInfo {
     return swift_versioning && !versioned();
   }
 
-  RGWBucketInfo() : flags(0), has_instance_obj(false), num_shards(0), bucket_index_shard_hash_type(MOD), requester_pays(false),
-                    has_website(false), swift_versioning(false), reshard_status(0) {}
+  void set_sync_policy(rgw_sync_policy_info&& policy);
+
+  bool empty_sync_policy() const;
+
+  RGWBucketInfo();
+  ~RGWBucketInfo();
 };
 WRITE_CLASS_ENCODER(RGWBucketInfo)
 
@@ -1640,6 +1258,7 @@ namespace rgw {
   namespace auth {
     namespace s3 {
       class AWSBrowserUploadAbstractor;
+      class STSEngine;
     }
     class Completer;
   }
@@ -1648,11 +1267,12 @@ namespace rgw {
   }
 }
 
+using meta_map_t = boost::container::flat_map <std::string, std::string>;
 
 struct req_info {
   const RGWEnv *env;
   RGWHTTPArgs args;
-  map<string, string> x_meta_map;
+  meta_map_t x_meta_map;
 
   string host;
   const char *method;
@@ -2026,7 +1646,7 @@ struct req_state : DoutPrefixProvider {
 
   bool has_bad_meta{false};
 
-  RGWUserInfo *user;
+  rgw::sal::RGWUser *user;
 
   struct {
     /* TODO(rzarzynski): switch out to the static_ptr for both members. */
@@ -2048,6 +1668,7 @@ struct req_state : DoutPrefixProvider {
       friend class RGWPostObj_ObjStore_S3;
       /* Reader. */
       friend class rgw::auth::s3::AWSBrowserUploadAbstractor;
+      friend class rgw::auth::s3::STSEngine;
 
       std::string access_key;
       std::string signature;
@@ -2107,7 +1728,7 @@ struct req_state : DoutPrefixProvider {
   /// optional coroutine context
   optional_yield yield{null_yield};
 
-  req_state(CephContext* _cct, RGWEnv* e, RGWUserInfo* u, uint64_t id);
+  req_state(CephContext* _cct, RGWEnv* e, rgw::sal::RGWUser* u, uint64_t id);
   ~req_state();
 
   bool is_err() const { return err.is_err(); }
@@ -2456,7 +2077,7 @@ static inline uint64_t rgw_rounded_objsize_kb(uint64_t bytes)
 /* implement combining step, S3 header canonicalization;  k is a
  * valid header and in lc form */
 void rgw_add_amz_meta_header(
-  std::map<std::string, std::string>& x_meta_map,
+  meta_map_t& x_meta_map,
   const std::string& k,
   const std::string& v);
 
@@ -2483,6 +2104,84 @@ extern string rgw_trim_quotes(const string& val);
 extern void rgw_to_iso8601(const real_time& t, char *dest, int buf_size);
 extern void rgw_to_iso8601(const real_time& t, string *dest);
 extern std::string rgw_to_asctime(const utime_t& t);
+
+struct perm_state_base {
+  CephContext *cct;
+  const rgw::IAM::Environment& env;
+  rgw::auth::Identity *identity;
+  const RGWBucketInfo& bucket_info;
+  int perm_mask;
+  bool defer_to_bucket_acls;
+
+  perm_state_base(CephContext *_cct,
+                  const rgw::IAM::Environment& _env,
+                  rgw::auth::Identity *_identity,
+                  const RGWBucketInfo& _bucket_info,
+                  int _perm_mask,
+                  bool _defer_to_bucket_acls) : cct(_cct),
+                                                env(_env),
+                                                identity(_identity),
+                                                bucket_info(_bucket_info),
+                                                perm_mask(_perm_mask),
+                                                defer_to_bucket_acls(_defer_to_bucket_acls) {}
+  virtual ~perm_state_base() {}
+
+  virtual const char *get_referer() const = 0;
+  virtual std::optional<bool> get_request_payer() const = 0; /*
+                                                              * empty state means that request_payer param was not passed in
+                                                              */
+
+};
+
+struct perm_state : public perm_state_base {
+  const char *referer;
+  bool request_payer;
+
+  perm_state(CephContext *_cct,
+             const rgw::IAM::Environment& _env,
+             rgw::auth::Identity *_identity,
+             const RGWBucketInfo& _bucket_info,
+             int _perm_mask,
+             bool _defer_to_bucket_acls,
+             const char *_referer,
+             bool _request_payer) : perm_state_base(_cct,
+                                                    _env,
+                                                    _identity,
+                                                    _bucket_info,
+                                                    _perm_mask,
+                                                    _defer_to_bucket_acls),
+                                    referer(_referer),
+                                    request_payer(_request_payer) {}
+
+  const char *get_referer() const override {
+    return referer;
+  }
+
+  std::optional<bool> get_request_payer() const override {
+    return request_payer;
+  }
+};
+
+/** Check if the req_state's user has the necessary permissions
+ * to do the requested action  */
+bool verify_bucket_permission_no_policy(
+  const DoutPrefixProvider* dpp,
+  struct perm_state_base * const s,
+  RGWAccessControlPolicy * const user_acl,
+  RGWAccessControlPolicy * const bucket_acl,
+  const int perm);
+
+bool verify_user_permission_no_policy(const DoutPrefixProvider* dpp,
+                                      struct perm_state_base * const s,
+                                      RGWAccessControlPolicy * const user_acl,
+                                      const int perm);
+
+bool verify_object_permission_no_policy(const DoutPrefixProvider* dpp,
+                                        struct perm_state_base * const s,
+					RGWAccessControlPolicy * const user_acl,
+					RGWAccessControlPolicy * const bucket_acl,
+					RGWAccessControlPolicy * const object_acl,
+					const int perm);
 
 /** Check if the req_state's user has the necessary permissions
  * to do the requested action */

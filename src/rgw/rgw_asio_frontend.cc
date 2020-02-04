@@ -6,9 +6,10 @@
 #include <vector>
 
 #include <boost/asio.hpp>
-#define BOOST_COROUTINES_NO_DEPRECATION_WARNING
-#include <boost/asio/spawn.hpp>
 #include <boost/intrusive/list.hpp>
+
+#include <boost/context/protected_fixedsize_stack.hpp>
+#include <spawn/spawn.hpp>
 
 #include "common/async/shared_mutex.h"
 #include "common/errno.h"
@@ -34,15 +35,20 @@ namespace ssl = boost::asio::ssl;
 
 using parse_buffer = boost::beast::flat_static_buffer<65536>;
 
+// use mmap/mprotect to allocate 512k coroutine stacks
+auto make_stack_allocator() {
+  return boost::context::protected_fixedsize_stack{512*1024};
+}
+
 template <typename Stream>
 class StreamIO : public rgw::asio::ClientIO {
   CephContext* const cct;
   Stream& stream;
-  boost::asio::yield_context yield;
+  spawn::yield_context yield;
   parse_buffer& buffer;
  public:
   StreamIO(CephContext *cct, Stream& stream, rgw::asio::parser_type& parser,
-           boost::asio::yield_context yield,
+           spawn::yield_context yield,
            parse_buffer& buffer, bool is_ssl,
            const tcp::endpoint& local_endpoint,
            const tcp::endpoint& remote_endpoint)
@@ -70,8 +76,7 @@ class StreamIO : public rgw::asio::ClientIO {
     while (body_remaining.size && !parser.is_done()) {
       boost::system::error_code ec;
       http::async_read_some(stream, buffer, parser, yield[ec]);
-      if (ec == http::error::partial_message ||
-          ec == http::error::need_buffer) {
+      if (ec == http::error::need_buffer) {
         break;
       }
       if (ec) {
@@ -92,7 +97,7 @@ void handle_connection(boost::asio::io_context& context,
                        SharedMutex& pause_mutex,
                        rgw::dmclock::Scheduler *scheduler,
                        boost::system::error_code& ec,
-                       boost::asio::yield_context yield)
+                       spawn::yield_context yield)
 {
   // limit header to 4k, since we read it all into a single flat_buffer
   static constexpr size_t header_limit = 4096;
@@ -592,8 +597,8 @@ void AsioFrontend::accept(Listener& l, boost::system::error_code ec)
   // spawn a coroutine to handle the connection
 #ifdef WITH_RADOSGW_BEAST_OPENSSL
   if (l.use_ssl) {
-    boost::asio::spawn(context,
-      [this, s=std::move(socket)] (boost::asio::yield_context yield) mutable {
+    spawn::spawn(context,
+      [this, s=std::move(socket)] (spawn::yield_context yield) mutable {
         Connection conn{s};
         auto c = connections.add(conn);
         // wrap the socket in an ssl stream
@@ -615,13 +620,13 @@ void AsioFrontend::accept(Listener& l, boost::system::error_code ec)
           stream.async_shutdown(yield[ec]);
         }
         s.shutdown(tcp::socket::shutdown_both, ec);
-      });
+      }, make_stack_allocator());
   } else {
 #else
   {
 #endif // WITH_RADOSGW_BEAST_OPENSSL
-    boost::asio::spawn(context,
-      [this, s=std::move(socket)] (boost::asio::yield_context yield) mutable {
+    spawn::spawn(context,
+      [this, s=std::move(socket)] (spawn::yield_context yield) mutable {
         Connection conn{s};
         auto c = connections.add(conn);
         auto buffer = std::make_unique<parse_buffer>();
@@ -629,7 +634,7 @@ void AsioFrontend::accept(Listener& l, boost::system::error_code ec)
         handle_connection(context, env, s, *buffer, false, pause_mutex,
                           scheduler.get(), ec, yield);
         s.shutdown(tcp::socket::shutdown_both, ec);
-      });
+      }, make_stack_allocator());
   }
 }
 

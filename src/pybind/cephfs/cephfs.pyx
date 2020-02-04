@@ -158,6 +158,7 @@ cdef extern from "cephfs/libcephfs.h" nogil:
     int ceph_getxattr(ceph_mount_info *cmount, const char *path, const char *name,
                       void *value, size_t size)
     int ceph_removexattr(ceph_mount_info *cmount, const char *path, const char *name)
+    int ceph_listxattr(ceph_mount_info *cmount, const char *path, char *list, size_t size)
     int ceph_write(ceph_mount_info *cmount, int fd, const char *buf, int64_t size, int64_t offset)
     int ceph_read(ceph_mount_info *cmount, int fd, char *buf, int64_t size, int64_t offset)
     int ceph_flock(ceph_mount_info *cmount, int fd, int operation, uint64_t owner)
@@ -183,6 +184,11 @@ cdef extern from "cephfs/libcephfs.h" nogil:
 
 
 class Error(Exception):
+    def get_error_code(self):
+        return 1
+
+
+class LibCephFSStateError(Error):
     pass
 
 
@@ -194,6 +200,9 @@ class OSError(Error):
 
     def __str__(self):
         return '{} [Errno {}]'.format(self.strerror, self.errno)
+
+    def get_error_code(self):
+        return self.errno
 
 
 class PermissionError(OSError):
@@ -225,10 +234,6 @@ class InvalidValue(OSError):
 
 
 class OperationNotSupported(OSError):
-    pass
-
-
-class LibCephFSStateError(Error):
     pass
 
 
@@ -522,7 +527,7 @@ cdef class LibCephFS(object):
 
             return decode_cstr(addrs)
         finally:
-            free(addrs)
+            ceph_buffer_free(addrs)
 
 
     def conf_read_file(self, conffile=None):
@@ -1197,6 +1202,34 @@ cdef class LibCephFS(object):
             ret = ceph_removexattr(self.cluster, _path, _name)
         if ret < 0:
             raise make_ex(ret, "error in removexattr")
+
+    def listxattr(self, path, size=65536):
+        """
+        List the extended attribute keys set on a file.
+
+        :param path: path of the file.
+        :param size: the size of list buffer to be filled with extended attribute keys.
+        """
+        self.require_state("mounted")
+
+        path = cstr(path, 'path')
+
+        cdef:
+            char *_path = path
+            char *ret_buf = NULL
+            size_t ret_length = size
+
+        try:
+            ret_buf = <char *>realloc_chk(ret_buf, ret_length)
+            with nogil:
+                ret = ceph_listxattr(self.cluster, _path, ret_buf, ret_length)
+
+            if ret < 0:
+                raise make_ex(ret, "error in listxattr")
+
+            return ret, ret_buf[:ret]
+        finally:
+            free(ret_buf)
 
     def stat(self, path, follow_symlink=True):
         """

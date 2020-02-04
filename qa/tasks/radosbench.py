@@ -7,6 +7,8 @@ import logging
 from teuthology.orchestra import run
 from teuthology import misc as teuthology
 
+import six
+
 log = logging.getLogger(__name__)
 
 @contextlib.contextmanager
@@ -52,7 +54,7 @@ def task(ctx, config):
 
     create_pool = config.get('create_pool', True)
     for role in config.get('clients', ['client.0']):
-        assert isinstance(role, basestring)
+        assert isinstance(role, six.string_types)
         PREFIX = 'client.'
         assert role.startswith(PREFIX)
         id_ = role[len(PREFIX):]
@@ -80,12 +82,12 @@ def task(ctx, config):
             else:
                 pool = manager.create_pool_with_unique_name(erasure_code_profile_name=profile_name)
 
+        size = ['-b', str(config.get('size', 65536))]
         osize = config.get('objectsize', 65536)
-        if osize == 0:
+        if osize == 0 or osize == size:
             objectsize = []
         else:
             objectsize = ['-O', str(osize)]
-        size = ['-b', str(config.get('size', 65536))]
         # If doing a reading run then populate data
         if runtype != "write":
             proc = remote.run(

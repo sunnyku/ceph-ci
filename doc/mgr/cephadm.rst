@@ -37,3 +37,65 @@ To clear this value use the command:
 ::
 
     # ceph cephadm clear-ssh-config
+
+Health checks
+-------------
+
+CEPHADM_STRAY_HOST
+^^^^^^^^^^^^^^^^^^
+
+One or more hosts have running Ceph daemons but are not registered as
+hosts managed by *cephadm*.  This means that those services cannot
+currently be managed by cephadm (e.g., restarted, upgraded, included
+in `ceph orchestrator service ls`).
+
+You can manage the host(s) with::
+
+  ceph orchestrator host add *<hostname>*
+
+Note that you may need to configure SSH access to the remote host
+before this will work.
+
+Alternatively, you can manually connect to the host and ensure that
+services on that host are removed and/or migrated to a host that is
+managed by *cephadm*.
+
+You can also disable this warning entirely with::
+
+  ceph config set mgr mgr/cephadm/warn_on_stray_hosts false
+
+CEPHADM_STRAY_SERVICE
+^^^^^^^^^^^^^^^^^^^^^
+
+One or more Ceph daemons are running but not are not managed by
+*cephadm*, perhaps because they were deploy using a different tool, or
+were started manually.  This means that those services cannot
+currently be managed by cephadm (e.g., restarted, upgraded, included
+in `ceph orchestrator service ls`).
+
+**FIXME:** We need to implement and document an adopt procedure here.
+
+You can also disable this warning entirely with::
+
+  ceph config set mgr mgr/cephadm/warn_on_stray_services false
+
+CEPHADM_HOST_CHECK_FAILED
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+One or more hosts have failed the basic cephadm host check, which verifies
+that (1) the host is reachable and cephadm can be executed there, and (2)
+that the host satisfies basic prerequisites, like a working container
+runtime (podman or docker) and working time synchronization.
+If this test fails, cephadm will no be able to manage services on that host.
+
+You can manually run this check with::
+
+  ceph cephadm check-host *<hostname>*
+
+You can remove a broken host from management with::
+
+  ceph orchestrator host rm *<hostname>*
+
+You can disable this health warning with::
+
+  ceph config set mgr mgr/cephadm/warn_on_failed_host_check false

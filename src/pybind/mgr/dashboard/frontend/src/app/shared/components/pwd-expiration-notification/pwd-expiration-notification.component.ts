@@ -30,15 +30,19 @@ export class PwdExpirationNotificationComponent implements OnInit {
         } else {
           this.alertType = 'warning';
         }
+
+        this.authStorageService.isPwdDisplayedSource.next(true);
       }
     });
   }
 
   private getExpirationDays(pwdExpirationDate: number): number {
-    if (pwdExpirationDate) {
-      const current = new Date();
-      const expiration = new Date(pwdExpirationDate * 1000);
-      return Math.floor((expiration.valueOf() - current.valueOf()) / (1000 * 3600 * 24));
-    }
+    const current = new Date();
+    const expiration = new Date(pwdExpirationDate * 1000);
+    return Math.floor((expiration.valueOf() - current.valueOf()) / (1000 * 3600 * 24));
+  }
+
+  close() {
+    this.authStorageService.isPwdDisplayedSource.next(false);
   }
 }

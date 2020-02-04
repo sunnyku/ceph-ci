@@ -6,7 +6,7 @@ import time
 
 from datetime import datetime, timedelta
 
-from .helper import DashboardTestCase
+from .helper import DashboardTestCase, JObj, JLeaf
 
 
 class UserTest(DashboardTestCase):
@@ -196,7 +196,7 @@ class UserTest(DashboardTestCase):
         })
         self.assertStatus(400)
         self.assertError('password_policy_validation_failed', 'user',
-                         'Password cannot be the same as the previous one.')
+                         'Password must not be the same as the previous one.')
         self._reset_login_to_admin('test1')
 
     def test_change_password_contains_username(self):
@@ -208,7 +208,7 @@ class UserTest(DashboardTestCase):
         })
         self.assertStatus(400)
         self.assertError('password_policy_validation_failed', 'user',
-                         'Password cannot contain username.')
+                         'Password must not contain username.')
         self._reset_login_to_admin('test1')
 
     def test_change_password_contains_forbidden_words(self):
@@ -220,7 +220,7 @@ class UserTest(DashboardTestCase):
         })
         self.assertStatus(400)
         self.assertError('password_policy_validation_failed', 'user',
-                         'Password cannot contain keywords.')
+                         'Password must not contain keywords.')
         self._reset_login_to_admin('test1')
 
     def test_change_password_contains_sequential_characters(self):
@@ -232,7 +232,7 @@ class UserTest(DashboardTestCase):
         })
         self.assertStatus(400)
         self.assertError('password_policy_validation_failed', 'user',
-                         'Password cannot contain sequential characters.')
+                         'Password must not contain sequential characters.')
         self._reset_login_to_admin('test1')
 
     def test_change_password_contains_repetetive_characters(self):
@@ -244,7 +244,7 @@ class UserTest(DashboardTestCase):
         })
         self.assertStatus(400)
         self.assertError('password_policy_validation_failed', 'user',
-                         'Password cannot contain repetitive characters.')
+                         'Password must not contain repetitive characters.')
         self._reset_login_to_admin('test1')
 
     def test_change_password(self):
@@ -341,7 +341,7 @@ class UserTest(DashboardTestCase):
         self.assertError(code='pwd_past_expiration_date', component='user')
 
     def test_create_with_default_expiration_date(self):
-        future_date_1 = datetime.utcnow() + timedelta(days=10)
+        future_date_1 = datetime.utcnow() + timedelta(days=9)
         future_date_1 = int(time.mktime(future_date_1.timetuple()))
         future_date_2 = datetime.utcnow() + timedelta(days=11)
         future_date_2 = int(time.mktime(future_date_2.timetuple()))
@@ -375,6 +375,7 @@ class UserTest(DashboardTestCase):
         user_1 = self._get('/api/user/user1')
         self.assertStatus(200)
 
+        time.sleep(10)
         self.login('user1', 'mypassword10#')
         self._post('/api/user/user1/change_password', {
             'old_password': 'mypassword10#',
@@ -383,9 +384,88 @@ class UserTest(DashboardTestCase):
         self.assertStatus(200)
         self._reset_login_to_admin()
 
-        user_2 = self._get('/api/user/user1')
+        user_1_pwd_changed = self._get('/api/user/user1')
         self.assertStatus(200)
-        self.assertLess(user_1['pwdExpirationDate'], user_2['pwdExpirationDate'])
+        self.assertLess(user_1['pwdExpirationDate'], user_1_pwd_changed['pwdExpirationDate'])
 
         self._delete('/api/user/user1')
         self._ceph_cmd(['dashboard', 'set-user-pwd-expiration-span', '0'])
+
+    def test_validate_password_weak(self):
+        self._post('/api/user/validate_password', {
+            'password': 'mypassword1'
+        })
+        self.assertStatus(200)
+        self.assertJsonBody({
+            'valid': True,
+            'credits': 11,
+            'valuation': 'Weak'
+        })
+
+    def test_validate_password_ok(self):
+        self._post('/api/user/validate_password', {
+            'password': 'mypassword1!@'
+        })
+        self.assertStatus(200)
+        self.assertJsonBody({
+            'valid': True,
+            'credits': 17,
+            'valuation': 'OK'
+        })
+
+    def test_validate_password_strong(self):
+        self._post('/api/user/validate_password', {
+            'password': 'testpassword0047!@'
+        })
+        self.assertStatus(200)
+        self.assertJsonBody({
+            'valid': True,
+            'credits': 22,
+            'valuation': 'Strong'
+        })
+
+    def test_validate_password_very_strong(self):
+        self._post('/api/user/validate_password', {
+            'password': 'testpassword#!$!@$'
+        })
+        self.assertStatus(200)
+        self.assertJsonBody({
+            'valid': True,
+            'credits': 30,
+            'valuation': 'Very strong'
+        })
+
+    def test_validate_password_fail(self):
+        self._post('/api/user/validate_password', {
+            'password': 'foo'
+        })
+        self.assertStatus(200)
+        self.assertJsonBody({
+            'valid': False,
+            'credits': 0,
+            'valuation': 'Password is too weak.'
+        })
+
+    def test_validate_password_fail_name(self):
+        self._post('/api/user/validate_password', {
+            'password': 'x1zhugo_10',
+            'username': 'hugo'
+        })
+        self.assertStatus(200)
+        self.assertJsonBody({
+            'valid': False,
+            'credits': 0,
+            'valuation': 'Password must not contain username.'
+        })
+
+    def test_validate_password_fail_oldpwd(self):
+        self._post('/api/user/validate_password', {
+            'password': 'x1zt-st10',
+            'old_password': 'x1zt-st10'
+        })
+        self.assertStatus(200)
+        self.assertJsonBody({
+            'valid': False,
+            'credits': 0,
+            'valuation': 'Password must not be the same as the previous one.'
+        })

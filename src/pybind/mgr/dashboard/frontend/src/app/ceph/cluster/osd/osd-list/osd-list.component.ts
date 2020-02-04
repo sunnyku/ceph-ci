@@ -8,16 +8,19 @@ import { forkJoin as observableForkJoin, Observable } from 'rxjs';
 import { OsdService } from '../../../../shared/api/osd.service';
 import { ConfirmationModalComponent } from '../../../../shared/components/confirmation-modal/confirmation-modal.component';
 import { CriticalConfirmationModalComponent } from '../../../../shared/components/critical-confirmation-modal/critical-confirmation-modal.component';
+import { FormModalComponent } from '../../../../shared/components/form-modal/form-modal.component';
 import { ActionLabelsI18n } from '../../../../shared/constants/app.constants';
 import { TableComponent } from '../../../../shared/datatable/table/table.component';
 import { CellTemplate } from '../../../../shared/enum/cell-template.enum';
 import { Icons } from '../../../../shared/enum/icons.enum';
+import { NotificationType } from '../../../../shared/enum/notification-type.enum';
 import { CdTableAction } from '../../../../shared/models/cd-table-action';
 import { CdTableColumn } from '../../../../shared/models/cd-table-column';
 import { CdTableSelection } from '../../../../shared/models/cd-table-selection';
 import { Permissions } from '../../../../shared/models/permissions';
 import { DimlessBinaryPipe } from '../../../../shared/pipes/dimless-binary.pipe';
 import { AuthStorageService } from '../../../../shared/services/auth-storage.service';
+import { NotificationService } from '../../../../shared/services/notification.service';
 import { URLBuilderService } from '../../../../shared/services/url-builder.service';
 import { OsdFlagsModalComponent } from '../osd-flags-modal/osd-flags-modal.component';
 import { OsdPgScrubModalComponent } from '../osd-pg-scrub-modal/osd-pg-scrub-modal.component';
@@ -55,9 +58,9 @@ export class OsdListComponent implements OnInit {
   icons = Icons;
 
   selection = new CdTableSelection();
-  osds = [];
+  osds: any[] = [];
 
-  protected static collectStates(osd) {
+  protected static collectStates(osd: any) {
     const states = [osd['in'] ? 'in' : 'out'];
     if (osd['up']) {
       states.push('up');
@@ -76,7 +79,8 @@ export class OsdListComponent implements OnInit {
     private modalService: BsModalService,
     private i18n: I18n,
     private urlBuilder: URLBuilderService,
-    public actionLabels: ActionLabelsI18n
+    public actionLabels: ActionLabelsI18n,
+    public notificationService: NotificationService
   ) {
     this.permissions = this.authStorageService.getPermissions();
     this.tableActions = [
@@ -86,6 +90,12 @@ export class OsdListComponent implements OnInit {
         icon: Icons.add,
         routerLink: () => this.urlBuilder.getCreate(),
         canBePrimary: (selection: CdTableSelection) => !selection.hasSelection
+      },
+      {
+        name: this.actionLabels.EDIT,
+        permission: 'update',
+        icon: Icons.edit,
+        click: () => this.editAction()
       },
       {
         name: this.actionLabels.SCRUB,
@@ -315,8 +325,8 @@ export class OsdListComponent implements OnInit {
     this.osdService.getList().subscribe((data: any[]) => {
       this.osds = data.map((osd) => {
         osd.collectedStates = OsdListComponent.collectStates(osd);
-        osd.stats_history.out_bytes = osd.stats_history.op_out_bytes.map((i) => i[1]);
-        osd.stats_history.in_bytes = osd.stats_history.op_in_bytes.map((i) => i[1]);
+        osd.stats_history.out_bytes = osd.stats_history.op_out_bytes.map((i: string) => i[1]);
+        osd.stats_history.in_bytes = osd.stats_history.op_in_bytes.map((i: string) => i[1]);
         osd.stats.usage = osd.stats.stat_bytes_used / osd.stats.stat_bytes;
         osd.cdIsBinary = true;
         return osd;
@@ -324,7 +334,40 @@ export class OsdListComponent implements OnInit {
     });
   }
 
-  scrubAction(deep) {
+  editAction() {
+    const selectedOsd = _.filter(this.osds, ['id', this.selection.first().id]).pop();
+
+    this.modalService.show(FormModalComponent, {
+      initialState: {
+        titleText: this.i18n('Edit OSD: {{id}}', {
+          id: selectedOsd.id
+        }),
+        fields: [
+          {
+            type: 'text',
+            name: 'deviceClass',
+            value: selectedOsd.tree.device_class,
+            label: this.i18n('Device class'),
+            required: true
+          }
+        ],
+        submitButtonText: this.i18n('Edit OSD'),
+        onSubmit: (values: any) => {
+          this.osdService.update(selectedOsd.id, values.deviceClass).subscribe(() => {
+            this.notificationService.show(
+              NotificationType.success,
+              this.i18n('Updated OSD "{{id}}"', {
+                id: selectedOsd.id
+              })
+            );
+            this.getOsdList();
+          });
+        }
+      }
+    });
+  }
+
+  scrubAction(deep: boolean) {
     if (!this.hasOsdSelected) {
       return;
     }

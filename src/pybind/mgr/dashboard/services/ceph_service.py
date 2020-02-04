@@ -2,20 +2,11 @@
 from __future__ import absolute_import
 import json
 import logging
-from six.moves import reduce
 
 import rados
 
 from mgr_module import CommandResult
-
-try:
-    from more_itertools import pairwise
-except ImportError:
-    def pairwise(iterable):
-        from itertools import tee
-        a, b = tee(iterable)
-        next(b, None)
-        return zip(a, b)
+from mgr_util import get_time_series_rates, get_most_recent_rate
 
 from .. import mgr
 
@@ -116,16 +107,12 @@ class CephService(object):
             stats = pool_stats[pool['pool']]
             s = {}
 
-            def get_rate(series):
-                if len(series) >= 2:
-                    return differentiate(*list(series)[-2:])
-                return 0
-
             for stat_name, stat_series in stats.items():
+                rates = get_time_series_rates(stat_series)
                 s[stat_name] = {
                     'latest': stat_series[0][1],
-                    'rate': get_rate(stat_series),
-                    'rates': get_rates_from_data(stat_series)
+                    'rate': get_most_recent_rate(rates),
+                    'rates': rates
                 }
             pool['stats'] = s
             pools_w_stats.append(pool)
@@ -173,27 +160,27 @@ class CephService(object):
             raise SendCommandError(outs, prefix, argdict, r)
 
         try:
-            return json.loads(outb)
+            return json.loads(outb or outs)
         except Exception:  # pylint: disable=broad-except
             return outb
 
     @staticmethod
-    def get_smart_data_by_device(device):
-        dev_id = device['devid']
+    def _get_smart_data_by_device(device):
         if 'daemons' in device and device['daemons']:
             daemons = [daemon for daemon in device['daemons'] if daemon.startswith('osd')]
             if daemons:
                 svc_type, svc_id = daemons[0].split('.')
-                dev_smart_data = CephService.send_command(svc_type, 'smart', svc_id, devid=dev_id)
+                dev_smart_data = CephService.send_command(
+                    svc_type, 'smart', svc_id, devid=device['devid'])
                 for dev_id, dev_data in dev_smart_data.items():
                     if 'error' in dev_data:
                         logger.warning(
                             '[SMART] error retrieving smartctl data for device ID "%s": %s', dev_id,
                             dev_data)
                 return dev_smart_data
-            logger.warning('[SMART] no OSD service found for device ID "%s"', dev_id)
+            logger.warning('[SMART] no OSD service found for device ID "%s"', device['devid'])
             return {}
-        logger.warning('[SMART] key "daemon" not found for device ID "%s"', dev_id)
+        logger.warning('[SMART] key "daemon" not found for device ID "%s"', device['devid'])
         return {}
 
     @staticmethod
@@ -204,20 +191,24 @@ class CephService(object):
     @staticmethod
     def get_smart_data_by_host(hostname):
         # type: (str) -> dict
-        return reduce(lambda a, b: a.update(b) or a, [
-            CephService.get_smart_data_by_device(device)
-            for device in CephService.get_devices_by_host(hostname)
-        ], {})
+        devices = CephService.get_devices_by_host(hostname)
+        smart_data = {}
+        if devices:
+            for device in devices:
+                if device['devid'] not in smart_data:
+                    smart_data.update(CephService._get_smart_data_by_device(device))
+        return smart_data
 
     @staticmethod
     def get_smart_data_by_daemon(daemon_type, daemon_id):
         # type: (str, str) -> dict
         smart_data = CephService.send_command(daemon_type, 'smart', daemon_id)
-        for _, dev_data in smart_data.items():
-            if 'error' in dev_data:
-                logger.warning('[SMART] Error retrieving smartctl data for daemon "%s.%s"',
-                               daemon_type, daemon_id)
-        return smart_data
+        if smart_data:
+            for _, dev_data in smart_data.items():
+                if 'error' in dev_data:
+                    logger.warning('[SMART] Error retrieving smartctl data for daemon "%s.%s"',
+                                   daemon_type, daemon_id)
+        return smart_data or {}
 
     @classmethod
     def get_rates(cls, svc_type, svc_name, path):
@@ -225,16 +216,12 @@ class CephService(object):
         :return: the derivative of mgr.get_counter()
         :rtype: list[tuple[int, float]]"""
         data = mgr.get_counter(svc_type, svc_name, path)[path]
-        return get_rates_from_data(data)
+        return get_time_series_rates(data)
 
     @classmethod
     def get_rate(cls, svc_type, svc_name, path):
         """returns most recent rate"""
-        data = mgr.get_counter(svc_type, svc_name, path)[path]
-
-        if data and len(data) > 1:
-            return differentiate(*data[-2:])
-        return 0.0
+        return get_most_recent_rate(cls.get_rates(svc_type, svc_name, path))
 
     @classmethod
     def get_client_perf(cls):
@@ -300,33 +287,3 @@ class CephService(object):
             'statuses': pg_summary['all'],
             'pgs_per_osd': pgs_per_osd,
         }
-
-
-def get_rates_from_data(data):
-    """
-    >>> get_rates_from_data([])
-    [(0, 0.0)]
-    >>> get_rates_from_data([[1, 42]])
-    [(1, 0.0)]
-    >>> get_rates_from_data([[0, 100], [2, 101], [3, 100], [4, 100]])
-    [(2, 0.5), (3, 1.0), (4, 0.0)]
-    """
-    if not data:
-        return [(0, 0.0)]
-    if len(data) == 1:
-        return [(data[0][0], 0.0)]
-    return [(data2[0], differentiate(data1, data2)) for data1, data2 in pairwise(data)]
-
-
-def differentiate(data1, data2):
-    """
-    >>> times = [0, 2]
-    >>> values = [100, 101]
-    >>> differentiate(*zip(times, values))
-    0.5
-    >>> times = [0, 2]
-    >>> values = [100, 99]
-    >>> differentiate(*zip(times, values))
-    0.5
-    """
-    return abs((data2[1] - data1[1]) / float(data2[0] - data1[0]))

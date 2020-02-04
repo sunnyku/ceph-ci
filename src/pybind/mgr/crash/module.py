@@ -56,7 +56,7 @@ class Module(MgrModule):
         for opt in self.MODULE_OPTIONS:
             setattr(self,
                     opt['name'],
-                    self.get_module_option(opt['name']) or opt['default'])
+                    self.get_module_option(opt['name']))
             self.log.debug(' mgr option %s = %s',
                            opt['name'], getattr(self, opt['name']))
 
@@ -163,8 +163,7 @@ class Module(MgrModule):
             sig.update(func.encode())
         if assert_msg:
             sig.update(self.sanitize_assert_msg(assert_msg).encode())
-        # remove 'ord' for py3
-        return ''.join('%02x' % ord(c) for c in sig.digest())
+        return ''.join('%02x' % c for c in sig.digest())
 
     # command handlers
 

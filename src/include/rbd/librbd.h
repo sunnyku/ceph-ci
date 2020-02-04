@@ -32,7 +32,7 @@ extern "C" {
 #include "features.h"
 
 #define LIBRBD_VER_MAJOR 1
-#define LIBRBD_VER_MINOR 12
+#define LIBRBD_VER_MINOR 15
 #define LIBRBD_VER_EXTRA 0
 
 #define LIBRBD_VERSION(maj, min, extra) ((maj << 16) + (min << 8) + extra)
@@ -587,6 +587,14 @@ CEPH_RBD_API int rbd_mirror_image_instance_id_list(rados_ioctx_t io_ctx,
 CEPH_RBD_API void rbd_mirror_image_instance_id_list_cleanup(char **image_ids,
                                                             char **instance_ids,
                                                             size_t len);
+CEPH_RBD_API int rbd_mirror_image_info_list(
+    rados_ioctx_t io_ctx, rbd_mirror_image_mode_t *mode_filter,
+    const char *start_id, size_t max, char **image_ids,
+    rbd_mirror_image_mode_t *mode_entries,
+    rbd_mirror_image_info_t *info_entries, size_t *num_entries);
+CEPH_RBD_API void rbd_mirror_image_info_list_cleanup(
+    char **image_ids, rbd_mirror_image_info_t *info_entries,
+    size_t num_entries);
 
 /* pool metadata */
 CEPH_RBD_API int rbd_pool_metadata_get(rados_ioctx_t io_ctx, const char *key,
@@ -763,6 +771,7 @@ CEPH_RBD_API int rbd_deep_copy_with_progress(rbd_image_t image,
 CEPH_RBD_API int rbd_snap_list(rbd_image_t image, rbd_snap_info_t *snaps,
                                int *max_snaps);
 CEPH_RBD_API void rbd_snap_list_end(rbd_snap_info_t *snaps);
+CEPH_RBD_API int rbd_snap_exists(rbd_image_t image, const char *snapname, bool *exists);
 CEPH_RBD_API int rbd_snap_create(rbd_image_t image, const char *snapname);
 CEPH_RBD_API int rbd_snap_remove(rbd_image_t image, const char *snapname);
 CEPH_RBD_API int rbd_snap_remove2(rbd_image_t image, const char *snap_name,
@@ -1192,6 +1201,8 @@ CEPH_RBD_API int rbd_mirror_image_create_snapshot(rbd_image_t image,
 CEPH_RBD_API int rbd_mirror_image_get_info(rbd_image_t image,
                                            rbd_mirror_image_info_t *mirror_image_info,
                                            size_t info_size);
+CEPH_RBD_API void rbd_mirror_image_get_info_cleanup(
+    rbd_mirror_image_info_t *mirror_image_info);
 CEPH_RBD_API int rbd_mirror_image_get_mode(rbd_image_t image,
                                            rbd_mirror_image_mode_t *mode);
 

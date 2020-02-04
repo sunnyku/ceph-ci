@@ -166,13 +166,13 @@ def ceph_log(ctx, config):
                     # case we will see connection errors that we should ignore.
                     log.debug("Missed logrotate, node '{0}' is offline".format(
                         e.node))
-                except EOFError as e:
+                except EOFError:
                     # Paramiko sometimes raises this when it fails to
                     # connect to a node during open_session.  As with
                     # ConnectionLostError, we ignore this because nodes
                     # are allowed to get power cycled during tests.
                     log.debug("Missed logrotate, EOFError")
-                except SSHException as e:
+                except SSHException:
                     log.debug("Missed logrotate, SSHException")
                 except socket.error as e:
                     if e.errno in (errno.EHOSTUNREACH, errno.ECONNRESET):
@@ -190,7 +190,7 @@ def ceph_log(ctx, config):
     def write_rotate_conf(ctx, daemons):
         testdir = teuthology.get_testdir(ctx)
         rotate_conf_path = os.path.join(os.path.dirname(__file__), 'logrotate.conf')
-        with file(rotate_conf_path, 'rb') as f:
+        with open(rotate_conf_path, 'rb') as f:
             conf = ""
             for daemon, size in daemons.items():
                 log.info('writing logrotate stanza for {daemon}'.format(daemon=daemon))
@@ -1307,6 +1307,7 @@ def osd_scrub_pgs(ctx, config):
         timez = [(stat['pgid'],stat['last_scrub_stamp']) for stat in stats]
         loop = False
         thiscnt = 0
+        re_scrub = []
         for (pgid, tmval) in timez:
             t = tmval[0:tmval.find('.')].replace(' ', 'T')
             pgtm = time.strptime(t, '%Y-%m-%dT%H:%M:%S')
@@ -1315,13 +1316,14 @@ def osd_scrub_pgs(ctx, config):
             else:
                 log.info('pgid %s last_scrub_stamp %s %s <= %s', pgid, tmval, pgtm, check_time_now)
                 loop = True
+                re_scrub.append(pgid)
         if thiscnt > prev_good:
             prev_good = thiscnt
             gap_cnt = 0
         else:
             gap_cnt += 1
             if gap_cnt % 6 == 0:
-                for (pgid, tmval) in timez:
+                for pgid in re_scrub:
                     # re-request scrub every so often in case the earlier
                     # request was missed.  do not do it every time because
                     # the scrub may be in progress or not reported yet and
@@ -1544,37 +1546,27 @@ def created_pool(ctx, config):
 
 
 @contextlib.contextmanager
-def tweaked_option(ctx, config):
+def suppress_mon_health_to_clog(ctx, config):
     """
-    set an option, and then restore it with its original value
+    set the option, and then restore it with its original value
 
     Note, due to the way how tasks are executed/nested, it's not suggested to
     use this method as a standalone task. otherwise, it's likely that it will
     restore the tweaked option at the /end/ of 'tasks' block.
     """
-    saved_options = {}
-    # we can complicate this when necessary
-    options = ['mon-health-to-clog']
-    type_, id_ = 'mon', '*'
-    cluster = config.get('cluster', 'ceph')
-    manager = ctx.managers[cluster]
-    if id_ == '*':
-        get_from = next(teuthology.all_roles_of_type(ctx.cluster, type_))
+    if config.get('mon-health-to-clog', 'true') == 'false':
+        saved_options = {}
+        cluster = config.get('cluster', 'ceph')
+        manager = ctx.managers[cluster]
+        manager.raw_cluster_command(
+            'config', 'set', 'mon', 'mon_health_to_clog', 'false'
+        )
+        yield
+        manager.raw_cluster_command(
+            'config', 'rm', 'mon', 'mon_health_to_clog'
+        )
     else:
-        get_from = id_
-    for option in options:
-        if option not in config:
-            continue
-        value = 'true' if config[option] else 'false'
-        option = option.replace('-', '_')
-        old_value = manager.get_config(type_, get_from, option)
-        if value != old_value:
-            saved_options[option] = old_value
-            manager.inject_args(type_, id_, option, value)
-    yield
-    for option, value in saved_options.items():
-        manager.inject_args(type_, id_, option, value)
-
+        yield
 
 @contextlib.contextmanager
 def restart(ctx, config):
@@ -1608,7 +1600,7 @@ def restart(ctx, config):
     daemons = ctx.daemons.resolve_role_list(config.get('daemons', None), CEPH_ROLE_TYPES, True)
     clusters = set()
 
-    with tweaked_option(ctx, config):
+    with suppress_mon_health_to_clog(ctx, config):
         for role in daemons:
             cluster, type_, id_ = teuthology.split_role(role)
             ctx.daemons.get_daemon(type_, id_, cluster).stop()
@@ -1930,17 +1922,13 @@ def task(ctx, config):
             # a bunch of scary messages unrelated to our actual run.
             firstmon = teuthology.get_first_mon(ctx, config, config['cluster'])
             (mon0_remote,) = ctx.cluster.only(firstmon).remotes.keys()
-            # try this several times, since tell to mons is lossy.
             mon0_remote.run(
                 args=[
                     'sudo',
                     'ceph',
                     '--cluster', config['cluster'],
-                    '--mon-client-directed-command-retry', '5',
-                    'tell',
-                    'mon.*',
-                    'injectargs',
-                    '--',
-                    '--no-mon-health-to-clog',
-                ]
+                    'config', 'set', 'global',
+                    'mon_health_to_clog', 'false',
+                ],
+                check_status=False,
             )

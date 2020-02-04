@@ -23,7 +23,60 @@ namespace ceph {
 }
 using ceph::operator <<;
 
-using rgw_zone_set = std::set<std::string>;
+struct rgw_zone_set_entry {
+  string zone;
+  std::optional<std::string> location_key;
+
+  bool operator<(const rgw_zone_set_entry& e) const {
+    if (zone < e.zone) {
+      return true;
+    }
+    if (zone > e.zone) {
+      return false;
+    }
+    return (location_key < e.location_key);
+  }
+
+  rgw_zone_set_entry() {}
+  rgw_zone_set_entry(const string& _zone,
+                     std::optional<std::string> _location_key) : zone(_zone),
+                                                                location_key(_location_key) {}
+  rgw_zone_set_entry(const string& s) {
+    from_str(s);
+  }
+
+  void from_str(const string& s);
+  string to_str() const;
+
+  void encode(bufferlist &bl) const;
+  void decode(bufferlist::const_iterator &bl);
+
+  void dump(Formatter *f) const;
+  void decode_json(JSONObj *obj);
+};
+WRITE_CLASS_ENCODER(rgw_zone_set_entry)
+
+struct rgw_zone_set {
+  std::set<rgw_zone_set_entry> entries;
+
+  void encode(bufferlist &bl) const {
+    /* no ENCODE_START, ENCODE_END for backward compatibility */
+    ceph::encode(entries, bl);
+  }
+  void decode(bufferlist::const_iterator &bl) {
+    /* no DECODE_START, DECODE_END for backward compatibility */
+    ceph::decode(entries, bl);
+  }
+
+  void insert(const string& zone, std::optional<string> location_key);
+  bool exists(const string& zone, std::optional<string> location_key) const;
+};
+WRITE_CLASS_ENCODER(rgw_zone_set)
+
+/* backward compatibility, rgw_zone_set needs to encode/decode the same as std::set */
+void encode_json(const char *name, const rgw_zone_set& zs, ceph::Formatter *f);
+void decode_json_obj(rgw_zone_set& zs, JSONObj *obj);
+
 
 enum RGWPendingState {
   CLS_RGW_STATE_PENDING_MODIFY = 0,
@@ -57,9 +110,21 @@ enum RGWCheckMTimeType {
 
 #define ROUND_BLOCK_SIZE 4096
 
-static inline uint64_t cls_rgw_get_rounded_size(uint64_t size)
-{
+static inline uint64_t cls_rgw_get_rounded_size(uint64_t size) {
   return (size + ROUND_BLOCK_SIZE - 1) & ~(ROUND_BLOCK_SIZE - 1);
+}
+
+/*
+ * This takes a string that either wholly contains a delimiter or is a
+ * path that ends with a delimiter and appends a new character to the
+ * end such that when a we request bucket-index entries *after* this,
+ * we'll get the next object after the "subdirectory". This works
+ * because we append a '\xFF' charater, and no valid UTF-8 character
+ * can contain that byte, so no valid entries can be skipped.
+ */
+static inline std::string cls_rgw_after_delim(const std::string& path) {
+  // assert: ! path.empty()
+  return path + '\xFF';
 }
 
 struct rgw_bucket_pending_info {
@@ -326,12 +391,22 @@ struct cls_rgw_obj_key {
 WRITE_CLASS_ENCODER(cls_rgw_obj_key)
 
 
-#define RGW_BUCKET_DIRENT_FLAG_VER           0x1    /* a versioned object instance */
-#define RGW_BUCKET_DIRENT_FLAG_CURRENT       0x2    /* the last object instance of a versioned object */
-#define RGW_BUCKET_DIRENT_FLAG_DELETE_MARKER 0x4    /* delete marker */
-#define RGW_BUCKET_DIRENT_FLAG_VER_MARKER    0x8    /* object is versioned, a placeholder for the plain entry */
-
 struct rgw_bucket_dir_entry {
+  /* a versioned object instance */
+  static constexpr uint16_t FLAG_VER =                0x1;
+  /* the last object instance of a versioned object */
+  static constexpr uint16_t FLAG_CURRENT =            0x2;
+  /* delete marker */
+  static constexpr uint16_t FLAG_DELETE_MARKER =      0x4;
+  /* object is versioned, a placeholder for the plain entry */
+  static constexpr uint16_t FLAG_VER_MARKER =         0x8;
+  /* object is a proxy; it is not listed in the bucket index but is a
+   * prefix ending with a delimiter, perhaps common to multiple
+   * entries; it is only useful when a delimiter is used and
+   * represents a "subdirectory" (again, ending in a delimiter) that
+   * may contain one or more actual entries/objects */
+  static constexpr uint16_t FLAG_COMMON_PREFIX =   0x8000;
+
   cls_rgw_obj_key key;
   rgw_bucket_entry_ver ver;
   std::string locator;
@@ -393,16 +468,24 @@ struct rgw_bucket_dir_entry {
     DECODE_FINISH(bl);
   }
 
-  bool is_current() {
-    int test_flags = RGW_BUCKET_DIRENT_FLAG_VER | RGW_BUCKET_DIRENT_FLAG_CURRENT;
-    return (flags & RGW_BUCKET_DIRENT_FLAG_VER) == 0 ||
+  bool is_current() const {
+    int test_flags =
+      rgw_bucket_dir_entry::FLAG_VER | rgw_bucket_dir_entry::FLAG_CURRENT;
+    return (flags & rgw_bucket_dir_entry::FLAG_VER) == 0 ||
            (flags & test_flags) == test_flags;
   }
-  bool is_delete_marker() { return (flags & RGW_BUCKET_DIRENT_FLAG_DELETE_MARKER) != 0; }
-  bool is_visible() {
+  bool is_delete_marker() const {
+    return (flags & rgw_bucket_dir_entry::FLAG_DELETE_MARKER) != 0;
+  }
+  bool is_visible() const {
     return is_current() && !is_delete_marker();
   }
-  bool is_valid() { return (flags & RGW_BUCKET_DIRENT_FLAG_VER_MARKER) == 0; }
+  bool is_valid() const {
+    return (flags & rgw_bucket_dir_entry::FLAG_VER_MARKER) == 0;
+  }
+  bool is_common_prefix() const {
+    return flags & rgw_bucket_dir_entry::FLAG_COMMON_PREFIX;
+  }
 
   void dump(Formatter *f) const;
   void decode_json(JSONObj *obj);

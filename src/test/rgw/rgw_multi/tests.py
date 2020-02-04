@@ -66,18 +66,6 @@ log = logging.getLogger('rgw_multi.tests')
 num_buckets = 0
 run_prefix=''.join(random.choice(string.ascii_lowercase) for _ in range(6))
 
-def get_gateway_connection(gateway, credentials):
-    """ connect to the given gateway """
-    if gateway.connection is None:
-        gateway.connection = boto.connect_s3(
-                aws_access_key_id = credentials.access_key,
-                aws_secret_access_key = credentials.secret,
-                host = gateway.host,
-                port = gateway.port,
-                is_secure = False,
-                calling_format = boto.s3.connection.OrdinaryCallingFormat())
-    return gateway.connection
-
 def get_zone_connection(zone, credentials):
     """ connect to the zone's first gateway """
     if isinstance(credentials, list):
@@ -366,7 +354,7 @@ def compare_bucket_status(target_zone, source_zone, bucket_name, log_status, syn
     return True
 
 def zone_data_checkpoint(target_zone, source_zone):
-    if target_zone == source_zone:
+    if not target_zone.syncs_from(source_zone):
         return
 
     log_status = data_source_log_status(source_zone)
@@ -396,7 +384,7 @@ def zonegroup_data_checkpoint(zonegroup_conns):
             zone_data_checkpoint(target_conn.zone, source_conn.zone)
 
 def zone_bucket_checkpoint(target_zone, source_zone, bucket_name):
-    if target_zone == source_zone:
+    if not target_zone.syncs_from(source_zone):
         return
 
     log_status = bucket_source_log_status(source_zone, bucket_name)

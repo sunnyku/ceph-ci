@@ -798,7 +798,7 @@ function wait_mds_active()
 function get_mds_gids()
 {
     fs_name=$1
-    ceph fs get $fs_name --format=json | python -c "import json; import sys; print ' '.join([m['gid'].__str__() for m in json.load(sys.stdin)['mdsmap']['info'].values()])"
+    ceph fs get $fs_name --format=json | python3 -c "import json; import sys; print(' '.join([m['gid'].__str__() for m in json.load(sys.stdin)['mdsmap']['info'].values()]))"
 }
 
 function fail_all_mds()
@@ -819,7 +819,7 @@ function fail_all_mds()
 
 function remove_all_fs()
 {
-  existing_fs=$(ceph fs ls --format=json | python -c "import json; import sys; print ' '.join([fs['name'] for fs in json.load(sys.stdin)])")
+  existing_fs=$(ceph fs ls --format=json | python3 -c "import json; import sys; print(' '.join([fs['name'] for fs in json.load(sys.stdin)]))")
   for fs_name in $existing_fs ; do
       echo "Removing fs ${fs_name}..."
       fail_all_mds $fs_name
@@ -2584,19 +2584,14 @@ function test_mon_ping()
 
 function test_mon_deprecated_commands()
 {
-  # current DEPRECATED commands are:
-  #  ceph compact
-  #  ceph scrub
+  # current DEPRECATED commands are marked with FLAG(DEPRECATED)
   #
   # Testing should be accomplished by setting
   # 'mon_debug_deprecated_as_obsolete = true' and expecting ENOTSUP for
   # each one of these commands.
 
   ceph tell mon.* injectargs '--mon-debug-deprecated-as-obsolete'
-  expect_false ceph compact 2> $TMPFILE
-  check_response "\(EOPNOTSUPP\|ENOTSUP\): command is obsolete"
-
-  expect_false ceph scrub 2> $TMPFILE
+  expect_false ceph config-key list 2> $TMPFILE
   check_response "\(EOPNOTSUPP\|ENOTSUP\): command is obsolete"
 
   ceph tell mon.* injectargs '--no-mon-debug-deprecated-as-obsolete'

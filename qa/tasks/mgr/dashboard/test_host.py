@@ -83,5 +83,23 @@ class HostControllerTest(DashboardTestCase):
         self.assertSchema(data, JList(JObj({
             'daemons': JList(str),
             'devid': str,
-            'location': JList(JObj({'host': str, 'dev': str}))
+            'location': JList(JObj({
+                'host': str,
+                'dev': str,
+                'path': str
+            }))
         })))
+
+
+class HostControllerNoOrchestratorTest(DashboardTestCase):
+    def test_host_create(self):
+        self._post('/api/host?hostname=foo')
+        self.assertStatus(503)
+        self.assertError(code='orchestrator_status_unavailable',
+                         component='orchestrator')
+
+    def test_host_delete(self):
+        self._delete('/api/host/bar')
+        self.assertStatus(503)
+        self.assertError(code='orchestrator_status_unavailable',
+                         component='orchestrator')

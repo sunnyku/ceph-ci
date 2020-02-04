@@ -72,7 +72,7 @@ public:
    * @params
    * alloc_size - allocation unit size to check
    */
-  virtual size_t available_freespace(uint64_t alloc_size) = 0;
+  virtual uint64_t available_freespace(uint64_t alloc_size) = 0;
 };
 
 class BlueFSVolumeSelector {
@@ -504,7 +504,6 @@ public:
   int lock_file(const string& dirname, const string& filename, FileLock **p);
   int unlock_file(FileLock *l);
 
-  void flush_log();
   void compact_log();
 
   /// sync any uncommitted state to disk

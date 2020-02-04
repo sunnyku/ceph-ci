@@ -1,17 +1,22 @@
 import { Injectable } from '@angular/core';
 
+import { BehaviorSubject } from 'rxjs';
+
 import { Permissions } from '../models/permissions';
 
 @Injectable({
   providedIn: 'root'
 })
 export class AuthStorageService {
+  isPwdDisplayedSource = new BehaviorSubject(false);
+  isPwdDisplayed$ = this.isPwdDisplayedSource.asObservable();
+
   constructor() {}
 
   set(
     username: string,
     token: string,
-    permissions: object = {},
+    permissions = {},
     sso = false,
     pwdExpirationDate: number = null
   ) {

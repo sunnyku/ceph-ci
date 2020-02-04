@@ -6,13 +6,8 @@
 
 #include "common/AsyncOpTracker.h"
 #include "common/ceph_mutex.h"
-#include "common/WorkQueue.h"
 #include "include/rados/librados.hpp"
-#include "cls/journal/cls_journal_types.h"
 #include "cls/rbd/cls_rbd_types.h"
-#include "librbd/ImageCtx.h"
-#include "librbd/journal/Types.h"
-#include "librbd/journal/TypeTraits.h"
 #include "ProgressContext.h"
 #include "tools/rbd_mirror/Types.h"
 #include "tools/rbd_mirror/image_replayer/Types.h"
@@ -21,18 +16,8 @@
 
 class AdminSocketHook;
 
-namespace journal {
-
-struct CacheManagerHandler;
-class Journaler;
-
-} // namespace journal
-
-namespace librbd {
-
-class ImageCtx;
-
-} // namespace librbd
+namespace journal { struct CacheManagerHandler; }
+namespace librbd { class ImageCtx; }
 
 namespace rbd {
 namespace mirror {
@@ -45,6 +30,7 @@ namespace image_replayer {
 
 class Replayer;
 template <typename> class BootstrapRequest;
+template <typename> class StateBuilder;
 
 } // namespace image_replayer
 
@@ -103,8 +89,7 @@ public:
 
   image_replayer::HealthState get_health_state() const;
 
-  void add_peer(const std::string &peer_uuid, librados::IoCtx &remote_io_ctx,
-                MirrorStatusUpdater<ImageCtxT>* remote_status_updater);
+  void add_peer(const Peer<ImageCtxT>& peer);
 
   inline int64_t get_local_pool_id() const {
     return m_local_io_ctx.get_id();
@@ -129,12 +114,6 @@ protected:
    *    |                                                   ^
    *    v                                                   *
    * <starting>                                             *
-   *    |                                                   *
-   *    v                                           (error) *
-   * PREPARE_LOCAL_IMAGE  * * * * * * * * * * * * * * * * * *
-   *    |                                                   *
-   *    v                                           (error) *
-   * PREPARE_REMOTE_IMAGE * * * * * * * * * * * * * * * * * *
    *    |                                                   *
    *    v                                           (error) *
    * BOOTSTRAP_IMAGE  * * * * * * * * * * * * * * * * * * * *
@@ -176,21 +155,8 @@ private:
     STATE_STOPPED,
   };
 
-  struct RemoteImage {
-    std::string mirror_uuid;
-    std::string image_id;
-    librados::IoCtx io_ctx;
-    MirrorStatusUpdater<ImageCtxT>* mirror_status_updater = nullptr;
-
-    RemoteImage() {
-    }
-    RemoteImage(const Peer<ImageCtxT>& peer)
-      : io_ctx(peer.io_ctx), mirror_status_updater(peer.mirror_status_updater) {
-    }
-  };
   struct ReplayerListener;
 
-  typedef typename librbd::journal::TypeTraits<ImageCtxT>::Journaler Journaler;
   typedef boost::optional<State> OptionalState;
   typedef boost::optional<cls::rbd::MirrorImageStatusState>
       OptionalMirrorImageStatusState;
@@ -202,7 +168,8 @@ private:
     }
 
     void update_progress(const std::string &description,
-				 bool flush = true) override;
+                         bool flush = true) override;
+
   private:
     ImageReplayer<ImageCtxT> *replayer;
   };
@@ -216,9 +183,8 @@ private:
   journal::CacheManagerHandler *m_cache_manager_handler;
 
   Peers m_peers;
-  RemoteImage m_remote_image;
+  Peer<ImageCtxT> m_remote_image_peer;
 
-  std::string m_local_image_id;
   std::string m_local_image_name;
   std::string m_image_spec;
 
@@ -236,12 +202,7 @@ private:
   bool m_delete_requested = false;
   bool m_resync_requested = false;
 
-  ImageCtxT *m_local_image_ctx = nullptr;
-  std::string m_local_image_tag_owner;
-
-  decltype(ImageCtxT::journal) m_local_journal = nullptr;
-  Journaler* m_remote_journaler = nullptr;
-
+  image_replayer::StateBuilder<ImageCtxT>* m_state_builder = nullptr;
   image_replayer::Replayer* m_replayer = nullptr;
   ReplayerListener* m_replayer_listener = nullptr;
 
@@ -253,10 +214,6 @@ private:
   AdminSocketHook *m_asok_hook = nullptr;
 
   image_replayer::BootstrapRequest<ImageCtxT> *m_bootstrap_request = nullptr;
-
-  cls::journal::ClientState m_client_state =
-    cls::journal::CLIENT_STATE_DISCONNECTED;
-  librbd::journal::MirrorPeerClientMeta m_client_meta;
 
   AsyncOpTracker m_in_flight_op_tracker;
 
@@ -277,12 +234,6 @@ private:
 
   void shut_down(int r);
   void handle_shut_down(int r);
-
-  void prepare_local_image();
-  void handle_prepare_local_image(int r);
-
-  void prepare_remote_image();
-  void handle_prepare_remote_image(int r);
 
   void bootstrap();
   void handle_bootstrap(int r);

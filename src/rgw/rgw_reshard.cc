@@ -18,6 +18,7 @@
 
 #include "services/svc_zone.h"
 #include "services/svc_sys_obj.h"
+#include "services/svc_tier_rados.h"
 
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rgw
@@ -603,6 +604,11 @@ int RGWBucketReshard::do_reshard(int num_shards,
 	bool account = entry.get_info(&cls_key, &category, &stats);
 	rgw_obj_key key(cls_key);
 	rgw_obj obj(new_bucket_info.bucket, key);
+	RGWMPObj mp;
+	if (key.ns == RGW_OBJ_NS_MULTIPART && mp.from_meta(key.name)) {
+	  // place the multipart .meta object on the same shard as its head object
+	  obj.index_hash_source = mp.get_key();
+	}
 	int ret = store->getRados()->get_target_shard_id(new_bucket_info, obj.get_hash_object(), &target_shard_id);
 	if (ret < 0) {
 	  lderr(store->ctx()) << "ERROR: get_target_shard_id() returned ret=" << ret << dendl;
@@ -707,8 +713,7 @@ int RGWBucketReshard::execute(int num_shards, int max_op_entries,
   ret = set_resharding_status(new_bucket_info.bucket.bucket_id,
 			      num_shards, CLS_RGW_RESHARD_IN_PROGRESS);
   if (ret < 0) {
-    reshard_lock.unlock();
-    return ret;
+    goto error_out;
   }
 
   ret = do_reshard(num_shards,
@@ -864,12 +869,13 @@ int RGWReshard::list(int logshard_num, string& marker, uint32_t max, std::list<c
     if (ret == -ENOENT) {
       *is_truncated = false;
       ret = 0;
-    }
-    lderr(store->ctx()) << "ERROR: failed to list reshard log entries, oid=" << logshard_oid << dendl;
-    if (ret == -EACCES) {
-      lderr(store->ctx()) << "access denied to pool " << store->svc()->zone->get_zone_params().reshard_pool
+    } else {
+      lderr(store->ctx()) << "ERROR: failed to list reshard log entries, oid=" << logshard_oid << dendl;
+      if (ret == -EACCES) {
+        lderr(store->ctx()) << "access denied to pool " << store->svc()->zone->get_zone_params().reshard_pool
                           << ". Fix the pool access permissions of your client" << dendl;
-    }
+      }
+    } 
   }
 
   return ret;
@@ -984,12 +990,12 @@ int RGWReshard::process_single_logshard(int logshard_num)
   RGWBucketReshardLock logshard_lock(store, logshard_oid, false);
 
   int ret = logshard_lock.lock();
-  if (ret == -EBUSY) { /* already locked by another processor */
+  if (ret < 0) { 
     ldout(store->ctx(), 5) << __func__ << "(): failed to acquire lock on " <<
-      logshard_oid << dendl;
+      logshard_oid << ", ret = " << ret <<dendl;
     return ret;
   }
-
+  
   do {
     std::list<cls_rgw_reshard_entry> entries;
     ret = list(logshard_num, marker, max_entries, entries, &truncated);
@@ -1107,9 +1113,8 @@ int RGWReshard::process_all_logshards()
     ldout(store->ctx(), 20) << "processing logshard = " << logshard << dendl;
 
     ret = process_single_logshard(i);
-    if (ret <0) {
-      return ret;
-    }
+
+    ldout(store->ctx(), 20) << "finish processing logshard = " << logshard << " , ret = " << ret << dendl;
   }
 
   return 0;
@@ -1138,14 +1143,9 @@ void RGWReshard::stop_processor()
 }
 
 void *RGWReshard::ReshardWorker::entry() {
-  utime_t last_run;
   do {
     utime_t start = ceph_clock_now();
-    if (reshard->process_all_logshards()) {
-      /* All shards have been processed properly. Next time we can start
-       * from this moment. */
-      last_run = start;
-    }
+    reshard->process_all_logshards();
 
     if (reshard->going_down())
       break;

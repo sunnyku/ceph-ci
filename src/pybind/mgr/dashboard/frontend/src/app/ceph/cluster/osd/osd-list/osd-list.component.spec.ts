@@ -7,6 +7,7 @@ import { RouterTestingModule } from '@angular/router/testing';
 import * as _ from 'lodash';
 import { BsModalService } from 'ngx-bootstrap/modal';
 import { TabsModule } from 'ngx-bootstrap/tabs';
+import { ToastrModule } from 'ngx-toastr';
 import { EMPTY, of } from 'rxjs';
 
 import {
@@ -18,6 +19,7 @@ import { CoreModule } from '../../../../core/core.module';
 import { OsdService } from '../../../../shared/api/osd.service';
 import { ConfirmationModalComponent } from '../../../../shared/components/confirmation-modal/confirmation-modal.component';
 import { CriticalConfirmationModalComponent } from '../../../../shared/components/critical-confirmation-modal/critical-confirmation-modal.component';
+import { FormModalComponent } from '../../../../shared/components/form-modal/form-modal.component';
 import { TableActionsComponent } from '../../../../shared/datatable/table-actions/table-actions.component';
 import { CdTableAction } from '../../../../shared/models/cd-table-action';
 import { CdTableSelection } from '../../../../shared/models/cd-table-selection';
@@ -43,12 +45,13 @@ describe('OsdListComponent', () => {
     }
   };
 
-  const getTableAction = (name) => component.tableActions.find((action) => action.name === name);
+  const getTableAction = (name: string) =>
+    component.tableActions.find((action) => action.name === name);
 
   const setFakeSelection = () => {
     // Default data and selection
-    const selection = [{ id: 1 }];
-    const data = [{ id: 1 }];
+    const selection = [{ id: 1, tree: { device_class: 'ssd' } }];
+    const data = [{ id: 1, tree: { device_class: 'ssd' } }];
 
     // Table data and selection
     component.selection = new CdTableSelection();
@@ -57,7 +60,7 @@ describe('OsdListComponent', () => {
     component.permissions = fakeAuthStorageService.getPermissions();
   };
 
-  const openActionModal = (actionName) => {
+  const openActionModal = (actionName: string) => {
     setFakeSelection();
     getTableAction(actionName).click();
   };
@@ -78,10 +81,12 @@ describe('OsdListComponent', () => {
       HttpClientTestingModule,
       PerformanceCounterModule,
       TabsModule.forRoot(),
+      ToastrModule.forRoot(),
       CephModule,
       ReactiveFormsModule,
       RouterTestingModule,
-      CoreModule
+      CoreModule,
+      RouterTestingModule
     ],
     declarations: [],
     providers: [
@@ -114,21 +119,25 @@ describe('OsdListComponent', () => {
   });
 
   describe('getOsdList', () => {
-    let osds;
+    let osds: any[];
 
-    const createOsd = (n: number) => ({
-      in: 'in',
-      up: 'up',
-      stats_history: {
-        op_out_bytes: [[n, n], [n * 2, n * 2]],
-        op_in_bytes: [[n * 3, n * 3], [n * 4, n * 4]]
-      },
-      stats: {
-        stat_bytes_used: n * n,
-        stat_bytes: n * n * n
-      },
-      state: []
-    });
+    const createOsd = (n: number) =>
+      <Record<string, any>>{
+        in: 'in',
+        up: 'up',
+        tree: {
+          device_class: 'ssd'
+        },
+        stats_history: {
+          op_out_bytes: [[n, n], [n * 2, n * 2]],
+          op_in_bytes: [[n * 3, n * 3], [n * 4, n * 4]]
+        },
+        stats: {
+          stat_bytes_used: n * n,
+          stat_bytes: n * n * n
+        },
+        state: []
+      };
 
     const expectAttributeOnEveryOsd = (attr: string) =>
       expect(component.osds.every((osd) => Boolean(_.get(osd, attr)))).toBeTruthy();
@@ -239,6 +248,7 @@ describe('OsdListComponent', () => {
       'create,update,delete': {
         actions: [
           'Create',
+          'Edit',
           'Scrub',
           'Deep Scrub',
           'Reweight',
@@ -249,11 +259,20 @@ describe('OsdListComponent', () => {
           'Purge',
           'Destroy'
         ],
-        primary: { multiple: 'Scrub', executing: 'Scrub', single: 'Scrub', no: 'Create' }
+        primary: { multiple: 'Scrub', executing: 'Edit', single: 'Edit', no: 'Create' }
       },
       'create,update': {
-        actions: ['Create', 'Scrub', 'Deep Scrub', 'Reweight', 'Mark Out', 'Mark In', 'Mark Down'],
-        primary: { multiple: 'Scrub', executing: 'Scrub', single: 'Scrub', no: 'Create' }
+        actions: [
+          'Create',
+          'Edit',
+          'Scrub',
+          'Deep Scrub',
+          'Reweight',
+          'Mark Out',
+          'Mark In',
+          'Mark Down'
+        ],
+        primary: { multiple: 'Scrub', executing: 'Edit', single: 'Edit', no: 'Create' }
       },
       'create,delete': {
         actions: ['Create', 'Mark Lost', 'Purge', 'Destroy'],
@@ -270,6 +289,7 @@ describe('OsdListComponent', () => {
       },
       'update,delete': {
         actions: [
+          'Edit',
           'Scrub',
           'Deep Scrub',
           'Reweight',
@@ -280,11 +300,11 @@ describe('OsdListComponent', () => {
           'Purge',
           'Destroy'
         ],
-        primary: { multiple: 'Scrub', executing: 'Scrub', single: 'Scrub', no: 'Scrub' }
+        primary: { multiple: 'Scrub', executing: 'Edit', single: 'Edit', no: 'Edit' }
       },
       update: {
-        actions: ['Scrub', 'Deep Scrub', 'Reweight', 'Mark Out', 'Mark In', 'Mark Down'],
-        primary: { multiple: 'Scrub', executing: 'Scrub', single: 'Scrub', no: 'Scrub' }
+        actions: ['Edit', 'Scrub', 'Deep Scrub', 'Reweight', 'Mark Out', 'Mark In', 'Mark Down'],
+        primary: { multiple: 'Scrub', executing: 'Edit', single: 'Edit', no: 'Edit' }
       },
       delete: {
         actions: ['Mark Lost', 'Purge', 'Destroy'],
@@ -336,7 +356,7 @@ describe('OsdListComponent', () => {
      *
      * @param modalClass - The expected class of the modal
      */
-    const expectOpensModal = (actionName: string, modalClass): void => {
+    const expectOpensModal = (actionName: string, modalClass: any): void => {
       openActionModal(actionName);
 
       // @TODO: check why tsc is complaining when passing 'expectationFailOutput' param.
@@ -348,6 +368,10 @@ describe('OsdListComponent', () => {
 
     it('opens the reweight modal', () => {
       expectOpensModal('Reweight', OsdReweightModalComponent);
+    });
+
+    it('opens the form modal', () => {
+      expectOpensModal('Edit', FormModalComponent);
     });
 
     it('opens all confirmation modals', () => {

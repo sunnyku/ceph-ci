@@ -1876,13 +1876,17 @@ bool OSDMap::check_pg_upmaps(
     for (auto osd : up) {
       auto it = weight_map.find(osd);
       if (it == weight_map.end()) {
-        // osd is gone or has been moved out of the specific crush-tree
+        ldout(cct, 10) << __func__ << " pg " << pg << ": osd " << osd << " is gone or has "
+	              << "been moved out of the specific crush-tree"
+		      << dendl;
         to_cancel->push_back(pg);
         break;
       }
       auto adjusted_weight = get_weightf(it->first) * it->second;
       if (adjusted_weight == 0) {
-        // osd is out/crush-out
+        ldout(cct, 10) << __func__ << " pg " << pg << ": osd " << osd
+	              << " is out/crush-out"
+		    << dendl;
         to_cancel->push_back(pg);
         break;
       }
@@ -3980,7 +3984,9 @@ void OSDMap::print_summary(Formatter *f, ostream& out,
     f->dump_int("epoch", get_epoch());
     f->dump_int("num_osds", get_num_osds());
     f->dump_int("num_up_osds", get_num_up_osds());
+    f->dump_int("osd_up_since", last_up_change.to_msec() / 1000);
     f->dump_int("num_in_osds", get_num_in_osds());
+    f->dump_int("osd_in_since", last_in_change.to_msec() / 1000);
     f->dump_unsigned("num_remapped_pgs", get_num_pg_temp());
   } else {
     utime_t now = ceph_clock_now();
@@ -4683,6 +4689,12 @@ int OSDMap::calc_pg_upmaps(
       }
       int osd = p->second;
       float deviation = p->first;
+      if (deviation < 0) {
+        ldout(cct, 10) << " hitting underfull osds now"
+                       << " when trying to remap overfull osds"
+                       << dendl;
+        break;
+      }
       float target = osd_weight[osd] * pgs_per_weight;
       ldout(cct, 10) << " Overfull search osd." << osd
                        << " target " << target

@@ -359,7 +359,7 @@ seastar::future<> OSD::_add_me_to_crush()
     "args": [{}]
   }})", whoami, weight, loc);
   return monc->run_command({cmd}, {}).then(
-    [this](int32_t code, string message, bufferlist) {
+    [](int32_t code, string message, bufferlist) {
       if (code) {
 	logger().warn("fail to add to crush: {} ({})", message, code);
 	throw std::runtime_error("fail to add to crush");
@@ -416,6 +416,7 @@ seastar::future<> OSD::load_pgs()
         return load_pg(pgid).then([pgid, this](auto&& pg) {
           logger().info("load_pgs: loaded {}", pgid);
           pg_map.pg_loaded(pgid, std::move(pg));
+          shard_services.inc_pg_num();
           return seastar::now();
         });
       } else if (coll.is_temp(&pgid)) {
@@ -605,7 +606,7 @@ seastar::future<std::unique_ptr<OSDMap>> OSD::load_map(epoch_t e)
 {
   auto o = std::make_unique<OSDMap>();
   if (e > 0) {
-    return load_map_bl(e).then([e, o=std::move(o), this](bufferlist bl) mutable {
+    return load_map_bl(e).then([o=std::move(o)](bufferlist bl) mutable {
       o->decode(bl);
       return seastar::make_ready_future<unique_ptr<OSDMap>>(std::move(o));
     });
@@ -695,7 +696,7 @@ seastar::future<Ref<PG>> OSD::handle_pg_create_info(
 	    }
 	  }
 	  return make_pg(startmap, pgid).then(
-	    [this, startmap=std::move(startmap)](auto pg) mutable {
+	    [startmap=std::move(startmap)](auto pg) mutable {
 	      return seastar::make_ready_future<Ref<PG>, cached_map_t>(
 		std::move(pg),
 		std::move(startmap));

@@ -45,10 +45,10 @@ export abstract class PageHelper {
    * help developers to prevent and highlight mistakes.  It also reduces boilerplate code and by
    * thus, increases readability.
    */
-  static restrictTo(page): Function {
+  static restrictTo(page: string): Function {
     return (target: any, propertyKey: string, descriptor: PropertyDescriptor) => {
       const fn: Function = descriptor.value;
-      descriptor.value = function(...args) {
+      descriptor.value = function(...args: any) {
         return browser
           .getCurrentUrl()
           .then((url) =>
@@ -70,7 +70,7 @@ export abstract class PageHelper {
     return $('.breadcrumb-item.active');
   }
 
-  async getTabText(index): Promise<string> {
+  async getTabText(index: number): Promise<string> {
     return $$('.nav.nav-tabs li')
       .get(index)
       .getText();
@@ -92,11 +92,19 @@ export abstract class PageHelper {
     return Number(text.match(/(\d+)\s+selected/)[1]);
   }
 
+  async getTableFoundCount(): Promise<number> {
+    const text = await $$('.datatable-footer-inner .page-count span')
+      .filter(async (e) => (await e.getText()).includes('found'))
+      .first()
+      .getText();
+    return Number(text.match(/(\d+)\s+found/)[1]);
+  }
+
   getFirstTableCellWithText(content: string): ElementFinder {
     return element.all(by.cssContainingText('.datatable-body-cell-label', content)).first();
   }
 
-  getTableRow(content) {
+  getTableRow(content: string) {
     return element(by.cssContainingText('.datatable-body-row', content));
   }
 
@@ -144,6 +152,24 @@ export abstract class PageHelper {
   }
 
   /**
+   * Helper method to select an option inside a select element.
+   * This method will also expect that the option was set.
+   */
+  async selectOption(selectionName: string, option: string) {
+    await element(by.cssContainingText(`select[name=${selectionName}] option`, option)).click();
+    return this.expectSelectOption(selectionName, option);
+  }
+
+  /**
+   * Helper method to expect a set option inside a select element.
+   */
+  async expectSelectOption(selectionName: string, option: string) {
+    return expect(
+      element(by.css(`select[name=${selectionName}] option:checked`)).getText()
+    ).toContain(option);
+  }
+
+  /**
    * Returns the cell with the content given in `content`. Will not return a rejected Promise if the
    * table cell hasn't been found. It behaves this way to enable to wait for
    * visibility/invisibility/presence of the returned element.
@@ -179,7 +205,7 @@ export abstract class PageHelper {
   async clearInput(elem: ElementFinder) {
     const types = ['text', 'number'];
     if ((await elem.getTagName()) === 'input' && types.includes(await elem.getAttribute('type'))) {
-      await elem.sendKeys(
+      return await elem.sendKeys(
         protractor.Key.chord(protractor.Key.CONTROL, 'a'),
         protractor.Key.BACK_SPACE
       );
@@ -188,7 +214,7 @@ export abstract class PageHelper {
     }
   }
 
-  async navigateTo(page = null) {
+  async navigateTo(page: string = null) {
     page = page || 'index';
     const url = this.pages[page];
     await browser.get(url);
@@ -297,5 +323,17 @@ export abstract class PageHelper {
     await $$('.datatable-body-cell-label .datatable-checkbox input[type=checkbox]:checked').each(
       (e: ElementFinder) => e.click()
     );
+  }
+
+  async filterTable(name: string, option: string) {
+    await this.waitClickableAndClick($('.tc_filter_name > a'));
+    await element(by.cssContainingText(`.tc_filter_name .dropdown-item`, name)).click();
+
+    await this.waitClickableAndClick($('.tc_filter_option > a'));
+    await element(by.cssContainingText(`.tc_filter_option .dropdown-item`, option)).click();
+  }
+
+  async clearTableSearchInput() {
+    return this.waitClickableAndClick($('cd-table .search button'));
   }
 }

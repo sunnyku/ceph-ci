@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 #
 # Copyright (C) 2013 Inktank <info@inktank.com>
 # Copyright (C) 2013 Cloudwatt <libre.licensing@cloudwatt.com>
@@ -33,7 +33,11 @@ MYUID=$(id -u)
 MYNAME=$(id -nu)
 
 do_killall() {
-    pg=`pgrep -u $MYUID -f ceph-run.*$1`
+    local pname="ceph-run.*$1"
+    if [ $1 == "ganesha.nfsd" ]; then
+	    pname=$1
+    fi
+    pg=`pgrep -u $MYUID -f $pname`
     [ -n "$pg" ] && kill $pg
     $SUDO killall -u $MYNAME $1
 }
@@ -41,7 +45,7 @@ do_killall() {
 do_umountall() {
     #VSTART_IP_PORTS is of the format as below
     #"[v[num]:IP:PORT/0,v[num]:IP:PORT/0][v[num]:IP:PORT/0,v[num]:IP:PORT/0]..."
-    VSTART_IP_PORTS=$(bin/ceph mon metadata 2>/dev/null | jq -j '.[].addrs')
+    VSTART_IP_PORTS=$("${CEPH_BIN}"/ceph -c $conf_fn mon metadata 2>/dev/null | jq -j '.[].addrs')
 
     #SRC_MNT_ARRAY is of the format as below
     #SRC_MNT_ARRAY[0] = IP:PORT,IP:PORT,IP:PORT:/
@@ -64,11 +68,11 @@ do_umountall() {
     done
 
     #Get fuse mounts of the cluster
-    CEPH_FUSE_MNTS=$(bin/ceph tell mds.* client ls 2>/dev/null| grep mount_point | tr -d '",' | awk '{print $2}')
+    CEPH_FUSE_MNTS=$("${CEPH_BIN}"/ceph -c $conf_fn tell mds.* client ls 2>/dev/null | grep mount_point | tr -d '",' | awk '{print $2}')
     [ -n "$CEPH_FUSE_MNTS" ] && sudo umount -f $CEPH_FUSE_MNTS
 }
 
-usage="usage: $0 [all] [mon] [mds] [osd] [rgw] [--crimson]\n"
+usage="usage: $0 [all] [mon] [mds] [osd] [rgw] [ganesha] [--crimson]\n"
 
 stop_all=1
 stop_mon=0
@@ -76,6 +80,7 @@ stop_mds=0
 stop_osd=0
 stop_mgr=0
 stop_rgw=0
+stop_ganesha=0
 ceph_osd=ceph-osd
 
 while [ $# -ge 1 ]; do
@@ -103,6 +108,10 @@ while [ $# -ge 1 ]; do
             stop_rgw=1
             stop_all=0
             ;;
+        ganesha | ganesha.nfsd )
+            stop_ganesha=1
+            stop_all=0
+            ;;
         --crimson)
             ceph_osd=crimson-osd
             ;;
@@ -114,8 +123,10 @@ while [ $# -ge 1 ]; do
 done
 
 if [ $stop_all -eq 1 ]; then
-    #Umount mounted filesystems from vstart cluster
-    do_umountall
+    if "${CEPH_BIN}"/ceph -s --connect-timeout 1 -c $conf_fn >/dev/null 2>&1; then
+        # Umount mounted filesystems from vstart cluster
+        do_umountall
+    fi
 
     if "${CEPH_BIN}"/rbd device list -c $conf_fn >/dev/null 2>&1; then
         "${CEPH_BIN}"/rbd device list -c $conf_fn | tail -n +2 |
@@ -134,7 +145,7 @@ if [ $stop_all -eq 1 ]; then
         fi
     fi
 
-    for p in ceph-mon ceph-mds $ceph_osd ceph-mgr radosgw lt-radosgw apache2 ; do
+    for p in ceph-mon ceph-mds $ceph_osd ceph-mgr radosgw lt-radosgw apache2 ganesha.nfsd ; do
         for try in 0 1 1 1 1 ; do
             if ! pkill -u $MYUID $p ; then
                 break
@@ -153,5 +164,6 @@ else
     [ $stop_mds -eq 1 ] && do_killall ceph-mds
     [ $stop_osd -eq 1 ] && do_killall $ceph_osd
     [ $stop_mgr -eq 1 ] && do_killall ceph-mgr
+    [ $stop_ganesha -eq 1 ] && do_killall ganesha.nfsd
     [ $stop_rgw -eq 1 ] && do_killall radosgw lt-radosgw apache2
 fi

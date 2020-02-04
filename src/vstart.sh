@@ -56,16 +56,6 @@ if [ -e CMakeCache.txt ]; then
     CEPH_ROOT=$(get_cmake_variable ceph_SOURCE_DIR)
     CEPH_BUILD_DIR=`pwd`
     [ -z "$MGR_PYTHON_PATH" ] && MGR_PYTHON_PATH=$CEPH_ROOT/src/pybind/mgr
-    CEPH_MGR_PY_VERSION_MAJOR=$(get_cmake_variable MGR_PYTHON_VERSION | cut -d '.' -f 1)
-    if [ -n "$CEPH_MGR_PY_VERSION_MAJOR" ]; then
-        CEPH_PY_VERSION_MAJOR=${CEPH_MGR_PY_VERSION_MAJOR}
-    else
-        if [ $(get_cmake_variable WITH_PYTHON2) = ON ]; then
-            CEPH_PY_VERSION_MAJOR=2
-        else
-            CEPH_PY_VERSION_MAJOR=3
-        fi
-    fi
 fi
 
 # use CEPH_BUILD_ROOT to vstart from a 'make install'
@@ -94,7 +84,7 @@ fi
 [ -z "$PYBIND" ] && PYBIND=./pybind
 
 [ -n "$CEPH_PYTHON_COMMON" ] && CEPH_PYTHON_COMMON="$CEPH_PYTHON_COMMON:"
-CYTHON_PYTHONPATH="$CEPH_LIB/cython_modules/lib.${CEPH_PY_VERSION_MAJOR}"
+CYTHON_PYTHONPATH="$CEPH_LIB/cython_modules/lib.3"
 export PYTHONPATH=$PYBIND:$CYTHON_PYTHONPATH:$CEPH_PYTHON_COMMON$PYTHONPATH
 
 export LD_LIBRARY_PATH=$CEPH_LIB:$LD_LIBRARY_PATH
@@ -110,13 +100,15 @@ export CEPH_DEV=1
 [ -z "$CEPH_NUM_MGR" ] && CEPH_NUM_MGR="$MGR"
 [ -z "$CEPH_NUM_FS"  ] && CEPH_NUM_FS="$FS"
 [ -z "$CEPH_NUM_RGW" ] && CEPH_NUM_RGW="$RGW"
+[ -z "$GANESHA_DAEMON_NUM" ] && GANESHA_DAEMON_NUM="$GANESHA"
 
 # if none of the CEPH_NUM_* number is specified, kill the existing
 # cluster.
 if [ -z "$CEPH_NUM_MON" -a \
      -z "$CEPH_NUM_OSD" -a \
      -z "$CEPH_NUM_MDS" -a \
-     -z "$CEPH_NUM_MGR" ]; then
+     -z "$CEPH_NUM_MGR" -a \
+     -z "$GANESHA_DAEMON_NUM" ]; then
     kill_all=1
 else
     kill_all=0
@@ -129,6 +121,7 @@ fi
 [ -z "$CEPH_NUM_FS"  ] && CEPH_NUM_FS=1
 [ -z "$CEPH_MAX_MDS" ] && CEPH_MAX_MDS=1
 [ -z "$CEPH_NUM_RGW" ] && CEPH_NUM_RGW=0
+[ -z "$GANESHA_DAEMON_NUM" ] && GANESHA_DAEMON_NUM=0
 
 [ -z "$CEPH_DIR" ] && CEPH_DIR="$PWD"
 [ -z "$CEPH_DEV_DIR" ] && CEPH_DEV_DIR="$CEPH_DIR/dev"
@@ -155,7 +148,7 @@ ec=0
 cephadm=0
 parallel=true
 hitset=""
-overwrite_conf=1
+overwrite_conf=0
 cephx=1 #turn cephx on by default
 gssapi_authx=0
 cache=""
@@ -196,20 +189,19 @@ inc_osd_num=0
 
 msgr="21"
 
-usage="usage: $0 [option]... \nex: MON=3 OSD=1 MDS=1 MGR=1 RGW=1 $0 -n -d\n"
+usage="usage: $0 [option]... \nex: MON=3 OSD=1 MDS=1 MGR=1 RGW=1 GANESHA=1 $0 -n -d\n"
 usage=$usage"options:\n"
 usage=$usage"\t-d, --debug\n"
 usage=$usage"\t-s, --standby_mds: Generate standby-replay MDS for each active\n"
 usage=$usage"\t-l, --localhost: use localhost instead of hostname\n"
 usage=$usage"\t-i <ip>: bind to specific ip\n"
 usage=$usage"\t-n, --new\n"
-usage=$usage"\t-N, --not-new: reuse existing cluster config (default)\n"
 usage=$usage"\t--valgrind[_{osd,mds,mon,rgw}] 'toolname args...'\n"
 usage=$usage"\t--nodaemon: use ceph-run as wrapper for mon/osd/mds\n"
 usage=$usage"\t--redirect-output: only useful with nodaemon, directs output to log file\n"
 usage=$usage"\t--smallmds: limit mds cache memory limit\n"
 usage=$usage"\t-m ip:port\t\tspecify monitor address\n"
-usage=$usage"\t-k keep old configuration files\n"
+usage=$usage"\t-k keep old configuration files (default)\n"
 usage=$usage"\t-x enable cephx (on by default)\n"
 usage=$usage"\t-X disable cephx\n"
 usage=$usage"\t-g --gssapi enable Kerberos/GSSApi authentication\n"
@@ -277,9 +269,6 @@ case $1 in
             shift
         fi
         ;;
-    --not-new | -N )
-	new=0
-	;;
     --short )
         short=1
         ;;
@@ -392,7 +381,7 @@ case $1 in
             echo "cannot use old configuration: $conf_fn not readable." >&2
             exit
         fi
-        overwrite_conf=0
+        new=0
         ;;
     --memstore )
         objectstore="memstore"
@@ -460,8 +449,10 @@ if [ $kill_all -eq 1 ]; then
     $SUDO $INIT_CEPH stop
 fi
 
-if [ "$overwrite_conf" -eq 0 ]; then
-    CEPH_ASOK_DIR=`dirname $($CEPH_BIN/ceph-conf  -c $conf_fn --show-config-value admin_socket)`
+if [ "$new" -eq 0 ]; then
+    if [ -z "$CEPH_ASOK_DIR" ]; then
+        CEPH_ASOK_DIR=`dirname $($CEPH_BIN/ceph-conf  -c $conf_fn --show-config-value admin_socket)`
+    fi
     mkdir -p $CEPH_ASOK_DIR
     MON=`$CEPH_BIN/ceph-conf -c $conf_fn --name $VSTART_SEC --lookup num_mon 2>/dev/null` && \
         CEPH_NUM_MON="$MON"
@@ -473,25 +464,19 @@ if [ "$overwrite_conf" -eq 0 ]; then
         CEPH_NUM_MGR="$MGR"
     RGW=`$CEPH_BIN/ceph-conf -c $conf_fn --name $VSTART_SEC --lookup num_rgw 2>/dev/null` && \
         CEPH_NUM_RGW="$RGW"
+    GANESHA=`$CEPH_BIN/ceph-conf -c $conf_fn --name $VSTART_SEC --lookup num_ganesha 2>/dev/null` && \
+        GANESHA_DAEMON_NUM="$GANESHA"
 else
-    if [ "$new" -ne 0 ]; then
-        # only delete if -n
-        if [ -e "$conf_fn" ]; then
-            asok_dir=`dirname $($CEPH_BIN/ceph-conf  -c $conf_fn --show-config-value admin_socket)`
-            rm -- "$conf_fn"
-            if [ $asok_dir != /var/run/ceph ]; then
-                [ -d $asok_dir ] && rm -f $asok_dir/* && rmdir $asok_dir
-            fi
+    # only delete if -n
+    if [ -e "$conf_fn" ]; then
+        asok_dir=`dirname $($CEPH_BIN/ceph-conf  -c $conf_fn --show-config-value admin_socket)`
+        rm -- "$conf_fn"
+        if [ $asok_dir != /var/run/ceph ]; then
+            [ -d $asok_dir ] && rm -f $asok_dir/* && rmdir $asok_dir
         fi
-        if [ -z "$CEPH_ASOK_DIR" ]; then
-            CEPH_ASOK_DIR=`mktemp -u -d "${TMPDIR:-/tmp}/ceph-asok.XXXXXX"`
-        fi
-    else
-        if [ -z "$CEPH_ASOK_DIR" ]; then
-            CEPH_ASOK_DIR=`dirname $($CEPH_BIN/ceph-conf -c $conf_fn --show-config-value admin_socket)`
-        fi
-        # -k is implied... (doesn't make sense otherwise)
-        overwrite_conf=0
+    fi
+    if [ -z "$CEPH_ASOK_DIR" ]; then
+        CEPH_ASOK_DIR=`mktemp -u -d "${TMPDIR:-/tmp}/ceph-asok.XXXXXX"`
     fi
 fi
 
@@ -520,7 +505,7 @@ run() {
 }
 
 wconf() {
-    if [ "$overwrite_conf" -eq 1 ]; then
+    if [ "$new" -eq 1 -o "$overwrite_conf" -eq 1 ]; then
         cat >> "$conf_fn"
     fi
 }
@@ -596,6 +581,7 @@ prepare_conf() {
         num mds = $CEPH_NUM_MDS
         num mgr = $CEPH_NUM_MGR
         num rgw = $CEPH_NUM_RGW
+        num ganesha = $GANESHA_DAEMON_NUM
 
 [global]
         fsid = $(uuidgen)
@@ -843,6 +829,14 @@ start_osd() {
     local osds_wait
     for osd in `seq $start $end`
     do
+	local extra_seastar_args
+	if [ "$ceph_osd" == "crimson-osd" ]; then
+	    # designate a single CPU node $osd for osd.$osd
+	    extra_seastar_args="--smp 1 --cpuset $osd"
+	    if [ "$debug" -ne 0 ]; then
+		extra_seastar_args+=" --debug"
+	    fi
+	fi
 	if [ "$new" -eq 1 -o $inc_osd_num -gt 0 ]; then
             wconf <<EOF
 [osd.$osd]
@@ -879,7 +873,7 @@ EOF
             echo "{\"cephx_secret\": \"$OSD_SECRET\"}" > $CEPH_DEV_DIR/osd$osd/new.json
             ceph_adm osd new $uuid -i $CEPH_DEV_DIR/osd$osd/new.json
             rm $CEPH_DEV_DIR/osd$osd/new.json
-            $SUDO $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid
+            $SUDO $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid $extra_seastar_args
 
             local key_fn=$CEPH_DEV_DIR/osd$osd/keyring
             cat > $key_fn<<EOF
@@ -888,14 +882,6 @@ EOF
 EOF
         fi
         echo start osd.$osd
-        local extra_seastar_args
-        if [ "$ceph_osd" == "crimson-osd" ]; then
-            # designate a single CPU node $osd for osd.$osd
-            extra_seastar_args="--smp 1 --cpuset $osd"
-            if [ "$debug" -ne 0 ]; then
-              extra_seastar_args+=" --debug"
-            fi
-        fi
         local osd_pid
         run 'osd' $osd $SUDO $CEPH_BIN/$ceph_osd \
             $extra_seastar_args $extra_osd_args \
@@ -1072,6 +1058,100 @@ EOF
         fi
     fi
 
+}
+
+# Ganesha Daemons requires nfs-ganesha nfs-ganesha-ceph nfs-ganesha-rados-grace
+# (version 2.7.6-2 and above) packages installed. On Fedora>=30 these packages
+# can be installed directly with 'dnf'. For CentOS>=8 the packages need to be
+# downloaded first from  https://download.nfs-ganesha.org/2.7/2.7.6/CentOS/ and
+# then install it. Similarly for Ubuntu 16.04 follow the instructions on
+# https://launchpad.net/~nfs-ganesha/+archive/ubuntu/nfs-ganesha-2.7
+
+start_ganesha() {
+    GANESHA_PORT=$(($CEPH_PORT + 4000))
+    local ganesha=0
+
+    for name in a b c d e f g h i j k l m n o p
+    do
+        [ $ganesha -eq $GANESHA_DAEMON_NUM ] && break
+
+        port=$(($GANESHA_PORT + ganesha))
+        ganesha=$(($ganesha + 1))
+        ganesha_dir="$CEPH_DEV_DIR/ganesha.$name"
+
+        echo "Starting ganesha.$name on port: $port"
+
+        prun rm -rf $ganesha_dir
+        prun mkdir -p $ganesha_dir
+
+        echo "NFS_CORE_PARAM {
+        Enable_NLM = false;
+        Enable_RQUOTA = false;
+        Protocols = 4;
+        NFS_Port = $port;
+}
+
+CACHEINODE {
+        Dir_Chunk = 0;
+        NParts = 1;
+        Cache_Size = 1;
+}
+
+NFSv4 {
+        RecoveryBackend = 'rados_cluster';
+        Minor_Versions = 1, 2;
+}
+
+EXPORT {
+	Export_Id = 100;
+	Transports = TCP;
+	Path = /;
+	Pseudo = /ceph/;
+	Protocols = 4;
+	Access_Type = RW;
+	Attr_Expiration_Time = 0;
+	Squash = None;
+	FSAL {
+	    Name = CEPH;
+	}
+}
+
+CEPH {
+	Ceph_Conf = $conf_fn;
+}
+
+RADOS_KV {
+	Ceph_Conf = $conf_fn;
+	pool = 'nfs-ganesha';
+	namespace = 'ganesha';
+	UserId = 'admin';
+	nodeid = $name;
+}" > "$ganesha_dir/ganesha.conf"
+
+
+	wconf <<EOF
+[ganesha.$name]
+        host = $HOSTNAME
+        ip = $IP
+        port = $port
+        ganesha data = $ganesha_dir
+        pid file = $ganesha_dir/ganesha.pid
+EOF
+
+        if !($CEPH_BIN/rados lspools | grep "nfs-ganesha"); then
+            prun ceph_adm osd pool create nfs-ganesha
+            prun ceph_adm osd pool application enable nfs-ganesha nfs
+        fi
+
+        prun ganesha-rados-grace -p nfs-ganesha -n ganesha add $name
+        prun ganesha-rados-grace -p nfs-ganesha -n ganesha
+
+        prun /usr/bin/ganesha.nfsd -L "$ganesha_dir/ganesha.log" -f "$ganesha_dir/ganesha.conf" -p "$ganesha_dir/ganesha.pid" -N NIV_DEBUG
+
+        # Wait few seconds for grace period to be removed
+        sleep 2
+        prun ganesha-rados-grace -p nfs-ganesha -n ganesha
+done
 }
 
 if [ "$debug" -eq 0 ]; then
@@ -1275,6 +1355,11 @@ if [ "$ec" -eq 1 ]; then
 osd erasure-code-profile set ec-profile m=2 k=2
 osd pool create ec erasure ec-profile
 EOF
+fi
+
+# Ganesha Daemons
+if [ $GANESHA_DAEMON_NUM -gt 0 ]; then
+    start_ganesha
 fi
 
 do_cache() {

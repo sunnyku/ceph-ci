@@ -228,7 +228,7 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
             devs = []
             for d in node_devs:
                 dev = inventory.Device(
-                    path=d['name'],
+                    path='/dev/' + d['name'],
                     sys_api=dict(
                         rotational='1' if d['rotational'] else '0',
                         size=d['size']
@@ -304,14 +304,17 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
         )
 
     def add_mds(self, spec):
+        # type: (orchestrator.StatelessServiceSpec) -> RookCompletion
         return self._service_add_decorate('MDS', spec,
                                        self.rook_cluster.add_filesystem)
 
     def add_rgw(self, spec):
+        # type: (orchestrator.RGWSpec) -> RookCompletion
         return self._service_add_decorate('RGW', spec,
                                        self.rook_cluster.add_objectstore)
 
     def add_nfs(self, spec):
+        # type: (orchestrator.NFSServiceSpec) -> RookCompletion
         return self._service_add_decorate("NFS", spec,
                                           self.rook_cluster.add_nfsgw)
 
@@ -338,8 +341,9 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
         )
 
     def update_mons(self, spec):
-        if spec.placement.nodes:
-            raise RuntimeError("Host list is not supported by rook.")
+        # type: (orchestrator.StatefulServiceSpec) -> RookCompletion
+        if spec.placement.hosts or spec.placement.label:
+            raise RuntimeError("Host list or label is not supported by rook.")
 
         return write_completion(
             lambda: self.rook_cluster.update_mon_count(spec.placement.count),
@@ -348,6 +352,7 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
         )
 
     def update_mds(self, spec):
+        # type: (orchestrator.StatelessServiceSpec) -> RookCompletion
         num = spec.count
         return write_completion(
             lambda: self.rook_cluster.update_mds_count(spec.name, num),
@@ -356,6 +361,7 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
         )
 
     def update_nfs(self, spec):
+        # type: (orchestrator.NFSServiceSpec) -> RookCompletion
         num = spec.count
         return write_completion(
             lambda: self.rook_cluster.update_nfs_count(spec.name, num),
@@ -363,8 +369,22 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
             mgr=self
         )
 
-    def create_osds(self, drive_group):
-        # type: (DriveGroupSpec) -> RookCompletion
+    def create_osds(self, drive_groups):
+        # type: (List[DriveGroupSpec]) -> RookCompletion
+        """ Creates OSDs from a drive group specification.
+
+        Caveat: Currently limited to a single DriveGroup.
+        The orchestrator_cli expects a single completion which
+        ideally represents a set of operations. This orchestrator
+        doesn't support this notion, yet. Hence it's only accepting
+        a single DriveGroup for now.
+        You can work around it by invoking:
+
+        $: ceph orchestrator osd create -i <dg.file>
+
+        multiple times. The drivegroup file must only contain one spec at a time.
+        """
+        drive_group = drive_groups[0]
 
         targets = []  # type: List[str]
         if drive_group.data_devices:

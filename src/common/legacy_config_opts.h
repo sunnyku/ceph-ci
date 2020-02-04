@@ -630,9 +630,6 @@ OPTION(osd_ignore_stale_divergent_priors, OPT_BOOL) // do not assert on divergen
 // decode the object, any error will be reported.
 OPTION(osd_read_ec_check_for_errors, OPT_BOOL) // return error if any ec shard has an error
 
-// Only use clone_overlap for recovery if there are fewer than
-// osd_recover_clone_overlap_limit entries in the overlap set
-OPTION(osd_recover_clone_overlap_limit, OPT_INT)
 OPTION(osd_debug_feed_pullee, OPT_INT)
 
 OPTION(osd_backfill_scan_min, OPT_INT)
@@ -724,6 +721,7 @@ OPTION(osd_kill_backfill_at, OPT_INT)
 // Bounds how infrequently a new map epoch will be persisted for a pg
 OPTION(osd_pg_epoch_persisted_max_stale, OPT_U32) // make this < map_cache_size!
 
+OPTION(osd_target_pg_log_entries_per_osd, OPT_U32)
 OPTION(osd_min_pg_log_entries, OPT_U32)  // number of entries to keep in the pg log when trimming it
 OPTION(osd_max_pg_log_entries, OPT_U32) // max entries, say when degraded, before we trim
 OPTION(osd_pg_log_dups_tracked, OPT_U32) // how many versions back to track combined in both pglog's regular + dup logs

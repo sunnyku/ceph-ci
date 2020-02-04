@@ -6,13 +6,14 @@ import threading
 import functools
 from subprocess import check_output, CalledProcessError
 try:
-    from typing import Callable, List
+    from typing import Callable, List, Tuple
 except ImportError:
     pass  # type checking
 
 import six
 
 from ceph.deployment import inventory
+from ceph.deployment.drive_group import DriveGroupSpec
 from mgr_module import CLICommand, HandleCommandResult
 from mgr_module import MgrModule
 
@@ -168,19 +169,38 @@ class TestOrchestrator(MgrModule, orchestrator.Orchestrator):
             return self._services
 
         out = map(str, check_output(['ps', 'aux']).splitlines())
-        types = [service_type] if service_type else ("mds", "osd", "mon", "rgw", "mgr")
+        types = (service_type, ) if service_type else ("mds", "osd", "mon", "rgw", "mgr")
+        assert isinstance(types, tuple)
         processes = [p for p in out if any([('ceph-' + t in p) for t in types])]
 
         result = []
         for p in processes:
             sd = orchestrator.ServiceDescription()
             sd.nodename = 'localhost'
-            sd.service_instance = re.search('ceph-[^ ]+', p).group()
+            res = re.search('ceph-[^ ]+', p)
+            assert res
+            sd.service_instance = res.group()
             result.append(sd)
 
         return result
 
-    def create_osds(self, drive_group):
+    def create_osds(self, drive_groups):
+        # type: (List[DriveGroupSpec]) -> TestCompletion
+        """ Creates OSDs from a drive group specification.
+
+        Caveat: Currently limited to a single DriveGroup.
+        The orchestrator_cli expects a single completion which
+        ideally represents a set of operations. This orchestrator
+        doesn't support this notion, yet. Hence it's only accepting
+        a single DriveGroup for now.
+        You can work around it by invoking:
+
+        $: ceph orchestrator osd create -i <dg.file>
+
+        multiple times. The drivegroup file must only contain one spec at a time.
+        """
+        drive_group = drive_groups[0]
+
         def run(all_hosts):
             drive_group.validate(orchestrator.InventoryNode.get_host_names(all_hosts))
         return self.get_hosts().then(run).then(
@@ -208,6 +228,7 @@ class TestOrchestrator(MgrModule, orchestrator.Orchestrator):
 
     @deferred_write("Adding NFS service")
     def add_nfs(self, spec):
+        # type: (orchestrator.NFSServiceSpec) -> None
         assert isinstance(spec.pool, str)
 
     @deferred_write("remove_nfs")
@@ -261,11 +282,15 @@ class TestOrchestrator(MgrModule, orchestrator.Orchestrator):
 
     @deferred_write("update_mgrs")
     def update_mgrs(self, spec):
-        assert not spec.nodes or len(spec.placement.nodes) == spec.placement.count
-        assert all([isinstance(h, str) for h in spec.nodes])
+        # type: (orchestrator.StatefulServiceSpec) -> None
+
+        assert not spec.placement.hosts or len(spec.placement.hosts) == spec.placement.count
+        assert all([isinstance(h, str) for h in spec.placement.hosts])
 
     @deferred_write("update_mons")
     def update_mons(self, spec):
-        assert not spec.nodes or len(spec.placement.nodes) == spec.placement.count
-        assert all([isinstance(h[0], str) for h in spec.nodes])
-        assert all([isinstance(h[1], str) or h[1] is None for h in spec.nodes])
+        # type: (orchestrator.StatefulServiceSpec) -> None
+
+        assert not spec.placement.hosts or len(spec.placement.hosts) == spec.placement.count
+        assert all([isinstance(h[0], str) for h in spec.placement.hosts])
+        assert all([isinstance(h[1], str) or h[1] is None for h in spec.placement.hosts])

@@ -103,7 +103,7 @@ export class CdValidators {
    *   argument. The function must return true to set the validation error.
    * @return {ValidatorFn} Returns the validator function.
    */
-  static requiredIf(prerequisites: Object, condition?: Function | undefined): ValidatorFn {
+  static requiredIf(prerequisites: object, condition?: Function | undefined): ValidatorFn {
     let isWatched = false;
 
     return (control: AbstractControl): ValidationErrors | null => {
@@ -150,7 +150,7 @@ export class CdValidators {
    *   into action when the prerequisites are met.
    * @return {ValidatorFn} Returns the validator function.
    */
-  static composeIf(prerequisites: Object, validators: ValidatorFn[]): ValidatorFn {
+  static composeIf(prerequisites: object, validators: ValidatorFn[]): ValidatorFn {
     let isWatched = false;
     return (control: AbstractControl): ValidationErrors | null => {
       if (!isWatched && control.parent) {
@@ -363,6 +363,52 @@ export class CdValidators {
       return {
         binaryMax: (i18n: I18n) => i18n(`Size has to be at most {{value}} or less`, { value })
       };
+    };
+  }
+
+  /**
+   * Asynchronous validator that checks if the password meets the password
+   * policy.
+   * @param userServiceThis The object to be used as the 'this' object
+   *   when calling the 'validatePassword' method of the 'UserService'.
+   * @param usernameFn Function to get the username that should be
+   *   taken into account.
+   * @param callback Callback function that is called after the validation
+   *   has been done.
+   * @return {AsyncValidatorFn} Returns an asynchronous validator function
+   *   that returns an error map with the `passwordPolicy` property if the
+   *   validation check fails, otherwise `null`.
+   */
+  static passwordPolicy(
+    userServiceThis: any,
+    usernameFn?: Function,
+    callback?: (valid: boolean, credits?: number, valuation?: string) => void
+  ): AsyncValidatorFn {
+    return (control: AbstractControl): Observable<ValidationErrors | null> => {
+      if (control.pristine || control.value === '') {
+        if (_.isFunction(callback)) {
+          callback(true, 0);
+        }
+        return observableOf(null);
+      }
+      let username;
+      if (_.isFunction(usernameFn)) {
+        username = usernameFn();
+      }
+      return observableTimer(500).pipe(
+        switchMapTo(_.invoke(userServiceThis, 'validatePassword', control.value, username)),
+        map((resp: { valid: boolean; credits: number; valuation: string }) => {
+          if (_.isFunction(callback)) {
+            callback(resp.valid, resp.credits, resp.valuation);
+          }
+          if (resp.valid) {
+            return null;
+          } else {
+            return { passwordPolicy: true };
+          }
+        }),
+        take(1)
+      );
     };
   }
 }

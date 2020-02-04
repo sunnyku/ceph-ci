@@ -25,6 +25,7 @@ set(librgw_common_srcs
   services/svc_bilog_rados.cc
   services/svc_bucket.cc
   services/svc_bucket_sobj.cc
+  services/svc_bucket_sync_sobj.cc
   services/svc_cls.cc
   services/svc_datalog_rados.cc
   services/svc_mdlog.cc
@@ -56,6 +57,7 @@ set(librgw_common_srcs
   rgw_arn.cc
   rgw_basic_types.cc
   rgw_bucket.cc
+  rgw_bucket_sync.cc
   rgw_cache.cc
   rgw_common.cc
   rgw_compression.cc
@@ -87,6 +89,7 @@ set(librgw_common_srcs
   rgw_sync_module_es_rest.cc
   rgw_sync_module_log.cc
   rgw_sync_module_pubsub.cc
+  rgw_sync_policy.cc
   rgw_pubsub_push.cc
   rgw_notify.cc
   rgw_notify_event_type.cc
@@ -142,7 +145,8 @@ set(librgw_common_srcs
   rgw_perf_counters.cc
   rgw_rest_iam.cc
   rgw_object_lock.cc
-  rgw_kms.cc)
+  rgw_kms.cc
+  rgw_url.cc)
 
 if(WITH_RADOSGW_AMQP_ENDPOINT)
   list(APPEND librgw_common_srcs rgw_amqp.cc)
@@ -156,6 +160,11 @@ add_library(rgw_common OBJECT ${librgw_common_srcs})
 target_include_directories(rgw_common SYSTEM PUBLIC "services")
 target_include_directories(rgw_common PUBLIC "${CMAKE_SOURCE_DIR}/src/dmclock/support/src")
 target_include_directories(rgw_common PUBLIC "${CMAKE_SOURCE_DIR}/src/fmt/include")
+
+if(WITH_BOOST_CONTEXT)
+  target_include_directories(rgw_common PRIVATE
+    $<TARGET_PROPERTY:spawn,INTERFACE_INCLUDE_DIRECTORIES>)
+endif()
 
 if(WITH_LTTNG)
   # rgw/rgw_op.cc includes "tracing/rgw_op.h"
@@ -233,7 +242,7 @@ if(WITH_CURL_OPENSSL)
 endif()
 
 if(WITH_BOOST_CONTEXT)
-  target_link_libraries(rgw_a PRIVATE Boost::coroutine Boost::context)
+  target_link_libraries(rgw_a PUBLIC spawn)
 endif()
 
 set(rgw_libs rgw_a)
@@ -266,21 +275,36 @@ if(WITH_RADOSGW_BEAST_FRONTEND)
     rgw_dmclock_async_scheduler.cc)
 endif()
 
-add_library(radosgw_a STATIC ${radosgw_srcs}
-  $<TARGET_OBJECTS:civetweb_common_objs>)
 add_library(rgw_schedulers STATIC ${rgw_schedulers_srcs})
 target_link_libraries(rgw_schedulers
   PUBLIC dmclock::dmclock)
-target_link_libraries(radosgw_a
-  PRIVATE ${rgw_libs} rgw_schedulers
-  PUBLIC dmclock::dmclock)
-if(WITH_RADOSGW_BEAST_FRONTEND AND WITH_RADOSGW_BEAST_OPENSSL)
-  # used by rgw_asio_frontend.cc
-  target_link_libraries(radosgw_a PRIVATE OpenSSL::SSL)
-endif()
 
-add_executable(radosgw rgw_main.cc)
-target_link_libraries(radosgw radosgw_a librados
+add_library(radosgw SHARED ${radosgw_srcs} ${rgw_a_srcs} rgw_main.cc
+  $<TARGET_OBJECTS:civetweb_common_objs>)
+
+add_dependencies(radosgw civetweb_h)
+
+target_compile_definitions(radosgw PUBLIC "-DCLS_CLIENT_HIDE_IOCTX")
+target_include_directories(radosgw PUBLIC "${CMAKE_SOURCE_DIR}/src/dmclock/support/src")
+target_include_directories(radosgw SYSTEM PUBLIC "../rapidjson/include")
+
+target_link_libraries(radosgw
+  PRIVATE ${rgw_libs} rgw_schedulers
+  PUBLIC dmclock::dmclock
+)
+if(WITH_RADOSGW_BEAST_FRONTEND)
+  target_link_libraries(rgw_schedulers PUBLIC spawn)
+  if(WITH_RADOSGW_BEAST_OPENSSL)
+    # used by rgw_asio_frontend.cc
+    target_link_libraries(radosgw PRIVATE OpenSSL::SSL)
+  endif()
+endif()
+set_target_properties(radosgw PROPERTIES OUTPUT_NAME radosgw VERSION 2.0.0
+  SOVERSION 2)
+install(TARGETS radosgw DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+add_executable(radosgwd radosgw.cc)
+target_link_libraries(radosgwd radosgw librados
   cls_rgw_client cls_otp_client cls_lock_client cls_refcount_client
   cls_log_client cls_timeindex_client
   cls_version_client cls_user_client
@@ -288,7 +312,8 @@ target_link_libraries(radosgw radosgw_a librados
   ${FCGI_LIBRARY} ${LIB_RESOLV}
   ${CURL_LIBRARIES} ${EXPAT_LIBRARIES} ${BLKID_LIBRARIES}
   ${ALLOC_LIBS})
-install(TARGETS radosgw DESTINATION bin)
+set_target_properties(radosgwd PROPERTIES OUTPUT_NAME radosgw)
+install(TARGETS radosgwd DESTINATION bin)
 
 set(radosgw_admin_srcs
   rgw_admin.cc
@@ -402,7 +427,7 @@ if(WITH_RADOSGW_KAFKA_ENDPOINT)
   target_link_libraries(rgw_admin_user PRIVATE RDKafka::RDKafka)
 endif()
 if(WITH_BOOST_CONTEXT)
-  target_link_libraries(rgw_admin_user PRIVATE Boost::coroutine Boost::context)
+  target_link_libraries(rgw_admin_user PRIVATE spawn)
 endif()
 
 if(WITH_TESTS)

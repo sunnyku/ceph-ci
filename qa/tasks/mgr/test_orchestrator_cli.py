@@ -45,15 +45,15 @@ class TestOrchestratorCli(MgrTestCase):
 
     def test_device_ls(self):
         ret = self._orch_cmd("device", "ls")
-        self.assertIn("localhost:", ret)
+        self.assertIn("localhost", ret)
 
     def test_device_ls_refresh(self):
         ret = self._orch_cmd("device", "ls", "--refresh")
-        self.assertIn("localhost:", ret)
+        self.assertIn("localhost", ret)
 
     def test_device_ls_hoshs(self):
         ret = self._orch_cmd("device", "ls", "localhost", "host1")
-        self.assertIn("localhost:", ret)
+        self.assertIn("localhost", ret)
 
 
     def test_device_ls_json(self):
@@ -72,12 +72,12 @@ class TestOrchestratorCli(MgrTestCase):
 
 
     def test_service_action(self):
-        self._orch_cmd("service", "reload", "mds", "cephfs")
+        self._orch_cmd("service", "restart", "mds", "cephfs")
         self._orch_cmd("service", "stop", "mds", "cephfs")
         self._orch_cmd("service", "start", "mds", "cephfs")
 
     def test_service_instance_action(self):
-        self._orch_cmd("service-instance", "reload", "mds", "a")
+        self._orch_cmd("service-instance", "restart", "mds", "a")
         self._orch_cmd("service-instance", "stop", "mds", "a")
         self._orch_cmd("service-instance", "start", "mds", "a")
 
@@ -155,7 +155,6 @@ class TestOrchestratorCli(MgrTestCase):
         self._orch_cmd("host", "rm", "hostname")
 
     def test_mon_update(self):
-        self._orch_cmd("mon", "update", "3")
         self._orch_cmd("mon", "update", "3", "host1:1.2.3.0/24", "host2:1.2.3.0/24", "host3:10.0.0.0/8")
         self._orch_cmd("mon", "update", "3", "host1:1.2.3.4", "host2:1.2.3.4", "host3:10.0.0.1")
 

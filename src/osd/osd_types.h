@@ -464,6 +464,19 @@ struct pg_t {
   hobject_t get_hobj_start() const;
   hobject_t get_hobj_end(unsigned pg_num) const;
 
+  // strong ordering is supported
+  inline int compare(const pg_t& p) const noexcept {
+    if (auto delta = pool() - p.pool(); delta != 0) {
+      return delta;
+    } else if (ps() < p.ps()) {
+      return -1;
+    } else if (ps() > p.ps()) {
+      return 1;
+    } else {
+      return 0;
+    }
+  }
+
   void encode(ceph::buffer::list& bl) const {
     using ceph::encode;
     __u8 v = 1;
@@ -492,28 +505,22 @@ struct pg_t {
 WRITE_CLASS_ENCODER(pg_t)
 
 inline bool operator<(const pg_t& l, const pg_t& r) {
-  return l.pool() < r.pool() ||
-    (l.pool() == r.pool() && (l.ps() < r.ps()));
+  return l.compare(r) < 0;
 }
 inline bool operator<=(const pg_t& l, const pg_t& r) {
-  return l.pool() < r.pool() ||
-    (l.pool() == r.pool() && (l.ps() <= r.ps()));
+  return l.compare(r) <= 0;
 }
 inline bool operator==(const pg_t& l, const pg_t& r) {
-  return l.pool() == r.pool() &&
-    l.ps() == r.ps();
+  return l.compare(r) == 0;
 }
 inline bool operator!=(const pg_t& l, const pg_t& r) {
-  return l.pool() != r.pool() ||
-    l.ps() != r.ps();
+  return l.compare(r) != 0;
 }
 inline bool operator>(const pg_t& l, const pg_t& r) {
-  return l.pool() > r.pool() ||
-    (l.pool() == r.pool() && (l.ps() > r.ps()));
+  return l.compare(r) > 0;
 }
 inline bool operator>=(const pg_t& l, const pg_t& r) {
-  return l.pool() > r.pool() ||
-    (l.pool() == r.pool() && (l.ps() >= r.ps()));
+  return l.compare(r) >= 0;
 }
 
 std::ostream& operator<<(std::ostream& out, const pg_t &pg);
@@ -2409,7 +2416,7 @@ struct osd_stat_t {
       }
     }
   }
-  void dump(ceph::Formatter *f) const;
+  void dump(ceph::Formatter *f, bool with_net = true) const;
   void encode(ceph::buffer::list &bl, uint64_t features) const;
   void decode(ceph::buffer::list::const_iterator &bl);
   static void generate_test_instances(std::list<osd_stat_t*>& o);
@@ -3887,7 +3894,7 @@ private:
   bool new_object;
   bool clean_omap;
   interval_set<uint64_t> clean_offsets;
-  static std::atomic<int32_t> max_num_intervals;
+  static std::atomic<uint32_t> max_num_intervals;
 
   /**
    * trim the number of intervals if clean_offsets.num_intervals()
@@ -3909,7 +3916,7 @@ public:
   bool operator==(const ObjectCleanRegions &orc) const {
     return new_object == orc.new_object && clean_omap == orc.clean_omap && clean_offsets == orc.clean_offsets;
   }
-  static void set_max_num_intervals(int32_t num);
+  static void set_max_num_intervals(uint32_t num);
   void merge(const ObjectCleanRegions &other);
   void mark_data_region_dirty(uint64_t offset, uint64_t len);
   void mark_omap_dirty();
@@ -6229,6 +6236,7 @@ static const __u8 pg_compat_struct_v = 10;
 int prepare_info_keymap(
   CephContext* cct,
   map<string,bufferlist> *km,
+  string *key_to_remove,
   epoch_t epoch,
   pg_info_t &info,
   pg_info_t &last_written_info,

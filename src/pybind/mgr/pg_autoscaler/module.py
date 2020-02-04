@@ -24,7 +24,7 @@ Some terminology is made up for the purposes of this module:
 
 INTERVAL = 5
 
-PG_NUM_MIN = 16  # unless specified on a per-pool basis
+PG_NUM_MIN = 32  # unless specified on a per-pool basis
 
 def nearest_power_of_two(n):
     v = int(n)
@@ -97,7 +97,7 @@ class PgAutoscaler(MgrModule):
         for opt in self.MODULE_OPTIONS:
             setattr(self,
                     opt['name'],
-                    self.get_module_option(opt['name']) or opt['default'])
+                    self.get_module_option(opt['name']))
             self.log.debug(' mgr option %s = %s',
                            opt['name'], getattr(self, opt['name']))
 
@@ -303,7 +303,7 @@ class PgAutoscaler(MgrModule):
             final_ratio = max(capacity_ratio, target_ratio)
 
             # So what proportion of pg allowance should we be using?
-            pool_pg_target = (final_ratio * root_map[root_id].pg_target) / raw_used_rate * bias
+            pool_pg_target = (final_ratio * root_map[root_id].pg_target) / p['size'] * bias
 
             final_pg_target = max(p['options'].get('pg_num_min', PG_NUM_MIN),
                                   nearest_power_of_two(pool_pg_target))
@@ -383,6 +383,8 @@ class PgAutoscaler(MgrModule):
     def _maybe_adjust(self):
         self.log.info('_maybe_adjust')
         osdmap = self.get_osdmap()
+        if osdmap.get_require_osd_release() < 'nautilus':
+            return
         pools = osdmap.get_pools_by_name()
         ps, root_map, pool_root = self._get_pool_status(osdmap, pools)
 

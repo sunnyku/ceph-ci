@@ -2,7 +2,6 @@ if(WITH_MGR_DASHBOARD_FRONTEND)
   add_subdirectory(dashboard)
 endif()
 add_subdirectory(insights)
-add_subdirectory(ansible)
 
 if(WITH_TESTS)
   include(AddCephTest)
@@ -16,6 +15,7 @@ install(DIRECTORY
   DESTINATION ${CEPH_INSTALL_DATADIR}
   REGEX "CMakeLists.txt" EXCLUDE
   REGEX "\\.gitignore" EXCLUDE
+  REGEX ".*\\.pyi" EXCLUDE
   REGEX "hello/.*" EXCLUDE
   REGEX "tests/.*" EXCLUDE
   REGEX "osd_perf_query/.*" EXCLUDE

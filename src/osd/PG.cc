@@ -785,8 +785,10 @@ void PG::send_cluster_message(
 {
   ConnectionRef con = osd->get_con_osd_cluster(
     target, get_osdmap_epoch());
-  if (!con)
+  if (!con) {
+    m->put();
     return;
+  }
 
   if (share_map_update) {
     osd->maybe_share_map(con.get(), get_osdmap());
@@ -847,6 +849,11 @@ void PG::publish_stats_to_osd()
     pg_stats_publish = stats.value();
     pg_stats_publish_valid = true;
   }
+}
+
+unsigned PG::get_target_pg_log_entries() const
+{
+  return osd->get_target_pg_log_entries();
 }
 
 void PG::clear_publish_stats()
@@ -949,10 +956,12 @@ void PG::prepare_write(
   info.stats.stats.add(unstable_stats);
   unstable_stats.clear();
   map<string,bufferlist> km;
+  string key_to_remove;
   if (dirty_big_info || dirty_info) {
     int ret = prepare_info_keymap(
       cct,
       &km,
+      &key_to_remove,
       get_osdmap_epoch(),
       info,
       last_written_info,
@@ -968,6 +977,8 @@ void PG::prepare_write(
     t, &km, coll, pgmeta_oid, pool.info.require_rollback());
   if (!km.empty())
     t.omap_setkeys(coll, pgmeta_oid, km);
+  if (!key_to_remove.empty())
+    t.omap_rmkey(coll, pgmeta_oid, key_to_remove);
 }
 
 #pragma GCC diagnostic ignored "-Wpragmas"
@@ -3448,6 +3459,19 @@ bool PG::can_discard_op(OpRequestRef& op)
 	    << ", dropping " << *m << dendl;
     return true;
   }
+
+  if ((m->get_flags() & (CEPH_OSD_FLAG_BALANCE_READS |
+			 CEPH_OSD_FLAG_LOCALIZE_READS)) &&
+      !is_primary() &&
+      m->get_map_epoch() < info.history.same_interval_since) {
+    // Note: the Objecter will resend on interval change without the primary
+    // changing if it actually sent to a replica.  If the primary hasn't
+    // changed since the send epoch, we got it, and we're primary, it won't
+    // have resent even if the interval did change as it sent it to the primary
+    // (us).
+    return true;
+  }
+
 
   if (m->get_connection()->has_feature(CEPH_FEATURE_RESEND_ON_SPLIT)) {
     // >= luminous client

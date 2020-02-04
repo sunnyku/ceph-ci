@@ -86,7 +86,7 @@ private:
 	   bufferlist& out) override {
     if (command == "bluestore bluefs available") {
       int64_t alloc_size = 0;
-      cmd_getval(bluefs->cct, cmdmap, "alloc_size", alloc_size);
+      cmd_getval(cmdmap, "alloc_size", alloc_size);
       if ((alloc_size & (alloc_size - 1)) != 0) {
 	ss << "Invalid allocation size:'" << alloc_size << std::endl;
 	return -EINVAL;
@@ -2240,7 +2240,6 @@ void BlueFS::_compact_log_async(std::unique_lock<ceph::mutex>& l)
   flush_bdev();  // FIXME?
 
   _flush_and_sync_log(l, 0, old_log_jump_to);
-  vselector->sub_usage(log_file->vselector_hint, log_file->fnode);
 
   // 2. prepare compacted log
   bluefs_transaction_t t;
@@ -2316,6 +2315,8 @@ void BlueFS::_compact_log_async(std::unique_lock<ceph::mutex>& l)
     ++from;
   }
 
+  vselector->sub_usage(log_file->vselector_hint, log_file->fnode);
+
   // clear the extents from old log file, they are added to new log
   log_file->fnode.clear_extents();
   // swap the log files. New log file is the log file now.
@@ -2367,12 +2368,6 @@ void BlueFS::_pad_bl(bufferlist& bl)
   }
 }
 
-void BlueFS::flush_log()
-{
-  std::unique_lock l(lock);
-  flush_bdev();
-  _flush_and_sync_log(l);
-}
 
 int BlueFS::_flush_and_sync_log(std::unique_lock<ceph::mutex>& l,
 				uint64_t want_seq,

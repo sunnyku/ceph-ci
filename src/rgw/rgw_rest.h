@@ -194,6 +194,24 @@ public:
   virtual ~RGWPutBucketTags_ObjStore() = default; 
 };
 
+class RGWGetBucketReplication_ObjStore : public RGWGetBucketReplication {
+public:
+  RGWGetBucketReplication_ObjStore() {};
+  ~RGWGetBucketReplication_ObjStore() {};
+};
+
+class RGWPutBucketReplication_ObjStore: public RGWPutBucketReplication {
+public:
+  RGWPutBucketReplication_ObjStore() = default;
+  virtual ~RGWPutBucketReplication_ObjStore() = default; 
+};
+
+class RGWDeleteBucketReplication_ObjStore: public RGWDeleteBucketReplication {
+public:
+  RGWDeleteBucketReplication_ObjStore() = default;
+  virtual ~RGWDeleteBucketReplication_ObjStore() = default; 
+};
+
 class RGWListBuckets_ObjStore : public RGWListBuckets {
 public:
   RGWListBuckets_ObjStore() {}
@@ -534,7 +552,7 @@ public:
     flusher.init(s, this);
   }
   void send_response() override;
-  virtual int check_caps(RGWUserCaps& caps)
+  virtual int check_caps(const RGWUserCaps& caps)
     { return -EPERM; } /* should to be implemented! */
   int verify_permission() override;
   dmc::client_id dmclock_client() override { return dmc::client_id::admin; }
@@ -569,7 +587,7 @@ public:
   int init_permissions(RGWOp* op) override;
   int read_permissions(RGWOp* op) override;
 
-  virtual RGWOp* get_op(rgw::sal::RGWRadosStore* store);
+  virtual RGWOp* get_op(void);
   virtual void put_op(RGWOp* op);
 };
 

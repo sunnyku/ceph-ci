@@ -1,8 +1,12 @@
-from contextlib import contextmanager
-
+import time
+try:
+    from typing import Any
+except ImportError:
+    pass
 import pytest
 
 from cephadm import CephadmOrchestrator
+from orchestrator import raise_if_exception, Completion
 from tests import mock
 
 
@@ -14,7 +18,7 @@ def set_store(self, k, v):
 
 
 def get_store(self, k):
-    return self._store[k]
+    return self._store.get(k, None)
 
 
 def get_store_prefix(self, prefix):
@@ -30,6 +34,7 @@ def get_ceph_option(_, key):
 def cephadm_module():
     with mock.patch("cephadm.module.CephadmOrchestrator.get_ceph_option", get_ceph_option),\
             mock.patch("cephadm.module.CephadmOrchestrator._configure_logging", lambda *args: None),\
+            mock.patch("cephadm.module.CephadmOrchestrator.remote"),\
             mock.patch("cephadm.module.CephadmOrchestrator.set_store", set_store),\
             mock.patch("cephadm.module.CephadmOrchestrator.get_store", get_store),\
             mock.patch("cephadm.module.CephadmOrchestrator.get_store_prefix", get_store_prefix):
@@ -41,6 +46,35 @@ def cephadm_module():
             'ssh_identity_key': '',
             'ssh_identity_pub': '',
             'inventory': {},
+            'upgrade_state': None,
         }
         m.__init__('cephadm', 0, 0)
+        m._cluster_fsid = "fsid"
         yield m
+
+
+def wait(m, c):
+    # type: (CephadmOrchestrator, Completion) -> Any
+    m.process([c])
+
+    try:
+        import pydevd  # if in debugger
+        in_debug = True
+    except ImportError:
+        in_debug = False
+
+    if in_debug:
+        while True:    # don't timeout
+            if c.is_finished:
+                raise_if_exception(c)
+                return c.result
+            time.sleep(0.1)
+    else:
+        for i in range(30):
+            if i % 10 == 0:
+                m.process([c])
+            if c.is_finished:
+                raise_if_exception(c)
+                return c.result
+            time.sleep(0.1)
+    assert False, "timeout" + str(c._state)

@@ -8,7 +8,6 @@ tasks:
       - librados3
       - ceph-mgr-dashboard
       - ceph-mgr-diskprediction-local
-      - ceph-mgr-diskprediction-cloud
       - ceph-mgr-rook
       - ceph-mgr-cephadm
       - cephadm
@@ -37,6 +36,5 @@ tasks:
         ms bind msgr2: false
 - exec:
     osd.0:
-      - ceph osd require-osd-release mimic
       - ceph osd set-require-min-compat-client mimic
 - print: "**** done ceph"
