@@ -2044,6 +2044,56 @@ scrape_configs:
         })
         return j
 
+    def add_prometheus(self, spec):
+        if not spec.placement.hosts or len(spec.placement.hosts) < spec.count:
+            raise RuntimeError("must specify at least %d hosts" % spec.count)
+        self.log.debug('nodes %s' % spec.placement.hosts)
+
+        def _add(daemons):
+            args = []
+            num_added = 0
+            for host, _, name in spec.placement.hosts:
+                if num_added >= spec.count:
+                    break
+                daemon_id = self.get_unique_name(host, daemons, None, name)
+                self.log.debug('placing prometheus.%s on host %s' % (daemon_id,
+                                                                     host))
+                args.append((daemon_id, host))
+
+                # add to daemon list so next name(s) will also be unique
+                sd = orchestrator.ServiceDescription()
+                sd.service_instance = daemon_id
+                sd.service_type = 'prometheus'
+                sd.nodename = host
+                daemons.append(sd)
+                num_added += 1
+            return self._create_prometheus(args)
+
+        return self._get_services('prometheus').then(_add)
+
+    @async_map_completion
+    def _create_prometheus(self, daemon_id, host):
+        return self._create_daemon('prometheus', daemon_id, host)
+
+    def remove_prometheus(self, name):
+        def _remove(daemons):
+            args = []
+            for d in daemons:
+                if not name or d.service_instance == name:
+                    args.append(
+                        ('%s.%s' % (d.service_type, d.service_instance),
+                         d.nodename)
+                    )
+            if not args and name:
+                raise RuntimeError('Unable to find prometheus.%s daemon' % name)
+            return self._remove_daemon(args)
+
+        return self._get_services('prometheus').then(_remove)
+
+    def update_prometheus(self, spec):
+        spec = NodeAssignment(spec=spec, get_hosts_func=self._get_hosts, service_type='prometheus').load()
+        return self._update_service('prometheus', self.add_prometheus, spec)
+
     def _get_container_image_id(self, image_name):
         # pick a random host...
         host = None
