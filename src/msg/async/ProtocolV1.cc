@@ -862,7 +862,7 @@ CtPtr ProtocolV1::handle_message_data(char *buffer, int r) {
   unsigned read_len = std::min(bp.length(), msg_left);
   ceph_assert(read_len <
 	      static_cast<unsigned>(std::numeric_limits<int>::max()));
-  data_blp.advance(read_len);
+  data_blp += read_len;
   data.append(bp, 0, read_len);
   msg_left -= read_len;
 
@@ -2066,6 +2066,7 @@ CtPtr ProtocolV1::handle_connect_message_2() {
     // incoming lossy client, no need to register this connection
     // new session
     ldout(cct, 10) << __func__ << " accept new session" << dendl;
+    connection->lock.lock();
     return open(reply, authorizer_reply);
   }
 
