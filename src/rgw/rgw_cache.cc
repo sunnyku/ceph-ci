@@ -529,7 +529,7 @@ error:
 done:
 		return r;
 }
-void DataCache::DeleteObjWB(RGWRados *store){
+void DataCache::DeleteObjWB(RGWRados *store, string userid, string bucket_name, string object_name){
 
 		RGWObjectCtx obj_ctx(store);
 		RGWBucketInfo src_bucket_info;
@@ -560,19 +560,16 @@ void DataCache::DeleteObjWB(RGWRados *store){
 		}
 }
 
-int DataCache::get_s3_credentials(RGWRados *store, string userid){
+int DataCache::get_s3_credentials(RGWRados *store, string userid, RGWAccessKey& s3_key){
 		ldout(cct, 20) << "get_s3_ :ugur access_key " << userid <<dendl;
 		bufferlist bl;
 		RGWObjVersionTracker objv_tracker;
 		RGWObjectCtx obj_ctx(store);
 		RGWUserInfo info;
-		rgw_user user_id("testuser");
-		string oid="testuser";
+		rgw_user user_id(userid);
 		real_time *pmtime;
-		int ret = rgw_get_system_obj(store, obj_ctx, store->get_zone_params().user_uid_pool, oid, bl, &objv_tracker, pmtime, NULL, NULL);
-		if (ret == 0){return -1;}
+		int ret = rgw_get_system_obj(store, obj_ctx, store->get_zone_params().user_uid_pool, userid, bl, &objv_tracker, pmtime, NULL, NULL);
 		ret = rgw_get_user_info_by_uid(store, user_id , info, &objv_tracker, pmtime, NULL, NULL);
-		if (ret == 0){return -1;}
 		map<string, RGWAccessKey>::iterator kiter;
 		for (kiter = info.access_keys.begin(); kiter != info.access_keys.end(); ++kiter) {
 				RGWAccessKey& k = kiter->second;
@@ -580,26 +577,28 @@ int DataCache::get_s3_credentials(RGWRados *store, string userid){
 				const char *subuser = (k.subuser.empty() ? "" : k.subuser.c_str());
 				string s;
 				info.user_id.to_str(s);
-				ldout(cct, 20) << "Engage2:ugur access_key " << k.id <<dendl;
-				ldout(cct, 20) << "Engage2:ugur secret_key " << k.key <<dendl;	
+        s3_key.id=k.id;
+      s3_key.key = k.key;
+		//		ldout(cct, 20) << "Engage2:ugur access_key " << k.id <<dendl;
+		//		ldout(cct, 20) << "Engage2:ugur secret_key " << k.key <<dendl;	
 		}
 		ldout(cct, 20) << "Bitti" <<dendl;	
 		return 0;
 }
 
 void DataCache::DiscardObjWB(RGWRados *store, string userid){
-
-		//int reti = get_s3_credentials(store, "testuser"); 
-		bufferlist bl;
+  int ret= 0;
+    RGWAccessKey accesskey2;
+		//ret = get_s3_credentials(store, userid, accesskey2);
+  	bufferlist bl;
 		RGWObjVersionTracker objv_tracker;
 		RGWObjectCtx obj_ctx2(store);
 		RGWUserInfo info;
 		rgw_user user_id(userid);
-		string oid = userid;
 		real_time *pmtime;
-		std::string YourSecretAccessKeyID;
-		std::string AWSAccessKeyId;
-		int ret = rgw_get_system_obj(store, obj_ctx2, store->get_zone_params().user_uid_pool, oid, bl, &objv_tracker, pmtime, NULL, NULL);
+		string YourSecretAccessKeyID;
+		string AWSAccessKeyId;
+		ret = rgw_get_system_obj(store, obj_ctx2, store->get_zone_params().user_uid_pool, userid, bl, &objv_tracker, pmtime, NULL, NULL);
 		ret = rgw_get_user_info_by_uid(store, user_id , info, &objv_tracker, pmtime, NULL, NULL);
 		map<string, RGWAccessKey>::iterator kiter;
 		for (kiter = info.access_keys.begin(); kiter != info.access_keys.end(); ++kiter) {
@@ -611,7 +610,7 @@ void DataCache::DiscardObjWB(RGWRados *store, string userid){
 				AWSAccessKeyId = k.id;
 				YourSecretAccessKeyID = k.key;
 		}
-
+	  ldout(cct, 20) << "ugur DiscardObjWB get secret and access key " << accesskey2.id<<" acc "<< accesskey2.key<<dendl;
 		RGWAccessKey accesskey(AWSAccessKeyId,YourSecretAccessKeyID);
 		RGWBucketInfo src_bucket_info;
 		RGWBucketInfo dest_bucket_info;
@@ -621,8 +620,7 @@ void DataCache::DiscardObjWB(RGWRados *store, string userid){
 		const string src_tenant_name = "";
 		const string src_bucket_name = "mytest";
 		const string src_obj_name="file.txt";
-		string url = "http://172.10.5.41:80";
-		//  string url ="http://" +  cct->_conf->rgw_l2_hosts;
+		string url ="http://" + cct->_conf->rgw_backend_address;
 		string etag;
 		real_time *mtime;
 		HostStyle host_style = PathStyle;
@@ -672,7 +670,12 @@ void DataCache::DiscardObjWB(RGWRados *store, string userid){
 				delete wr;
 		}
 		ret = wr->complete_request(&etag, nullptr);
-
+    if (ret < 0 ){ 
+      return;
+    }
+    else {
+      DeleteObjWB(store, userid, src_bucket_name, src_obj_name);
+    }
 }
 
 void DataCache::put(bufferlist& bl, unsigned int len, std::string oid){

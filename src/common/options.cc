@@ -6318,6 +6318,10 @@ std::vector<Option> get_rgw_options() {
     Option("rgw_l2_hosts", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("localhost")
     .set_description(""),
+    
+   Option("rgw_backend_address", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("localhost")
+    .set_description(""),
 
     Option("rgw_wb_cache_location", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("localhost")

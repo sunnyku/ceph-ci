@@ -144,8 +144,8 @@ public:
 
   /**/
   void DiscardObjWB(RGWRados *store, string userid); 
-  void DeleteObjWB(RGWRados *store); 
-  int get_s3_credentials(RGWRados *store, string userid); 
+  void DeleteObjWB(RGWRados *store, string userid, string bucket_name, string object_name); 
+  int get_s3_credentials(RGWRados *store, string userid, RGWAccessKey& s3_key); 
   
 /*write_cache*/
   //int test_librados_handler();
@@ -917,11 +917,10 @@ template <typename T>
 int RGWDataCache<T>::update_directory(string key, string value, string op, RGWRados *store){
     if (op =="wb_update"){
     	mydout(10) << "ugur update_directory for wb_cache ,insert " << key<< dendl;
-//    	data_cache.set_key(key,value,1);
+      	//data_cache.set_key(key,value,1);
         string a = data_cache.get_key("test_1",1);
 	if (a != ""){
     		mydout(10) << "ugur iflush girdi update_directory for wb_cache ,insert " << key<< dendl;
-//		data_cache.DeleteObjWB(store);
 	data_cache.DiscardObjWB(store,"testuser");
 }
     }

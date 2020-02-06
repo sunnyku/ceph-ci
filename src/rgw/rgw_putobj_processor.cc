@@ -322,12 +322,19 @@ int AtomicObjectProcessor::complete(size_t accounted_size,
     writer.clear_written();
 	/*ugur*/
 	string bucket_id  = op_target.get_obj().bucket.bucket_id;
-	string prefix = manifest.get_prefix(); 
-  	string oid = bucket_id +"__shadow_"+ prefix;
+	string s3_bucket_name = op_target.get_obj().bucket.name;
+	string s3_object_name = op_target.get_obj().key.name;
+  //string s3_object_name =manifest.get_obj().key.name;
+  string s3_userid =  op_target.get_bucket_info().owner.id; 
+  string prefix = manifest.get_prefix(); 
+  string oid = bucket_id +"__shadow_"+ prefix;
+  // S3 bucket can not have underscore.
+  // https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html
+  oid = s3_bucket_name+"_"+s3_object_name+"_"+ s3_userid;
 	string dest = "";
 	string op = "wb_update";
-	rgw_obj src_obj;
-        RGWRados::Object src_op_target(store, bucket_info, obj_ctx, src_obj);
+	//rgw_obj src_obj;
+    //    RGWRados::Object src_op_target(store, bucket_info, obj_ctx, src_obj);
 	r = store->update_directory(oid,dest,op,store);
   	/*ugur*/
   }
