@@ -1376,8 +1376,8 @@ class InventoryNode(object):
     When fetching inventory, all Devices are groups inside of an
     InventoryNode.
     """
-    def __init__(self, name, devices=None, labels=None):
-        # type: (str, Optional[inventory.Devices], Optional[List[str]]) -> None
+    def __init__(self, name, addr=None, devices=None, labels=None):
+        # type: (str, Optional[str], Optional[inventory.Devices], Optional[List[str]]) -> None
         if devices is None:
             devices = inventory.Devices([])
         if labels is None:
@@ -1385,6 +1385,7 @@ class InventoryNode(object):
         assert isinstance(devices, inventory.Devices)
 
         self.name = name  # unique within cluster.  For example a hostname.
+        self.addr = addr or name
         self.devices = devices
         self.labels = labels
 
