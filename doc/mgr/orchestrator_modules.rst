@@ -37,7 +37,6 @@ the dashboard, to work with various different backends.
             orchestrator_cli [label="mgr/orchestrator_cli"]
             orchestrator [label="Orchestrator Interface"]
             cephadm [label="mgr/cephadm"]
-            deepsea [label="mgr/deepsea"]
 
             label = "ceph-mgr";
         }
@@ -46,12 +45,10 @@ the dashboard, to work with various different backends.
         dashboard -> orchestrator
         orchestrator_cli -> orchestrator
         orchestrator -> rook -> rook_io
-        orchestrator -> deepsea -> suse_deepsea
         orchestrator -> cephadm
 
 
         rook_io [label="Rook"]
-        suse_deepsea [label="DeepSea"]
 
         rankdir="TB";
     }
