@@ -298,8 +298,8 @@ RADOS_URLS {{
             os.fchmod(f.fileno(), 0o600)
             f.write(self.get_ganesha_config())
 
-    def create_rados_config_object(self):
-        # type: () -> None
+    def create_rados_config_object(self, timeout=DEFAULT_TIMEOUT):
+        # type: (Optional[int]) -> None
         """Create an empty config object for the new ganesha server"""
         config_obj = self.get_ganesha_config_object()
 
@@ -321,7 +321,7 @@ RADOS_URLS {{
             volume_mounts=volume_mounts,
             cname=self.get_container_name(desc='rados-stat-conf')
         )
-        out, err, ret = call(c.run_cmd(), desc=c.entrypoint, timeout=30)
+        out, err, ret = call(c.run_cmd(), desc=c.entrypoint, timeout=timeout)
 
         if ret == 0:
             # TODO: fail instead of assuming the object already exists?
@@ -334,7 +334,7 @@ RADOS_URLS {{
             args=args + ['create', config_obj],
             volume_mounts=volume_mounts,
             cname=self.get_container_name(desc='rados-create-conf')
-        ).run()
+        ).run(timeout=timeout)
 
     def get_rados_grace_container(self, action):
         # type: (str) -> CephContainer
@@ -1454,7 +1454,8 @@ def deploy_daemon(fsid, daemon_type, daemon_id, c, uid, gid,
     if daemon_type in NFSGanesha.components:
         # create the ganesha config object
         nfs_ganesha = NFSGanesha.init(fsid, daemon_type, daemon_id)
-        nfs_ganesha.create_rados_config_object()
+        timeout=args.timeout if args.timeout else 30 # seconds
+        nfs_ganesha.create_rados_config_object(timeout=timeout)
 
     if not reconfig:
         deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c,
