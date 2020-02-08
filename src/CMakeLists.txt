@@ -282,7 +282,7 @@ include_directories(SYSTEM "${CMAKE_SOURCE_DIR}/src/xxHash")
 include_directories(SYSTEM "${CMAKE_SOURCE_DIR}/src/rapidjson/include")
 
 if(WITH_SEASTAR)
-  find_package(fmt 5.2.1 QUIET)
+  find_package(fmt 5.2.1 QUIET)       
   if(NOT fmt_FOUND)
     message(STATUS "Could not find fmt, will build it")
     add_subdirectory(seastar/fmt)
