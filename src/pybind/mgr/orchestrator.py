@@ -906,6 +906,16 @@ class Orchestrator(object):
         """
         raise NotImplementedError()
 
+    def add_mgrs(self, spec):
+        # type: (StatefulServiceSpec) -> Completion
+        """
+        Add cluster managers.
+
+        :param num: requested number of managers.
+        :param hosts: list of hosts (optional)
+        """
+        raise NotImplementedError()
+
     def update_mgrs(self, spec):
         # type: (StatefulServiceSpec) -> Completion
         """
@@ -914,6 +924,11 @@ class Orchestrator(object):
         :param num: requested number of managers.
         :param hosts: list of hosts (optional)
         """
+        raise NotImplementedError()
+
+    def remove_mgr(self, name):
+        # type: (str) -> Completion
+        """Remove a RGW zone"""
         raise NotImplementedError()
 
     def update_mons(self, spec):
