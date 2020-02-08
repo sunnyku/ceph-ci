@@ -2268,7 +2268,7 @@ def list_daemons(detail=True, legacy_dir=None):
                         if not code:
                             (container_id, image_name, image_id, version) = out.strip().split(',')
                             image_id = normalize_container_id(image_id)
-                            if not version:
+                            if not version or 'ceph' not in version or name.split('.', 1) not in Monitoring.components:
                                 out, err, code = call(
                                     [container_path, 'exec', container_id,
                                      'ceph', '-v'])
