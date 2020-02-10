@@ -130,6 +130,7 @@ dump_cmd_to_json(Formatter *f, uint64_t features, const string& cmd)
 
   stringstream ss(cmd);
   std::string word;
+  bool allow_positional = true;
 
   while (std::getline(ss, word, ' ')) {
     // if no , or =, must be a plain word to put out
@@ -162,10 +163,15 @@ dump_cmd_to_json(Formatter *f, uint64_t features, const string& cmd)
     // pre-octopus clients don't know about positional
     if (!HAVE_FEATURE(features, SERVER_OCTOPUS)) {
       desckv.erase("positional");
+    } else if (!allow_positional && desckv.count("positional") == 0) {
+      desckv["positional"] = "false";
     }
 
     // dump all the keys including name into the array
     for (auto [key, value] : desckv) {
+      if (key == "n" && value == "N") {
+	allow_positional = false;
+      }
       f->dump_string(string(key).c_str(), string(value));
     }
     f->close_section(); // attribute object for individual desc
