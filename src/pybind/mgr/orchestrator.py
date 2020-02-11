@@ -1315,8 +1315,9 @@ class ServiceSpec(object):
 
     """
 
-    def __init__(self, name=None, placement=None):
-        # type: (Optional[str], Optional[PlacementSpec]) -> None
+    def __init__(self, service_type, name=None, placement=None):
+        # type: (str, Optional[str], Optional[PlacementSpec]) -> None
+        self.service_type = service_type
         self.placement = PlacementSpec() if placement is None else placement  # type: PlacementSpec
 
         #: Give this set of stateless services a name: typically it would
@@ -1337,7 +1338,7 @@ class ServiceSpec(object):
 
 class NFSServiceSpec(ServiceSpec):
     def __init__(self, name, pool=None, namespace=None, placement=None):
-        super(NFSServiceSpec, self).__init__(name, placement)
+        super(NFSServiceSpec, self).__init__('nfs', name, placement)
 
         #: RADOS pool where NFS client recovery data is stored.
         self.pool = pool
@@ -1377,7 +1378,8 @@ class RGWSpec(ServiceSpec):
         # default values that makes sense for Ansible. Rook has default values implemented
         # in Rook itself. Thus we don't set any defaults here in this class.
 
-        super(RGWSpec, self).__init__(name=rgw_realm + '.' + rgw_zone,
+        super(RGWSpec, self).__init__('rgw',
+                                      name=rgw_realm + '.' + rgw_zone,
                                       placement=placement)
 
         #: List of hosts where RGWs should run. Not for Rook.

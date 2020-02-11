@@ -394,7 +394,7 @@ Usage:
         'Create an rbd-mirror service')
     def _rbd_mirror_add(self, num=None, hosts=None):
         spec = orchestrator.ServiceSpec(
-            None,
+            'rbd-mirror',
             placement=orchestrator.PlacementSpec(hosts=hosts, count=num))
         completion = self.add_rbd_mirror(spec)
         self._orchestrator_wait([completion])
@@ -409,7 +409,7 @@ Usage:
         'Update the number of rbd-mirror instances')
     def _rbd_mirror_update(self, num, label=None, hosts=[]):
         spec = orchestrator.ServiceSpec(
-            None,
+            'rbd-mirror',
             placement=orchestrator.PlacementSpec(hosts=hosts, count=num, label=label))
         completion = self.update_rbd_mirror(spec)
         self._orchestrator_wait([completion])
@@ -424,6 +424,7 @@ Usage:
         'Create an MDS service')
     def _mds_add(self, fs_name, num=None, hosts=None):
         spec = orchestrator.ServiceSpec(
+            'mds',
             fs_name,
             placement=orchestrator.PlacementSpec(hosts=hosts, count=num))
         completion = self.add_mds(spec)
@@ -443,6 +444,7 @@ Usage:
         placement.validate()
 
         spec = orchestrator.ServiceSpec(
+            'mds',
             fs_name,
             placement=placement)
 
@@ -603,7 +605,7 @@ Usage:
         placement = orchestrator.PlacementSpec(label=label, count=num, hosts=hosts)
         placement.validate()
 
-        spec = orchestrator.ServiceSpec(placement=placement)
+        spec = orchestrator.ServiceSpec('mgr', placement=placement)
 
         completion = self.update_mgrs(spec)
         self._orchestrator_wait([completion])
@@ -623,7 +625,7 @@ Usage:
         placement = orchestrator.PlacementSpec(label=label, count=num, hosts=hosts)
         placement.validate()
 
-        spec = orchestrator.ServiceSpec(placement=placement)
+        spec = orchestrator.ServiceSpec('mon', placement=placement)
 
         completion = self.update_mons(spec)
         self._orchestrator_wait([completion])
