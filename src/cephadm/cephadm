@@ -1788,7 +1788,7 @@ def command_bootstrap():
         },
     )
     def is_mon_available():
-        out, err, ret = call(c.run_cmd(), desc=c.entrypoint, timeout=30)
+        out, err, ret = call(c.run_cmd(), desc=c.entrypoint, timeout=90)
         return ret == 0
     is_available('mon', is_mon_available)()
 
@@ -1842,7 +1842,7 @@ def command_bootstrap():
 
     logger.info('Waiting for mgr to start...')
     def is_mgr_available():
-        out = cli(['status', '-f', 'json-pretty'], timeout=30)
+        out = cli(['status', '-f', 'json-pretty'], timeout=90)
         j = json.loads(out)
         return j.get('mgrmap', {}).get('available', False)
     is_available('mgr', is_mgr_available)()
@@ -1890,7 +1890,7 @@ def command_bootstrap():
 
         logger.info('Waiting for the dashboard to start...')
         def is_dashboard_available():
-            out = cli(['-h'], timeout=30)
+            out = cli(['-h'], timeout=90)
             return 'dashboard' in out
         is_available('Dashboard', is_dashboard_available)()
 
