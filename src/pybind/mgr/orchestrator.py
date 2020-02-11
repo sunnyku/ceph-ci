@@ -938,17 +938,6 @@ class Orchestrator(object):
         """
         raise NotImplementedError()
 
-    def remove_osds(self, osd_ids):
-        # type: (List[str]) -> Completion
-        """
-        :param osd_ids: list of OSD IDs
-        :param destroy: marks the OSD as being destroyed. See :ref:`orchestrator-osd-replace`
-
-        Note that this can only remove OSDs that were successfully
-        created (i.e. got an OSD ID).
-        """
-        raise NotImplementedError()
-
     def blink_device_light(self, ident_fault, on, locations):
         # type: (str, bool, List[DeviceLightLoc]) -> Completion
         """
@@ -985,11 +974,6 @@ class Orchestrator(object):
         """Create a new MDS cluster"""
         raise NotImplementedError()
 
-    def remove_mds(self, name):
-        # type: (str) -> Completion
-        """Remove an MDS cluster"""
-        raise NotImplementedError()
-
     def update_mds(self, spec):
         # type: (ServiceSpec) -> Completion
         """
@@ -1001,11 +985,6 @@ class Orchestrator(object):
     def add_rbd_mirror(self, spec):
         # type: (ServiceSpec) -> Completion
         """Create rbd-mirror cluster"""
-        raise NotImplementedError()
-
-    def remove_rbd_mirror(self, name):
-        # type: (str) -> Completion
-        """Remove rbd-mirror cluster"""
         raise NotImplementedError()
 
     def update_rbd_mirror(self, spec):
@@ -1021,11 +1000,6 @@ class Orchestrator(object):
         """Create a new MDS cluster"""
         raise NotImplementedError()
 
-    def remove_nfs(self, name):
-        # type: (str) -> Completion
-        """Remove a NFS cluster"""
-        raise NotImplementedError()
-
     def update_nfs(self, spec):
         # type: (NFSServiceSpec) -> Completion
         """
@@ -1037,11 +1011,6 @@ class Orchestrator(object):
     def add_rgw(self, spec):
         # type: (RGWSpec) -> Completion
         """Create a new MDS zone"""
-        raise NotImplementedError()
-
-    def remove_rgw(self, zone):
-        # type: (str) -> Completion
-        """Remove a RGW zone"""
         raise NotImplementedError()
 
     def update_rgw(self, spec):
