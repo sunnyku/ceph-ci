@@ -110,7 +110,7 @@ class TestCephadm(object):
     def test_mon_update(self, _send_command, _get_connection, cephadm_module):
         with self._with_host(cephadm_module, 'test'):
             ps = PlacementSpec(hosts=['test:0.0.0.0=a'], count=1)
-            c = cephadm_module.update_mons(ServiceSpec(placement=ps))
+            c = cephadm_module.update_mons(ServiceSpec('mon', placement=ps))
             assert wait(cephadm_module, c) == ["Deployed mon.a on host 'test'"]
 
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('[]'))
@@ -120,7 +120,7 @@ class TestCephadm(object):
     def test_mgr_update(self, _send_command, _get_connection, cephadm_module):
         with self._with_host(cephadm_module, 'test'):
             ps = PlacementSpec(hosts=['test:0.0.0.0=a'], count=1)
-            c = cephadm_module.update_mgrs(ServiceSpec(placement=ps))
+            c = cephadm_module.update_mgrs(ServiceSpec('mgr', placement=ps))
             [out] = wait(cephadm_module, c)
             match_glob(out, "Deployed mgr.* on host 'test'")
 
@@ -162,7 +162,7 @@ class TestCephadm(object):
     def test_mds(self, _send_command, _get_connection, cephadm_module):
         with self._with_host(cephadm_module, 'test'):
             ps = PlacementSpec(hosts=['test'], count=1)
-            c = cephadm_module.add_mds(ServiceSpec('name', placement=ps))
+            c = cephadm_module.add_mds(ServiceSpec('mds', 'name', placement=ps))
             [out] = wait(cephadm_module, c)
             match_glob(out, "Deployed mds.name.* on host 'test'")
 
@@ -268,7 +268,7 @@ class TestCephadm(object):
     def test_rbd_mirror(self, _send_command, _get_connection, cephadm_module):
         with self._with_host(cephadm_module, 'test'):
             ps = PlacementSpec(hosts=['test'], count=1)
-            c = cephadm_module.add_rbd_mirror(ServiceSpec(name='name', placement=ps))
+            c = cephadm_module.add_rbd_mirror(ServiceSpec('rbd-mirror', name='name', placement=ps))
             [out] = wait(cephadm_module, c)
             match_glob(out, "Deployed rbd-mirror.* on host 'test'")
 
