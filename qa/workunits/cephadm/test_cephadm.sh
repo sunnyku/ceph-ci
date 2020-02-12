@@ -120,6 +120,11 @@ cat <<EOF > $ORIG_CONFIG
 [global]
 	log to file = true
 EOF
+
+$SUDO netstat -anp
+$SUDO docker ps -a || $SUDO podman ps -a
+$SUDO journalctl -u ceph-$FSID@mon.a | cat
+
 $CEPHADM bootstrap \
       --mon-id a \
       --mgr-id x \
@@ -129,6 +134,14 @@ $CEPHADM bootstrap \
       --output-config $CONFIG \
       --output-keyring $KEYRING \
       --allow-overwrite
+r=$?
+if [ $r -ne 0 ]; then
+    echo bootstrap failed
+    $SUDO netstat -anp
+    $SUDO docker ps -a || $SUDO podman ps -a
+    $SUDO journalctl -u ceph-$FSID@mon.a | cat
+    exit $r
+fi
 test -e $CONFIG
 test -e $KEYRING
 rm -f $ORIG_CONFIG
@@ -262,6 +275,10 @@ while true; do
 	echo "grafana did not come up"
 	exit 1
     fi
+    $SUDO ps axf
+    $SUDO netstat -anp
+    $SUDO docker ps -a || $SUDO podman ps -a
+    $SUDO journalctl -u ceph-$FSID@grafana.a | cat
     sleep 5
 done
 echo "grafana ok"
