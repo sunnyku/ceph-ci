@@ -868,27 +868,67 @@ class Orchestrator(object):
         """
         raise NotImplementedError()
 
-    def service_action(self, action, service_type, service_name=None, service_id=None):
-        # type: (str, str, Optional[str], Optional[str]) -> Completion
+    def list_daemons(self, daemon_type=None, daemon_id=None, host=None, refresh=False):
+        # type: (Optional[str], Optional[str], Optional[str], bool) -> Completion
         """
-        Perform an action (start/stop/reload) on a service.
+        Describe a daemon (of any kind) that is already configured in
+        the orchestrator.
 
-        Either service_name or service_id must be specified:
+        :return: list of DaemonDescription objects.
+        """
+        raise NotImplementedError()
 
-        * If using service_name, perform the action on that entire logical
-          service (i.e. all daemons providing that named service).
-        * If using service_id, perform the action on a single specific daemon
-          instance.
+    def remove_daemons(self, names, force):
+        # type: (List[str], bool) -> Completion
+        """
+        Remove specific daemon(s).
+
+        :return: None
+        """
+        raise NotImplementedError()
+
+    def remove_service(self, service_type, service_name=None):
+        # type: (str, Optional[str]) -> Completion
+        """
+        Remove a service (a collection of daemons).
+
+        :return: None
+        """
+        raise NotImplementedError()
+
+    def service_action(self, action, service_type, service_name):
+        # type: (str, str, str) -> Completion
+        """
+        Perform an action (start/stop/reload) on a service (i.e., all daemons
+        providing the logical service).
 
         :param action: one of "start", "stop", "restart", "redeploy", "reconfig"
         :param service_type: e.g. "mds", "rgw", ...
         :param service_name: name of logical service ("cephfs", "us-east", ...)
-        :param service_id: service daemon instance (usually a short hostname)
         :rtype: Completion
         """
         #assert action in ["start", "stop", "reload, "restart", "redeploy"]
-        #assert service_name or service_id
-        #assert not (service_name and service_id)
+        raise NotImplementedError()
+
+    def daemon_action(self, action, daemon_type, daemon_id):
+        # type: (str, str, str) -> Completion
+        """
+        Perform an action (start/stop/reload) on a daemon.
+
+        :param action: one of "start", "stop", "restart", "redeploy", "reconfig"
+        :param name: name of daemon
+        :rtype: Completion
+        """
+        #assert action in ["start", "stop", "reload, "restart", "redeploy"]
+        raise NotImplementedError()
+
+    def service_apply(self, spec):
+        # type: (ServiceSpec) -> Completion
+        """
+        Create or update a service.
+
+        :pram spec: a ServiceSpec (or derivative type)
+        """
         raise NotImplementedError()
 
     def create_osds(self, drive_groups):
@@ -909,17 +949,6 @@ class Orchestrator(object):
         """
         raise NotImplementedError()
 
-    def remove_osds(self, osd_ids):
-        # type: (List[str]) -> Completion
-        """
-        :param osd_ids: list of OSD IDs
-        :param destroy: marks the OSD as being destroyed. See :ref:`orchestrator-osd-replace`
-
-        Note that this can only remove OSDs that were successfully
-        created (i.e. got an OSD ID).
-        """
-        raise NotImplementedError()
-
     def blink_device_light(self, ident_fault, on, locations):
         # type: (str, bool, List[DeviceLightLoc]) -> Completion
         """
@@ -931,24 +960,14 @@ class Orchestrator(object):
         """
         raise NotImplementedError()
 
-    def update_mgrs(self, spec):
+    def add_mon(self, spec):
         # type: (ServiceSpec) -> Completion
-        """
-        Update the number of cluster managers.
-
-        :param num: requested number of managers.
-        :param hosts: list of hosts (optional)
-        """
+        """Create a new mon daemon"""
         raise NotImplementedError()
 
-    def update_mons(self, spec):
+    def add_mgr(self, spec):
         # type: (ServiceSpec) -> Completion
-        """
-        Update the number of cluster monitors.
-
-        :param num: requested number of monitors.
-        :param hosts: list of hosts + network + name (optional)
-        """
+        """Create a new mgr daemon"""
         raise NotImplementedError()
 
     def add_mds(self, spec):
@@ -956,35 +975,9 @@ class Orchestrator(object):
         """Create a new MDS cluster"""
         raise NotImplementedError()
 
-    def remove_mds(self, name):
-        # type: (str) -> Completion
-        """Remove an MDS cluster"""
-        raise NotImplementedError()
-
-    def update_mds(self, spec):
-        # type: (ServiceSpec) -> Completion
-        """
-        Update / redeploy existing MDS cluster
-        Like for example changing the number of service instances.
-        """
-        raise NotImplementedError()
-
     def add_rbd_mirror(self, spec):
         # type: (ServiceSpec) -> Completion
         """Create rbd-mirror cluster"""
-        raise NotImplementedError()
-
-    def remove_rbd_mirror(self, name):
-        # type: (str) -> Completion
-        """Remove rbd-mirror cluster"""
-        raise NotImplementedError()
-
-    def update_rbd_mirror(self, spec):
-        # type: (ServiceSpec) -> Completion
-        """
-        Update / redeploy rbd-mirror cluster
-        Like for example changing the number of service instances.
-        """
         raise NotImplementedError()
 
     def add_nfs(self, spec):
@@ -992,35 +985,9 @@ class Orchestrator(object):
         """Create a new MDS cluster"""
         raise NotImplementedError()
 
-    def remove_nfs(self, name):
-        # type: (str) -> Completion
-        """Remove a NFS cluster"""
-        raise NotImplementedError()
-
-    def update_nfs(self, spec):
-        # type: (NFSServiceSpec) -> Completion
-        """
-        Update / redeploy existing NFS cluster
-        Like for example changing the number of service instances.
-        """
-        raise NotImplementedError()
-
     def add_rgw(self, spec):
         # type: (RGWSpec) -> Completion
         """Create a new MDS zone"""
-        raise NotImplementedError()
-
-    def remove_rgw(self, zone):
-        # type: (str) -> Completion
-        """Remove a RGW zone"""
-        raise NotImplementedError()
-
-    def update_rgw(self, spec):
-        # type: (RGWSpec) -> Completion
-        """
-        Update / redeploy existing RGW zone
-        Like for example changing the number of service instances.
-        """
         raise NotImplementedError()
 
     def upgrade_check(self, image, version):
@@ -1125,6 +1092,86 @@ def handle_type_error(method):
         raise OrchestratorValidationError(error_msg)
     return inner
 
+
+class DaemonDescription(object):
+    """
+    For responding to queries about the status of a particular daemon,
+    stateful or stateless.
+
+    This is not about health or performance monitoring of daemons: it's
+    about letting the orchestrator tell Ceph whether and where a
+    daemon is scheduled in the cluster.  When an orchestrator tells
+    Ceph "it's running on node123", that's not a promise that the process
+    is literally up this second, it's a description of where the orchestrator
+    has decided the daemon should run.
+    """
+
+    def __init__(self,
+                 daemon_type=None,
+                 daemon_id=None,
+                 nodename=None,
+                 container_id=None,
+                 container_image_id=None,
+                 container_image_name=None,
+                 version=None,
+                 status=None,
+                 status_desc=None):
+        # Node is at the same granularity as InventoryNode
+        self.nodename = nodename
+
+        # Not everyone runs in containers, but enough people do to
+        # justify having the container_id (runtime id) and container_image
+        # (image name)
+        self.container_id = container_id                  # runtime id
+        self.container_image_id = container_image_id      # image hash
+        self.container_image_name = container_image_name  # image friendly name
+
+        # The type of service (osd, mon, mgr, etc.)
+        self.daemon_type = daemon_type
+
+        # The orchestrator will have picked some names for daemons,
+        # typically either based on hostnames or on pod names.
+        # This is the <foo> in mds.<foo>, the ID that will appear
+        # in the FSMap/ServiceMap.
+        self.daemon_id = daemon_id
+
+        # Service version that was deployed
+        self.version = version
+
+        # Service status: -1 error, 0 stopped, 1 running
+        self.status = status
+
+        # Service status description when status == -1.
+        self.status_desc = status_desc
+
+        # datetime when this info was last refreshed
+        self.last_refresh = None   # type: Optional[datetime.datetime]
+
+    def name(self):
+        return '%s.%s' % (self.daemon_type, self.daemon_id)
+
+    def __repr__(self):
+        return "<DaemonDescription>({type}.{id})".format(type=self.daemon_type,
+                                                         id=self.daemon_id)
+
+    def to_json(self):
+        out = {
+            'nodename': self.nodename,
+            'container_id': self.container_id,
+            'container_image_id': self.container_image_id,
+            'container_image_name': self.container_image_name,
+            'daemon_id': self.daemon_id,
+            'daemon_type': self.daemon_type,
+            'version': self.version,
+            'status': self.status,
+            'status_desc': self.status_desc,
+        }
+        return {k: v for (k, v) in out.items() if v is not None}
+
+    @classmethod
+    @handle_type_error
+    def from_json(cls, data):
+        return cls(**data)
 
 class ServiceDescription(object):
     """
@@ -1237,8 +1284,9 @@ class ServiceSpec(object):
 
     """
 
-    def __init__(self, name=None, placement=None):
-        # type: (Optional[str], Optional[PlacementSpec]) -> None
+    def __init__(self, service_type, name=None, placement=None):
+        # type: (str, Optional[str], Optional[PlacementSpec]) -> None
+        self.service_type = service_type
         self.placement = PlacementSpec() if placement is None else placement  # type: PlacementSpec
 
         #: Give this set of stateless services a name: typically it would
@@ -1259,7 +1307,7 @@ class ServiceSpec(object):
 
 class NFSServiceSpec(ServiceSpec):
     def __init__(self, name, pool=None, namespace=None, placement=None):
-        super(NFSServiceSpec, self).__init__(name, placement)
+        super(NFSServiceSpec, self).__init__('nfs', name, placement)
 
         #: RADOS pool where NFS client recovery data is stored.
         self.pool = pool
@@ -1299,7 +1347,8 @@ class RGWSpec(ServiceSpec):
         # default values that makes sense for Ansible. Rook has default values implemented
         # in Rook itself. Thus we don't set any defaults here in this class.
 
-        super(RGWSpec, self).__init__(name=rgw_realm + '.' + rgw_zone,
+        super(RGWSpec, self).__init__('rgw',
+                                      name=rgw_realm + '.' + rgw_zone,
                                       placement=placement)
 
         #: List of hosts where RGWs should run. Not for Rook.
