@@ -19,9 +19,10 @@ ceph osd pool create foooo 123
 
 ceph osd pool create foo 123 # idempotent
 
-ceph osd pool set foo size 1
 ceph osd pool set foo size 4
 ceph osd pool set foo size 10
+expect_false ceph osd pool set foo size 1
+expect_false ceph osd pool set foo size 1 --yes-i-really-mean-it
 expect_false ceph osd pool set foo size 0
 expect_false ceph osd pool set foo size 20
 

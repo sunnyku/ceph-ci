@@ -236,6 +236,7 @@ OPTION(mon_osd_backfillfull_ratio, OPT_FLOAT) // what % full makes an OSD backfi
 OPTION(mon_osd_nearfull_ratio, OPT_FLOAT) // what % full makes an OSD near full
 OPTION(mon_osd_initial_require_min_compat_client, OPT_STR)
 OPTION(mon_allow_pool_delete, OPT_BOOL) // allow pool deletion
+OPTION(mon_allow_pool_size_one, OPT_BOOL) // allow setting pool size as 1
 OPTION(mon_fake_pool_delete, OPT_BOOL)  // fake pool deletion (add _DELETED suffix)
 OPTION(mon_globalid_prealloc, OPT_U32)   // how many globalids to prealloc
 OPTION(mon_osd_report_timeout, OPT_INT)    // grace period before declaring unresponsive OSDs dead

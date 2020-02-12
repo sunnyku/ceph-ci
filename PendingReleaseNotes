@@ -307,3 +307,8 @@
 * RGW S3: Support has been added for BlockPublicAccess set of APIs at a bucket
   level, currently blocking/ignoring public acls & policies are supported.
   User/Account level apis are planned to be added in the future
+
+* Monitors now have a config option ``mon_allow_pool_size_one`` to allow
+  setting pool size to 1, which is disabled by default. However, if enabled,
+  the user now have to pass ``--yes-i-really-mean-it`` flag to ``osd pool set size 1``
+  if they really are sure of configuring pool size 1.
