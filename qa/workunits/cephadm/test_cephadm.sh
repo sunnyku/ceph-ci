@@ -121,6 +121,11 @@ cat <<EOF > $ORIG_CONFIG
 [global]
 	log to file = true
 EOF
+
+$SUDO netstat -anp
+$SUDO docker ps -a || $SUDO podman ps -a
+$SUDO journalctl -u ceph-$FSID@mon.a | cat
+
 $CEPHADM bootstrap \
       --mon-id a \
       --mgr-id x \
@@ -130,6 +135,14 @@ $CEPHADM bootstrap \
       --output-config $CONFIG \
       --output-keyring $KEYRING \
       --allow-overwrite
+r=$?
+if [ $r -ne 0 ]; then
+    echo bootstrap failed
+    $SUDO netstat -anp
+    $SUDO docker ps -a || $SUDO podman ps -a
+    $SUDO journalctl -u ceph-$FSID@mon.a | cat
+    exit $r
+fi
 test -e $CONFIG
 test -e $KEYRING
 rm -f $ORIG_CONFIG
@@ -259,10 +272,14 @@ while true; do
 	break
     fi
     TRIES=$(($TRIES + 1))
-    if [ "$TRIES" -eq 5 ]; then
+    if [ "$TRIES" -eq 30 ]; then
 	echo "grafana did not come up"
 	exit 1
     fi
+    $SUDO ps axf
+    $SUDO netstat -anp
+    $SUDO docker ps -a || $SUDO podman ps -a
+    $SUDO journalctl -u ceph-$FSID@grafana.a | cat
     sleep 5
 done
 echo "grafana ok"
@@ -313,7 +330,8 @@ $CEPHADM enter --fsid $FSID --name mgr.x -- test -d /var/lib/ceph/mgr/ceph-x
 $CEPHADM enter --fsid $FSID --name mon.a -- pidof ceph-mon
 expect_false $CEPHADM enter --fsid $FSID --name mgr.x -- pidof ceph-mon
 $CEPHADM enter --fsid $FSID --name mgr.x -- pidof ceph-mgr
-expect_false $CEPHADM --timeout 1 enter --fsid $FSID --name mon.a -- sleep 10
+# this triggers a bug in older versions of podman, including 18.04's 1.6.2
+#expect_false $CEPHADM --timeout 1 enter --fsid $FSID --name mon.a -- sleep 10
 $CEPHADM --timeout 10 enter --fsid $FSID --name mon.a -- sleep 1
 
 ## ceph-volume
