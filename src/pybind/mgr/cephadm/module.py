@@ -2156,8 +2156,8 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
 
     def add_mds(self, spec):
         # type: (orchestrator.ServiceSpec) -> AsyncCompletion
-        if not spec.placement.hosts or spec.placement.count is None or len(spec.placement.hosts) < spec.placement.count:
-            raise RuntimeError("must specify at least %s hosts" % spec.placement.count)
+        spec = NodeAssignment(spec, self._get_hosts, 'mds').load()
+
         # ensure mds_join_fs is set for these daemons
         assert spec.name
         ret, out, err = self.mon_command({
@@ -2188,8 +2188,8 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         return self._create_daemon('mds', mds_id, host, keyring=keyring)
 
     def add_rgw(self, spec):
-        if not spec.placement.hosts or len(spec.placement.hosts) < spec.count:
-            raise RuntimeError("must specify at least %d hosts" % spec.count)
+        spec = NodeAssignment(spec, self._get_hosts, 'rgw').load()
+
         # ensure rgw_realm and rgw_zone is set for these daemons
         ret, out, err = self.mon_command({
             'prefix': 'config set',
@@ -2222,9 +2222,8 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         return self._update_service('rgw', self.add_rgw, spec)
 
     def add_rbd_mirror(self, spec):
-        if not spec.placement.hosts or len(spec.placement.hosts) < spec.count:
-            raise RuntimeError("must specify at least %d hosts" % spec.count)
-        self.log.debug('nodes %s' % spec.placement.hosts)
+        spec = NodeAssignment(spec, self._get_hosts, 'rbd-mirror').load()
+
 
         return self._add_new_daemon('rbd-mirror', spec, self._create_rbd_mirror)
 
