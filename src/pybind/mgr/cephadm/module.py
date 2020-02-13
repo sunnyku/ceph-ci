@@ -395,7 +395,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         # load inventory
         i = self.get_store('inventory')
         if i:
-            self.inventory = json.loads(i)
+            self.inventory: Dict[str, dict] = json.loads(i)
         else:
             self.inventory = dict()
         self.log.debug('Loaded inventory %s' % self.inventory)
@@ -1175,6 +1175,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
             raise
 
     def _get_hosts(self, wanted=None):
+        # type: (Any) -> List[Tuple[str, orchestrator.OutdatableData]]
         return self.inventory_cache.items_filtered(wanted)
 
     @async_completion
@@ -1194,10 +1195,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
             raise OrchestratorError('New host %s (%s) failed check: %s' % (
                 spec.hostname, spec.addr, err))
 
-        self.inventory[spec.hostname] = {
-            'addr': spec.addr,
-            'labels': spec.labels,
-        }
+        self.inventory[spec.hostname] = spec.to_json()
         self._save_inventory()
         self.inventory_cache[spec.hostname] = orchestrator.OutdatableData()
         self.daemon_cache[spec.hostname] = orchestrator.OutdatableData()
@@ -1231,22 +1229,21 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
 
     @trivial_completion
     def get_hosts(self):
+        # type: () -> List[orchestrator.HostSpec]
         """
         Return a list of hosts managed by the orchestrator.
 
         Notes:
           - skip async: manager reads from cache.
-
-        TODO:
-          - InventoryNode probably needs to be able to report labels
         """
         r = []
         for hostname, info in self.inventory.items():
             self.log.debug('host %s info %s' % (hostname, info))
-            r.append(orchestrator.InventoryNode(
+            r.append(orchestrator.HostSpec(
                 hostname,
                 addr=info.get('addr', hostname),
                 labels=info.get('labels', []),
+                status=info.get('status', ''),
             ))
         return r
 
@@ -1569,7 +1566,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         return self.get_hosts().then(lambda hosts: self.call_inventory(hosts, drive_groups))
 
     def _prepare_deployment(self,
-                            all_hosts,  # type: List[orchestrator.InventoryNode]
+                            all_hosts,  # type: List[orchestrator.HostSpec]
                             drive_groups,  # type: List[DriveGroupSpec]
                             inventory_list  # type: List[orchestrator.InventoryNode]
                             ):
@@ -1578,7 +1575,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         for drive_group in drive_groups:
             self.log.info("Processing DriveGroup {}".format(drive_group))
             # 1) use fn_filter to determine matching_hosts
-            matching_hosts = drive_group.hosts([x.name for x in all_hosts])
+            matching_hosts = drive_group.hosts([x.hostname for x in all_hosts])
             # 2) Map the inventory to the InventoryNode object
             # FIXME: lazy-load the inventory from a InventoryNode object;
             #        this would save one call to the inventory(at least externally)

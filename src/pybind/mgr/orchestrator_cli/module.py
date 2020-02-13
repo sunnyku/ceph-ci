@@ -161,7 +161,7 @@ class OrchestratorCli(orchestrator.OrchestratorClientMixin, MgrModule):
         'name=addr,type=CephString,req=false '
         'name=labels,type=CephString,n=N,req=false',
         'Add a host')
-    def _add_host(self, host, addr=None, labels=None):
+    def _add_host(self, host:str, addr: Optional[str]=None, labels: Optional[List[str]]=None):
         s = orchestrator.HostSpec(hostname=host, addr=addr, labels=labels)
         completion = self.add_host(s)
         self._orchestrator_wait([completion])
@@ -198,18 +198,18 @@ class OrchestratorCli(orchestrator.OrchestratorClientMixin, MgrModule):
         self._orchestrator_wait([completion])
         orchestrator.raise_if_exception(completion)
         if format == 'json':
-            hosts = [dict(host=node.name, labels=node.labels)
+            hosts = [node.to_json()
                      for node in completion.result]
             output = json.dumps(hosts, sort_keys=True)
         else:
             table = PrettyTable(
-                ['HOST', 'ADDR', 'LABELS'],
+                ['HOST', 'ADDR', 'LABELS', 'STATUS'],
                 border=False)
             table.align = 'l'
             table.left_padding_width = 0
             table.right_padding_width = 1
-            for node in completion.result:
-                table.add_row((node.name, node.addr, ' '.join(node.labels)))
+            for node in completion.result:  # type: orchestrator.HostSpec
+                table.add_row((node.hostname, node.addr, ' '.join(node.labels), node.status))
             output = table.get_string()
         return HandleCommandResult(stdout=output)
 
