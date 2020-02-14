@@ -55,6 +55,8 @@ DEFAULT_SSH_CONFIG = ('Host *\n'
 
 DATEFMT = '%Y-%m-%dT%H:%M:%S.%f'
 
+DAEMON_CACHE_PREFIX = "host.daemons."
+
 # for py2 compat
 try:
     from tempfile import TemporaryDirectory # py3
@@ -265,7 +267,6 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
 
     _STORE_HOST_PREFIX = "host"
 
-
     instance = None
     NATIVE_OPTIONS = []  # type: List[Any]
     MODULE_OPTIONS = [
@@ -385,6 +386,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
             self, self._STORE_HOST_PREFIX + '.devices')
 
         self.daemon_cache = {}  # type: ignore
+        self._daemon_cache_load()
 
         # ensure the host lists are in sync
         for h in self.inventory.keys():
@@ -1189,6 +1191,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         del self.inventory_cache[host]
         del self.daemon_cache[host]
         self._reset_con(host)
+        self._daemon_cache_rm_host(host)
         self.event.set()  # refresh stray health check
         return "Removed host '{}'".format(host)
 
@@ -1298,7 +1301,46 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
             'last_update': datetime.datetime.utcnow().strftime(DATEFMT),
             'daemons': dm,
         }
+        self._daemon_cache_save_host(host)
         return host, dm
+
+    def _daemon_cache_load(self):
+        for k, v in six.iteritems(self.get_store_prefix(DAEMON_CACHE_PREFIX)):
+            host = k[len(DAEMON_CACHE_PREFIX):]
+            if host not in self.inventory:
+                self.log.warning('removing stray daemon_cache host record %s' % (
+                    host))
+                self.set_store(k, None)
+            try:
+                j = json.loads(v)
+                self.daemon_cache[host] = {
+                    # we do ignore the persisted last_update to trigger a new
+                    # scrape on mgr restart
+                    'last_update': None,
+                    'daemons': {},
+                }
+                for name, d in j.get('daemons', {}).items():
+                    self.daemon_cache[host]['daemons'][name] = \
+                        orchestrator.DaemonDescription.from_json(d)
+                self.log.debug('_daemon_cache_load: host %s has %d daemons' % (
+                    host, len(self.daemon_cache[host]['daemons'])))
+            except Exception as e:
+                self.log.warning('unable to load cached state for %s: %s' % (
+                    host, e))
+                pass
+
+    def _daemon_cache_save_host(self, host):
+        di = self.daemon_cache[host]
+        j = {
+            'last_update': di['last_update'],
+            'daemons': {},
+        }
+        for name, dd in di['daemons'].items():
+            j['daemons'][name] = dd.to_json()
+        self.set_store(DAEMON_CACHE_PREFIX + host, json.dumps(j))
+
+    def _daemon_cache_rm_host(self, host):
+        self.set_store(DAEMON_CACHE_PREFIX + host, None)
 
 #    def describe_service(self, service_type=None, service_id=None,
 #                         node_name=None, refresh=False):
