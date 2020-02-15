@@ -139,10 +139,15 @@ class AsyncCompletion(orchestrator.Completion):
                 self._on_complete_ = None
                 self._finalize(result)
             except Exception as e:
-                self.fail(e)
+                try:
+                    self.fail(e)
+                except Exception:
+                    logger.exception(f'failed to fail AsyncCompletion: >{repr(self)}<')
+                    if 'UNITTEST' in os.environ:
+                        assert False
 
         def error_callback(e):
-            self.fail(e)
+            pass
 
         def run(value):
             def do_work(*args, **kwargs):
@@ -154,11 +159,8 @@ class AsyncCompletion(orchestrator.Completion):
                         self.progress_reference.progress += 1.0 / len(value)
                     return res
                 except Exception as e:
-                    if six.PY3:
-                        raise
-                    else:
-                        # Py2 only: _worker_pool doesn't call error_callback
-                        self.fail(e)
+                    self.fail(e)
+                    raise
 
             assert CephadmOrchestrator.instance
             if self.many:
@@ -1865,13 +1867,12 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                                    keyring=keyring,
                                    extra_config=extra_config)
 
+    @async_completion
     def add_mon(self, spec):
         # type: (orchestrator.ServiceSpec) -> orchestrator.Completion
 
         # current support requires a network to be specified
-        for host, network, _ in spec.placement.hosts:
-            if not network:
-                raise RuntimeError("Host '{}' is missing a network spec".format(host))
+        orchestrator.servicespec_validate_hosts_have_network_spec(spec)
 
         def add_mons(daemons):
             for _, _, name in spec.placement.hosts:
@@ -1890,6 +1891,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
 
         return self._get_daemons('mon').then(add_mons)
 
+    @async_completion
     def apply_mon(self, spec):
         # type: (orchestrator.ServiceSpec) -> orchestrator.Completion
         """
@@ -1920,9 +1922,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         [self._require_hosts(host.hostname) for host in spec.placement.hosts]
 
         # current support requires a network to be specified
-        for host, network, _ in spec.placement.hosts:
-            if not network:
-                raise RuntimeError("Host '{}' is missing a network spec".format(host))
+        orchestrator.servicespec_validate_hosts_have_network_spec(spec)
 
         def update_mons_with_daemons(daemons):
             for _, _, name in spec.placement.hosts:
