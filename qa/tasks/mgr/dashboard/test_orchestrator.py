@@ -26,26 +26,26 @@ test_data = {
             ]
         }
     ],
-    'services': [
+    'daemons': [
         {
             'nodename': 'test-host0',
-            'service_type': 'mon',
-            'service_instance': 'a'
+            'daemon_type': 'mon',
+            'daemon_id': 'a'
         },
         {
             'nodename': 'test-host0',
-            'service_type': 'mgr',
-            'service_instance': 'x'
+            'daemon_type': 'mgr',
+            'daemon_id': 'x'
         },
         {
             'nodename': 'test-host0',
-            'service_type': 'osd',
-            'service_instance': '0'
+            'daemon_type': 'osd',
+            'daemon_id': '0'
         },
         {
             'nodename': 'test-host1',
-            'service_type': 'osd',
-            'service_instance': '1'
+            'daemon_type': 'osd',
+            'daemon_id': '1'
         }
     ]
 }
