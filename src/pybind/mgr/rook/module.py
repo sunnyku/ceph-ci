@@ -248,19 +248,17 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
         return [orchestrator.InventoryNode(n, inventory.Devices([])) for n in self.rook_cluster.get_node_names()]
 
     @deferred_read
-    def describe_service(self, service_type=None, service_id=None, node_name=None, refresh=False):
+    def list_daemons(self, daemon_type=None, daemon_id=None, node_name=None, refresh=False):
 
-        if service_type not in ("mds", "osd", "mgr", "mon", "nfs", None):
-            raise orchestrator.OrchestratorValidationError(service_type + " unsupported")
 
-        pods = self.rook_cluster.describe_pods(service_type, service_id, node_name)
+        pods = self.rook_cluster.describe_pods(daemon_type, daemon_id, node_name)
 
         result = []
         for p in pods:
-            sd = orchestrator.ServiceDescription()
-            sd.nodename = p['nodename']
-            sd.container_id = p['name']
-            sd.service_type = p['labels']['app'].replace('rook-ceph-', '')
+            dd = orchestrator.DaemonDescription()
+            dd.nodename = p['nodename']
+            dd.container_id = p['name']
+            dd.daemon_type = p['labels']['app'].replace('rook-ceph-', '')
             status = {
                 'Pending': -1,
                 'Running': 1,
@@ -268,31 +266,29 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
                 'Failed': -1,
                 'Unknown': -1,
             }[p['phase']]
-            sd.status = status
-            sd.status_desc = p['phase']
+            dd.status = status
+            dd.status_desc = p['phase']
 
-            if sd.service_type == "osd":
-                sd.service_instance = "%s" % p['labels']["ceph-osd-id"]
-            elif sd.service_type == "mds":
-                sd.service = p['labels']['rook_file_system']
-                pfx = "{0}-".format(sd.service)
-                sd.service_instance = p['labels']['ceph_daemon_id'].replace(pfx, '', 1)
-            elif sd.service_type == "mon":
-                sd.service_instance = p['labels']["mon"]
-            elif sd.service_type == "mgr":
-                sd.service_instance = p['labels']["mgr"]
-            elif sd.service_type == "nfs":
-                sd.service = p['labels']['ceph_nfs']
-                sd.service_instance = p['labels']['instance']
-                sd.rados_config_location = self.rook_cluster.get_nfs_conf_url(sd.service, sd.service_instance)
-            elif sd.service_type == "rgw":
-                sd.service = p['labels']['rgw']
-                sd.service_instance = p['labels']['ceph_daemon_id']
+            if dd.daemon_type == "osd":
+                dd.daemon_id = "%s" % p['labels']["ceph-osd-id"]
+            elif dd.daemon_type == "mds":
+                #sd.service = p['labels']['rook_file_system']
+                #pfx = "{0}-".format(sd.service)
+                dd.daemon_id = p['labels']['ceph_daemon_id']
+            elif dd.daemon_type == "mon":
+                dd.daemon_id = p['labels']["mon"]
+            elif dd.daemon_type == "mgr":
+                dd.daemon_id = p['labels']["mgr"]
+            elif dd.daemon_type == "nfs":
+                dd.daemon_id = p['labels']['instance']
+                #dd.rados_config_location = self.rook_cluster.get_nfs_conf_url(sd.service, sd.service_instance)
+            elif dd.daemon_type == "rgw":
+                dd.daemon_id = p['labels']['ceph_daemon_id']
             else:
                 # Unknown type -- skip it
                 continue
 
-            result.append(sd)
+            result.append(dd)
 
         return result
 
