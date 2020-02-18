@@ -291,6 +291,7 @@ RADOS_URLS {{
             raise ValueError('data_dir is not a directory: %s' % (data_dir))
 
         # write ganesha.conf
+        logger.info('Creating ganesha config...')
         ganesha_conf_file = os.path.join(data_dir, 'ganesha.conf')
         with open(ganesha_conf_file, 'w') as f:
             # TODO: chown ganesha uid/gid?
@@ -314,6 +315,7 @@ RADOS_URLS {{
         volume_mounts = self.get_container_mounts(data_dir)
 
         # stat rados config object
+        logger.info('Looking for RADOS config object: %s' % (config_obj))
         c = CephContainer(
             image=self.image,
             entrypoint=entrypoint,
@@ -325,9 +327,11 @@ RADOS_URLS {{
 
         if ret == 0:
             # TODO: fail instead of assuming the object already exists?
+            logger.info('RADOS config object exists!')
             return
 
         # create rados config object
+        logger.info('Creating RADOS config object: %s' % (config_obj))
         out = CephContainer(
             image=self.image,
             entrypoint=entrypoint,
@@ -350,6 +354,7 @@ RADOS_URLS {{
         data_dir = get_data_dir(self.fsid, self.daemon_type, self.daemon_id)
         volume_mounts = self.get_container_mounts(data_dir)
 
+        logger.info('Creating RADOS grace for action: %s' % (action))
         c = CephContainer(
             image=self.image,
             entrypoint=entrypoint,
@@ -388,7 +393,7 @@ def attempt_bind(s, address, port):
 def port_in_use(port_num):
     # type (int) -> bool
     """Detect whether a port is in use on the local machine - IPv4 and IPv6"""
-
+    logger.info('Verifying port %d ...' % (port_num))
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         attempt_bind(s, '0.0.0.0', port_num)
@@ -2281,6 +2286,8 @@ def command_deploy():
 
     if daemon_type not in get_supported_daemons():
         raise Error('daemon type %s not recognized' % daemon_type)
+
+    logger.info('Deploying %s daemon with id %s...' % (daemon_type, daemon_id))
 
     if daemon_type in Ceph.daemons:
         (config, keyring, crash_keyring) = get_config_and_both_keyrings()
