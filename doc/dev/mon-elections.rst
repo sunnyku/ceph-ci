@@ -73,7 +73,7 @@ might change during an election!). To guarantee an election epoch does not
 produce multiple leaders, we must maintain two key invariants:
 * Monitors must maintain static scores during an election epoch
 * Any deferral must be transitive -- if A defers to B and then to C,
-  B had better defer to C as well!
+B had better defer to C as well!
 
 We handle these very explicitly: by branching a copy stable_peer_tracker
 of our peer_tracker scoring object whenever starting an election (or
@@ -84,8 +84,8 @@ a copy of the scores the leader is working from, so peers can evaluate them.)
 Of course, those modifications can easily block. To guarantee forward progress,
 we make several further adjustments:
 * If we want to defer to a new peer, but have already deferred to a peer
-  whose scores don't allow that, we bump the election epoch and start()
-  the election over again.
+whose scores don't allow that, we bump the election epoch and start()
+the election over again.
 * All election messages include the scores the sender is aware of.
 
 This guarantees we will resolve the election as long as the network is
