@@ -162,11 +162,13 @@ class HostCache():
         # type: (str) -> None
         if host in self.last_daemon_update:
             del self.last_daemon_update[host]
+        self.mgr.event.set()
 
     def invalidate_host_devices(self, host):
         # type: (str) -> None
         if host in self.last_device_update:
             del self.last_device_update[host]
+        self.mgr.event.set()
 
     def save_host(self, host):
         # type: (str) -> None
@@ -1856,7 +1858,6 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
             sd.status_desc = 'starting'
             self.cache.add_daemon(host, sd)
         self.cache.invalidate_host_daemons(host)
-        self.event.set()
         return "{} {} on host '{}'".format(
             'Reconfigured' if reconfig else 'Deployed', name, host)
 
