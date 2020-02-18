@@ -493,10 +493,16 @@ Requires:       python%{python3_pkgversion}-six
 %if 0%{?fedora} || 0%{?rhel}
 Requires:       python%{python3_pkgversion}-cherrypy
 Requires:       python%{python3_pkgversion}-werkzeug
+%if 0%{?rhel} == 7
+Requires:       python%{python3_pkgversion}-PyYAML
+%else
+Requires:       python%{python3_pkgversion}-pyyaml
+%endif
 %endif
 %if 0%{?suse_version}
 Requires:       python%{python3_pkgversion}-CherryPy
 Requires:       python%{python3_pkgversion}-Werkzeug
+Requires:       python%{python3_pkgversion}-PyYAML
 %endif
 %if 0%{?weak_deps}
 Recommends:	ceph-mgr-dashboard = %{_epoch_prefix}%{version}-%{release}
