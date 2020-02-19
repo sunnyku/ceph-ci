@@ -487,6 +487,7 @@ function run_mon() {
 fsid = $(get_config mon $id fsid)
 mon host = $(get_config mon $id mon_host)
 EOF
+    ceph config set mgr mgr/devicehealth/enable_monitoring off --force
 }
 
 function test_run_mon() {
