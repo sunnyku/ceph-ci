@@ -486,6 +486,7 @@ Summary:        Ceph Manager Daemon
 Group:          System/Filesystems
 %endif
 Requires:       ceph-base = %{_epoch_prefix}%{version}-%{release}
+Requires:       ceph-mgr-orchestrator = %{_epoch_prefix}%{version}-%{release}
 Requires:       python%{python3_pkgversion}-bcrypt
 Requires:       python%{python3_pkgversion}-pecan
 Requires:       python%{python3_pkgversion}-requests
@@ -502,7 +503,6 @@ Requires:       python%{python3_pkgversion}-Werkzeug
 Recommends:	ceph-mgr-dashboard = %{_epoch_prefix}%{version}-%{release}
 Recommends:	ceph-mgr-diskprediction-local = %{_epoch_prefix}%{version}-%{release}
 Recommends:	ceph-mgr-diskprediction-cloud = %{_epoch_prefix}%{version}-%{release}
-Recommends:	ceph-mgr-rook = %{_epoch_prefix}%{version}-%{release}
 Recommends:	ceph-mgr-k8sevents = %{_epoch_prefix}%{version}-%{release}
 Recommends:	ceph-mgr-cephadm = %{_epoch_prefix}%{version}-%{release}
 Recommends:	python%{python3_pkgversion}-influxdb
@@ -579,6 +579,19 @@ Requires:       python2-protobuf
 %description mgr-diskprediction-cloud
 ceph-mgr-diskprediction-cloud is a ceph-mgr plugin that tries to predict
 disk failures using services in the Google cloud.
+
+%package mgr-orchestrator
+Summary:        Ceph Manager plugin for predicting disk failures
+BuildArch:      noarch
+%if 0%{?suse_version}
+Group:          System/Filesystems
+%endif
+%if 0%{?weak_deps}
+Recommends:	ceph-mgr-rook = %{_epoch_prefix}%{version}-%{release}
+%endif
+%description mgr-orchestrator
+ceph-mgr-orchestrator is a ceph-mgr plugin that provides a command line
+interface to orchestrator modules like ceph-mgr-rook.
 
 %package mgr-rook
 BuildArch:      noarch
@@ -1588,7 +1601,6 @@ fi
 %{_datadir}/ceph/mgr/localpool
 %{_datadir}/ceph/mgr/mgr_module.*
 %{_datadir}/ceph/mgr/mgr_util.*
-%{_datadir}/ceph/mgr/orchestrator
 %{_datadir}/ceph/mgr/osd_perf_query
 %{_datadir}/ceph/mgr/pg_autoscaler
 %{_datadir}/ceph/mgr/progress
@@ -1688,6 +1700,10 @@ fi
 if [ $1 -eq 1 ] ; then
     /usr/bin/systemctl try-restart ceph-mgr.target >/dev/null 2>&1 || :
 fi
+
+%files mgr-orchestrator
+%dir %{_datadir}/ceph/mgr
+%{_datadir}/ceph/mgr/orchestrator
 
 %files mgr-rook
 %{_datadir}/ceph/mgr/rook
