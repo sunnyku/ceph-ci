@@ -784,7 +784,6 @@ def is_available(what, func):
 
     :param what: the name of the service
     :param func: the callable object that determines availability
-    :param retry: max number of retry invocations of func
     """
     retry = args.retry
     @wraps(func)
