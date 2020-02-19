@@ -49,6 +49,7 @@ enum {
 struct DataCache;
 class L2CacheThreadPool;
 class HttpL2Request;
+class FlushRequest;
 
 struct ChunkDataInfo : public LRUObject {
 	CephContext *cct;
@@ -124,6 +125,7 @@ private:
   string rgw_wb_cache_location;
   L2CacheThreadPool *tp;
   L2CacheThreadPool *writecache_tp;
+  L2CacheThreadPool *flush_tp;
   struct ChunkDataInfo *head;
   struct ChunkDataInfo *tail;
 
@@ -143,10 +145,11 @@ public:
  
 
   /**/
-  void DiscardObjWB(RGWRados *store, string userid); 
-  void DeleteObjWB(RGWRados *store, string userid, string bucket_name, string object_name); 
+ // void DiscardObjWB(RGWRados *store, string userid); 
+//  void DeleteObjWB(RGWRados *store, string userid, string bucket_name, string object_name); 
   int get_s3_credentials(RGWRados *store, string userid, RGWAccessKey& s3_key); 
-  
+  void run_flush(RGWRados *store, string userid); 
+ 
 /*write_cache*/
   //int test_librados_handler();
   //int create_aio_write_request(bufferlist& bl, unsigned int len, std::string oid, CacheWriteOp *cwo);
@@ -921,7 +924,8 @@ int RGWDataCache<T>::update_directory(string key, string value, string op, RGWRa
         string a = data_cache.get_key("test_1",1);
 	if (a != ""){
     		mydout(10) << "ugur iflush girdi update_directory for wb_cache ,insert " << key<< dendl;
-	data_cache.DiscardObjWB(store,"testuser");
+	      //data_cache.DiscardObjWB(store,"testuser");
+	      data_cache.run_flush(store,"testuser");
 }
     }
     return 0;
@@ -987,17 +991,6 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
   io_ctx.locator_set_key(read_obj.loc);
   d->add_pending_oid(read_obj.oid);
   
-  rgw_user user_id("test","test:swift");
-  real_time mtime= real_clock::now();
-  map<string, bufferlist> src_attrs;
-  rgw_obj dest_obj(obj.bucket, "copy_file");
-  RGWRESTStreamS3PutObj *out_stream_req;
-//  RGWRados *store;
-  RGWBucketInfo dest_bucket_info;
-//  RGWRados::Object src_op_target(store, dest_bucket_info, ctx, read_obj);
-
-//  int ret = d->rados->rest_master_conn->put_obj_async(user_id, dest_obj, astate->size, src_attrs, true, &out_stream_req);
-//  data_cache.flush(d->rados);
     /*directory*/
 	if (data_cache.get(read_obj.oid)) {
 		mydout(20) << "RGW-Cache Hit Local" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
@@ -1015,7 +1008,10 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
 			 d->add_l2_request(&cc, pbl, read_obj.oid, obj_ofs, read_ofs , len, key, c, wb_loc, "read");
 			 r = io_ctx.cache_aio_notifier(read_obj.oid, cc);
 			 data_cache.push_l2_request(cc);
-		} else if (!loc.compare("") == 0){ //Data in Remote Cache
+		} 
+
+
+    else if (!loc.compare("") == 0){ //Data in Remote Cache
 			mydout(20) << "RGW-Cache Hit Remote" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
       			librados::L2CacheRequest *cc;
       			d->add_l2_request(&cc, pbl, read_obj.oid, obj_ofs, read_ofs, len, key, c, loc, "read");
@@ -1076,6 +1072,31 @@ public:
 private:
   std::vector<PoolWorkerThread*> threads;
   WorkQueue workQueue;
+};
+
+class FlushRequest : public Task {
+public:
+  FlushRequest(RGWRados *_store, string _userid, CephContext *_cct): Task(), store(_store), userid(_userid), cct(_cct) { 
+    pthread_mutex_init(&qmtx,0);
+    pthread_cond_init(&wcond, 0);
+  }
+  ~FlushRequest() {
+    pthread_mutex_destroy(&qmtx);
+    pthread_cond_destroy(&wcond);
+  }
+  virtual void run();
+  virtual void set_handler(void *handle) {
+    curl_handle = (CURL *)handle;
+  }
+private:
+  pthread_mutex_t qmtx;
+  pthread_cond_t wcond;
+  CephContext *cct;
+  RGWRados *store;
+  CURL *curl_handle;
+  string userid;
+private:
+  int DiscardObjWB(string tenant_id, string bucket_name, string obj_name);     
 };
 
 class HttpL2Request : public Task {

@@ -436,6 +436,7 @@ DataCache::DataCache ()
 {
 		tp = new L2CacheThreadPool(32);
 		writecache_tp = new L2CacheThreadPool(32);
+		flush_tp = new L2CacheThreadPool(32);
 }
 
 int DataCache::io_write(bufferlist& bl ,unsigned int len, std::string oid) {
@@ -529,7 +530,7 @@ error:
 done:
 		return r;
 }
-void DataCache::DeleteObjWB(RGWRados *store, string userid, string bucket_name, string object_name){
+void DeleteObjWB(RGWRados *store, string userid, string bucket_name, string object_name, CephContext *cct){
 
 		RGWObjectCtx obj_ctx(store);
 		RGWBucketInfo src_bucket_info;
@@ -553,6 +554,8 @@ void DataCache::DeleteObjWB(RGWRados *store, string userid, string bucket_name, 
 		RGWRados::Object::Delete del_op(&del_target);
 		del_op.params.versioning_status = src_bucket_info.versioning_status();
 		del_op.params.bucket_owner = src_bucket_info.owner;
+
+    int op_ret = 0;
 		int op_ret = del_op.delete_obj();
 		if (op_ret >= 0) {
 				//delete_marker = del_op.result.delete_marker;
@@ -586,22 +589,22 @@ int DataCache::get_s3_credentials(RGWRados *store, string userid, RGWAccessKey& 
 		return 0;
 }
 
-void DataCache::DiscardObjWB(RGWRados *store, string userid){
+int FlushRequest::DiscardObjWB(string tenant_id, string bucket_name, string obj_name){
   int ret= 0;
-    RGWAccessKey accesskey2;
+  RGWAccessKey accesskey2;
 		//ret = get_s3_credentials(store, userid, accesskey2);
-  	bufferlist bl;
-		RGWObjVersionTracker objv_tracker;
-		RGWObjectCtx obj_ctx2(store);
-		RGWUserInfo info;
-		rgw_user user_id(userid);
-		real_time *pmtime;
-		string YourSecretAccessKeyID;
-		string AWSAccessKeyId;
-		ret = rgw_get_system_obj(store, obj_ctx2, store->get_zone_params().user_uid_pool, userid, bl, &objv_tracker, pmtime, NULL, NULL);
-		ret = rgw_get_user_info_by_uid(store, user_id , info, &objv_tracker, pmtime, NULL, NULL);
-		map<string, RGWAccessKey>::iterator kiter;
-		for (kiter = info.access_keys.begin(); kiter != info.access_keys.end(); ++kiter) {
+  bufferlist bl;
+	RGWObjVersionTracker objv_tracker;
+	RGWObjectCtx obj_ctx2(store);
+	RGWUserInfo info;
+	rgw_user user_id(userid);
+	real_time *pmtime;
+	string YourSecretAccessKeyID;
+	string AWSAccessKeyId;
+	ret = rgw_get_system_obj(store, obj_ctx2, store->get_zone_params().user_uid_pool, userid, bl, &objv_tracker, pmtime, NULL, NULL);
+	ret = rgw_get_user_info_by_uid(store, user_id , info, &objv_tracker, pmtime, NULL, NULL);
+	map<string, RGWAccessKey>::iterator kiter;
+	for (kiter = info.access_keys.begin(); kiter != info.access_keys.end(); ++kiter) {
 				RGWAccessKey& k = kiter->second;
 				const char *sep = (k.subuser.empty() ? "" : ":");
 				const char *subuser = (k.subuser.empty() ? "" : k.subuser.c_str());
@@ -610,60 +613,60 @@ void DataCache::DiscardObjWB(RGWRados *store, string userid){
 				AWSAccessKeyId = k.id;
 				YourSecretAccessKeyID = k.key;
 		}
-	  ldout(cct, 20) << "ugur DiscardObjWB get secret and access key " << accesskey2.id<<" acc "<< accesskey2.key<<dendl;
-		RGWAccessKey accesskey(AWSAccessKeyId,YourSecretAccessKeyID);
-		RGWBucketInfo src_bucket_info;
-		RGWBucketInfo dest_bucket_info;
-		RGWObjectCtx obj_ctx(store);
-		map<string, bufferlist> dest_attrs;
-		map<string, bufferlist> src_attrs;
-		const string src_tenant_name = "";
-		const string src_bucket_name = "mytest";
-		const string src_obj_name="file.txt";
-		string url ="http://" + cct->_conf->rgw_backend_address;
-		string etag;
-		real_time *mtime;
-		HostStyle host_style = PathStyle;
-		ret = store->get_bucket_info(obj_ctx, src_tenant_name, src_bucket_name, src_bucket_info, NULL, &src_attrs);
-		rgw_obj src_obj(src_bucket_info.bucket, src_obj_name);
-		dest_bucket_info = src_bucket_info;
-		dest_attrs = src_attrs;
-		rgw_bucket dest_bucket = dest_bucket_info.bucket;
-		rgw_obj dest_obj(dest_bucket, src_obj_name);
-		uint64_t obj_size;
+	ldout(cct, 20) << "ugur DiscardObjWB get secret and access key " << accesskey2.id<<" acc "<< accesskey2.key<<dendl;
+	RGWAccessKey accesskey(AWSAccessKeyId,YourSecretAccessKeyID);
+	RGWBucketInfo src_bucket_info;
+	RGWBucketInfo dest_bucket_info;
+	RGWObjectCtx obj_ctx(store);
+	map<string, bufferlist> dest_attrs;
+	map<string, bufferlist> src_attrs;
+	const string src_tenant_name = "";
+	const string src_bucket_name = bucket_name;
+	const string src_obj_name = obj_name;
+	string url ="http://" + cct->_conf->rgw_backend_address;
+	string etag;
+	real_time *mtime;
+	HostStyle host_style = PathStyle;
+	ret = store->get_bucket_info(obj_ctx, src_tenant_name, src_bucket_name, src_bucket_info, NULL, &src_attrs);
+	rgw_obj src_obj(src_bucket_info.bucket, src_obj_name);
+	dest_bucket_info = src_bucket_info;
+	dest_attrs = src_attrs;
+	rgw_bucket dest_bucket = dest_bucket_info.bucket;
+	rgw_obj dest_obj(dest_bucket, src_obj_name);
+	uint64_t obj_size;
 
-		/*Create Bucket*/
-		ldout(cct, 20) << "ugur flush create bucket: " << src_bucket_name << dendl;
-		param_vec_t bucket_headers;
-		bucket_headers.push_back(pair<string, string>("Content-Length", "0"));
-		RGWRESTStreamS3PutObj *bucket_wr = new RGWRESTStreamS3PutObj(cct, "PUT", url, &bucket_headers, NULL, host_style);
-		const string s_bucket_name = "";
-		map<string, bufferlist> bucket_attrs;
-		rgw_obj dest_bucket_obj(dest_bucket, s_bucket_name); 
-		ret = bucket_wr->put_obj_init(accesskey, dest_bucket_obj, 0, bucket_attrs, true);
-		if (ret < 0) {
-				delete bucket_wr;
-		}
-		ret = bucket_wr->complete_request(&etag, nullptr);
+	/*Create Bucket*/
+	ldout(cct, 20) << "ugur flush create bucket: " << src_bucket_name << dendl;
+	param_vec_t bucket_headers;
+	bucket_headers.push_back(pair<string, string>("Content-Length", "0"));
+	RGWRESTStreamS3PutObj *bucket_wr = new RGWRESTStreamS3PutObj(cct, "PUT", url, &bucket_headers, NULL, host_style);
+	const string s_bucket_name = "";
+	map<string, bufferlist> bucket_attrs;
+	rgw_obj dest_bucket_obj(dest_bucket, s_bucket_name); 
+	ret = bucket_wr->put_obj_init(accesskey, dest_bucket_obj, 0, bucket_attrs, true);
+	if (ret < 0) {
+			delete bucket_wr;
+	}
+	ret = bucket_wr->complete_request(&etag, nullptr);
 
-		/*Create Object*/
-		ldout(cct, 20) << "ugur flush object: " << src_obj_name << dendl;
-		RGWRados::Object src_op_target(store, src_bucket_info, obj_ctx, src_obj);
-		RGWRados::Object::Read read_op(&src_op_target); 
-		read_op.params.attrs = &src_attrs;
-		read_op.params.obj_size = &obj_size;
-		ret = read_op.prepare(); 
-		if (ret < 0) { return;}
+	/*Create Object*/
+	ldout(cct, 20) << "ugur flush object: " << src_obj_name << dendl;
+	RGWRados::Object src_op_target(store, src_bucket_info, obj_ctx, src_obj);
+	RGWRados::Object::Read read_op(&src_op_target); 
+	read_op.params.attrs = &src_attrs;
+	read_op.params.obj_size = &obj_size;
+	ret = read_op.prepare(); 
+	if (ret < 0) { return -1;}
 
-		RGWObjState *astate = NULL;
-		ret = store->get_obj_state(&obj_ctx, src_bucket_info, src_obj, &astate, NULL);
-		param_vec_t headers;
-		headers.push_back(pair<string, string>("Content-Length", std::to_string(astate->size)));
-		RGWRESTStreamS3PutObj *wr = new RGWRESTStreamS3PutObj(cct, "PUT", url, &headers, NULL, host_style);
-		ret = wr->put_obj_init(accesskey, dest_obj, astate->size, src_attrs, true);
-		if (ret < 0) {
-				delete wr;
-		}
+	RGWObjState *astate = NULL;
+	ret = store->get_obj_state(&obj_ctx, src_bucket_info, src_obj, &astate, NULL);
+	param_vec_t headers;
+	headers.push_back(pair<string, string>("Content-Length", std::to_string(astate->size)));
+	RGWRESTStreamS3PutObj *wr = new RGWRESTStreamS3PutObj(cct, "PUT", url, &headers, NULL, host_style);
+	ret = wr->put_obj_init(accesskey, dest_obj, astate->size, src_attrs, true);
+	if (ret < 0) {
+			delete wr;
+	}
 
 		ret = read_op.iterate(0, astate->size - 1, wr->get_out_cb());
 		if (ret < 0) {
@@ -671,11 +674,20 @@ void DataCache::DiscardObjWB(RGWRados *store, string userid){
 		}
 		ret = wr->complete_request(&etag, nullptr);
     if (ret < 0 ){ 
-      return;
+      return -1;
     }
     else {
-      DeleteObjWB(store, userid, src_bucket_name, src_obj_name);
+      DeleteObjWB(store, userid, src_bucket_name, src_obj_name, cct);
+      return 0;
     }
+    
+}
+
+void create_buc(RGWRados *store, string userid){
+  
+
+
+
 }
 
 void DataCache::put(bufferlist& bl, unsigned int len, std::string oid){
@@ -853,6 +865,24 @@ void DataCache::push_wb_request(struct librados::L2CacheRequest *wbrequest ) {
 		tp->addTask(new HttpL2Request(wbrequest, cct));
 }
 
+
+void DataCache::run_flush(RGWRados *store, string userid) {
+		flush_tp->addTask(new FlushRequest(store, userid, cct));
+}
+
+void FlushRequest::run() {
+
+  /*list<string> pool_names;
+  map<string, librados::pool_stat_t> stats;
+  pool_names.push_back("default.rgw.buckets.data");
+  ret = store->rados.get_pool_stats(pool_names, stats);
+   */
+
+  ldout(cct, 10) << "ugur FlushRequest userid "<< userid << dendl;
+  int r = DiscardObjWB("testuser", "mytest","file.txt");  
+  return;
+
+  }
 
 void HttpL2Request::run() {
 
