@@ -1030,8 +1030,8 @@ def get_parm(option):
 
     try:
         js = json.loads(j)
-    except ValueError:
-        raise Error("Invalid JSON in {}".format(option))
+    except ValueError as e:
+        raise Error("Invalid JSON in {}: {}".format(option, e))
     else:
         return js
 
@@ -3394,10 +3394,14 @@ if __name__ == "__main__":
     try:
         r = args.func()
     except Error as e:
+        logger.exception('execution failed')
         if args.verbose:
             raise
         sys.stderr.write('ERROR: %s\n' % e)
         sys.exit(1)
+    except Exception:
+        logger.exception('unhandled exception')
+        raise
     if not r:
         r = 0
     sys.exit(r)
