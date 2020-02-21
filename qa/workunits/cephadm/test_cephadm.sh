@@ -267,6 +267,21 @@ while true; do
 done
 echo "grafana ok"
 
+# add nfs-ganesha
+expect_false ss -tlnp '( sport = :nfs )' | grep 'ganesha.nfsd'
+nfs_rados_pool=$(cat ${CEPHADM_SAMPLES_DIR}/ganesha.json | jq -r '.["pool"]')
+$CEPHADM shell --fsid $FSID --config $CONFIG --keyring $KEYRING -- \
+	ceph osd pool create $nfs_rados_pool 64
+# TODO: `ceph auth get-or-create` instead of admin KEYRING?
+$CEPHADM deploy --name nfs.a \
+      --fsid $FSID \
+      --keyring $KEYRING
+      --config $CONFIG
+      --config-json ${CEPHADM_SAMPLES_DIR}/nfs.json
+sleep 120
+ss -tlnp '( sport = :nfs )' | grep 'ganesha.nfsd'
+# TODO create export and mount nfs share??
+
 ## run
 # WRITE ME
 
