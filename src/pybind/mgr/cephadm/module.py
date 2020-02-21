@@ -2335,6 +2335,19 @@ scrape_configs:
     def _create_node_exporter(self, daemon_id, host):
         return self._create_daemon('node-exporter', daemon_id, host)
 
+    def add_grafana(self, spec):
+        # type: (orchestrator.ServiceSpec) -> AsyncCompletion
+        spec = NodeAssignment(spec=spec, get_hosts_func=self._get_hosts, service_type='grafana').load()
+        return self._add_new_daemon('node-exporter', spec, self._create_grafana)
+
+    def apply_grafana(self, spec):
+        spec = NodeAssignment(spec=spec, get_hosts_func=self._get_hosts, service_type='grafana').load()
+        return self._update_service('node-exporter', self.add_grafana, spec)
+
+    @async_map_completion
+    def _create_grafana(self, daemon_id, host):
+        return self._create_daemon('grafana', daemon_id, host)
+
     def _get_container_image_id(self, image_name):
         # pick a random host...
         host = None
