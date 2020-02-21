@@ -147,7 +147,7 @@ public:
   /**/
  // void DiscardObjWB(RGWRados *store, string userid); 
 //  void DeleteObjWB(RGWRados *store, string userid, string bucket_name, string object_name); 
-  int get_s3_credentials(RGWRados *store, string userid, RGWAccessKey& s3_key); 
+//  int get_s3_credentials(RGWRados *store, string userid, RGWAccessKey *s3_key); 
   void run_flush(RGWRados *store, string userid); 
  
 /*write_cache*/
