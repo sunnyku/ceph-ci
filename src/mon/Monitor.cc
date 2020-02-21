@@ -3073,7 +3073,7 @@ void Monitor::handle_command(MonOpRequestRef op)
   string module;
   string err;
 
-  dout(5) << "handle_command " << *m << dendl;
+  dout(0) << "handle_command " << *m << dendl;
 
   string format;
   cmd_getval(g_ceph_context, cmdmap, "format", format, string("plain"));
@@ -3179,9 +3179,10 @@ void Monitor::handle_command(MonOpRequestRef op)
     return;
   }
 
-  dout(cmd_is_rw ? 0 : 5) << "from='" << session->inst << "' "
-          << "entity='" << session->entity_name << "' "
-          << "cmd=" << m->cmd << ": dispatch" << dendl;
+  (cmd_is_rw ? audit_clog->info() : audit_clog->debug())
+    << "from='" << session->inst << "' "
+    << "entity='" << session->entity_name << "' "
+    << "cmd=" << m->cmd << ": dispatch";
 
   if (mon_cmd->is_mgr() &&
       osdmon()->osdmap.require_osd_release >= CEPH_RELEASE_LUMINOUS) {
