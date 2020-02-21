@@ -1558,6 +1558,7 @@ class CephContainer:
             'run',
             '--rm',
             '--net=host',
+            '--cap-add=SYS_PTRACE',
         ] + self.container_args + priv + \
         cname + envs + \
         vols + entrypoint + \
