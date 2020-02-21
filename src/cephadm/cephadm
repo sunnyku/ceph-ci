@@ -515,7 +515,7 @@ def call_throws(command, **kwargs):
 
 
 def call_timeout(command, timeout):
-    #type (List[str], int) -> int
+    # type: (List[str], int) -> int
 
     logger.debug('Running command (timeout=%s): %s'
             % (timeout, ' '.join(command)))
@@ -526,7 +526,7 @@ def call_timeout(command, timeout):
         raise TimeoutExpired(msg)
 
     def call_timeout_py2(command, timeout):
-        #type (List[str], int) -> int
+        # type: (List[str], int) -> int
         proc = subprocess.Popen(command)
         thread = Thread(target=proc.wait)
         thread.start()
@@ -538,7 +538,7 @@ def call_timeout(command, timeout):
         return proc.returncode
 
     def call_timeout_py3(command, timeout):
-        #type (List[str], int) -> int
+        # type: (List[str], int) -> int
         try:
             return subprocess.call(command, timeout=timeout)
         except subprocess.TimeoutExpired as e:
@@ -555,7 +555,7 @@ def call_timeout(command, timeout):
 ##################################
 
 def is_available(what, func):
-    # type (str, func, Optional[int]) -> func
+    # type: (str, func, Optional[int]) -> func
     """
     Wait for a service to become available
 
@@ -656,6 +656,7 @@ def generate_password():
                    for i in range(10))
 
 def normalize_container_id(i):
+    # type: (str) -> str
     # docker adds the sha256: prefix, but AFAICS both
     # docker (18.09.7 in bionic at least) and podman
     # both always use sha256, so leave off the prefix
@@ -853,7 +854,7 @@ def find_program(filename):
     return name
 
 def get_unit_name(fsid, daemon_type, daemon_id=None):
-    # type (str, str, Optional[Union[int, str]]) -> str
+    # type: (str, str, Optional[Union[int, str]]) -> str
     # accept either name or type + id
     if daemon_id is not None:
         return 'ceph-%s@%s.%s' % (fsid, daemon_type, daemon_id)
@@ -861,19 +862,24 @@ def get_unit_name(fsid, daemon_type, daemon_id=None):
         return 'ceph-%s@%s' % (fsid, daemon_type)
 
 def check_unit(unit_name):
-    # type: (str) -> Tuple[bool, str]
+    # type: (str) -> Tuple[bool, str, bool]
     # NOTE: we ignore the exit code here because systemctl outputs
     # various exit codes based on the state of the service, but the
     # string result is more explicit (and sufficient).
     enabled = False
+    installed = False
     try:
         out, err, code = call(['systemctl', 'is-enabled', unit_name],
                               verbose_on_failure=False)
         if code == 0:
             enabled = True
+            installed = True
+        elif "disabled" in out:
+            installed = True
     except Exception as e:
         logger.warning('unable to run systemctl: %s' % e)
         enabled = False
+        installed = False
 
     state = 'unknown'
     try:
@@ -891,7 +897,7 @@ def check_unit(unit_name):
     except Exception as e:
         logger.warning('unable to run systemctl: %s' % e)
         state = 'unknown'
-    return (enabled, state)
+    return (enabled, state, installed)
 
 def get_legacy_config_fsid(cluster, legacy_dir=None):
     # type: (str, str) -> Optional[str]
@@ -1344,7 +1350,7 @@ def update_firewalld(daemon_type):
     if not cmd:
         logger.debug('firewalld does not appear to be present')
         return
-    (enabled, state) = check_unit('firewalld.service')
+    (enabled, state, _) = check_unit('firewalld.service')
     if not enabled:
         logger.debug('firewalld.service is not enabled')
         return
@@ -2286,7 +2292,7 @@ def list_daemons(detail=True, legacy_dir=None):
                         'fsid': fsid if fsid is not None else 'unknown',
                     }
                     if detail:
-                        (i['enabled'], i['state']) = check_unit(
+                        (i['enabled'], i['state'], _) = check_unit(
                             'ceph-%s@%s' % (daemon_type, daemon_id))
                         if not host_version:
                             try:
@@ -2315,7 +2321,7 @@ def list_daemons(detail=True, legacy_dir=None):
                     }
                     if detail:
                         # get container id
-                        (i['enabled'], i['state']) = check_unit(unit_name)
+                        (i['enabled'], i['state'], _) = check_unit(unit_name)
                         container_id = None
                         image_name = None
                         image_id = None
@@ -2417,7 +2423,7 @@ def command_adopt():
         # cluster we are adopting based on the /etc/{defaults,sysconfig}/ceph
         # CLUSTER field.
         unit_name = 'ceph-%s@%s' % (daemon_type, daemon_id)
-        (enabled, state) = check_unit(unit_name)
+        (enabled, state, _) = check_unit(unit_name)
 
         if state == 'running':
             logger.info('Stopping old systemd unit %s...' % unit_name)
@@ -2588,19 +2594,24 @@ def command_rm_cluster():
 
 ##################################
 
-def check_time_sync():
+def check_time_sync(enabler=None):
+    # type: (Optional[Packager]) -> bool
     units = [
         'chrony.service',  # 18.04 (at least)
-        'chronyd.service', # el
+        'chronyd.service', # el / opensuse
         'systemd-timesyncd.service',
         'ntpd.service', # el7 (at least)
         'ntp.service',  # 18.04 (at least)
     ]
     for u in units:
-        (enabled, state) = check_unit(u)
+        (enabled, state, installed) = check_unit(u)
         if enabled and state == 'running':
             logger.info('Time sync unit %s is enabled and running' % u)
             return True
+        if enabler is not None:
+            if not enabled and installed:
+                logger.info('Enabling time sync unit %s' % u)
+                enabler.enable_service(u)
     logger.warning('No time sync service is running; checked for %s' % units)
     return False
 
@@ -2651,6 +2662,9 @@ def command_prepare_host():
         if not pkg:
             pkg = create_packager()
         pkg.install(['chrony'])
+        # check again, and this time try to enable
+        # the service
+        check_time_sync(enabler=pkg)
 
     if 'expect_hostname' in args and args.expect_hostname and args.expect_hostname != get_hostname():
         logger.warning('Adjusting hostname from %s -> %s...' % (get_hostname(), args.expect_hostname))
@@ -2753,6 +2767,13 @@ class Packager(object):
             return 'https://download.ceph.com/keys/release.asc', 'release'
         else:
             return 'https://download.ceph.com/keys/autobuild.asc', 'autobuild'
+
+    def enable_service(self, service):
+        """
+        Start and enable the service (typically using systemd).
+        """
+        call_throws(['systemctl', 'enable', '--now', service])
+
 
 class Apt(Packager):
     DISTRO_NAMES = {
@@ -2952,6 +2973,95 @@ class YumDnf(Packager):
         self.install(['podman'])
 
 
+class Zypper(Packager):
+    DISTRO_NAMES = [
+        'sles',
+        'opensuse-tumbleweed',
+        'opensuse-leap'
+    ]
+
+    def __init__(self, stable, branch, commit,
+                 distro, version):
+        super(Zypper, self).__init__(stable=stable, branch=branch, commit=commit)
+        self.tool = 'zypper'
+        self.distro = 'opensuse'
+        self.version = '15.1'
+        if 'tumbleweed' not in distro and version is not None:
+            self.version = version
+
+    def custom_repo(self, **kw):
+        """
+        See YumDnf for format explanation.
+        """
+        lines = []
+
+        # by using tuples (vs a dict) we preserve the order of what we want to
+        # return, like starting with a [repo name]
+        tmpl = (
+            ('reponame', '[%s]'),
+            ('name', 'name=%s'),
+            ('baseurl', 'baseurl=%s'),
+            ('enabled', 'enabled=%s'),
+            ('gpgcheck', 'gpgcheck=%s'),
+            ('_type', 'type=%s'),
+            ('gpgkey', 'gpgkey=%s'),
+            ('proxy', 'proxy=%s'),
+            ('priority', 'priority=%s'),
+        )
+
+        for line in tmpl:
+            tmpl_key, tmpl_value = line  # key values from tmpl
+
+            # ensure that there is an actual value (not None nor empty string)
+            if tmpl_key in kw and kw.get(tmpl_key) not in (None, ''):
+                lines.append(tmpl_value % kw.get(tmpl_key))
+
+        return '\n'.join(lines)
+
+    def repo_path(self):
+        return '/etc/zypp/repos.d/ceph.repo'
+
+    def repo_baseurl(self):
+        assert self.stable
+        return '%s/rpm-%s/%s' % (args.repo_url, self.stable, self.distro)
+
+    def add_repo(self):
+        if self.stable:
+            content = ''
+            for n, t in {
+                    'Ceph': '$basearch',
+                    'Ceph-noarch': 'noarch',
+                    'Ceph-source': 'SRPMS'}.items():
+                content += '[%s]\n' % (n)
+                content += self.custom_repo(
+                    name='Ceph %s' % t,
+                    baseurl=self.repo_baseurl() + '/' + t,
+                    enabled=1,
+                    gpgcheck=1,
+                    gpgkey=self.repo_gpgkey()[0],
+                )
+                content += '\n\n'
+        else:
+            content = self.query_shaman(self.distro, self.version,
+                                        self.branch,
+                                        self.commit)
+
+        logging.info('Writing repo to %s...' % self.repo_path())
+        with open(self.repo_path(), 'w') as f:
+            f.write(content)
+
+    def rm_repo(self):
+        if os.path.exists(self.repo_path()):
+            os.unlink(self.repo_path())
+
+    def install(self, ls):
+        logger.info('Installing packages %s...' % ls)
+        call_throws([self.tool, 'in', '-y'] + ls)
+
+    def install_podman(self):
+        self.install(['podman'])
+
+
 def create_packager(stable=None, branch=None, commit=None):
     distro, version, codename = get_distro()
     if distro in YumDnf.DISTRO_NAMES:
@@ -2960,7 +3070,11 @@ def create_packager(stable=None, branch=None, commit=None):
     elif distro in Apt.DISTRO_NAMES:
         return Apt(stable=stable, branch=branch, commit=commit,
                    distro=distro, version=version, codename=codename)
+    elif distro in Zypper.DISTRO_NAMES:
+        return Zypper(stable=stable, branch=branch, commit=commit,
+                      distro=distro, version=version)
     raise Error('Distro %s version %s not supported' % (distro, version))
+
 
 def command_add_repo():
     pkg = create_packager(stable=args.release, branch=args.dev,
