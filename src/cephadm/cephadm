@@ -88,11 +88,11 @@ class TimeoutExpired(Error):
 
 ##################################
 
-
 class Ceph(object):
     daemons = ('mon', 'mgr', 'mds', 'osd', 'rgw', 'rbd-mirror',
                'crash')
 
+##################################
 
 class Monitoring(object):
     """Define the configs for the monitoring containers"""
@@ -152,6 +152,229 @@ class Monitoring(object):
         },
     }  # type: ignore
 
+##################################
+
+class NFSGanesha(object):
+    """Defines the config for a NFS-Ganesha container"""
+
+    components = ('nfs', 'nfs-ganesha') # TODO: allow both types?
+
+    entrypoint = '/usr/bin/ganesha.nfsd'
+    daemon_args = ['-F', '-L', 'STDERR']
+
+    port_map = {
+        "nfs" : 2049,
+    }
+
+    def __init__(self,
+                 fsid,
+                 daemon_type,
+                 daemon_id,
+                 config_json,
+                 image=DEFAULT_IMAGE):
+        # type: (str, str, Union[int, str], Dict, str) -> None
+        self.fsid = fsid
+        self.daemon_type = daemon_type # TODO: need this? always 'nfs'?
+        self.daemon_id = daemon_id
+        self.image = image
+
+        def json_get(key, default=None, require=False):
+            if require and not key in config_json.keys():
+                raise ValueError('{} missing from config-json'.format(key))
+            return config_json.get(key, default)
+
+        # rados config options
+        self.user = json_get('user', 'admin') # TODO: require?
+        self.pool = json_get('pool', require=True)
+        self.namespace = json_get('namespace')
+
+    @classmethod
+    def init(cls, fsid, daemon_type, daemon_id):
+        # type: (str, str, Union[int, str]) -> NFSGanesha
+        return cls(fsid, daemon_type, daemon_id,
+                   get_parm(args.config_json), args.image)
+
+    @staticmethod
+    def port_in_use():
+        # type () -> None
+        for (srv, port) in NFSGanesha.port_map.items():
+            if port_in_use(port):
+                msg = 'TCP port {} required for {} is already in use'.format(port, srv)
+                raise Error(msg)
+
+    @staticmethod
+    def get_container_mounts(data_dir):
+        # type: (str) -> Dict[str, str]
+        mounts = dict()
+        mounts[os.path.join(data_dir, 'config')] = '/etc/ceph/ceph.conf:z'
+        # TODO: `ceph auth get-or-create` instead of admin keyring?
+        mounts[os.path.join(data_dir, 'keyring')] = '/etc/ceph/keyring:z'
+        mounts[os.path.join(data_dir, 'ganesha.conf')] = '/etc/ganesha/ganesha.conf'
+        return mounts
+
+    def get_daemon_name(self):
+        # type: () -> str
+        return '%s.%s' % (self.daemon_type, self.daemon_id)
+
+    def get_container_name(self, desc=None):
+        # type: (Optional[str]) -> str
+        cname = 'ceph-%s-%s' % (self.fsid, self.get_daemon_name())
+        if desc:
+            cname = '%s-%s' % (cname, desc)
+        return cname
+
+    def get_ganesha_config_object(self):
+        # type: () -> str
+        return 'conf-%s' % (self.get_daemon_name())
+
+    def get_rados_url(self):
+        # type: () -> str
+        url = 'rados://%s/' % (self.pool)
+        if self.namespace:
+            url += self.namespace + '/'
+        url += self.get_ganesha_config_object()
+        return url
+
+    def get_ganesha_config(self):
+        # type: () -> str
+        """Returns a ganesha.conf string"""
+        ceph_conf_path = '/etc/ceph/ceph.conf'
+        return '''
+NFS_CORE_PARAM {{
+        Enable_NLM = false;
+        Enable_RQUOTA = false;
+        Protocols = 4;
+}}
+
+CACHEINODE {{
+        Dir_Chunk = 0;
+        NParts = 1;
+        Cache_Size = 1;
+}}
+
+EXPORT_DEFAULTS {{
+        Attr_Expiration_Time = 0;
+}}
+
+NFSv4 {{
+        Delegations = false;
+        RecoveryBackend = 'rados_cluster';
+        Minor_Versions = 1, 2;
+}}
+
+RADOS_KV {{
+        ceph_conf = '{ceph_conf_path}';
+        userid = {userid};
+        nodeid = {nodeid};
+        pool = "{pool}";
+        namespace = "{namespace}";
+}}
+
+RADOS_URLS {{
+        ceph_conf = '{ceph_conf_path}';
+        userid = {userid};
+        watch_url = '{url}';
+}}
+
+%url    {url}
+'''.format(userid=self.user,
+           nodeid=self.get_daemon_name(),
+           url=self.get_rados_url(),
+           pool=self.pool,
+           namespace=self.namespace if self.namespace else '',
+           ceph_conf_path=ceph_conf_path)
+
+    def create_daemon_dirs(self, data_dir, uid, gid):
+        # type: (str, int, int) -> None
+        """Create files under the container data dir"""
+        if not os.path.isdir(data_dir):
+            raise ValueError('data_dir is not a directory: %s' % (data_dir))
+
+        # write ganesha.conf
+        logger.info('Creating ganesha config...')
+        ganesha_conf_file = os.path.join(data_dir, 'ganesha.conf')
+        with open(ganesha_conf_file, 'w') as f:
+            # TODO: chown ganesha uid/gid?
+            os.fchown(f.fileno(), uid, gid)
+            os.fchmod(f.fileno(), 0o600)
+            f.write(self.get_ganesha_config())
+
+    def create_rados_config_object(self, timeout=DEFAULT_TIMEOUT):
+        # type: (Optional[int]) -> None
+        """Create an empty config object for the new ganesha server"""
+        config_obj = self.get_ganesha_config_object()
+
+        entrypoint = '/usr/bin/rados'
+
+        assert self.pool
+        args = ['--pool', self.pool]
+        if self.namespace:
+            args += ['--namespace', self.namespace]
+
+        data_dir = get_data_dir(self.fsid, self.daemon_type, self.daemon_id)
+        volume_mounts = self.get_container_mounts(data_dir)
+
+        # stat rados config object
+        logger.info('Looking for RADOS config object: %s' % (config_obj))
+        c = CephContainer(
+            image=self.image,
+            entrypoint=entrypoint,
+            args=args + ['stat', config_obj],
+            volume_mounts=volume_mounts,
+            cname=self.get_container_name(desc='rados-stat-conf')
+        )
+        out, err, ret = call(c.run_cmd(), desc=c.entrypoint, timeout=timeout)
+
+        if ret == 0:
+            # TODO: fail instead of assuming the object already exists?
+            logger.info('RADOS config object exists!')
+            return
+
+        # create rados config object
+        logger.info('Creating RADOS config object: %s' % (config_obj))
+        out = CephContainer(
+            image=self.image,
+            entrypoint=entrypoint,
+            args=args + ['create', config_obj],
+            volume_mounts=volume_mounts,
+            cname=self.get_container_name(desc='rados-create-conf')
+        ).run(timeout=timeout)
+
+    def get_rados_grace_container(self, action):
+        # type: (str) -> CephContainer
+        """Container for a ganesha action on the grace db"""
+        entrypoint = '/usr/bin/ganesha-rados-grace'
+
+        assert self.pool
+        args=['--pool', self.pool]
+        if self.namespace:
+            args += ['--ns', self.namespace]
+        args += [action, self.get_daemon_name()]
+
+        data_dir = get_data_dir(self.fsid, self.daemon_type, self.daemon_id)
+        volume_mounts = self.get_container_mounts(data_dir)
+
+        logger.info('Creating RADOS grace for action: %s' % (action))
+        c = CephContainer(
+            image=self.image,
+            entrypoint=entrypoint,
+            args=args,
+            volume_mounts=volume_mounts,
+            cname=self.get_container_name(desc='grace-%s' % (action))
+        )
+        return c
+
+##################################
+
+def get_supported_daemons():
+    supported_daemons = list(Ceph.daemons)
+    supported_daemons.extend(Monitoring.components)
+    supported_daemons.extend(NFSGanesha.components)
+    assert len(supported_daemons) == len(set(supported_daemons))
+    return supported_daemons
+
+##################################
+
 def attempt_bind(s, address, port):
     # type (str) -> None
     try:
@@ -170,7 +393,7 @@ def attempt_bind(s, address, port):
 def port_in_use(port_num):
     # type (int) -> bool
     """Detect whether a port is in use on the local machine - IPv4 and IPv6"""
-
+    logger.info('Verifying port %d ...' % (port_num))
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         attempt_bind(s, '0.0.0.0', port_num)
@@ -561,7 +784,6 @@ def is_available(what, func):
 
     :param what: the name of the service
     :param func: the callable object that determines availability
-    :param retry: max number of retry invocations of func
     """
     retry = args.retry
     @wraps(func)
@@ -949,6 +1171,9 @@ def get_daemon_args(fsid, daemon_type, daemon_id):
             peers = config.get('peers', list())  # type: ignore
             for peer in peers:
                 r += ["--cluster.peer={}".format(peer)]
+    elif daemon_type in NFSGanesha.components:
+        r += NFSGanesha.daemon_args
+
     return r
 
 def create_daemon_dirs(fsid, daemon_type, daemon_id, uid, gid,
@@ -959,12 +1184,14 @@ def create_daemon_dirs(fsid, daemon_type, daemon_id, uid, gid,
     make_log_dir(fsid, uid=uid, gid=gid)
 
     if config:
-        with open(data_dir + '/config', 'w') as f:
+        config_path = os.path.join(data_dir, 'config')
+        with open(config_path, 'w') as f:
             os.fchown(f.fileno(), uid, gid)
             os.fchmod(f.fileno(), 0o600)
             f.write(config)
     if keyring:
-        with open(data_dir + '/keyring', 'w') as f:
+        keyring_path = os.path.join(data_dir, 'keyring')
+        with open(keyring_path, 'w') as f:
             os.fchmod(f.fileno(), 0o600)
             os.fchown(f.fileno(), uid, gid)
             f.write(keyring)
@@ -1006,6 +1233,10 @@ def create_daemon_dirs(fsid, daemon_type, daemon_id, uid, gid,
                 os.fchown(f.fileno(), uid, gid)
                 os.fchmod(f.fileno(), 0o600)
                 f.write(content)
+
+    if daemon_type in NFSGanesha.components:
+        nfs_ganesha = NFSGanesha.init(fsid, daemon_type, daemon_id)
+        nfs_ganesha.create_daemon_dirs(data_dir, uid, gid)
 
 def get_parm(option):
     # type: (str) -> Dict[str, str]
@@ -1150,6 +1381,11 @@ def get_container_mounts(fsid, daemon_type, daemon_id,
         elif daemon_type == 'alertmanager':
             mounts[os.path.join(data_dir, 'etc/alertmanager')] = '/alertmanager:Z'
 
+    if daemon_type in NFSGanesha.components:
+        assert daemon_id
+        data_dir = get_data_dir(fsid, daemon_type, daemon_id)
+        mounts.update(NFSGanesha.get_container_mounts(data_dir))
+
     return mounts
 
 def get_container(fsid, daemon_type, daemon_id, privileged=False,
@@ -1173,14 +1409,18 @@ def get_container(fsid, daemon_type, daemon_id, privileged=False,
     elif daemon_type in Monitoring.components:
         entrypoint = ''
         name = ''
-
-    if daemon_type in Monitoring.components:
-        ceph_args = []
-    elif daemon_type == 'crash':
-        ceph_args = ['-n', name]
+    elif daemon_type in NFSGanesha.components:
+        entrypoint = NFSGanesha.entrypoint
+        name = '%s.%s' % (daemon_type, daemon_id)
     else:
-        ceph_args = ['-n', name, '-f']
+        entrypoint = ''
+        name = ''
 
+    ceph_args = []
+    if daemon_type == 'crash':
+        ceph_args = ['-n', name]
+    elif daemon_type in Ceph.daemons:
+        ceph_args = ['-n', name, '-f']
 
     return CephContainer(
         image=args.image,
@@ -1256,6 +1496,12 @@ def deploy_daemon(fsid, daemon_type, daemon_id, c, uid, gid,
             uid, gid,
             config, keyring)
 
+    if daemon_type in NFSGanesha.components:
+        # create the ganesha config object
+        nfs_ganesha = NFSGanesha.init(fsid, daemon_type, daemon_id)
+        timeout=args.timeout if args.timeout else 30 # seconds
+        nfs_ganesha.create_rados_config_object(timeout=timeout)
+
     if not reconfig:
         deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c,
                             osd_fsid=osd_fsid)
@@ -1277,6 +1523,7 @@ def deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c,
     # cmd
     data_dir = get_data_dir(fsid, daemon_type, daemon_id)
     with open(data_dir + '/unit.run', 'w') as f:
+        # pre-start cmd(s)
         if daemon_type == 'osd':
             # osds have a pre-start step
             assert osd_fsid
@@ -1293,8 +1540,17 @@ def deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c,
                 cname='ceph-%s-%s.%s-activate' % (fsid, daemon_type, daemon_id),
             )
             f.write(' '.join(prestart.run_cmd()) + '\n')
+        elif daemon_type in NFSGanesha.components:
+            # add nfs to the rados grace db
+            nfs_ganesha = NFSGanesha.init(fsid, daemon_type, daemon_id)
+            prestart = nfs_ganesha.get_rados_grace_container('add')
+            f.write(' '.join(prestart.run_cmd()) + '\n')
+
+        # container run command
         f.write(' '.join(c.run_cmd()) + '\n')
         os.fchmod(f.fileno(), 0o600)
+
+    # post-stop command(s)
     with open(data_dir + '/unit.poststop', 'w') as f:
         if daemon_type == 'osd':
             assert osd_fsid
@@ -1310,6 +1566,11 @@ def deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c,
                 cname='ceph-%s-%s.%s-deactivate' % (fsid, daemon_type,
                                                     daemon_id),
             )
+            f.write(' '.join(poststop.run_cmd()) + '\n')
+        elif daemon_type in NFSGanesha.components:
+            # remove nfs from the rados grace db
+            nfs_ganesha = NFSGanesha.init(fsid, daemon_type, daemon_id)
+            poststop = nfs_ganesha.get_rados_grace_container('remove')
             f.write(' '.join(poststop.run_cmd()) + '\n')
         os.fchmod(f.fileno(), 0o600)
 
@@ -1361,6 +1622,8 @@ def update_firewalld(daemon_type):
         fw_ports.append(9283)  # mgr/prometheus exporter
     elif daemon_type in Monitoring.port_map.keys():
         fw_ports.extend(Monitoring.port_map[daemon_type])  # prometheus etc
+    elif daemon_type in NFSGanesha.components:
+        fw_services.append('nfs')
 
     for svc in fw_services:
         out, err, ret = call([cmd, '--permanent', '--query-service', svc])
@@ -1903,7 +2166,8 @@ def command_bootstrap():
     logger.info('Creating mgr...')
     mgr_keyring = '[mgr.%s]\n\tkey = %s\n' % (mgr_id, mgr_key)
     mgr_c = get_container(fsid, 'mgr', mgr_id)
-    deploy_daemon(fsid, 'mgr', mgr_id, mgr_c, uid, gid, config, mgr_keyring)
+    deploy_daemon(fsid, 'mgr', mgr_id, mgr_c, uid, gid,
+                  config=config, keyring=mgr_keyring)
 
     # crash unit
     logger.info('Creating crash agent...')
@@ -2019,11 +2283,10 @@ def command_deploy():
     l = FileLock(args.fsid)
     l.acquire()
 
-    supported_daemons = list(Ceph.daemons)
-    supported_daemons.extend(Monitoring.components)
-
-    if daemon_type not in supported_daemons:
+    if daemon_type not in get_supported_daemons():
         raise Error('daemon type %s not recognized' % daemon_type)
+
+    logger.info('Deploying %s daemon with id %s...' % (daemon_type, daemon_id))
 
     if daemon_type in Ceph.daemons:
         (config, keyring, crash_keyring) = get_config_and_both_keyrings()
@@ -2031,7 +2294,7 @@ def command_deploy():
         make_var_run(args.fsid, uid, gid)
         c = get_container(args.fsid, daemon_type, daemon_id)
         deploy_daemon(args.fsid, daemon_type, daemon_id, c, uid, gid,
-                      config, keyring,
+                      config=config, keyring=keyring,
                       osd_fsid=args.osd_fsid,
                       reconfig=args.reconfig)
 
@@ -2090,6 +2353,18 @@ def command_deploy():
         c = get_container(args.fsid, daemon_type, daemon_id, container_args=monitoring_args)
         deploy_daemon(args.fsid, daemon_type, daemon_id, c, uid, gid,
                       reconfig=args.reconfig)
+
+    elif daemon_type in NFSGanesha.components:
+        NFSGanesha.port_in_use()
+        (config, keyring, crash_keyring) = get_config_and_both_keyrings()
+        # TODO: extract ganesha uid/gid (997, 994) ?
+        (uid, gid) = extract_uid_gid()
+        c = get_container(args.fsid, daemon_type, daemon_id)
+        deploy_daemon(args.fsid, daemon_type, daemon_id, c, uid, gid,
+                      config=config, keyring=keyring,
+                      reconfig=args.reconfig)
+        # TODO: deploy_crash?
+
     else:
         raise Error("{} not implemented in command_deploy function".format(daemon_type))
 
@@ -2672,9 +2947,7 @@ class CustomValidation(argparse.Action):
             raise argparse.ArgumentError(self,
                                          "must be of the format <type>.<id>. For example, osd.1 or prometheus.myhost.com")
 
-        daemons = list(Ceph.daemons)
-        daemons.extend(Monitoring.components.keys())
-
+        daemons = get_supported_daemons()
         if daemon_type not in daemons:
             raise argparse.ArgumentError(self,
                                          "name must declare the type of daemon e.g. "
