@@ -294,7 +294,7 @@ class Module(MgrModule):
             "perm": "r",
         },
     ]
-    active = True
+    active = False
     run = True
     plans = {}
     mode = ''
