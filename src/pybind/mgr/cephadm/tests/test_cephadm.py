@@ -26,6 +26,8 @@ TODOs:
 """
 
 
+def _noop(*args):
+    pass
 
 def _run_cephadm(ret):
     def foo(*args, **kwargs):
@@ -60,6 +62,7 @@ class TestCephadm(object):
         new_mgr = cephadm_module.get_unique_name('mgr', 'myhost', existing)
         match_glob(new_mgr, 'myhost.*')
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._get_connection")
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('[]'))
     @mock.patch("cephadm.module.HostCache.save_host")
@@ -82,6 +85,7 @@ class TestCephadm(object):
             assert wait(cephadm_module, cephadm_module.get_hosts()) == [HostSpec('test', 'test')]
         assert wait(cephadm_module, cephadm_module.get_hosts()) == []
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('[]'))
     @mock.patch("cephadm.module.HostCache.save_host")
     @mock.patch("cephadm.module.HostCache.rm_host")
@@ -90,6 +94,7 @@ class TestCephadm(object):
             c = cephadm_module.list_daemons(refresh=True)
             assert wait(cephadm_module, c) == []
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('[]'))
     @mock.patch("cephadm.module.HostCache.save_host")
     @mock.patch("cephadm.module.HostCache.rm_host")
@@ -98,6 +103,7 @@ class TestCephadm(object):
             c = cephadm_module.get_inventory()
             assert wait(cephadm_module, c) == [InventoryNode('test')]
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm(
         json.dumps([
             dict(
@@ -128,6 +134,7 @@ class TestCephadm(object):
                 assert wait(cephadm_module, c) == [what + " rgw.myrgw.foobar from host 'test'"]
 
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('[]'))
     @mock.patch("cephadm.module.CephadmOrchestrator.send_command")
     @mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command)
@@ -145,6 +152,7 @@ class TestCephadm(object):
                 c = cephadm_module.apply_mon(ServiceSpec(placement=ps))
                 wait(cephadm_module, c)
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('[]'))
     @mock.patch("cephadm.module.CephadmOrchestrator.send_command")
     @mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command)
@@ -159,6 +167,7 @@ class TestCephadm(object):
             match_glob(out, "Deployed mgr.* on host 'test'")
 
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('{}'))
     @mock.patch("cephadm.module.CephadmOrchestrator.send_command")
     @mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command)
@@ -171,6 +180,7 @@ class TestCephadm(object):
             c = cephadm_module.create_osds([dg])
             assert wait(cephadm_module, c) == ["Created osd(s) on host 'test'"]
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm(
         json.dumps([
             dict(
@@ -193,6 +203,7 @@ class TestCephadm(object):
             out = wait(cephadm_module, c)
             assert out == ["Removed osd.0 from host 'test'"]
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('{}'))
     @mock.patch("cephadm.module.CephadmOrchestrator.send_command")
     @mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command)
@@ -206,6 +217,7 @@ class TestCephadm(object):
             [out] = wait(cephadm_module, c)
             match_glob(out, "Deployed mds.name.* on host 'test'")
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('{}'))
     @mock.patch("cephadm.module.CephadmOrchestrator.send_command")
     @mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command)
@@ -221,6 +233,7 @@ class TestCephadm(object):
             match_glob(out, "Deployed rgw.realm.zone.* on host 'test'")
 
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('{}'))
     @mock.patch("cephadm.module.CephadmOrchestrator.send_command")
     @mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command)
@@ -241,6 +254,7 @@ class TestCephadm(object):
                 [out] = wait(cephadm_module, c)
                 match_glob(out, "Deployed rgw.realm.zone1.host2.* on host 'host2'")
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('{}'))
     @mock.patch("cephadm.module.CephadmOrchestrator.send_command")
     @mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command)
@@ -271,6 +285,7 @@ class TestCephadm(object):
                     [out] = wait(cephadm_module, c)
 
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm(
         json.dumps([
             dict(
@@ -293,6 +308,7 @@ class TestCephadm(object):
             out = wait(cephadm_module, c)
             assert out == ["Removed rgw.myrgw.myhost.myid from host 'test'"]
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm(
         json.dumps([
             dict(
@@ -315,6 +331,7 @@ class TestCephadm(object):
             out = wait(cephadm_module, c)
             assert out == ["Removed rgw.myrgw.foobar from host 'test'"]
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('{}'))
     @mock.patch("cephadm.module.CephadmOrchestrator.send_command")
     @mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command)
@@ -330,6 +347,7 @@ class TestCephadm(object):
             match_glob(out, "Deployed rbd-mirror.* on host 'test'")
 
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('{}'))
     @mock.patch("cephadm.module.CephadmOrchestrator.send_command")
     @mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command)
@@ -344,6 +362,7 @@ class TestCephadm(object):
             [out] = wait(cephadm_module, c)
             match_glob(out, "Deployed prometheus.* on host 'test'")
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('{}'))
     @mock.patch("cephadm.module.CephadmOrchestrator.send_command")
     @mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command)
@@ -359,6 +378,7 @@ class TestCephadm(object):
             [out] = wait(cephadm_module, c)
             match_glob(out, "Deployed node-exporter.* on host 'test'")
 
+    @mock.patch('cephadm.module.CephadmOrchestrator.cluster_log', _noop)
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('{}'))
     @mock.patch("cephadm.module.CephadmOrchestrator.send_command")
     @mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command)
