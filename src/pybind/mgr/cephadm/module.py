@@ -555,6 +555,22 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         self.run = False
         self.event.set()
 
+    def clog_debug(self, msg):
+        self.log.debug(msg)
+        self.cluster_log('cephadm', self.CLUSTER_LOG_PRIO_DEBUG, msg)
+
+    def clog_info(self, msg):
+        self.log.info(msg)
+        self.cluster_log('cephadm', self.CLUSTER_LOG_PRIO_INFO, msg)
+
+    def clog_warning(self, msg):
+        self.log.warning(msg)
+        self.cluster_log('cephadm', self.CLUSTER_LOG_PRIO_WARN, msg)
+
+    def clog_error(self, msg):
+        self.log.error(msg)
+        self.cluster_log('cephadm', self.CLUSTER_LOG_PRIO_ERROR, msg)
+
     def _kick_serve_loop(self):
         self.log.debug('_kick_serve_loop')
         self.event.set()
