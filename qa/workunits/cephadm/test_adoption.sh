@@ -12,6 +12,10 @@ trap "$SUDO rm -rf $TMPDIR" EXIT
 
 [ -z "$SUDO" ] && SUDO=sudo
 
+# combine into a single var
+CEPHADM_BIN="$CEPHADM"
+CEPHADM="$SUDO $CEPHADM_BIN"
+
 if [ -z "$CEPHADM" ]; then
     CEPHADM=${CEPHADM_SRC_DIR}/cephadm
 fi
