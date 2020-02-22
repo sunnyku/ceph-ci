@@ -580,8 +580,8 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         tries = 4
         while tries > 0:
             if s.daemon_type not in ['mon', 'osd', 'mds']:
-                self.log.info('Upgrade: It is presumed safe to stop %s.%s' %
-                              (s.daemon_type, s.daemon_id))
+                self.clog_info('Upgrade: It is presumed safe to stop %s.%s' %
+                               (s.daemon_type, s.daemon_id))
                 return True
             ret, out, err = self.mon_command({
                 'prefix': '%s ok-to-stop' % s.daemon_type,
@@ -590,13 +590,13 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
             if not self.upgrade_state or self.upgrade_state.get('paused'):
                 return False
             if ret:
-                self.log.info('Upgrade: It is NOT safe to stop %s.%s' %
-                              (s.daemon_type, s.daemon_id))
+                self.clog_info('Upgrade: It is NOT safe to stop %s.%s' %
+                               (s.daemon_type, s.daemon_id))
                 time.sleep(15)
                 tries -= 1
             else:
-                self.log.info('Upgrade: It is safe to stop %s.%s' %
-                              (s.daemon_type, s.daemon_id))
+                self.clog_info('Upgrade: It is safe to stop %s.%s' %
+                               (s.daemon_type, s.daemon_id))
                 return True
         return False
 
@@ -608,8 +608,8 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         self.set_health_checks(self.health_checks)
 
     def _fail_upgrade(self, alert_id, alert):
-        self.log.error('Upgrade: Paused due to %s: %s' % (alert_id,
-                                                          alert['summary']))
+        self.clog_error('Upgrade: Paused due to %s: %s' % (alert_id,
+                                                           alert['summary']))
         self.upgrade_state['error'] = alert_id + ': ' + alert['summary']
         self.upgrade_state['paused'] = True
         self._save_upgrade_state()
@@ -635,7 +635,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         target_id = self.upgrade_state.get('target_id', None)
         if not target_id:
             # need to learn the container hash
-            self.log.info('Upgrade: First pull of %s' % target_name)
+            self.clog_info('Upgrade: First pull of %s' % target_name)
             try:
                 target_id, target_version = self._get_container_image_id(target_name)
             except OrchestratorError as e:
@@ -650,8 +650,8 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
             self.upgrade_state['target_version'] = target_version
             self._save_upgrade_state()
         target_version = self.upgrade_state.get('target_version')
-        self.log.info('Upgrade: Target is %s with id %s' % (target_name,
-                                                            target_id))
+        self.clog_info('Upgrade: Target is %s with id %s' % (target_name,
+                                                             target_id))
 
         # get all distinct container_image settings
         image_settings = {}
@@ -667,7 +667,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         daemons = self.cache.get_daemons()
         done = 0
         for daemon_type in ['mgr', 'mon', 'osd', 'rgw', 'mds']:
-            self.log.info('Upgrade: Checking %s daemons...' % daemon_type)
+            self.clog_info('Upgrade: Checking %s daemons...' % daemon_type)
             need_upgrade_self = False
             for d in daemons:
                 if d.daemon_type != daemon_type:
@@ -687,7 +687,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
 
                 if daemon_type == 'mgr' and \
                    d.daemon_id == self.get_mgr_id():
-                    self.log.info('Upgrade: Need to upgrade myself (mgr.%s)' %
+                    self.clog_info('Upgrade: Need to upgrade myself (mgr.%s)' %
                                   self.get_mgr_id())
                     need_upgrade_self = True
                     continue
@@ -698,8 +698,8 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                     image=target_name, no_fsid=True, error_ok=True)
                 self.log.debug('out %s code %s' % (out, code))
                 if code or json.loads(''.join(out)).get('image_id') != target_id:
-                    self.log.info('Upgrade: Pulling %s on %s' % (target_name,
-                                                                 d.nodename))
+                    self.clog_info('Upgrade: Pulling %s on %s' % (target_name,
+                                                                  d.nodename))
                     out, err, code = self._run_cephadm(
                         d.nodename, None, 'pull', [],
                         image=target_name, no_fsid=True, error_ok=True)
@@ -715,7 +715,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                         return None
                     r = json.loads(''.join(out))
                     if r.get('image_id') != target_id:
-                        self.log.info('Upgrade: image %s pull on %s got new image %s (not %s), restarting' % (target_name, d.nodename, r['image_id'], target_id))
+                        self.clog_info('Upgrade: image %s pull on %s got new image %s (not %s), restarting' % (target_name, d.nodename, r['image_id'], target_id))
                         self.upgrade_state['image_id'] = r['image_id']
                         self._save_upgrade_state()
                         return None
@@ -724,8 +724,8 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
 
                 if not self._wait_for_ok_to_stop(d):
                     return None
-                self.log.info('Upgrade: Redeploying %s.%s' %
-                              (d.daemon_type, d.daemon_id))
+                self.clog_info('Upgrade: Redeploying %s.%s' %
+                               (d.daemon_type, d.daemon_id))
                 ret, out, err = self.mon_command({
                     'prefix': 'config set',
                     'name': 'container_image',
@@ -754,8 +754,8 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                     })
                     return None
 
-                self.log.info('Upgrade: there are %d other already-upgraded '
-                              'standby mgrs, failing over' % num)
+                self.clog_info('Upgrade: there are %d other already-upgraded '
+                               'standby mgrs, failing over' % num)
 
                 self._update_upgrade_progress(done / len(daemons))
 
@@ -778,13 +778,13 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
             self.log.debug('j %s' % j)
             for version, count in j.get(daemon_type, {}).items():
                 if version != target_version:
-                    self.log.warning(
+                    self.clog_warning(
                         'Upgrade: %d %s daemon(s) are %s != target %s' %
                         (count, daemon_type, version, target_version))
 
             # push down configs
             if image_settings.get(daemon_type) != target_name:
-                self.log.info('Upgrade: Setting container_image for all %s...' %
+                self.clog_info('Upgrade: Setting container_image for all %s...' %
                               daemon_type)
                 ret, out, err = self.mon_command({
                     'prefix': 'config set',
@@ -797,19 +797,19 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                 if section.startswith(daemon_type + '.'):
                     to_clean.append(section)
             if to_clean:
-                self.log.info('Upgrade: Cleaning up container_image for %s...' %
-                              to_clean)
+                self.clog_info('Upgrade: Cleaning up container_image for %s...' %
+                               to_clean)
                 for section in to_clean:
                     ret, image, err = self.mon_command({
                         'prefix': 'config rm',
                         'name': 'container_image',
                         'who': section,
                     })
-            self.log.info('Upgrade: All %s daemons are up to date.' %
-                          daemon_type)
+            self.clog_info('Upgrade: All %s daemons are up to date.' %
+                           daemon_type)
 
         # clean up
-        self.log.info('Upgrade: Finalizing container_image settings')
+        self.clog_info('Upgrade: Finalizing container_image settings')
         ret, out, err = self.mon_command({
             'prefix': 'config set',
             'name': 'container_image',
@@ -823,7 +823,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                 'who': daemon_type,
             })
 
-        self.log.info('Upgrade: Complete!')
+        self.clog_info('Upgrade: Complete!')
         if 'progress_id' in self.upgrade_state:
             self.remote('progress', 'complete',
                         self.upgrade_state['progress_id'])
@@ -850,7 +850,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                 else:
                     self.log.debug(' host %s ok' % host)
             except Exception as e:
-                self.log.debug(' host %s failed check' % host)
+                self.clog_debug('Host %s failed check' % host)
                 bad_hosts.append('host %s failed check: %s' % (host, e))
         if 'CEPHADM_HOST_CHECK_FAILED' in self.health_checks:
             del self.health_checks['CEPHADM_HOST_CHECK_FAILED']
@@ -927,12 +927,12 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
             failures = []
             for host in self.cache.get_hosts():
                 if self.cache.host_needs_daemon_refresh(host):
-                    self.log.debug('refreshing %s daemons' % host)
+                    self.clog_debug('Refreshing %s daemons' % host)
                     r = self._refresh_host_daemons(host)
                     if r:
                         failures.append(r)
                 if self.cache.host_needs_device_refresh(host):
-                    self.log.debug('refreshing %s devices' % host)
+                    self.clog_debug('Refreshing %s devices' % host)
                     r = self._refresh_host_devices(host)
                     if r:
                         failures.append(r)
@@ -1141,6 +1141,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         if inbuf is None or len(inbuf) == 0:
             return -errno.EINVAL, "", "empty ssh config provided"
         self.set_store("ssh_config", inbuf)
+        self.clog_info("Set ssh_config")
         return 0, "", ""
 
     @orchestrator._cli_write_command(
@@ -1152,6 +1153,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         """
         self.set_store("ssh_config", None)
         self.ssh_config_tmp = None
+        self.clog_info('Cleared ssh_config')
         return 0, "", ""
 
     @orchestrator._cli_write_command(
@@ -1159,7 +1161,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         desc='Generate a cluster SSH key (if not present)')
     def _generate_key(self):
         if not self.ssh_pub or not self.ssh_key:
-            self.log.info('Generating ssh key...')
+            self.clog_info('Generating ssh key')
             tmp_dir = TemporaryDirectory()
             path = tmp_dir.name + '/key'
             try:
@@ -1189,6 +1191,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         self.set_store('ssh_identity_key', None)
         self.set_store('ssh_identity_pub', None)
         self._reconfig_ssh()
+        self.clog_info('Cleared ssh key')
         return 0, '', ''
 
     @orchestrator._cli_read_command(
@@ -1384,6 +1387,8 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                                            addr=spec.addr,
                                            error_ok=True, no_fsid=True)
         if code:
+            self.clog_warning('Failed to add host %s (%s): failed check: %s' % (
+                spec.hostname, spec.addr, err))
             raise OrchestratorError('New host %s (%s) failed check: %s' % (
                 spec.hostname, spec.addr, err))
 
@@ -1391,6 +1396,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         self._save_inventory()
         self.cache.prime_empty_host(spec.hostname)
         self.event.set()  # refresh stray health check
+        self.clog_info('Added host %s' % spec.hostname)
         return "Added host '{}'".format(spec.hostname)
 
     @async_completion
@@ -1406,6 +1412,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         self.cache.rm_host(host)
         self._reset_con(host)
         self.event.set()  # refresh stray health check
+        self.clog_info('Removed host %s' % host)
         return "Removed host '{}'".format(host)
 
     @async_completion
@@ -1416,6 +1423,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         self._save_inventory()
         self._reset_con(host)
         self.event.set()  # refresh stray health check
+        self.clog_info('Updated host %s addr to %s' % (host, addr))
         return "Updated host '{}' addr to '{}'".format(host, addr)
 
     @trivial_completion
@@ -1448,6 +1456,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         if label not in self.inventory[host]['labels']:
             self.inventory[host]['labels'].append(label)
         self._save_inventory()
+        self.clog_info('Added label %s to host %s' % (label, host))
         return 'Added label %s to host %s' % (label, host)
 
     @async_completion
@@ -1460,6 +1469,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         if label in self.inventory[host]['labels']:
             self.inventory[host]['labels'].remove(label)
         self._save_inventory()
+        self.clog_info('Removed label %s to host %s' % (label, host))
         return 'Removed label %s from host %s' % (label, host)
 
     def _refresh_host_daemons(self, host):
@@ -1588,6 +1598,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         if not args:
             raise orchestrator.OrchestratorError(
                 'Unable to find %s.%s.* daemon(s)' % (service_name))
+        self.clog_debug('Service %s action %s' % (service_name, action))
         return self._daemon_action(args)
 
     @async_map_completion
@@ -1628,6 +1639,8 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
             raise orchestrator.OrchestratorError(
                 'Unable to find %s.%s daemon(s)' % (
                     daemon_type, daemon_id))
+        self.clog_debug('Daemon %s.%s action %s' % (daemon_type, daemon_id,
+                                                    action))
         return self._daemon_action(args)
 
     def remove_daemons(self, names, force):
@@ -1639,6 +1652,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                     args.append((name, host, force))
         if not args:
             raise OrchestratorError('Unable to find daemon(s) %s' % (names))
+        self.clog_info('Removing daemons %s' % names)
         return self._remove_daemon(args)
 
     def remove_service(self, service_name):
@@ -1652,6 +1666,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         if not args:
             raise OrchestratorError('Unable to find daemons in %s service' % (
                 service_name))
+        self.clog_info('Removing service %s' % service_name)
         return self._remove_daemon(args)
 
     def get_inventory(self, node_filter=None, refresh=False):
@@ -1681,6 +1696,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
         return trivial_result(result)
 
     def zap_device(self, host, path):
+        self.clog_info('Zapping device %s:%s' % (host, path))
         out, err, code = self._run_cephadm(
             host, 'osd', 'ceph-volume',
             ['--', 'lvm', 'zap', '--destroy', path],
@@ -1707,6 +1723,8 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                 raise RuntimeError(
                     'Unable to affect %s light for %s:%s. Command: %s' % (
                         ident_fault, host, dev, ' '.join(cmd)))
+            self.clog_info('Set %s light for %s:%s %s' % (
+                ident_fault, host, dev, 'on' if on else 'off'))
             return "Set %s light for %s:%s %s" % (
                 ident_fault, host, dev, 'on' if on else 'off')
 
@@ -1826,7 +1844,7 @@ class CephadmOrchestrator(MgrModule, orchestrator.OrchestratorClientMixin):
                                        osd_uuid_map[osd_id],
                                        osd['tags']['ceph.osd_fsid']))
                     continue
-
+                self.clog_info('Creating osd.%d on %s' % (osd_id, host))
                 self._create_daemon(
                     'osd', osd_id, host,
                     osd_uuid_map=osd_uuid_map)
