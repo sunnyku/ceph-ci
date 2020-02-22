@@ -22,6 +22,10 @@ if ! [ -x "$CEPHADM" ]; then
     exit 1
 fi
 
+# combine into a single var
+CEPHADM_BIN="$CEPHADM"
+CEPHADM="$SUDO $CEPHADM_BIN"
+
 # respawn ourselves with a shebang
 if [ -z "$PYTHON_KLUDGE" ]; then
     # see which pythons we should test with
