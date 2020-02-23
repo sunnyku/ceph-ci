@@ -16,6 +16,10 @@ if [ -z "$CEPHADM" ]; then
     CEPHADM=${CEPHADM_SRC_DIR}/cephadm
 fi
 
+# combine into a single var
+CEPHADM_BIN="$CEPHADM"
+CEPHADM="$SUDO $CEPHADM_BIN"
+
 # at this point, we need $CEPHADM set
 if ! [ -x "$CEPHADM" ]; then
     echo "cephadm not found. Please set \$CEPHADM"
