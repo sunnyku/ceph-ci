@@ -879,12 +879,12 @@ class Orchestrator(object):
         """
         raise NotImplementedError()
 
-    def get_inventory(self, node_filter=None, refresh=False):
+    def get_inventory(self, host_filter=None, refresh=False):
         # type: (Optional[InventoryFilter], bool) -> Completion
         """
         Returns something that was created by `ceph-volume inventory`.
 
-        :return: list of InventoryNode
+        :return: list of InventoryHost
         """
         raise NotImplementedError()
 
@@ -1171,10 +1171,10 @@ class UpgradeStatusSpec(object):
 
 class PlacementSpec(object):
     """
-    For APIs that need to specify a node subset
+    For APIs that need to specify a host subset
     """
-    def __init__(self, label=None, hosts=None, count=None):
-        # type: (Optional[str], Optional[List], Optional[int]) -> None
+    def __init__(self, label=None, hosts=None, count=None, all_hosts=False):
+        # type: (Optional[str], Optional[List], Optional[int], bool) -> None
         self.label = label
         self.hosts = []  # type: List[HostPlacementSpec]
         if hosts:
@@ -1185,11 +1185,24 @@ class PlacementSpec(object):
 
 
         self.count = count  # type: Optional[int]
+        self.all_hosts = all_hosts  # type: bool
 
     def set_hosts(self, hosts):
         # To backpopulate the .hosts attribute when using labels or count
         # in the orchestrator backend.
         self.hosts = hosts
+
+    def __repr__(self):
+        kv = []
+        if self.count:
+            kv.append('count=%d' % self.count)
+        if self.label:
+            kv.append('label=%s' % self.label)
+        if self.hosts:
+            kv.append('hosts=%s' % self.hosts)
+        if self.all_hosts:
+            kv.append('all=true')
+        return "PlacementSpec(%s)" % (' '.join(kv))
 
     @classmethod
     def from_dict(cls, data):
@@ -1200,7 +1213,7 @@ class PlacementSpec(object):
     def validate(self):
         if self.hosts and self.label:
             # TODO: a less generic Exception
-            raise Exception('Node and label are mutually exclusive')
+            raise Exception('Host and label are mutually exclusive')
         if self.count is not None and self.count <= 0:
             raise Exception("num/count must be > 1")
 
@@ -1236,12 +1249,23 @@ class PlacementSpec(object):
             except ValueError:
                 pass
 
-        hosts = [x for x in strings if 'label:' not in x]
-        labels = [x for x in strings if 'label:' in x]
+        all_hosts = False
+        if '*' in strings:
+            all_hosts = True
+            strings.remove('*')
+        if 'all:true' in strings:
+            all_hosts = True
+            strings.remove('all:true')
+
+        hosts = [x for x in strings if x != '*' and 'label:' not in x]
+        labels = [x[6:] for x in strings if 'label:' in x]
         if len(labels) > 1:
             raise OrchestratorValidationError('more than one label provided: {}'.format(labels))
 
-        ps = PlacementSpec(count=count, hosts=hosts, label=labels[0] if labels else None)
+        ps = PlacementSpec(count=count,
+                           hosts=hosts,
+                           label=labels[0] if labels else None,
+                           all_hosts=all_hosts)
         ps.validate()
         return ps
 
@@ -1265,7 +1289,7 @@ class DaemonDescription(object):
     This is not about health or performance monitoring of daemons: it's
     about letting the orchestrator tell Ceph whether and where a
     daemon is scheduled in the cluster.  When an orchestrator tells
-    Ceph "it's running on node123", that's not a promise that the process
+    Ceph "it's running on host123", that's not a promise that the process
     is literally up this second, it's a description of where the orchestrator
     has decided the daemon should run.
     """
@@ -1273,7 +1297,7 @@ class DaemonDescription(object):
     def __init__(self,
                  daemon_type=None,
                  daemon_id=None,
-                 nodename=None,
+                 hostname=None,
                  container_id=None,
                  container_image_id=None,
                  container_image_name=None,
@@ -1281,8 +1305,8 @@ class DaemonDescription(object):
                  status=None,
                  status_desc=None,
                  last_refresh=None):
-        # Node is at the same granularity as InventoryNode
-        self.nodename = nodename
+        # Host is at the same granularity as InventoryHost
+        self.hostname = hostname
 
         # Not everyone runs in containers, but enough people do to
         # justify having the container_id (runtime id) and container_image
@@ -1335,7 +1359,7 @@ class DaemonDescription(object):
 
     def to_json(self):
         out = {
-            'nodename': self.nodename,
+            'hostname': self.hostname,
             'container_id': self.container_id,
             'container_image_id': self.container_image_id,
             'container_image_name': self.container_image_name,
@@ -1366,7 +1390,7 @@ class ServiceDescription(object):
     This is not about health or performance monitoring of services: it's
     about letting the orchestrator tell Ceph whether and where a
     service is scheduled in the cluster.  When an orchestrator tells
-    Ceph "it's running on node123", that's not a promise that the process
+    Ceph "it's running on host123", that's not a promise that the process
     is literally up this second, it's a description of where the orchestrator
     has decided the service should run.
     """
@@ -1593,7 +1617,7 @@ class InventoryFilter(object):
     When fetching inventory, use this filter to avoid unnecessarily
     scanning the whole estate.
 
-    Typical use: filter by node when presenting UI workflow for configuring
+    Typical use: filter by host when presenting UI workflow for configuring
                  a particular server.
                  filter by label when not all of estate is Ceph servers,
                  and we want to only learn about the Ceph servers.
@@ -1601,20 +1625,20 @@ class InventoryFilter(object):
                  in e.g. OSD servers.
 
     """
-    def __init__(self, labels=None, nodes=None):
+    def __init__(self, labels=None, hosts=None):
         # type: (Optional[List[str]], Optional[List[str]]) -> None
 
-        #: Optional: get info about nodes matching labels
+        #: Optional: get info about hosts matching labels
         self.labels = labels
 
-        #: Optional: get info about certain named nodes only
-        self.nodes = nodes
+        #: Optional: get info about certain named hosts only
+        self.hosts = hosts
 
 
-class InventoryNode(object):
+class InventoryHost(object):
     """
     When fetching inventory, all Devices are groups inside of an
-    InventoryNode.
+    InventoryHost.
     """
     def __init__(self, name, devices=None, labels=None, addr=None):
         # type: (str, Optional[inventory.Devices], Optional[List[str]], Optional[str]) -> None
@@ -1662,12 +1686,12 @@ class InventoryNode(object):
         return [cls(item[0], devs(item[1].data)) for item in hosts]
 
     def __repr__(self):
-        return "<InventoryNode>({name})".format(name=self.name)
+        return "<InventoryHost>({name})".format(name=self.name)
 
     @staticmethod
-    def get_host_names(nodes):
-        # type: (List[InventoryNode]) -> List[str]
-        return [node.name for node in nodes]
+    def get_host_names(hosts):
+        # type: (List[InventoryHost]) -> List[str]
+        return [host.name for host in hosts]
 
     def __eq__(self, other):
         return self.name == other.name and self.devices == other.devices
