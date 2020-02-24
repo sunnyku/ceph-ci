@@ -2156,6 +2156,12 @@ def command_shell():
             '-e', 'LANG=C',
             '-e', "PS1=%s" % CUSTOM_PS1,
         ]
+        if args.fsid:
+            history_file = os.path.join(get_log_dir(args.fsid), '.bash_history')
+            if not os.path.exists(history_file):
+                with open(history_file, 'w') as f:
+                    os.fchmod(f.fileno(), 0o600)
+            mounts[history_file] = '/root/.bash_history'
 
     c = CephContainer(
         image=args.image,
