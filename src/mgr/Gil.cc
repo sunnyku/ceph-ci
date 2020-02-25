@@ -35,7 +35,7 @@ Gil::Gil(SafeThreadState &ts, bool new_thread) : pThreadState(ts)
 {
   // Acquire the GIL, set the current thread state
   PyEval_RestoreThread(pThreadState.ts);
-  dout(25) << "GIL acquired for thread state " << pThreadState.ts << dendl;
+  dout(20) << "GIL acquired for thread state " << pThreadState.ts << dendl;
 
   //
   // If called from a separate OS thread (i.e. a thread not created

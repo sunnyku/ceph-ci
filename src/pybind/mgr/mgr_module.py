@@ -970,9 +970,14 @@ class MgrModule(ceph_module.BaseMgrModule):
         self._ceph_set_health_checks(checks)
 
     def _handle_command(self, inbuf, cmd):
-        if cmd['prefix'] not in CLICommand.COMMANDS:
-            return self.handle_command(inbuf, cmd)
-        return CLICommand.COMMANDS[cmd['prefix']].call(self, cmd, inbuf)
+        try:
+            self.log.info("mgr module _handle_command")
+            if cmd['prefix'] not in CLICommand.COMMANDS:
+                return self.handle_command(inbuf, cmd)
+            self.log.info("mgr module _handle_command: calling into plugin")
+            return CLICommand.COMMANDS[cmd['prefix']].call(self, cmd, inbuf)
+        except Exception as e:
+            self.log.debug("_handle_command exception: {0}".format(e))
 
     def handle_command(self, inbuf, cmd):
         """
