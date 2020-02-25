@@ -46,7 +46,7 @@ Monitoring
 
 Cephadm logs to the ``cephadm`` cluster log channel, which means you can monitor progress in realtime with::
 
-  ceph -w --watch-channel cephadm [--watch-debug]
+  ceph -W cephadm [--watch-debug]
 
 By default it will show info-level events and above, but adding
 ``--watch-debug`` will also include debug-level events.
