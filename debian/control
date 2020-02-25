@@ -343,8 +343,9 @@ Description: kubernetes events module for ceph-mgr
 Package: ceph-mgr-cephadm
 Architecture: all
 Depends: ceph-mgr (= ${binary:Version}),
-	 cephadm,
-	 python3-six,
+         cephadm,
+         python3-six,
+         python3-openssl
          ${misc:Depends},
          ${python:Depends},
          openssh-client
