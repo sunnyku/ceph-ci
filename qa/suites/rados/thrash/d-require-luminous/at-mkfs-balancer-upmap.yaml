@@ -9,4 +9,4 @@ tasks:
       - while ! ceph balancer status ; do sleep 1 ; done
       - ceph osd set-require-min-compat-client luminous
       - ceph balancer mode upmap
-      - ceph balancer on
+      - ceph balancer off

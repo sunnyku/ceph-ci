@@ -6,3 +6,4 @@ overrides:
         osd op queue cut off: debug_random
         osd debug verify missing on start: true
         osd debug verify cached snaps: true
+        osd load balancer op priority mode: recovery_op_prioritized
