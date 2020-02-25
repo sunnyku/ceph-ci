@@ -575,10 +575,6 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         self.run = False
         self.event.set()
 
-    def _kick_serve_loop(self):
-        self.log.debug('_kick_serve_loop')
-        self.event.set()
-
     def _wait_for_ok_to_stop(self, s):
         # only wait a little bit; the service might go away for something
         tries = 4
