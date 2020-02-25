@@ -1150,6 +1150,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         if inbuf is None or len(inbuf) == 0:
             return -errno.EINVAL, "", "empty ssh config provided"
         self.set_store("ssh_config", inbuf)
+        self.log.info('Set ssh_config')
         return 0, "", ""
 
     @orchestrator._cli_write_command(
@@ -1161,6 +1162,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         """
         self.set_store("ssh_config", None)
         self.ssh_config_tmp = None
+        self.log.info('Cleared ssh_config')
         return 0, "", ""
 
     @orchestrator._cli_write_command(
@@ -1198,6 +1200,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         self.set_store('ssh_identity_key', None)
         self.set_store('ssh_identity_pub', None)
         self._reconfig_ssh()
+        self.log.info('Cleared cluster SSH key')
         return 0, '', ''
 
     @orchestrator._cli_read_command(
@@ -1408,6 +1411,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         self._save_inventory()
         self.cache.prime_empty_host(spec.hostname)
         self.event.set()  # refresh stray health check
+        self.log.info('Added host %s' % spec.hostname)
         return "Added host '{}'".format(spec.hostname)
 
     @async_completion
@@ -1423,6 +1427,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         self.cache.rm_host(host)
         self._reset_con(host)
         self.event.set()  # refresh stray health check
+        self.log.info('Removed host %s' % host)
         return "Removed host '{}'".format(host)
 
     @async_completion
@@ -1433,6 +1438,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         self._save_inventory()
         self._reset_con(host)
         self.event.set()  # refresh stray health check
+        self.log.info('Set host %s addr to %s' % (host, addr))
         return "Updated host '{}' addr to '{}'".format(host, addr)
 
     @trivial_completion
@@ -1464,6 +1470,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         if label not in self.inventory[host]['labels']:
             self.inventory[host]['labels'].append(label)
         self._save_inventory()
+        self.log.info('Added label %s to host %s' % (label, host))
         return 'Added label %s to host %s' % (label, host)
 
     @async_completion
@@ -1476,6 +1483,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         if label in self.inventory[host]['labels']:
             self.inventory[host]['labels'].remove(label)
         self._save_inventory()
+        self.log.info('Removed label %s to host %s' % (label, host))
         return 'Removed label %s from host %s' % (label, host)
 
     def _refresh_host_daemons(self, host):
@@ -1603,6 +1611,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         if not args:
             raise orchestrator.OrchestratorError(
                 'Unable to find %s.%s.* daemon(s)' % (service_name))
+        self.log.info('%s service %s' % (action, service_name))
         return self._daemon_action(args)
 
     @async_map_completion
@@ -1629,9 +1638,6 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         return "{} {} from host '{}'".format(action, name, host)
 
     def daemon_action(self, action, daemon_type, daemon_id):
-        self.log.debug('daemon_action action %s type %s id %s' % (
-            action, daemon_type, daemon_id))
-
         args = []
         for host, dm in self.cache.daemons.items():
             for name, d in dm.items():
@@ -1642,6 +1648,8 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             raise orchestrator.OrchestratorError(
                 'Unable to find %s.%s daemon(s)' % (
                     daemon_type, daemon_id))
+        self.log.info('%s daemons %s' % (action,
+                                         ['%s.%s' % (a[0], a[1]) for a in args]))
         return self._daemon_action(args)
 
     def remove_daemons(self, names, force):
@@ -1653,6 +1661,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
                     args.append((name, host, force))
         if not args:
             raise OrchestratorError('Unable to find daemon(s) %s' % (names))
+        self.log.info('Remove daemons %s' % [a[0] for a in args])
         return self._remove_daemon(args)
 
     def remove_service(self, service_name):
@@ -1661,11 +1670,13 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             for name, d in dm.items():
                 if d.matches_service(service_name):
                     args.append(
-                        ('%s.%s' % (d.daemon_type, d.daemon_id), d.hostname)
+                        (d.name(), d.hostname)
                     )
         if not args:
             raise OrchestratorError('Unable to find daemons in %s service' % (
                 service_name))
+        self.log.info('Remove service %s (daemons %s)' % (
+            service_name, [a[0] for a in args]))
         return self._remove_daemon(args)
 
     def get_inventory(self, host_filter=None, refresh=False):
@@ -1695,6 +1706,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         return trivial_result(result)
 
     def zap_device(self, host, path):
+        self.log.info('Zap device %s:%s' % (host, path))
         out, err, code = self._run_cephadm(
             host, 'osd', 'ceph-volume',
             ['--', 'lvm', 'zap', '--destroy', path],
@@ -1721,6 +1733,8 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
                 raise RuntimeError(
                     'Unable to affect %s light for %s:%s. Command: %s' % (
                         ident_fault, host, dev, ' '.join(cmd)))
+            self.log.info('Set %s light for %s:%s %s' % (
+                ident_fault, host, dev, 'on' if on else 'off'))
             return "Set %s light for %s:%s %s" % (
                 ident_fault, host, dev, 'on' if on else 'off')
 
