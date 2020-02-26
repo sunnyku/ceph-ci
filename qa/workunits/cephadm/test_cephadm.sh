@@ -114,6 +114,7 @@ IP=127.0.0.1
 cat <<EOF > $ORIG_CONFIG
 [global]
 	log to file = true
+        osd crush chooseleaf type = 0
 EOF
 $CEPHADM bootstrap \
       --mon-id a \
@@ -260,6 +261,31 @@ while true; do
     sleep 5
 done
 echo "grafana ok"
+
+# add nfs-ganesha
+nfs_rados_pool=$(cat ${CEPHADM_SAMPLES_DIR}/nfs.json | jq -r '.["pool"]')
+$CEPHADM shell --fsid $FSID --config $CONFIG --keyring $KEYRING -- \
+        ceph osd pool create $nfs_rados_pool 64
+$CEPHADM shell --fsid $FSID --config $CONFIG --keyring $KEYRING -- \
+        rados --pool nfs-ganesha --namespace nfs-ns create conf-nfs.a
+$CEPHADM deploy --name nfs.a \
+      --fsid $FSID \
+      --keyring $KEYRING \
+      --config $CONFIG \
+      --config-json ${CEPHADM_SAMPLES_DIR}/nfs.json
+TRIES=0
+while true; do
+    if ss -tlnp '( sport = :nfs )' | grep 'ganesha.nfsd'; then
+        break
+    fi
+    TRIES=$(($TRIES + 1))
+    if [ "$TRIES" -eq 30 ]; then
+        echo "nfs did not come up"
+        exit 1
+    fi
+    sleep 5
+done
+echo "nfs ok"
 
 ## run
 # WRITE ME
