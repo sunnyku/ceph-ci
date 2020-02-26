@@ -214,16 +214,14 @@ class TestOrchestratorCli(MgrTestCase):
                     ]
                 }
             ],
-            'services': [
+            'daemons': [
                 {
-                    'nodename': 'host0',
-                    'service_type': 'mon',
-                    'service_instance': 'a'
+                    'daemon_type': 'mon',
+                    'daemon_id': 'a'
                 },
                 {
-                    'nodename': 'host1',
-                    'service_type': 'osd',
-                    'service_instance': '1'
+                    'daemon_type': 'osd',
+                    'daemon_id': '1'
                 }
             ]
         }
