@@ -61,7 +61,7 @@ class Trash(GroupTemplate):
         :return: None
         """
         def rmtree(root_path):
-            log.debug("rmtree {0}".format(root_path))
+            log.debug(r"rmtree {0}".format(root_path))
             try:
                 with self.fs.opendir(root_path) as dir_handle:
                     d = self.fs.readdir(dir_handle)
