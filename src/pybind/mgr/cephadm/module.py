@@ -1659,7 +1659,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         for host, dm in self.cache.daemons.items():
             for name in names:
                 if name in dm:
-                    args.append((name, host, force))
+                    args.append((dm[name].daemon_type, name, host, force))
         if not args:
             raise OrchestratorError('Unable to find daemon(s) %s' % (names))
         return self._remove_daemon(args)
@@ -1669,8 +1669,10 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         for host, dm in self.cache.daemons.items():
             for name, d in dm.items():
                 if d.matches_service(service_name):
-                    args.append(
-                        ('%s.%s' % (d.daemon_type, d.daemon_id), d.hostname)
+                    args.append((
+                        d.daemon_type,
+                        '%s.%s' % (d.daemon_type, d.daemon_id),
+                        d.hostname)
                     )
         if not args:
             raise OrchestratorError('Unable to find daemons in %s service' % (
@@ -1945,11 +1947,13 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             'Reconfigured' if reconfig else 'Deployed', name, host)
 
     @async_map_completion
-    def _remove_daemon(self, name, host, force=False):
+    def _remove_daemon(self, service_type, name, host, force=False):
         """
         Remove a daemon
         """
         self.log.debug('_remove_daemon %s on %s force=%s' % (name, host, force))
+        if service_type == 'mon':
+            self.remove_mon_daemon(name, host, force)
         args = ['--name', name]
         if force:
             args.extend(['--force'])
@@ -1980,8 +1984,10 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             to_remove = len(daemons) - spec.placement.count
             args = []
             for d in daemons[0:to_remove]:
-                args.append(
-                    ('%s.%s' % (d.daemon_type, d.daemon_id), d.hostname)
+                args.append((
+                    d.daemon_type,
+                    '%s.%s' % (d.daemon_type, d.daemon_id),
+                    d.hostname)
                 )
             return self._remove_daemon(args)
         elif len(daemons) < spec.placement.count:
@@ -2076,6 +2082,26 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         # current support requires a network to be specified
         orchestrator.servicespec_validate_hosts_have_network_spec(spec)
         return self._add_daemon('mon', spec, self._create_mon)
+
+    def remove_mon_daemon(self, name, hostname, force):
+        """
+        1. verify that stopping+removing it won't break quorum, or else error out
+        2. before removing each mon, 'ceph mon rm $monid' to remove it from the map.
+        3. maybe: pause between adding and removing to make sure the new mons have come up.
+           this may take some time, though, so perhaps it should just wait the remove step
+           if it breaks quorum, and try again later (this may be blocked by the persistent
+           apply specs?)
+        """
+        if force:
+            raise OrchestratorValidationError('forcing removal of MONs is not supported')
+            # ... and will never be?
+        raise OrchestratorValidationError('Removing MONs is not yet supported')
+
+    def apply_mon(self, spec):
+        # type: (orchestrator.ServiceSpec) -> orchestrator.Completion
+        # current support requires a network to be specified
+        orchestrator.servicespec_validate_hosts_have_network_spec(spec)
+        return self._apply_service('mon', spec, self._create_mon)
 
     @async_map_completion
     def _create_mgr(self, mgr_id, host):
