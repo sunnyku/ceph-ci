@@ -2077,6 +2077,12 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         orchestrator.servicespec_validate_hosts_have_network_spec(spec)
         return self._add_daemon('mon', spec, self._create_mon)
 
+    def apply_mon(self, spec):
+        # type: (orchestrator.ServiceSpec) -> orchestrator.Completion
+        # current support requires a network to be specified
+        orchestrator.servicespec_validate_hosts_have_network_spec(spec)
+        return self._apply_service('mon', spec, self._create_mon)
+
     @async_map_completion
     def _create_mgr(self, mgr_id, host):
         """
