@@ -40,6 +40,25 @@ To clear this value use the command:
 
     # ceph cephadm clear-ssh-config
 
+
+Monitoring
+----------
+
+Cephadm logs to the ``cephadm`` cluster log channel, which means you can monitor progress in realtime with::
+
+  ceph -W cephadm [--watch-debug]
+
+By default it will show info-level events and above, but adding
+``--watch-debug`` will also include debug-level events.
+
+You can see recent events with::
+
+  ceph log last [debug] cephadm
+
+These events are also logged to the ``ceph.cephadm.log`` file on
+monitor hosts and/or to the monitor-daemon stderr.
+
+
 Health checks
 -------------
 
