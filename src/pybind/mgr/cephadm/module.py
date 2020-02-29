@@ -2,6 +2,7 @@ import json
 import errno
 import logging
 import time
+import yaml
 from threading import Event
 from functools import wraps
 
@@ -9,7 +10,7 @@ from mgr_util import create_self_signed_cert
 
 import string
 try:
-    from typing import List, Dict, Optional, Callable, Tuple, TypeVar, Type, Any, NamedTuple
+    from typing import List, Dict, Optional, Callable, Tuple, TypeVar, Type, Any, NamedTuple, Iterator
     from typing import TYPE_CHECKING
 except ImportError:
     TYPE_CHECKING = False  # just for type checking
@@ -31,10 +32,9 @@ from ceph.deployment.drive_group import DriveGroupSpec
 from ceph.deployment.drive_selection import selector
 
 from mgr_module import MgrModule
-import mgr_util
 import orchestrator
 from orchestrator import OrchestratorError, HostPlacementSpec, OrchestratorValidationError, HostSpec, \
-    CLICommandMeta
+    CLICommandMeta, ServiceSpec
 
 from . import remotes
 from ._utils import RemoveUtil
@@ -63,6 +63,7 @@ DEFAULT_SSH_CONFIG = ('Host *\n'
 DATEFMT = '%Y-%m-%dT%H:%M:%S.%f'
 
 HOST_CACHE_PREFIX = "host."
+SPEC_STORE_PREFIX = "spec."
 
 # for py2 compat
 try:
@@ -124,6 +125,46 @@ def assert_valid_host(name):
     except AssertionError as e:
         raise OrchestratorError(e)
 
+
+class SpecStore():
+    def __init__(self, mgr):
+        # type: (CephadmOrchestrator) -> None
+        self.mgr = mgr
+        self.specs = {} # type: Dict[str, orchestrator.ServiceSpec]
+
+    def load(self):
+        # type: () -> None
+        for k, v in six.iteritems(self.mgr.get_store_prefix(SPEC_STORE_PREFIX)):
+            service_name = k[len(SPEC_STORE_PREFIX):]
+            try:
+                spec = ServiceSpec.from_json(json.loads(v))
+                self.specs[service_name] = spec
+                self.mgr.log.debug('SpecStore: loaded spec for %s' % (
+                    service_name))
+            except Exception as e:
+                self.mgr.log.warning('unable to load spec for %s: %s' % (
+                    service_name, e))
+                pass
+
+    def save(self, spec):
+        # type: (orchestrator.ServiceSpec) -> None
+        self.specs[spec.service_name()] = spec
+        self.mgr.set_store(SPEC_STORE_PREFIX + spec.service_name(),
+                           spec.to_json())
+
+    def rm(self, service_name):
+        # type: (str) -> None
+        if service_name in self.specs:
+            del self.specs[service_name]
+            self.mgr.set_store(SPEC_STORE_PREFIX + service_name, None)
+
+    def find(self, service_name):
+        # type: (str) -> List[orchestrator.ServiceSpec]
+        specs = []
+        for sn, spec in self.specs.items():
+            if sn == service_name or sn.startswith(service_name + '.'):
+                specs.append(spec)
+        return specs
 
 class HostCache():
     def __init__(self, mgr):
@@ -585,6 +626,9 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         self.osd_removal_report: dict = dict()
         self.rm_util = RemoveUtil(self)
 
+        self.spec_store = SpecStore(self)
+        self.spec_store.load()
+
         # ensure the host lists are in sync
         for h in self.inventory.keys():
             if h not in self.cache.daemons:
@@ -952,6 +996,18 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         while self.run:
             self._check_hosts()
             self._remove_osds_bg()
+            service_completions = self._apply_services()
+            for service_completion in service_completions:
+                if service_completion:
+                    while not service_completion.has_result:
+                        self.process([service_completion])
+                        self.log.debug(f'Still processing {service_completion}')
+                        if service_completion.needs_result:
+                            time.sleep(1)
+                        else:
+                            break
+                    if service_completion.exception is not None:
+                        self.log.error(str(service_completion.exception))
 
             # refresh daemons
             self.log.debug('refreshing hosts')
@@ -982,16 +1038,17 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             self._check_for_strays()
 
             if self.upgrade_state and not self.upgrade_state.get('paused'):
-                completion = self._do_upgrade()
-                if completion:
-                    while not completion.has_result:
-                        self.process([completion])
-                        if completion.needs_result:
+                upgrade_completion = self._do_upgrade()
+                if upgrade_completion:
+                    while not upgrade_completion.has_result:
+                        self.process([upgrade_completion])
+                        if upgrade_completion.needs_result:
                             time.sleep(1)
                         else:
                             break
-                    if completion.exception is not None:
-                        self.log.error(str(completion.exception))
+                    if upgrade_completion.exception is not None:
+                        self.log.error(str(upgrade_completion.exception))
+                self.log.debug('did _do_upgrade')
             else:
                 self._serve_sleep()
         self.log.debug("serve exit")
@@ -1579,20 +1636,29 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             # ugly sync path, FIXME someday perhaps?
             for host, hi in self.inventory.items():
                 self._refresh_host_daemons(host)
+        # <service_map>
         sm = {}  # type: Dict[str, orchestrator.ServiceDescription]
         for h, dm in self.cache.daemons.items():
             for name, dd in dm.items():
                 if service_type and service_type != dd.daemon_type:
                     continue
-                n = dd.service_name()
+                # <name> i.e. rgw.realm.zone
+                n: str = dd.service_name()
                 if service_name and service_name != n:
                     continue
+                if dd.service_name() in self.spec_store.specs:
+                    spec_presence = "present"
+                else:
+                    spec_presence = "absent"
+                if dd.daemon_type == 'osd':
+                    spec_presence = "not applicable"
                 if n not in sm:
                     sm[n] = orchestrator.ServiceDescription(
                         service_name=n,
                         last_refresh=dd.last_refresh,
                         container_image_id=dd.container_image_id,
                         container_image_name=dd.container_image_name,
+                        spec_presence=spec_presence,
                     )
                 sm[n].size += 1
                 if dd.status == 1:
@@ -1697,6 +1763,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
                     args.append(
                         (d.name(), d.hostname, force)
                     )
+                    self.spec_store.rm(d.service_name())
         if not args:
             raise OrchestratorError('Unable to find daemons in %s service' % (
                 service_name))
@@ -1990,14 +2057,14 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         self.cache.invalidate_host_daemons(host)
         return "Removed {} from host '{}'".format(name, host)
 
-    def _apply_service(self, daemon_type, spec, create_func, config_func=None):
+    def _apply_service(self, spec, create_func, config_func=None):
         """
         Schedule a service.  Deploy new daemons or remove old ones, depending
         on the target label and count specified in the placement.
         """
-        service_name = daemon_type
-        if spec.name:
-            service_name += '.' + spec.name
+        daemon_type = spec.service_type
+        service_name = spec.service_name()
+        self.log.debug('Applying service %s spec' % service_name)
         daemons = self.cache.get_daemons_by_service(service_name)
         spec = HostAssignment(
             spec=spec,
@@ -2035,9 +2102,8 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             raise OrchestratorError('must specify host(s) to deploy on')
         if not spec.placement.count:
             spec.placement.count = len(spec.placement.hosts)
-        service_name = daemon_type
-        if spec.name:
-            service_name += '.' + spec.name
+        # TODO: rename service_name to spec.name if works
+        service_name = spec.name
         daemons = self.cache.get_daemons_by_service(service_name)
         return self._create_daemons(daemon_type, spec, daemons,
                                     create_func, config_func)
@@ -2123,17 +2189,29 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         # type: (orchestrator.ServiceSpec) -> orchestrator.Completion
         return self._add_daemon('mgr', spec, self._create_mgr)
 
+    def _apply(self, spec):
+        self.log.info('Saving service %s spec' % spec.service_name())
+        self.spec_store.save(spec)
+        self._kick_serve_loop()
+        return trivial_result("Scheduled %s update..." % spec.service_type)
+
     def apply_mgr(self, spec):
+        return self._apply(spec)
+
+    def _apply_mgr(self, spec):
         # type: (orchestrator.ServiceSpec) -> AsyncCompletion
-        return self._apply_service('mgr', spec, self._create_mgr)
+        return self._apply_service(spec, self._create_mgr)
 
     def add_mds(self, spec):
         # type: (orchestrator.ServiceSpec) -> AsyncCompletion
         return self._add_daemon('mds', spec, self._create_mds, self._config_mds)
 
-    def apply_mds(self, spec):
+    def apply_mds(self, spec: orchestrator.ServiceSpec) -> orchestrator.Completion:
+        return self._apply(spec)
+
+    def _apply_mds(self, spec):
         # type: (orchestrator.ServiceSpec) -> AsyncCompletion
-        return self._apply_service('mds', spec, self._create_mds,
+        return self._apply_service(spec, self._create_mds,
                                    self._config_mds)
 
     def _config_mds(self, spec):
@@ -2188,8 +2266,11 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         return self._create_daemon('rgw', rgw_id, host, keyring=keyring)
 
     def apply_rgw(self, spec):
+        return self._apply(spec)
+
+    def _apply_rgw(self, spec):
         # type: (orchestrator.ServiceSpec) -> AsyncCompletion
-        return self._apply_service('rgw', spec, self._create_rgw,
+        return self._apply_service(spec, self._create_rgw,
                                    self._config_rgw)
 
     def add_rbd_mirror(self, spec):
@@ -2207,8 +2288,11 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
                                    keyring=keyring)
 
     def apply_rbd_mirror(self, spec):
+        return self._apply(spec)
+
+    def _apply_rbd_mirror(self, spec):
         # type: (orchestrator.ServiceSpec) -> AsyncCompletion
-        return self._apply_service('rbd-mirror', spec, self._create_rbd_mirror)
+        return self._apply_service(spec, self._create_rbd_mirror)
 
     def _generate_prometheus_config(self):
         # scrape mgrs
@@ -2406,9 +2490,12 @@ receivers:
     def _create_prometheus(self, daemon_id, host):
         return self._create_daemon('prometheus', daemon_id, host)
 
-    def apply_prometheus(self, spec):
+    def _apply_prometheus(self, spec):
         # type: (orchestrator.ServiceSpec) -> AsyncCompletion
-        return self._apply_service('prometheus', spec, self._create_prometheus)
+        return self._apply_service(spec, self._create_prometheus)
+
+    def apply_prometheus(self, spec):
+        return self._apply(spec)
 
     def add_node_exporter(self, spec):
         # type: (orchestrator.ServiceSpec) -> AsyncCompletion
@@ -2416,8 +2503,11 @@ receivers:
                                 self._create_node_exporter)
 
     def apply_node_exporter(self, spec):
+        return self._apply(spec)
+
+    def _apply_node_exporter(self, spec):
         # type: (orchestrator.ServiceSpec) -> AsyncCompletion
-        return self._apply_service('node-exporter', spec,
+        return self._apply_service(spec,
                                    self._create_node_exporter)
 
     @async_map_completion
@@ -2430,7 +2520,10 @@ receivers:
 
     def apply_grafana(self, spec):
         # type: (orchestrator.ServiceSpec) -> AsyncCompletion
-        return self._apply_service('grafana', spec, self.add_grafana)
+        return self._apply(spec)
+
+    def _apply_grafana(self, spec):
+        return self._apply_service(spec, self._create_grafana)
 
     @async_map_completion
     def _create_grafana(self, daemon_id, host):
@@ -2442,7 +2535,11 @@ receivers:
 
     def apply_alertmanager(self, spec):
         # type: (orchestrator.ServiceSpec) -> AsyncCompletion
-        return self._apply_service('alertmanager', spec, self._create_alertmanager)
+        return self._apply(spec)
+
+    def _apply_alertmanager(self, spec):
+        # type: (orchestrator.ServiceSpec) -> AsyncCompletion
+        return self._apply_service(spec, self._create_alertmanager)
 
     @async_map_completion
     def _create_alertmanager(self, daemon_id, host):
@@ -2676,6 +2773,89 @@ receivers:
         The CLI call to retrieve an osd removal report
         """
         return trivial_result(self.osd_removal_report)
+
+    def list_specs(self) -> orchestrator.Completion:
+        """
+        Loads all entries from the service_spec mon_store root.
+        """
+        specs = list()
+        for service_name, spec in self.spec_store.specs.items():
+            specs.append('---')
+            specs.append(yaml.dump(spec))
+        return trivial_result(specs)
+
+    def apply_service_config(self, spec_document: str) -> orchestrator.Completion:
+        """
+        Parse a multi document yaml file (represented in a inbuf object)
+        and loads it with it's respective ServiceSpec to validate the
+        initial input.
+        If no errors are raised, save them.
+        """
+        content: Iterator[Any] = yaml.load_all(spec_document)
+        # Load all specs from a multi document yaml file.
+        loaded_specs: List[ServiceSpec] = list()
+        for spec in content:
+            # load ServiceSpec once to validate
+            spec_o = ServiceSpec.from_json(spec)
+            loaded_specs.append(spec_o)
+        for spec in loaded_specs:
+            self.spec_store.save(spec)
+        self._kick_serve_loop()
+        return trivial_result("ServiceSpecs saved")
+
+    def trigger_deployment(self,
+                           service_name: str,
+                           func: Callable[[ServiceSpec], orchestrator.Completion]) -> List[orchestrator.Completion]:
+        """
+        Triggers a corresponding deployment method `func` to `service_name`
+        Services can have multiple entries. (i.e. different RGW configurations)
+        """
+        self.log.debug(f"starting async {service_name} deployment")
+        specs = self.spec_store.find(service_name)
+        completions = list()
+        for spec in specs:
+            completions.append(func(spec))
+        if completions:
+            return completions
+        return [trivial_result("Nothing to do..")]
+
+    def _apply_services(self) -> List[orchestrator.Completion]:
+        """
+        This is a method that is supposed to run continuously in the
+        server() thread.
+        It will initiate deployments based on the presence of a ServiceSpec
+        in the persistent mon_store.
+        There is a defined order in which the services should be deployed
+        Defined order:
+        # mon -> mgr -> osd -> monitoring -> mds -> rgw -> nfs -> iscsi -> rbd-mirror
+
+        Special cases:
+        * Mons scaling is currently not implemented.
+        * OSDs are daemons that are handled differently and may not fit in this paradigm
+
+        The serve() thread processes the completions serially, which ensures the adherence to
+        the defined order.
+        """
+
+        super_completions: List[orchestrator.Completion] = list()
+        super_completions.extend(self.trigger_deployment('mgr', self._apply_mgr))
+        super_completions.extend(self.trigger_deployment('prometheus', self._apply_prometheus))
+        super_completions.extend(self.trigger_deployment('node-exporter', self._apply_node_exporter))
+        super_completions.extend(self.trigger_deployment('mds', self._apply_mds))
+        super_completions.extend(self.trigger_deployment('rgw', self._apply_rgw))
+        super_completions.extend(self.trigger_deployment('rbd-mirror', self._apply_rbd_mirror))
+        super_completions.extend(self.trigger_deployment('grafana', self._apply_grafana))
+        super_completions.extend(self.trigger_deployment('alertmanager', self._apply_alertmanager))
+
+        # Not implemented
+
+        # super_completions.extend(trigger_deployment('mon', self._apply_mon))
+        # super_completions.extend(trigger_deployment('nfs', self._apply_nfs))
+        # super_completions.extend(trigger_deployment('grafana', self._apply_grafana))
+        # super_completions.extend(trigger_deployment('iscsi', self._apply_iscsi))
+
+        # Not implemented
+        return super_completions
 
 
 class BaseScheduler(object):

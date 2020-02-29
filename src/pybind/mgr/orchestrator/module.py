@@ -335,7 +335,7 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule):
         else:
             now = datetime.datetime.utcnow()
             table = PrettyTable(
-                ['NAME', 'RUNNING', 'REFRESHED', 'IMAGE NAME', 'IMAGE ID'],
+                ['NAME', 'RUNNING', 'REFRESHED', 'IMAGE NAME', 'IMAGE ID', 'SPEC'],
                 border=False)
             table.align['NAME'] = 'l'
             table.align['RUNNING'] = 'r'
@@ -354,7 +354,9 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule):
                     '%d/%d' % (s.running, s.size),
                     age,
                     ukn(s.container_image_name),
-                    ukn(s.container_image_id)[0:12]))
+                    ukn(s.container_image_id)[0:12],
+                    ukn(s.spec_presence)
+                ))
 
             return HandleCommandResult(stdout=table.get_string())
 
@@ -502,7 +504,7 @@ Usage:
         placement = PlacementSpec.from_strings(placement)
         placement.validate()
 
-        spec = ServiceSpec(placement=placement)
+        spec = ServiceSpec(placement=placement, service_type='mon')
 
         completion = self.add_mon(spec)
         self._orchestrator_wait([completion])
@@ -517,6 +519,15 @@ Usage:
         spec = ServiceSpec(
             placement=PlacementSpec.from_strings(placement))
         completion = self.add_mgr(spec)
+        self._orchestrator_wait([completion])
+        raise_if_exception(completion)
+        return HandleCommandResult(stdout=completion.result_str())
+
+    @_cli_write_command(
+        'orch apply',
+        desc='Applies a Service Specification from a file. ceph orch apply -i $file')
+    def _apply_services(self, inbuf):
+        completion = self.apply_service_config(inbuf)
         self._orchestrator_wait([completion])
         raise_if_exception(completion)
         return HandleCommandResult(stdout=completion.result_str())
@@ -702,6 +713,16 @@ Usage:
         return HandleCommandResult(stdout=completion.result_str())
 
     @_cli_write_command(
+        'orch spec dump',
+        desc='List all Service specs')
+    def _get_service_specs(self):
+        completion = self.list_specs()
+        self._orchestrator_wait([completion])
+        raise_if_exception(completion)
+        specs = completion.result_str()
+        return HandleCommandResult(stdout=specs)
+
+    @_cli_write_command(
         'orch apply mgr',
         'name=placement,type=CephString,n=N,req=false',
         'Update the size or placement of managers')
@@ -709,7 +730,7 @@ Usage:
         placement = PlacementSpec.from_strings(placement)
         placement.validate()
 
-        spec = ServiceSpec(placement=placement)
+        spec = ServiceSpec(placement=placement, service_type='mgr')
 
         completion = self.apply_mgr(spec)
         self._orchestrator_wait([completion])
@@ -739,11 +760,10 @@ Usage:
     def _apply_mds(self, fs_name, placement=None):
         placement = PlacementSpec.from_strings(placement)
         placement.validate()
-
         spec = ServiceSpec(
-            fs_name,
+            service_type='mds',
+            name=fs_name,
             placement=placement)
-
         completion = self.apply_mds(spec)
         self._orchestrator_wait([completion])
         raise_if_exception(completion)
@@ -757,7 +777,8 @@ Usage:
         'Update the number of rbd-mirror instances')
     def _apply_rbd_mirror(self, num, label=None, hosts=[]):
         spec = ServiceSpec(
-            placement=PlacementSpec(hosts=hosts, count=num, label=label))
+            placement=PlacementSpec(hosts=hosts, count=num, label=label),
+            service_type='rbd-mirror')
         completion = self.apply_rbd_mirror(spec)
         self._orchestrator_wait([completion])
         raise_if_exception(completion)
@@ -773,6 +794,7 @@ Usage:
         'Update the number of RGW instances for the given zone')
     def _apply_rgw(self, zone_name, realm_name, num=None, label=None, hosts=[]):
         spec = RGWSpec(
+            service_type='rgw',
             rgw_realm=realm_name,
             rgw_zone=zone_name,
             placement=PlacementSpec(hosts=hosts, label=label, count=num))
@@ -808,6 +830,7 @@ Usage:
         # type: (Optional[int], Optional[str], List[str]) -> HandleCommandResult
         spec = ServiceSpec(
             placement=PlacementSpec(label=label, hosts=hosts, count=num),
+            service_type='prometheus'
         )
         completion = self.apply_prometheus(spec)
         self._orchestrator_wait([completion])
@@ -823,6 +846,7 @@ Usage:
         # type: (Optional[int], Optional[str], List[str]) -> HandleCommandResult
         spec = ServiceSpec(
             placement=PlacementSpec(label=label, hosts=hosts, count=num),
+            service_type='node-exporter'
         )
         completion = self.apply_node_exporter(spec)
         self._orchestrator_wait([completion])
