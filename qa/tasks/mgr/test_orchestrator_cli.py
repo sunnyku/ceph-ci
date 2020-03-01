@@ -123,26 +123,26 @@ class TestOrchestratorCli(MgrTestCase):
         self.wait_for_health_clear(30)
 
     def test_mds_add(self):
-        self._orch_cmd("mds", "add", "service_name")
+        self._orch_cmd('daemon', 'add', 'mds', 'fsname')
 
     def test_rgw_add(self):
-        self._orch_cmd("rgw", "add", "myrealm", "myzone")
+        self._orch_cmd('daemon', 'add', 'rgw', 'realm', 'zone')
 
     def test_nfs_add(self):
-        self._orch_cmd("nfs", "add", "service_name", "pool", "--namespace", "ns")
-        self._orch_cmd("nfs", "add", "service_name", "pool")
+        self._orch_cmd('daemon', 'add', "nfs", "service_name", "pool", "--namespace", "ns")
+        self._orch_cmd('daemon', 'add', "nfs", "service_name", "pool")
 
     def test_osd_rm(self):
-        self._orch_cmd("osd", "rm", "osd.0")
+        self._orch_cmd('daemon', "rm", "osd.0")
 
     def test_mds_rm(self):
-        self._orch_cmd("mds", "rm", "foo")
+        self._orch_cmd("daemon", "rm", "mds.fsname")
 
     def test_rgw_rm(self):
-        self._orch_cmd("rgw", "rm", "myrealm", "myzone")
+        self._orch_cmd("daemon", "rm", "rgw.myrealm.myzone")
 
     def test_nfs_rm(self):
-        self._orch_cmd("nfs", "rm", "service_name")
+        self._orch_cmd("daemon", "rm", "nfs.service_name")
 
     def test_host_ls(self):
         out = self._orch_cmd("host", "ls", "--format=json")
@@ -157,14 +157,14 @@ class TestOrchestratorCli(MgrTestCase):
         self._orch_cmd("host", "rm", "hostname")
 
     def test_mon_update(self):
-        self._orch_cmd("mon", "update", "3", "host1:1.2.3.0/24", "host2:1.2.3.0/24", "host3:10.0.0.0/8")
-        self._orch_cmd("mon", "update", "3", "host1:1.2.3.4", "host2:1.2.3.4", "host3:10.0.0.1")
+        self._orch_cmd("apply", "mon", "3", "host1:1.2.3.0/24", "host2:1.2.3.0/24", "host3:10.0.0.0/8")
+        self._orch_cmd("apply", "mon", "3", "host1:1.2.3.4", "host2:1.2.3.4", "host3:10.0.0.1")
 
     def test_mgr_update(self):
-        self._orch_cmd("mgr", "update", "3")
+        self._orch_cmd("apply", "mgr", "3")
 
     def test_nfs_update(self):
-        self._orch_cmd("nfs", "update", "service_name", "2")
+        self._orch_cmd("apply", "nfs", "service_name", "2")
 
     def test_error(self):
         ret = self._orch_cmd_result("host", "add", "raise_no_support")
@@ -177,16 +177,6 @@ class TestOrchestratorCli(MgrTestCase):
         self.assertEqual(ret, errno.ENOENT)
         ret = self._orch_cmd_result("host", "add", "raise_import_error")
         self.assertEqual(ret, errno.ENOENT)
-
-    def test_progress(self):
-        self._progress_cmd('clear')
-        evs = json.loads(self._progress_cmd('json'))['completed']
-        self.assertEqual(len(evs), 0)
-        self._orch_cmd("mgr", "update", "4")
-        sleep(6)  # There is a sleep(5) in the test_orchestrator.module.serve()
-        evs = json.loads(self._progress_cmd('json'))['completed']
-        self.assertEqual(len(evs), 1)
-        self.assertIn('update_mgrs', evs[0]['message'])
 
     def test_load_data(self):
         data = {
@@ -214,16 +204,16 @@ class TestOrchestratorCli(MgrTestCase):
                     ]
                 }
             ],
-            'services': [
+            'daemons': [
                 {
-                    'nodename': 'host0',
-                    'service_type': 'mon',
-                    'service_instance': 'a'
+                    'hostname': 'host0',
+                    'daemon_type': 'mon',
+                    'daemon_id': 'a'
                 },
                 {
-                    'nodename': 'host1',
-                    'service_type': 'osd',
-                    'service_instance': '1'
+                    'hostname': 'host1',
+                    'daemon_type': 'osd',
+                    'daemon_id': '1'
                 }
             ]
         }
@@ -241,14 +231,14 @@ class TestOrchestratorCli(MgrTestCase):
         self.assertEqual(inventory_result[0]['name'], 'host0')
 
         out = self._orch_cmd('ps', '--format=json')
-        services = data['services']
-        services_result = json.loads(out)
-        self.assertEqual(len(services), len(services_result))
+        daemons = data['daemons']
+        daemons_result = json.loads(out)
+        self.assertEqual(len(daemons), len(daemons_result))
 
         out = self._orch_cmd('ps', 'host0', '--format=json')
-        services_result = json.loads(out)
-        self.assertEqual(len(services_result), 1)
-        self.assertEqual(services_result[0]['nodename'], 'host0')
+        daemons_result = json.loads(out)
+        self.assertEqual(len(daemons_result), 1)
+        self.assertEqual(daemons_result[0]['hostname'], 'host0')
 
         # test invalid input file: invalid json
         json_str = '{ "inventory: '
