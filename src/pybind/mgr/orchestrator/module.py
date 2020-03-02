@@ -342,6 +342,7 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule):
             table.align['REFRESHED'] = 'l'
             table.align['IMAGE NAME'] = 'l'
             table.align['IMAGE ID'] = 'l'
+            table.align['SPEC'] = 'l'
             table.left_padding_width = 0
             table.right_padding_width = 2
             for s in sorted(services, key=lambda s: s.service_name):
@@ -355,7 +356,7 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule):
                     age,
                     ukn(s.container_image_name),
                     ukn(s.container_image_id)[0:12],
-                    ukn(s.spec_presence)
+                    'present' if s.spec else '-',
                 ))
 
             return HandleCommandResult(stdout=table.get_string())
