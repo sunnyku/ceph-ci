@@ -68,7 +68,7 @@ def handle_clone_pending(volume_client, volname, index, groupname, subvolname, s
     try:
         next_state = OpSm.get_next_state("clone", "pending", 0)
     except OpSmException as oe:
-        raise VolumeException(oe.error, oe.error_str)
+        raise VolumeException(oe.errno, oe.error_str)
     return (next_state, False)
 
 def bulk_copy(fs_handle, source_path, dst_path, should_cancel):
@@ -136,7 +136,7 @@ def handle_clone_in_progress(volume_client, volname, index, groupname, subvolnam
         # jump to failed state
         next_state = OpSm.get_next_state("clone", "in-progress", -1)
     except OpSmException as oe:
-        raise VolumeException(oe.error, oe.error_str)
+        raise VolumeException(oe.errno, oe.error_str)
     return (next_state, False)
 
 def handle_clone_failed(volume_client, volname, index, groupname, subvolname, should_cancel):
