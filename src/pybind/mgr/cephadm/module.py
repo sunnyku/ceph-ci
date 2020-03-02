@@ -1069,6 +1069,19 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
                     if service_completion.exception is not None:
                         self.log.error(str(service_completion.exception))
 
+            service_completions = self._refresh_configs()
+            for service_completion in service_completions:
+                if service_completion:
+                    while not service_completion.has_result:
+                        self.process([service_completion])
+                        self.log.debug(f'Still processing {service_completion}')
+                        if service_completion.needs_result:
+                            time.sleep(1)
+                        else:
+                            break
+                    if service_completion.exception is not None:
+                        self.log.error(str(service_completion.exception))
+
             if self.upgrade_state and not self.upgrade_state.get('paused'):
                 upgrade_completion = self._do_upgrade()
                 if upgrade_completion:
@@ -2173,6 +2186,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             spec.placement.hosts = hosts_without_daemons
             return self._create_daemons(daemon_type, spec, daemons,
                                         create_func, config_func)
+
         return trivial_result([])
 
     def _apply_all_services(self):
@@ -2183,6 +2197,23 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             except Exception as e:
                 self.log.warning('Failed to apply %s spec %s: %s' % (
                     spec.service_name(), spec, e))
+        return r
+
+    def _refresh_configs(self):
+        daemons = self.cache.get_daemons()
+        r = []  # type: List[orchestrator.Completion]
+        for dd in daemons:
+            deps = self._calc_daemon_deps(dd.daemon_type, dd.daemon_id)
+            last_deps, last_config = self.cache.get_daemon_last_config_deps(
+                dd.hostname, dd.name())
+            if last_deps != deps:
+                self.log.debug('%s deps %s -> %s' % (dd.name(), last_deps,
+                                                     deps))
+                self.log.info('Reconfiguring %s (dependencies changed)...' % (
+                    dd.name()))
+                # FIXME: this shouldn't return.
+                r.extend(self._create_daemon(dd.daemon_type, dd.daemon_id,
+                                             dd.hostname, reconfig=True))
         return r
 
     def _add_daemon(self, daemon_type, spec,
