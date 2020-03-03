@@ -626,6 +626,19 @@ Usage:
         return HandleCommandResult(stdout=completion.result_str())
 
     @_cli_write_command(
+        'orch daemon add grafana',
+        'name=placement,type=CephString,n=N,req=false',
+        'Add grafana daemon(s)')
+    def _daemon_add_grafana(self, placement=None):
+        spec = ServiceSpec(
+            'grafana',
+            placement=PlacementSpec.from_strings(placement),
+        )
+        completion = self.add_grafana(spec)
+        self._orchestrator_wait([completion])
+        return HandleCommandResult(stdout=completion.result_str())
+
+    @_cli_write_command(
         'orch daemon add node-exporter',
         'name=placement,type=CephString,n=N,req=false',
         'Add node-exporter daemon(s)')
@@ -841,6 +854,32 @@ Usage:
             placement=PlacementSpec.from_strings(placement),
         )
         completion = self.apply_prometheus(spec)
+        self._orchestrator_wait([completion])
+        return HandleCommandResult(stdout=completion.result_str())
+
+    @_cli_write_command(
+        'orch apply grafana',
+        'name=placement,type=CephString,n=N,req=false',
+        'Scale grafana service')
+    def _apply_grafana(self, placement=None):
+        spec = ServiceSpec(
+            'grafana',
+            placement=PlacementSpec.from_strings(placement),
+        )
+        completion = self.apply_grafana(spec)
+        self._orchestrator_wait([completion])
+        return HandleCommandResult(stdout=completion.result_str())
+
+    @_cli_write_command(
+        'orch apply alertmanager',
+        'name=placement,type=CephString,n=N,req=false',
+        'Scale alertmanager service')
+    def _apply_alertmanager(self, placement=None):
+        spec = ServiceSpec(
+            'alertmanager',
+            placement=PlacementSpec.from_strings(placement),
+        )
+        completion = self.apply_alertmanager(spec)
         self._orchestrator_wait([completion])
         return HandleCommandResult(stdout=completion.result_str())
 
