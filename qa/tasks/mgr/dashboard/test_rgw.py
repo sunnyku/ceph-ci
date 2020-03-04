@@ -128,7 +128,7 @@ class RgwBucketTest(RgwTestCase):
         cls._radosgw_admin_cmd([
             'mfa', 'create', '--uid', 'teuth-test-user', '--totp-serial', cls._mfa_token_serial,
             '--totp-seed', cls._mfa_token_seed, '--totp-seed-type', 'base32',
-            '--totp-seconds', str(cls._mfa_token_time_step), '--totp-window', '2'
+            '--totp-seconds', str(cls._mfa_token_time_step), '--totp-window', '4'
         ])
         # Create tenanted users.
         cls._radosgw_admin_cmd([
