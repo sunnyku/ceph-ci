@@ -223,6 +223,19 @@ class NFSGanesha(object):
         ]
         return envs
 
+    @staticmethod
+    def get_version(container_id):
+        # type(str) -> Optional[str]
+        version = None
+        out, err, code = call(
+            [container_path, 'exec', container_id,
+             NFSGanesha.entrypoint, '-v'])
+        if code == 0:
+            match = re.search(r'NFS-Ganesha Release\s*=\s*[V]*([\d.]+)', out)
+            if match:
+                version = match.group(1)
+        return version
+
     def validate(self):
         # type () -> None
         if not is_fsid(self.fsid):
@@ -2664,6 +2677,8 @@ def list_daemons(detail=True, legacy_dir=None):
                                        out.startswith('ceph version '):
                                         version = out.split(' ')[2]
                                         seen_versions[image_id] = version
+                            elif daemon_type == NFSGanesha.daemon_type:
+                                version = NFSGanesha.get_version(container_id)
                             else:
                                 # FIXME: monitoring component version?
                                 pass
