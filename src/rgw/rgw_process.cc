@@ -13,6 +13,7 @@
 #include "rgw_loadgen.h"
 #include "rgw_client_io.h"
 #include "rgw_opa.h"
+#include <unistd.h>
 
 #define dout_subsys ceph_subsys_rgw
 
@@ -46,6 +47,7 @@ int rgw_process_authenticated(RGWHandler_REST * const handler,
     return ret;
   }
 
+
   /**
    * Only some accesses support website mode, and website mode does NOT apply
    * if you are using the REST endpoint either (ergo, no authenticated access)
@@ -61,6 +63,40 @@ int rgw_process_authenticated(RGWHandler_REST * const handler,
     ldpp_dout(op, 2) << "retargeting skipped because of SubOp mode" << dendl;
   }
 
+  /*ugur wb-cache*/
+   ldpp_dout(op, 2) << "init op -out "<< s->op<<" " << op->name() <<" "<< op->get_type()<< " ii " << dendl;
+    char key[] = "get_obj";
+  // if ((strcmp(key,op->name()) == 0)&&( s->bucket_name == "mytest")) {
+    //  op->fetch_remote_execute();
+  // }
+   if (false) {
+//   if( strcmp(key,op->name()) == 0) {
+  
+      ldpp_dout(op, 2) << "init op -ugurloop" << dendl;
+      ldpp_dout(op, 2) << "init op" << dendl;
+      ret = op->init_processing();
+      if (ret < 0) {
+        return ret;
+      }
+      ldpp_dout(op, 2) << "verifying op mask" << dendl;
+      ret = op->verify_op_mask();
+      if (ret < 0) {
+        return ret;
+      }
+  
+ 
+      ldpp_dout(op,2) << "rgw_process.cc fetch logic ugur "  << s->bucket_name <<" " <<s->object.name<< dendl;
+      ldpp_dout(op, 2) << "executing" << dendl;
+      op->fetch_remote_execute();
+    
+      ldpp_dout(op, 2) << "completing" << dendl;
+      op->complete();
+      return 0;
+    //  RGWOp *fetch_op = op;
+    //  fetch_op->fetch_remote_execute();
+    }
+  /* */
+
   /* If necessary extract object ACL and put them into req_state. */
   ldpp_dout(op, 2) << "reading permissions" << dendl;
   ret = handler->read_permissions(op);
@@ -73,7 +109,7 @@ int rgw_process_authenticated(RGWHandler_REST * const handler,
   if (ret < 0) {
     return ret;
   }
-
+  
   ldpp_dout(op, 2) << "verifying op mask" << dendl;
   ret = op->verify_op_mask();
   if (ret < 0) {
@@ -99,7 +135,7 @@ int rgw_process_authenticated(RGWHandler_REST * const handler,
       return ret;
     }
   }
-
+  
   ldpp_dout(op, 2) << "verifying op params" << dendl;
   ret = op->verify_params();
   if (ret < 0) {

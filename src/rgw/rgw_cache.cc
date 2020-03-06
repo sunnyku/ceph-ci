@@ -1284,7 +1284,6 @@ int get_s3_credentials(RGWRados *store, string userid, RGWAccessKey& s3_key, Cep
 		RGWObjectCtx obj_ctx(store);
 		RGWUserInfo info;
 		rgw_user user_id(userid);
-//		real_time *pmtime;
 		//int ret = rgw_get_system_obj(store, obj_ctx, store->get_zone_params().user_uid_pool, userid, bl, &objv_tracker, pmtime, NULL, NULL);
 		int ret = rgw_get_user_info_by_uid(store, user_id , info, &objv_tracker, NULL, NULL, NULL);
 		map<string, RGWAccessKey>::iterator kiter;
@@ -1301,7 +1300,7 @@ int get_s3_credentials(RGWRados *store, string userid, RGWAccessKey& s3_key, Cep
 }
 
 
-void fetch_remote(RGWRados *store, string userid, string dest_bucket_name, string dest_obj_name, CephContext *cct){
+void fetch_remote2(RGWRados *store, string userid, string dest_bucket_name, string dest_obj_name, CephContext *cct){
   ldout(cct, 20) << "Fetching object from BE " << dest_bucket_name+"/"+dest_obj_name << " userid "<< userid <<dendl;
   //Check bucket exists
   RGWBucketInfo dest_bucket_info;
@@ -1314,7 +1313,6 @@ void fetch_remote(RGWRados *store, string userid, string dest_bucket_name, strin
   // Get S3 Credentials of the user 
   RGWAccessKey accesskey;
   ret = get_s3_credentials(store, userid, accesskey, cct);
-  ldout(cct, 20) << "Fetching after object from BE " << dest_bucket_name+"/"+dest_obj_name << " userid "<< userid <<dendl;
 
   // Issue remote S3 request to backend
 //  buffer::list aclbl;
@@ -1323,7 +1321,6 @@ void fetch_remote(RGWRados *store, string userid, string dest_bucket_name, strin
   ACLOwner bucket_owner;
   rgw_user user_id(userid);
   RGWBucketInfo bucket_info;
-
  
   RGWObjectCtx obj_ctx(store);
   rgw_obj dest_obj(dest_bucket_info.bucket, dest_obj_name); 
@@ -1336,7 +1333,6 @@ void fetch_remote(RGWRados *store, string userid, string dest_bucket_name, strin
   set_mtime_weight.high_precision = false;
   
 //  RGWObjState *src_state = NULL; 
-
 //  map<string, bufferlist> src_attrs;
 //  rgw_bucket dest_bucket;
 //  dest_bucket.name = "kaynar";
@@ -1356,14 +1352,13 @@ void fetch_remote(RGWRados *store, string userid, string dest_bucket_name, strin
   list<string> endpoints;
   endpoints.push_back(url);
   RGWRESTConn *conn = new RGWRESTConn(cct, store, id, endpoints, accesskey);
-  //string obj_name =  "/kaynar/" + dest_obj_name;
   obj_ctx.obj.set_atomic(dest_obj); 
   obj_ctx.obj.set_atomic(src_obj); 
   RGWRESTStreamRWRequest *in_stream_req;
   
   boost::optional<RGWPutObj_Compress> compressor;
   CompressorRef plugin;
-  RGWRadosPutObj cb(cct, plugin, compressor, &processor, NULL, NULL);
+  RGWRadosPutObj cb(cct, plugin, compressor, &processor, NULL, NULL,NULL);
   string etag;
   real_time set_mtime;
   const real_time *pmod = NULL;
@@ -1566,7 +1561,7 @@ int FlushRequest::DiscardObjWB(string tenant_id, string bucket_name, string obj_
     }
     else {
       //DeleteObjWB(store, userid, src_bucket_name, src_obj_name, cct);
-      fetch_remote(store, userid, "kaynar", "file.txt", cct);
+//      fetch_remote(store, userid, "kaynar", "file.txt", cct);
       return 0;
     }
     

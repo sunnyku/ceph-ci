@@ -1726,10 +1726,12 @@ int RGWGetObj::handle_slo_manifest(bufferlist& bl)
 
 int RGWGetObj::get_data_cb(bufferlist& bl, off_t bl_ofs, off_t bl_len)
 {
+  ldpp_dout(this, 0) << "ugur get_data_cb" << dendl;
   /* garbage collection related handling */
   utime_t start_time = ceph_clock_now();
   if (start_time > gc_invalidate_time) {
     int r = store->defer_gc(s->obj_ctx, s->bucket_info, obj);
+    r=0;
     if (r < 0) {
       ldpp_dout(this, 0) << "WARNING: could not defer gc entry for obj" << dendl;
     }
@@ -3546,7 +3548,6 @@ void RGWPutObj::execute()
   }
   tracepoint(rgw_op, before_data_transfer, s->req_id.c_str());
  /*ugur*/
- /*ugur*/
  do {
     bufferlist data;
     if (fst > lst)
@@ -3594,8 +3595,6 @@ void RGWPutObj::execute()
     return;
   }
 
-  
-/*ugur*/
 /*ugur*/
   if (!chunked_upload && ofs != s->content_length) {
     op_ret = -ERR_REQUEST_TIMEOUT;
@@ -7161,4 +7160,18 @@ void RGWGetClusterStat::execute()
   op_ret = this->store->get_rados_handle()->cluster_stat(stats_op);
 }
 
-
+/*ugur-wb cache*/
+void RGWGetObj::fetch_remote_execute()
+{ 
+  ldpp_dout(this, 10) << "fetch_remote_execute is running" << dendl;
+  RGWGetObj_CB cb(this);
+  RGWGetObj_Filter* filter = (RGWGetObj_Filter *)&cb;
+  RGWBucketInfo dest_bucket_info; 
+  map<string, bufferlist> dest_attrs;
+//  int ret = create_bucket(this->store, s->bucket_onwer.id.id, s->bucket_name, cct, dest_bucket_info, dest_attrs);
+  RGWRados::Object op_target(this->store, dest_bucket_info, *static_cast<RGWObjectCtx *>(s->obj_ctx), obj);
+  RGWRados::Object::Read read_op(&op_target);
+  //op_ret = read_op.fetch_from_backend(filter,"testuser", "kaynar", "file.txt");
+  op_ret = read_op.fetch_from_backend(filter,"testuser", s->bucket_name, s->object.name, s);
+ 
+}

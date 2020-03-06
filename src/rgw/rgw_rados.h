@@ -30,7 +30,7 @@
 #include "rgw_sync_module.h"
 #include "rgw_sync_log_trim.h"
 #include "common/Throttle.h"
-//#include "rgw_putobj_processor.h"
+
 
 
 class RGWWatcher;
@@ -2788,6 +2788,7 @@ public:
       static int range_to_ofs(uint64_t obj_size, int64_t &ofs, int64_t &end);
       int read(int64_t ofs, int64_t end, bufferlist& bl);
       int iterate(int64_t ofs, int64_t end, RGWGetDataCB *cb);
+      int fetch_from_backend(RGWGetDataCB *cb, string userid, string bucket_name, string obj_name, req_state * const s); //ugur wb-cache
       int get_attr(const char *name, bufferlist& dest);
     };
 
@@ -3121,6 +3122,11 @@ public:
                string *ptag,
                string *petag);
 
+  // ugur writeback cache implementation
+  int fetch_remote(RGWRados *store, string userid, string dest_bucket_name, string dest_obj_name, RGWGetDataCB *cb, RGWObjectCtx& ctx); //ugur-wb
+  int create_bucket(RGWRados *store, string userid, string dest_bucket_name, CephContext *cct, RGWBucketInfo& bucket_info, map<string, bufferlist>& bucket_attrs, RGWAccessKey& accesskey); // ugur-wb
+  int get_s3_credentials(RGWRados *store, string userid, RGWAccessKey& s3_key, CephContext *cct);
+  
   int fetch_remote_obj(RGWObjectCtx& obj_ctx,
                        const rgw_user& user_id,
                        req_info *info,
@@ -3312,6 +3318,7 @@ public:
 
   /*ugur*/
   //virtual int issue_remote_wb(librados::L2CacheRequest *cr, RGWRados *store);
+  
   virtual int issue_remote_wb(librados::L2CacheRequest *cr);
   virtual int update_directory(string key, string value, string op, RGWRados *store);
   virtual int flush_read_list(struct get_obj_data *d);

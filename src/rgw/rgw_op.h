@@ -169,6 +169,7 @@ public:
   virtual int verify_op_mask();
   virtual void pre_exec() {}
   virtual void execute() = 0;
+  virtual void fetch_remote_execute() {} // ugur
   virtual void send_response() {}
   virtual void complete() {
     send_response();
@@ -306,6 +307,7 @@ public:
   int verify_permission() override;
   void pre_exec() override;
   void execute() override;
+  void fetch_remote_execute();
   int parse_range();
   int read_user_manifest_part(
     rgw_bucket& bucket,

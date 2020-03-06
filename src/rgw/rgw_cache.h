@@ -925,7 +925,7 @@ int RGWDataCache<T>::update_directory(string key, string value, string op, RGWRa
 	if (a != ""){
     		mydout(10) << "ugur iflush girdi update_directory for wb_cache ,insert " << key<< dendl;
 	      //data_cache.DiscardObjWB(store,"testuser");
-	      data_cache.run_flush(store,"testuser");
+//	      data_cache.run_flush(store,"testuser");
 }
     }
     return 0;
@@ -992,7 +992,8 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
   d->add_pending_oid(read_obj.oid);
   
     /*directory*/
-	if (data_cache.get(read_obj.oid)) {
+//	if (data_cache.get(read_obj.oid)) {
+    if (false) {
 		mydout(20) << "RGW-Cache Hit Local" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
     librados::L1CacheRequest *cc;
     d->add_l1_request(&cc, pbl, read_obj.oid, len, obj_ofs, read_ofs, key, c);
@@ -1000,7 +1001,7 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
     r = d->submit_l1_aio_read(cc);
     if (r != 0 ){ mydout(0) << "Error cache_aio_read failed err=" << r << dendl; }
 	}else{
-		std::string wb_loc = data_cache.get_key(read_obj.oid,1);
+	/*	std::string wb_loc = data_cache.get_key(read_obj.oid,1);
 		std::string loc = data_cache.get_key(read_obj.oid,0);
 		if (!wb_loc.compare("")==0) { // Data in writeback cache
 			 mydout(20) << "RGW-WB-Cache Hit" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
@@ -1017,14 +1018,14 @@ int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
       			d->add_l2_request(&cc, pbl, read_obj.oid, obj_ofs, read_ofs, len, key, c, loc, "read");
       			r = io_ctx.cache_aio_notifier(read_obj.oid, cc);
       			data_cache.push_l2_request(cc);
-		} else{
+		} else{*/
 			mydout(20) << "RGW-Cache Miss, Backend Hit" << read_obj.oid << " obj-ofs=" << obj_ofs << " read_ofs=" << read_ofs << " len=" << len << dendl;
     	op.read(read_ofs, len, pbl, NULL);
     	r = io_ctx.aio_operate(read_obj.oid, c, &op, NULL);
     	mydout(20) << "rados->aio_operate r=" << r << " bl.length=" << pbl->length() << dendl;
     	if (r < 0) { mydout(0) << "rados->aio_operate r=" << r << dendl; goto done_err;}
 		}
-	}
+	
   // Flush data to client if there is any
   //r = flush_read_list(d->rados, ctx);
   if (r < 0)

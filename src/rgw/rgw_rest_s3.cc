@@ -180,7 +180,10 @@ int RGWGetObj_ObjStore_S3::send_response_data(bufferlist& bl, off_t bl_ofs,
   map<string, string> response_attrs;
   map<string, string>::iterator riter;
   bufferlist metadata_bl;
-
+//  s->obj_size = 20971520;
+//  total_len = 20971520;
+  total_len = 99;
+  s->obj_size = total_len;
   if (sent_header)
     goto send_data;
 
@@ -248,7 +251,7 @@ int RGWGetObj_ObjStore_S3::send_response_data(bufferlist& bl, off_t bl_ofs,
 
   for (auto &it : crypt_http_responses)
     dump_header(s, it.first, it.second);
-
+  
   dump_content_length(s, total_len);
   dump_last_modified(s, lastmod);
   dump_header_if_nonempty(s, "x-amz-version-id", version_id);
