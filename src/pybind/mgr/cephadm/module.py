@@ -2349,6 +2349,9 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
 
         return create_func_map(args)
 
+    def apply_mon(self, spec):
+        return self._apply(spec)
+
     def _create_mon(self, name, host, network):
         """
         Create a new monitor on the given host.
