@@ -286,8 +286,7 @@ class CephFSTestCase(CephTestCase):
         else:
             log.info("No core_pattern directory set, nothing to clear (internal.coredump not enabled?)")
 
-    def _wait_subtrees(self, status, rank, test):
-        timeout = 30
+    def _wait_subtrees(self, status, rank, test, timeout=30):
         pause = 2
         test = sorted(test)
         for i in range(timeout // pause):

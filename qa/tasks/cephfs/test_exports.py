@@ -1,5 +1,6 @@
 import logging
 import time
+import unittest
 from tasks.cephfs.fuse_mount import FuseMount
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 
@@ -175,14 +176,129 @@ class TestExports(CephFSTestCase):
         new_rank1 = self.fs.get_rank(rank=1)
         self.assertEqual(rank1['gid'], new_rank1['gid'])
 
-    def test_ephememeral_pin_distribution(self):
+class TestEphemeralPins(CephFSTestCase):
+    MDSS_REQUIRED = 3
+    CLIENTS_REQUIRED = 1
 
-        # Check if the subtree distribution under ephemeral distributed pin is fairly uniform
+    def _setup_tree(self):
+        self.mount_a.run_shell(["mkdir", "-p", "tree"])
+        for i in range(0,100):
+            name = "tree/%02d/subdir" % i
+            self.mount_a.run_shell(["mkdir", "-p", name])
+
+    def _get_subtrees(self, status=None):
+        # only gets what rank 0 sees!
+        subtrees = self.fs.rank_asok(["get", "subtrees"], status=status)
+        subtrees = filter(lambda s: s['dir']['path'].startswith('/'), subtrees)
+        #subtrees = sorted([{'path': s['dir']['path'], 'auth': s['auth_first']} for s in subtrees])
+        return subtrees
+
+    def test_ephemeral_pin_dist_override(self):
+        """
+        That an ephemeral distributed pin overrides a normal export pin.
+        """
+
+        self.fs.set_max_mds(2)
+        status = self.fs.wait_for_daemons()
+
+        self._setup_tree()
+        self.mount_a.setfattr("tree", "ceph.dir.pin", "0")
+        self.mount_a.setfattr("tree", "ceph.dir.pin.distributed", "1")
+        self._wait_distributed_subtrees(status, 0, 100)
+        subtrees = self._get_subtrees(status=status)
+        for s in subtrees:
+            path = s['dir']['path']
+            if path == '/tree':
+                self.assertEqual(s['export_pin'], 0)
+                self.assertEqual(s['auth_first'], 0)
+            elif path.startswith('/tree/'):
+                self.assertEqual(s['export_pin'], -1)
+                self.assertTrue(s['distributed_ephemeral_pin'])
+
+    def test_ephemeral_pin_dist_override_pin(self):
+        """
+        That an export pin overrides an ephemerally pinned directory.
+        """
+
+        self.fs.set_max_mds(2)
+        status = self.fs.wait_for_daemons()
+
+        self._setup_tree()
+        self.mount_a.setfattr("tree", "ceph.dir.pin", "0")
+        self.mount_a.setfattr("tree", "ceph.dir.pin.distributed", "1")
+        self._wait_distributed_subtrees(status, 0, 100)
+        subtrees = self._get_subtrees(status=status)
+        which = None
+        for s in subtrees:
+            path = s['dir']['path']
+            if path.startswith('/tree/') and s['auth_first'] == 1:
+                self.mount_a.setfattr(path[1:], "ceph.dir.pin", "0")
+                which = path
+                break
+        self.assertIsNotNone(which)
+        time.sleep(15)
+        subtrees = self._get_subtrees(status=status)
+        for s in subtrees:
+            path = s['dir']['path']
+            if path == which:
+                self.assertEqual(s['auth_first'], 0)
+                self.assertFalse(s['distributed_ephemeral_pin'])
+                return
+        # it has been merged into /tree
+
+    def test_ephemeral_pin_dist_off(self):
+        """
+        That turning off ephemeral distributed pin merges subtrees.
+        """
+
+        self.fs.set_max_mds(2)
+        status = self.fs.wait_for_daemons()
+
+        self._setup_tree()
+        self.mount_a.setfattr("tree", "ceph.dir.pin", "0")
+        self.mount_a.setfattr("tree", "ceph.dir.pin.distributed", "1")
+        self._wait_distributed_subtrees(status, 0, 100)
+        self.mount_a.setfattr("tree", "ceph.dir.pin.distributed", "0")
+        self._wait_subtrees(status, 0, [('/tree', 0)])
+
+    def test_ephemeral_pin_dist_conf_off(self):
+        """
+        That turning off ephemeral distributed pin config prevents distribution.
+        """
+
+        self.fs.set_max_mds(2)
+        status = self.fs.wait_for_daemons()
+
+        self._setup_tree()
+        self.mount_a.setfattr("tree", "ceph.dir.pin", "0")
+        self.config_set('mds', 'mds_export_ephemeral_distributed', False)
+        self.mount_a.setfattr("tree", "ceph.dir.pin.distributed", "1")
+        time.sleep(30)
+        self._wait_subtrees(status, 0, [('/tree', 0)])
+
+    def test_ephemeral_pin_dist_conf_off_merge(self):
+        """
+        That turning off ephemeral distributed pin config merges subtrees.
+        """
+
+        self.fs.set_max_mds(2)
+        status = self.fs.wait_for_daemons()
+
+        self._setup_tree()
+        self.mount_a.setfattr("tree", "ceph.dir.pin", "0")
+        self.mount_a.setfattr("tree", "ceph.dir.pin.distributed", "1")
+        self._wait_distributed_subtrees(status, 0, 100)
+        self.config_set('mds', 'mds_export_ephemeral_distributed', False)
+        self._wait_subtrees(status, 0, [('/tree', 0)], timeout=60)
+
+    def test_ephemeral_pin_distribution_after_child_create(self):
+        """
+        That ephemerally pinned subtrees are somewhat evenly distributed. The xattr 
+        is set after child directories are created.
+        """
 
         self.fs.set_max_mds(3)
-        self.fs.wait_for_daemons()
-
-        status = self.fs.status()
+        status = self.fs.wait_for_daemons()
 
         self.mount_a.run_shell(["mkdir", "-p", "a"])
         self._wait_subtrees(status, 0, [])
@@ -192,9 +308,9 @@ class TestExports(CephFSTestCase):
           
         self._wait_subtrees(status, 0, [])
 
-        self.mount_b.setfattr(["a", "ceph.dir.pin.distributed", "1"])
+        self.mount_a.setfattr("a", "ceph.dir.pin.distributed", "1")
 
-        self._wait_distributed_subtrees([status, 0, 100])
+        self._wait_distributed_subtrees(status, 0, 100)
 
         # Check if distribution is uniform
         rank0_distributed_subtree_ratio = len(self.get_distributed_auth_subtrees(status, 0))/len(self.get_auth_subtrees(status, 0))
@@ -206,6 +322,36 @@ class TestExports(CephFSTestCase):
         rank2_distributed_subtree_ratio = len(self.get_distributed_auth_subtrees(status, 2))/len(self.get_auth_subtrees(status, 2))
         self.assertGreaterEqual(rank2_distributed_subtree_ratio, 0.2)
 
+    def test_ephemeral_pin_distribution_before_child_create(self):
+        """
+        That ephemerally pinned subtrees are somewhat evenly distributed. The xattr
+        is set before child directories are created.
+        """
+
+        self.fs.set_max_mds(3)
+        status = self.fs.wait_for_daemons()
+
+        self.mount_a.run_shell(["mkdir", "-p", "a"])
+        self._wait_subtrees(status, 0, [])
+
+        self.mount_a.setfattr("a", "ceph.dir.pin.distributed", "1")
+
+        for i in range(0,100):
+          self.mount_a.run_shell(["mkdir", "-p", "a/" + str(i) + "/d"])
+
+        self._wait_distributed_subtrees(status, 0, 100)
+
+        # Check if distribution is uniform
+        rank0_distributed_subtree_ratio = len(self.get_distributed_auth_subtrees(status, 0))/len(self.get_auth_subtrees(status, 0))
+        self.assertGreaterEqual(rank0_distributed_subtree_ratio, 0.2)
+
+        rank1_distributed_subtree_ratio = len(self.get_distributed_auth_subtrees(status, 1))/len(self.get_auth_subtrees(status, 1))
+        self.assertGreaterEqual(rank1_distributed_subtree_ratio, 0.2)
+
+        rank2_distributed_subtree_ratio = len(self.get_distributed_auth_subtrees(status, 2))/len(self.get_auth_subtrees(status, 2))
+        self.assertGreaterEqual(rank2_distributed_subtree_ratio, 0.2)
+
+    @unittest.skip("random pinning needs fixed for subtree migration")
     def test_ephemeral_random(self):
         
         # Check if export ephemeral random is applied hierarchically
@@ -219,8 +365,29 @@ class TestExports(CephFSTestCase):
         for i in range(0, 100):
           tmp_dir = tmp_dir + str(i) + "/"
           self.mount_a.run_shell(["mkdir", "-p", tmp_dir])
-          self.mount_b.setfattr([temp_dir, "ceph.dir.pin.random", "1"])
+          self.mount_a.setfattr(temp_dir, "ceph.dir.pin.random", "1")
 
+        count = len(get_random_auth_subtrees(status,0))
+        self.assertEqual(count, 100)
+
+    def test_ephemeral_random_dist(self):
+        """
+        That ephemeral random and distributed can co-exist with each other
+        """
+
+        self.fs.set_max_mds(3)
+        status = self.fs.wait_for_daemons()
+
+        self.mount_a.run_shell(["mkdir", "-p", "a"])
+        self._wait_subtrees(status, 0, [])
+        self.mount_a.setfattr("a", "ceph.dir.pin.distributed", "1")
+
+        for i in range(0, 100):
+          tmp_dir = tmp_dir + str(i) + "/"
+          self.mount_a.run_shell(["mkdir", "-p", "a/" + tmp_dir])
+          self.mount_a.setfattr("a/" + temp_dir, "ceph.dir.pin.random", "1")
+
+        self._wait_distributed_subtrees(status, 0, 100)
         count = len(get_random_auth_subtrees(status,0))
         self.assertEqual(count, 100)
 
@@ -228,7 +395,7 @@ class TestExports(CephFSTestCase):
         
         # Increase the no of MDSs and verify that the no of subtrees that migrate are less than 1/3 of the total no of subtrees that are ephemerally pinned
 
-        self.fs.set_max_mds(3)
+        self.fs.set_max_mds(2)
         self.fs.wait_for_daemons()
 
         status = self.fs.status()
@@ -236,22 +403,27 @@ class TestExports(CephFSTestCase):
         for i in range(0,100):
           self.mount_a.run_shell(["mkdir", "-p", "a/" + str(i) + "/d"])
         self._wait_subtrees(status, 0, [])
-        self.mount_b.setfattr(["a", "ceph.dir.pin.distributed", "1"])
-        self._wait_distributed_subtrees([status, 0, 100])
+        self.mount_a.setfattr("a", "ceph.dir.pin.distributed", "1")
+        self._wait_distributed_subtrees(status, 0, 100)
 
-        subtrees_old = dict(get_ephemrally_pinned_auth_subtrees(status, 0).items() + get_ephemrally_pinned_auth_subtrees(status, 1).items() + get_ephemrally_pinned_auth_subtrees(status, 2).items()) 
-        self.fs.set_max_mds(4)
+        subtrees_old = self.get_ephemerally_pinned_auth_subtrees(status, 0) + self.get_ephemerally_pinned_auth_subtrees(status, 1)
+        self.fs.set_max_mds(3)
         self.fs.wait_for_daemons()
+        
         # Sleeping for a while to allow the ephemeral pin migrations to complete
-        time.sleep(15)
-        subtrees_new = dict(get_ephemrally_pinned_auth_subtrees(status, 0).items() + get_ephemrally_pinned_auth_subtrees(status, 1).items() + get_ephemrally_pinned_auth_subtrees(status, 2).items())
+        time.sleep(30)
+        
+        status = self.fs.status()
+        subtrees_new = self.get_ephemerally_pinned_auth_subtrees(status, 0) + self.get_ephemerally_pinned_auth_subtrees(status, 1) + self.get_ephemerally_pinned_auth_subtrees(status, 2) 
+        count = 0
         for old_subtree in subtrees_old:
             for new_subtree in subtrees_new:
                 if (old_subtree['dir']['path'] == new_subtree['dir']['path']) and (old_subtree['auth_first'] != new_subtree['auth_first']):
                     count = count + 1
                     break
 
-        assertLessEqual((count/subtrees_old), 0.33)
+        log.info("{0} migrations have occured due to the cluster resizing".format(count))
+        self.assertLessEqual((count/len(subtrees_old)), 0.33)
 
     def test_ephemeral_pin_shrink_mds(self):
 
@@ -265,23 +437,27 @@ class TestExports(CephFSTestCase):
         for i in range(0,100):
           self.mount_a.run_shell(["mkdir", "-p", "a/" + str(i) + "/d"])
         self._wait_subtrees(status, 0, [])
-        self.mount_b.setfattr(["a", "ceph.dir.pin.distributed", "1"])
-        self._wait_distributed_subtrees([status, 0, 100])
+        self.mount_a.setfattr("a", "ceph.dir.pin.distributed", "1")
+        self._wait_distributed_subtrees(status, 0, 100)
 
-        subtrees_old = dict(get_ephemrally_pinned_auth_subtrees(status, 0).items() + get_ephemrally_pinned_auth_subtrees(status, 1).items() + get_ephemrally_pinned_auth_subtrees(status, 2).items())
+        subtrees_old = self.get_ephemerally_pinned_auth_subtrees(status, 0) + self.get_ephemerally_pinned_auth_subtrees(status, 1) + self.get_ephemerally_pinned_auth_subtrees(status, 2)
         self.fs.set_max_mds(2)
         self.fs.wait_for_daemons()
-        time.sleep(15)
+        time.sleep(30)
 
-        subtrees_new = dict(get_ephemrally_pinned_auth_subtrees(status, 0).items() + get_ephemrally_pinned_auth_subtrees(status, 1).items() + get_ephemrally_pinned_auth_subtrees(status, 2).items())
+        status = self.fs.status()
+        subtrees_new = self.get_ephemerally_pinned_auth_subtrees(status, 0) + self.get_ephemerally_pinned_auth_subtrees(status, 1)
+        count = 0
         for old_subtree in subtrees_old:
             for new_subtree in subtrees_new:
                 if (old_subtree['dir']['path'] == new_subtree['dir']['path']) and (old_subtree['auth_first'] != new_subtree['auth_first']):
                     count = count + 1
                     break
 
-        assertLessEqual((count/subtrees_old), 0.33)
+        log.info("{0} migrations have occured due to the cluster resizing".format(count))
+        self.assertLessEqual((count/len(subtrees_old)), 0.33)
 
+    @unittest.skip("unset needs fixed")
     def test_ephemeral_pin_unset_config(self):
 
         # Check if unsetting the distributed pin config results in every distributed pin being unset
@@ -293,9 +469,9 @@ class TestExports(CephFSTestCase):
 
         for i in range(0, 10):
             self.mount_a.run_shell(["mkdir", "-p", i +"/dummy_dir"])
-            self.mount_b.setfattr([i, "ceph.dir.pin.distributed", "1"])
+            self.mount_a.setfattr(i, "ceph.dir.pin.distributed", "1")
 
-        self._wait_distributed_subtrees([status, 0, 10])
+        self._wait_distributed_subtrees(status, 0, 10)
 
         self.fs.mds_asok(["config", "set", "mds_export_ephemeral_distributed_config", "false"])
         # Sleep for a while to facilitate unsetting of the pins
@@ -304,6 +480,7 @@ class TestExports(CephFSTestCase):
         for i in range(0, 10):
             self.assertTrue(self.mount_a.getfattr(i, "ceph.dir.pin.distributed") == "0")
 
+    @unittest.skip("unset needs fixed")
     def test_ephemeral_distributed_pin_unset(self):
 
         # Test if unsetting the distributed ephemeral pin on a parent directory then the children directory should not be ephemerally pinned anymore
@@ -315,13 +492,13 @@ class TestExports(CephFSTestCase):
 
         for i in range(0, 10):
             self.mount_a.run_shell(["mkdir", "-p", i +"/a/b"])
-            self.mount_b.setfattr([i, "ceph.dir.pin.distributed", "1"])
+            self.mount_a.setfattr(i, "ceph.dir.pin.distributed", "1")
 
-        self._wait_distributed_subtrees([status, 0, 10])
+        self._wait_distributed_subtrees(status, 0, 10)
 
         for i in range(0, 10):
             self.mount_a.run_shell(["mkdir", "-p", i +"/a/b"])
-            self.mount_b.setfattr([i, "ceph.dir.pin.distributed", "0"])
+            self.mount_a.setfattr(i, "ceph.dir.pin.distributed", "0")
 
         time.sleep(15)
 
@@ -332,42 +509,36 @@ class TestExports(CephFSTestCase):
 
         # Test if the distribution is unaltered when a Standby MDS takes up a failed rank
         
-        # Need all my standbys up as well as the active daemons
-        self.wait_for_daemon_start()
+        self.fs.set_max_mds(2)
+        self.fs.wait_for_daemons()
         status = self.fs.status()
 
-        for i in range(0, 10):
-            self.mount_a.run_shell(["mkdir", "-p", i +"/a/b"])
-            self.mount_b.setfattr([i, "ceph.dir.pin.distributed", "1"])
+        for i in range(0,100):
+          self.mount_a.run_shell(["mkdir", "-p", "a/" + str(i) + "/d"])
 
-        self._wait_distributed_subtrees([status, 0, 10])
+        self.mount_a.setfattr("a", "ceph.dir.pin.distributed", "1")
+        
+        self._wait_distributed_subtrees(status, 0, 100)
 
-        original_subtrees = get_ephemerally_pinned_auth_subtrees(status, 0)
+        original_subtrees = self.get_ephemerally_pinned_auth_subtrees(status, 1)
 
         # Flush the journal for rank 0
-        self.fs.rank_asok(["flush", "journal"], rank=0, status=status)
+        self.fs.rank_asok(["flush", "journal"], rank=1, status=status)
 
-        (original_active, ) = self.fs.get_active_names()
-        original_standbys = self.mds_cluster.get_standby_daemons()
+        # Kill the rank 2 daemon's physical process
+        self.fs.mds_stop(status.get_rank(self.fs.id, 1)['name'])
 
-        # Kill the rank 0 daemon's physical process
-        self.fs.mds_stop(original_active)
+        self.fs.wait_for_state('up:active', rank=1, timeout=60)
 
-        grace = float(self.fs.get_config("mds_beacon_grace", service_type="mon"))
+        time.sleep(30)
+        
+        status = self.fs.status()
+        new_subtrees = self.get_ephemerally_pinned_auth_subtrees(status, 1)
 
-        # Wait until the monitor promotes his replacement
-        def promoted():
-            active = self.fs.get_active_names()
-            return active and active[0] in original_standbys
+        count = 0
+        for subtree_old in original_subtrees:
+            for subtree_new in new_subtrees:
+                if subtree_old['dir']['path'] == subtree_new['dir']['path']:
+                    count = count + 1
 
-        log.info("Waiting for promotion of one of the original standbys {0}".format(
-            original_standbys))
-        self.wait_until_true(
-            promoted,
-            timeout=grace*2)
-
-        self.fs.wait_for_state('up:active', rank=0, timeout=MDS_RESTART_GRACE)
-
-        new_subtrees = get_ephemerally_pinned_auth_subtrees(status, 0)
-
-        assertEqual(original_subtrees, new_subtrees)
+        self.assertEqual(count, len(original_subtrees))
