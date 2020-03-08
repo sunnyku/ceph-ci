@@ -122,12 +122,28 @@ class NodeAssignmentTest2(NamedTuple):
     [
         # empty
         NodeAssignmentTest2(
+            'mds',
+            PlacementSpec(),
+            'host1 host2 host3'.split(),
+            [],
+            2,
+            ['host1', 'host2', 'host3'],
+        ),
+        NodeAssignmentTest2(
             'mon',
             PlacementSpec(),
             'host1 host2 host3'.split(),
             [],
-            1,
+            3,
             ['host1', 'host2', 'host3'],
+        ),
+        NodeAssignmentTest2(
+            'mon',
+            PlacementSpec(),
+            'host1 host2 host3 host4 host5 host6 host7'.split(),
+            [],
+            5,
+            ['host1', 'host2', 'host3', 'host4', 'host5', 'host6', 'host7'],
         ),
 
         # just count
