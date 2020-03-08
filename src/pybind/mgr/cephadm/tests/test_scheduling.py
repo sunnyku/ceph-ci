@@ -22,6 +22,15 @@ class NodeAssignmentTest(NamedTuple):
             [],
             ['smithi060']
         ),
+        # zero count
+        NodeAssignmentTest(
+            'mon',
+            PlacementSpec(count=0),
+            ['smithi060'],
+            [],
+            []
+        ),
+
         # all_hosts
         NodeAssignmentTest(
             'mon',
@@ -43,6 +52,17 @@ class NodeAssignmentTest(NamedTuple):
                 DaemonDescription('mon', 'b', 'host2'),
             ],
             ['host1', 'host2', 'host3']
+        ),
+        # zero count + partial host list
+        NodeAssignmentTest(
+            'mon',
+            PlacementSpec(count=0, hosts=['host3']),
+            'host1 host2 host3'.split(),
+            [
+                DaemonDescription('mon', 'a', 'host1'),
+                DaemonDescription('mon', 'b', 'host2'),
+            ],
+            []
         ),
         # count + partial host list + existing
         NodeAssignmentTest(
@@ -100,6 +120,32 @@ class NodeAssignmentTest2(NamedTuple):
 
 @pytest.mark.parametrize("service_type,placement,hosts,daemons,expected_len,in_set",
     [
+        # empty
+        NodeAssignmentTest2(
+            'mds',
+            PlacementSpec(),
+            'host1 host2 host3'.split(),
+            [],
+            2,
+            ['host1', 'host2', 'host3'],
+        ),
+        NodeAssignmentTest2(
+            'mon',
+            PlacementSpec(),
+            'host1 host2 host3'.split(),
+            [],
+            3,
+            ['host1', 'host2', 'host3'],
+        ),
+        NodeAssignmentTest2(
+            'mon',
+            PlacementSpec(),
+            'host1 host2 host3 host4 host5 host6 host7'.split(),
+            [],
+            5,
+            ['host1', 'host2', 'host3', 'host4', 'host5', 'host6', 'host7'],
+        ),
+
         # just count
         NodeAssignmentTest2(
             'mon',
