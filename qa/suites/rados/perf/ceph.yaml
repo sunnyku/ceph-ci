@@ -10,5 +10,8 @@ tasks:
       - \(OSD_
       - \(OBJECT_
       - overall HEALTH
+    conf:
+      client:
+        ms mon client mode: crc
 - rgw: [client.0]
 - ssh_keys:
