@@ -336,7 +336,7 @@ class TestEphemeralPins(CephFSTestCase):
         for i in range(0, 100):
           tmp_dir = tmp_dir + str(i) + "/"
           self.mount_a.run_shell(["mkdir", "-p", tmp_dir])
-          self.mount_a.setfattr([temp_dir, "ceph.dir.pin.random", "1"])
+          self.mount_a.setfattr(temp_dir, "ceph.dir.pin.random", "1")
 
         count = len(get_random_auth_subtrees(status,0))
         self.assertEqual(count, 100)
@@ -353,7 +353,7 @@ class TestEphemeralPins(CephFSTestCase):
         for i in range(0,100):
           self.mount_a.run_shell(["mkdir", "-p", "a/" + str(i) + "/d"])
         self._wait_subtrees(status, 0, [])
-        self.mount_a.setfattr(["a", "ceph.dir.pin.distributed", "1"])
+        self.mount_a.setfattr("a", "ceph.dir.pin.distributed", "1")
         self._wait_distributed_subtrees([status, 0, 100])
 
         subtrees_old = dict(get_ephemrally_pinned_auth_subtrees(status, 0).items() + get_ephemrally_pinned_auth_subtrees(status, 1).items() + get_ephemrally_pinned_auth_subtrees(status, 2).items()) 
@@ -382,8 +382,8 @@ class TestEphemeralPins(CephFSTestCase):
         for i in range(0,100):
           self.mount_a.run_shell(["mkdir", "-p", "a/" + str(i) + "/d"])
         self._wait_subtrees(status, 0, [])
-        self.mount_a.setfattr(["a", "ceph.dir.pin.distributed", "1"])
-        self._wait_distributed_subtrees([status, 0, 100])
+        self.mount_a.setfattr("a", "ceph.dir.pin.distributed", "1")
+        self._wait_distributed_subtrees(status, 0, 100)
 
         subtrees_old = dict(get_ephemrally_pinned_auth_subtrees(status, 0).items() + get_ephemrally_pinned_auth_subtrees(status, 1).items() + get_ephemrally_pinned_auth_subtrees(status, 2).items())
         self.fs.set_max_mds(2)
@@ -410,9 +410,9 @@ class TestEphemeralPins(CephFSTestCase):
 
         for i in range(0, 10):
             self.mount_a.run_shell(["mkdir", "-p", i +"/dummy_dir"])
-            self.mount_a.setfattr([i, "ceph.dir.pin.distributed", "1"])
+            self.mount_a.setfattr(i, "ceph.dir.pin.distributed", "1")
 
-        self._wait_distributed_subtrees([status, 0, 10])
+        self._wait_distributed_subtrees(status, 0, 10)
 
         self.fs.mds_asok(["config", "set", "mds_export_ephemeral_distributed_config", "false"])
         # Sleep for a while to facilitate unsetting of the pins
@@ -432,13 +432,13 @@ class TestEphemeralPins(CephFSTestCase):
 
         for i in range(0, 10):
             self.mount_a.run_shell(["mkdir", "-p", i +"/a/b"])
-            self.mount_a.setfattr([i, "ceph.dir.pin.distributed", "1"])
+            self.mount_a.setfattr(i, "ceph.dir.pin.distributed", "1")
 
-        self._wait_distributed_subtrees([status, 0, 10])
+        self._wait_distributed_subtrees(status, 0, 10)
 
         for i in range(0, 10):
             self.mount_a.run_shell(["mkdir", "-p", i +"/a/b"])
-            self.mount_a.setfattr([i, "ceph.dir.pin.distributed", "0"])
+            self.mount_a.setfattr(i, "ceph.dir.pin.distributed", "0")
 
         time.sleep(15)
 
@@ -455,9 +455,9 @@ class TestEphemeralPins(CephFSTestCase):
 
         for i in range(0, 10):
             self.mount_a.run_shell(["mkdir", "-p", i +"/a/b"])
-            self.mount_a.setfattr([i, "ceph.dir.pin.distributed", "1"])
+            self.mount_a.setfattr(i, "ceph.dir.pin.distributed", "1")
 
-        self._wait_distributed_subtrees([status, 0, 10])
+        self._wait_distributed_subtrees(status, 0, 10)
 
         original_subtrees = get_ephemerally_pinned_auth_subtrees(status, 0)
 
