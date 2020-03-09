@@ -1817,11 +1817,6 @@ def command_bootstrap():
         entrypoint='/usr/bin/ceph-authtool',
         args=['--gen-print-key'],
     ).run().strip()
-    crash_key = CephContainer(
-        image=args.image,
-        entrypoint='/usr/bin/ceph-authtool',
-        args=['--gen-print-key'],
-    ).run().strip()
 
     keyring = ('[mon.]\n'
                '\tkey = %s\n'
@@ -1837,11 +1832,7 @@ def command_bootstrap():
                '\tcaps mon = profile mgr\n'
                '\tcaps mds = allow *\n'
                '\tcaps osd = allow *\n'
-               '[client.crash.%s]\n'
-               '\tkey = %s\n'
-               '\tcaps mon = profile crash\n'
-               '\tcaps mgr = profile crash\n'
-               % (mon_key, admin_key, mgr_id, mgr_key, hostname, crash_key))
+               % (mon_key, admin_key, mgr_id, mgr_key))
 
     # tmp keyring file
     tmp_bootstrap_keyring = write_tmp(keyring, uid, gid)
@@ -2036,8 +2027,10 @@ def command_bootstrap():
         logger.info('Adding host %s...' % host)
         cli(['orch', 'host', 'add', host])
 
-        logger.info('Deploy crash collectors...')
-        cli(['orch', 'apply', 'crash', 'all:true'])
+        if not args.no_initial_service_specs:
+            for t in ['mon', 'mgr', 'crash']:
+                logger.info('Deploying %s service with default placement...' % t)
+                cli(['orch', 'apply', t])
 
     if not args.skip_dashboard:
         logger.info('Enabling the dashboard module...')
@@ -3590,6 +3583,10 @@ def _get_parser():
         '--skip-prepare-host',
         action='store_true',
         help='Do not prepare host')
+    parser_bootstrap.add_argument(
+        '--no-initial-service-specs',
+        action='store_true',
+        help='Do not create initial mon, mgr, and crash service specs')
 
     parser_deploy = subparsers.add_parser(
         'deploy', help='deploy a daemon')
