@@ -65,6 +65,11 @@ DATEFMT = '%Y-%m-%dT%H:%M:%S.%f'
 HOST_CACHE_PREFIX = "host."
 SPEC_STORE_PREFIX = "spec."
 
+# ceph daemon types that use the ceph container image.
+# NOTE: listed in upgrade order!
+CEPH_TYPES = ['mgr', 'mon', 'crash', 'osd', 'mds', 'rgw', 'rbd-mirror']
+
+
 # for py2 compat
 try:
     from tempfile import TemporaryDirectory # py3
@@ -85,12 +90,6 @@ except ImportError:
         def __exit__(self, exc_type, exc_value, traceback):
             self.cleanup()
 
-
-# high-level TODO:
-#  - bring over some of the protections from ceph-deploy that guard against
-#    multiple bootstrapping / initialization
-
-CEPH_TYPES = ['mon', 'mgr', 'osd', 'mds', 'rbd-mirror', 'rgw', 'crash']
 
 def name_to_config_section(name):
     """
