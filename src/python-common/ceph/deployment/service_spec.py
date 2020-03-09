@@ -313,7 +313,10 @@ class ServiceSpec(object):
 
     @staticmethod
     def from_json(json_spec):
-        # type: (dict) -> "ServiceSpec"
+        # type: (dict) -> Any
+        # Python 3:
+        # >>> ServiceSpecs = TypeVar('Base', bound=ServiceSpec)
+        # then, the real type is: (dict) -> ServiceSpecs
         """
         Initialize 'ServiceSpec' object data from a json structure
         :param json_spec: A valid dict with ServiceSpec
