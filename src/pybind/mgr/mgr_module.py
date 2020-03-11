@@ -724,7 +724,7 @@ class MgrModule(ceph_module.BaseMgrModule, MgrModuleLoggingMixin):
         self._unconfigure_logging()
 
     @classmethod
-    def _register_commands(cls, module_name):
+    def _register_options(cls, module_name):
         cls.MODULE_OPTIONS.append(
             Option(name='log_level', type='str', default="", runtime=True,
                    enum_allowed=['info', 'debug', 'critical', 'error',
@@ -741,6 +741,8 @@ class MgrModule(ceph_module.BaseMgrModule, MgrModuleLoggingMixin):
                    enum_allowed=['info', 'debug', 'critical', 'error',
                                  'warning', '']))
 
+    @classmethod
+    def _register_commands(cls, module_name):
         cls.COMMANDS.extend(CLICommand.dump_cmd_list())
 
     @property
