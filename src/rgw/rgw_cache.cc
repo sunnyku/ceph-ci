@@ -439,6 +439,18 @@ DataCache::DataCache ()
 		tp = new L2CacheThreadPool(32);
 		writecache_tp = new L2CacheThreadPool(32);
 		flush_tp = new L2CacheThreadPool(32);
+
+
+		/* AMIN_START */
+		//redis connection
+		//FIXME: get redis server and port from CONFIG file
+		cpp_redis::active_logger = std::unique_ptr<cpp_redis::logger>(new cpp_redis::logger);
+	        client.connect("127.0.0.1", 7000, [](const std::string& host, std::size_t port, cpp_redis::client::connect_state status) {
+		      if (status == cpp_redis::client::connect_state::dropped) {
+			    std::cout << "client disconnected from " << host << ":" << port << std::endl;
+		      }
+		});
+
 }
 
 int DataCache::io_write(bufferlist& bl ,unsigned int len, std::string oid) {
@@ -1011,6 +1023,144 @@ int HttpL2Request::sign_request(RGWAccessKey& key, RGWEnv& env, req_info& info)
 		return 0;
 }
 
+/* AMIN_START */
+std::string DataCache::setKey(string key, string timeStr, string owner, string loc0, string loc1, string flag0, string flag1){
+
+  std::vector<std::pair<std::string, std::string>> list;
+  std::vector<std::string> keys;
+  std::multimap<std::string, std::string> timeKey;
+  std::vector<std::string> options;
+
+  //creating a list of key's properties
+  list.push_back(std::make_pair("owner", owner));
+  list.push_back(std::make_pair("location1",loc0));
+  list.push_back(std::make_pair("location2",loc1));
+  list.push_back(std::make_pair("flag0",flag0));
+  list.push_back(std::make_pair("flag1",flag1));
+
+  //creating a key entry
+  keys.push_back(key);
+  
+  //making key and time a pair
+  timeKey.emplace(timeStr,key);
+
+
+  client.hmset(key, list, [](cpp_redis::reply &reply){
+	//std::cout << reply << '\n';
+  });
+
+  client.rpush("directory", keys, [](cpp_redis::reply &reply){
+	//std::cout << reply << '\n';
+  });
+
+
+  client.zadd("main_directory", options, timeKey, [](cpp_redis::reply &reply){
+	//std::cout << reply << '\n';
+  });
+
+  // synchronous commit, no timeout
+  client.sync_commit();
+  return "OK";
+}
+
+
+//returns all the keys between startTime and endTime as <key, time> paris
+std::vector<std::pair<std::string, std::string>> DataCache::getKey(string startTime, string endTime){
+
+  std::vector<std::pair<std::string, std::string>> list;
+  std::string key;
+  std::string time;
+
+  std::string dirKey = "main_directory";
+  client.zrangebyscore(dirKey, startTime, endTime, true, [&key, &time](cpp_redis::reply &reply){
+	for (unsigned i = 0; i < reply.as_array().size(); i+=2)
+	{
+	    key = reply.as_string()[i];
+	    time = reply.as_string()[i+1];
+	
+	    //list.push_back(std::make_pair(reply.as_array()[i], reply.as_array()[i+1]));
+	}
+	//if (reply.is_error() == false)
+  });
+
+  // synchronous commit, no timeout
+  client.sync_commit();
+
+  return list;
+
+}
+
+
+std::string DataCache::get_key(string key, bool wb_cache){
+
+  /*std::string key = argv[1];
+  std::string timeStr = argv[2];
+  std::string startTime = argv[3];
+  std::string endTime = argv[4];
+  */
+
+  std::string timeStr = "t";
+  std::string startTime = "t";
+  std::string endTime = "t";
+
+  //cpp_redis::active_logger = std::unique_ptr<cpp_redis::logger>(new cpp_redis::logger);
+
+  client.connect("127.0.0.1", 7000, [](const std::string& host, std::size_t port, cpp_redis::client::connect_state status) {
+    if (status == cpp_redis::client::connect_state::dropped) {
+      std::cout << "client disconnected from " << host << ":" << port << std::endl;
+    }
+  });
+
+  std::vector<std::pair<std::string, std::string>> list;
+  std::vector<std::string> keys;
+  std::multimap<std::string, std::string> time_key;
+  std::vector<std::string> options;
+
+  list.push_back(std::make_pair("owner","BU"));
+  list.push_back(std::make_pair("location1","rgw1"));
+  list.push_back(std::make_pair("location2","dc1"));
+  list.push_back(std::make_pair("flag0","1"));
+  list.push_back(std::make_pair("flag1","0"));
+
+  keys.push_back(key);
+
+  //time_key.insert(std::make_pair(timeStr,key));
+  time_key.emplace(timeStr,key);
+
+
+  client.hmset(key, list, [](cpp_redis::reply &reply){
+	std::cout << reply << '\n';
+	//answer = std::move(reply);
+  });
+
+  client.rpush("directory", keys, [](cpp_redis::reply &reply){
+	std::cout << reply << '\n';
+  });
+
+
+  client.zadd("main_directory", options, time_key, [](cpp_redis::reply &reply){
+	std::cout << reply << '\n';
+  });
+
+  std::string dirKey = "main_directory";
+  client.zrangebyscore(dirKey, startTime, endTime, true, [](cpp_redis::reply &reply){
+	for (unsigned i = 0; i < reply.as_array().size(); i++)
+		std::cout << reply.as_array()[i] << '\n';
+  });
+
+
+  // synchronous commit, no timeout
+  client.sync_commit();
+
+
+
+}
+
+
+
+/* AMIN_END */
+
+/*
 std::string DataCache::get_key(string key, bool wb_cache){
 
 		if(!wb_cache){
@@ -1121,7 +1271,7 @@ int DataCache::remove_s3_key(string keys){
 		}
 
 }
-
+*/
 
 /*ugur*/
 int HttpL2Request::submit_http_put_request() {
