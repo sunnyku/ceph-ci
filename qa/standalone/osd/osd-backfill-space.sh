@@ -510,9 +510,21 @@ function TEST_backfill_multi_partial() {
 
     activate_osd $dir $fillosd || return 1
     ceph osd in osd.$fillosd
-    sleep 30
+    sleep 5
+    ceph pg dump pgs
+    sleep 5
+    ceph pg dump pgs
+    sleep 5
+    ceph pg dump pgs
+    sleep 5
+    ceph pg dump pgs
+    sleep 5
+    ceph pg dump pgs
+    sleep 5
+    ceph pg dump pgs
 
     wait_for_not_backfilling 240 || return 1
+    ceph pg dump pgs
     wait_for_not_activating 60 || return 1
 
     flush_pg_stats || return 1
