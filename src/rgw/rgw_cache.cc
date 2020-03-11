@@ -1124,7 +1124,6 @@ std::string DataCache::get_key(string key, bool wb_cache){
 
   keys.push_back(key);
 
-  //time_key.insert(std::make_pair(timeStr,key));
   time_key.emplace(timeStr,key);
 
 
