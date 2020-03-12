@@ -444,13 +444,13 @@ DataCache::DataCache ()
 		/* AMIN_START */
 		//redis connection
 		//FIXME: get redis server and port from CONFIG file
-		cpp_redis::active_logger = std::unique_ptr<cpp_redis::logger>(new cpp_redis::logger);
-	        client.connect("127.0.0.1", 7000, [](const std::string& host, std::size_t port, cpp_redis::client::connect_state status) {
+/*		cpp_redis::active_logger = std::unique_ptr<cpp_redis::logger>(new cpp_redis::logger);
+	        client.connect("127.0.0.1", 6379, [](const std::string& host, std::size_t port, cpp_redis::client::connect_state status) {
 		      if (status == cpp_redis::client::connect_state::dropped) {
 			    std::cout << "client disconnected from " << host << ":" << port << std::endl;
 		      }
 		});
-
+*/
 }
 
 int DataCache::io_write(bufferlist& bl ,unsigned int len, std::string oid) {
@@ -1105,7 +1105,7 @@ std::string DataCache::get_key(string key, bool wb_cache){
 
   //cpp_redis::active_logger = std::unique_ptr<cpp_redis::logger>(new cpp_redis::logger);
 
-  client.connect("127.0.0.1", 7000, [](const std::string& host, std::size_t port, cpp_redis::client::connect_state status) {
+  client.connect("127.0.0.1", 6379, [](const std::string& host, std::size_t port, cpp_redis::client::connect_state status) {
     if (status == cpp_redis::client::connect_state::dropped) {
       std::cout << "client disconnected from " << host << ":" << port << std::endl;
     }

@@ -3326,7 +3326,9 @@ public:
     string etag;
   };
 
-  int get_key(directory_values &dir_val);
+  int get_key(directory_values &dir_val); //ugur-wb
+  int set_key(string key, string location, string owner); //ugur-wb
+
   virtual int issue_remote_wb(librados::L2CacheRequest *cr);
   virtual int update_directory(string key, string value, string op, RGWRados *store);
   virtual int flush_read_list(struct get_obj_data *d);

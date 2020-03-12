@@ -10869,7 +10869,7 @@ int RGWRados::fetch_remote(RGWRados *store, string userid, string dest_bucket_na
   RGWObjState * dest_state = nullptr;
   map<string, bufferlist> dest_attrs;
   ret = create_bucket(store, userid, dest_bucket_name, cct, dest_bucket_info, dest_attrs, accesskey);
- // ret = get_bucket_info(obj_ctx, "", dest_obj_name, dest_bucket_info, NULL, &dest_attrs);
+  //ret = get_bucket_info(obj_ctx, "", dest_bucket_name, dest_bucket_info, NULL, &dest_attrs);
   ldout(cct, 0) << "ugur bucket owner"<< dest_bucket_info.owner << "ret" << ret << dendl;
   rgw_obj dest_obj(dest_bucket_info.bucket, dest_obj_name);
   rgw_obj src_obj(dest_bucket_info.bucket, dest_obj_name); 
@@ -11040,6 +11040,22 @@ int RGWRados::get_key(directory_values &dir_val){
         }
 	return 0;
 }
+
+int RGWRados::set_key(string key, string location, string owner){
+  dout(10) << __func__ << " redis set key ="  << key << dendl;
+  cpp_redis::client client;
+  client.connect();
+  client.set(key, location,[] (cpp_redis::reply& reply){
+    if (reply.is_string() && reply.as_string() == "OK"){
+      return 0;
+    } else {
+      return -1;
+    }
+    });
+  client.sync_commit();
+}
+
+
 
 
 int RGWRados::issue_remote_wb(librados::L2CacheRequest* cr){

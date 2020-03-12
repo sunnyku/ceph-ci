@@ -330,11 +330,12 @@ int AtomicObjectProcessor::complete(size_t accounted_size,
   string oid = bucket_id +"__shadow_"+ prefix;
   // S3 bucket can not have underscore.
   // https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html
-  oid = s3_bucket_name+"_"+s3_object_name+"_"+ s3_userid;
+  string key = s3_bucket_name+"_"+s3_object_name;
 	string dest = "";
-	string op = "wb_update";
+  string etag ="";
     //    RGWRados::Object src_op_target(store, bucket_info, obj_ctx, src_obj);
-	r = store->update_directory(oid,dest,op,store);
+//	r = store->update_directory(oid,dest,op,store);
+   r = store->set_key(key, "cache", s3_userid); 
   	/*ugur*/
   }
   if (pcanceled) {
