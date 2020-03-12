@@ -63,17 +63,16 @@ int rgw_process_authenticated(RGWHandler_REST * const handler,
     ldpp_dout(op, 2) << "retargeting skipped because of SubOp mode" << dendl;
   }
 
-  /*ugur wb-cache*/
-   ldpp_dout(op, 2) << "init op -out "<< s->op<<" " << op->name() <<" "<< op->get_type()<< " ii " << dendl;
-    char key[] = "get_obj";
-  // if ((strcmp(key,op->name()) == 0)&&( s->bucket_name == "mytest")) {
-    //  op->fetch_remote_execute();
-  // }
-   if (false) {
-//   if( strcmp(key,op->name()) == 0) {
-  
-      ldpp_dout(op, 2) << "init op -ugurloop" << dendl;
-      ldpp_dout(op, 2) << "init op" << dendl;
+  /* ugur-wb 
+ *  If data sits in the datalake 
+ *  we issue remote_fetch operation
+ *  data is read from backend , stored in osds and also served back to client
+ * */
+  if ( (strcmp("get_obj",op->name()) == 0) && (s->cct->_conf->rgw_datacache_local_enabled) ){
+    op->directory_lookup(); 
+    if ( op->dir_val.location == "datalake" || ret < 0 ) { 
+      ldpp_dout(op, 2) << "Cache miss reading from datalake" << ret << dendl;
+      ldpp_dout(op, 2) << "init op - ugur" << dendl;
       ret = op->init_processing();
       if (ret < 0) {
         return ret;
@@ -83,20 +82,14 @@ int rgw_process_authenticated(RGWHandler_REST * const handler,
       if (ret < 0) {
         return ret;
       }
-  
- 
-      ldpp_dout(op,2) << "rgw_process.cc fetch logic ugur "  << s->bucket_name <<" " <<s->object.name<< dendl;
       ldpp_dout(op, 2) << "executing" << dendl;
       op->fetch_remote_execute();
-    
+  
       ldpp_dout(op, 2) << "completing" << dendl;
       op->complete();
       return 0;
-    //  RGWOp *fetch_op = op;
-    //  fetch_op->fetch_remote_execute();
-    }
-  /* */
-
+    } 
+  }
   /* If necessary extract object ACL and put them into req_state. */
   ldpp_dout(op, 2) << "reading permissions" << dendl;
   ret = handler->read_permissions(op);

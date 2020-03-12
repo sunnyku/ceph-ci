@@ -52,6 +52,7 @@ class RGWReshard;
 class RGWReshardWait;
 struct get_obj_data;
 
+
 /* flags for put_obj_meta() */
 #define PUT_OBJ_CREATE      0x01
 #define PUT_OBJ_EXCL        0x02
@@ -3318,7 +3319,14 @@ public:
 
   /*ugur*/
   //virtual int issue_remote_wb(librados::L2CacheRequest *cr, RGWRados *store);
-  
+  struct directory_values { // ugur_wb
+    string owner;
+    string key;
+    string location;
+    string etag;
+  };
+
+  int get_key(directory_values &dir_val);
   virtual int issue_remote_wb(librados::L2CacheRequest *cr);
   virtual int update_directory(string key, string value, string op, RGWRados *store);
   virtual int flush_read_list(struct get_obj_data *d);

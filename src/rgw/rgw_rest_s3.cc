@@ -180,9 +180,7 @@ int RGWGetObj_ObjStore_S3::send_response_data(bufferlist& bl, off_t bl_ofs,
   map<string, string> response_attrs;
   map<string, string>::iterator riter;
   bufferlist metadata_bl;
-//  s->obj_size = 20971520;
-//  total_len = 20971520;
-  total_len = 99;
+  total_len = 8000000;
   s->obj_size = total_len;
   if (sent_header)
     goto send_data;
@@ -201,12 +199,13 @@ int RGWGetObj_ObjStore_S3::send_response_data(bufferlist& bl, off_t bl_ofs,
 
   if (range_str)
     dump_range(s, start, end, s->obj_size);
-
+  s->system_request =  true;
   if (s->system_request &&
       s->info.args.exists(RGW_SYS_PARAM_PREFIX "prepend-metadata")) {
 
+    ldout(s->cct, 0) << "ugur girdi prepend-metadata" << dendl;
     dump_header(s, "Rgwx-Object-Size", (long long)total_len);
-
+    
     if (rgwx_stat) {
       /*
        * in this case, we're not returning the object's content, only the prepended

@@ -865,7 +865,9 @@ int RGWRESTStreamRWRequest::complete_request(string *etag,
 
 int RGWHTTPStreamRWRequest::handle_header(const string& name, const string& val)
 {
+   //ldout(cct, 0) << "ugur RGWX_EMBEDDED_METADATA_LEN handle_header is called not in loop" << dendl;
   if (name == "RGWX_EMBEDDED_METADATA_LEN") {
+     ldout(cct, 0) << "ugur RGWX_EMBEDDED_METADATA_LEN handle_header " << dendl;
     string err;
     long len = strict_strtol(val.c_str(), 10, &err);
     if (!err.empty()) {

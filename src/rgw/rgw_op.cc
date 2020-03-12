@@ -1726,7 +1726,6 @@ int RGWGetObj::handle_slo_manifest(bufferlist& bl)
 
 int RGWGetObj::get_data_cb(bufferlist& bl, off_t bl_ofs, off_t bl_len)
 {
-  ldpp_dout(this, 0) << "ugur get_data_cb" << dendl;
   /* garbage collection related handling */
   utime_t start_time = ceph_clock_now();
   if (start_time > gc_invalidate_time) {
@@ -7168,10 +7167,18 @@ void RGWGetObj::fetch_remote_execute()
   RGWGetObj_Filter* filter = (RGWGetObj_Filter *)&cb;
   RGWBucketInfo dest_bucket_info; 
   map<string, bufferlist> dest_attrs;
-//  int ret = create_bucket(this->store, s->bucket_onwer.id.id, s->bucket_name, cct, dest_bucket_info, dest_attrs);
   RGWRados::Object op_target(this->store, dest_bucket_info, *static_cast<RGWObjectCtx *>(s->obj_ctx), obj);
   RGWRados::Object::Read read_op(&op_target);
-  //op_ret = read_op.fetch_from_backend(filter,"testuser", "kaynar", "file.txt");
   op_ret = read_op.fetch_from_backend(filter,"testuser", s->bucket_name, s->object.name, s);
- 
+}
+void RGWGetObj::directory_lookup()
+{
+  string key = s->bucket_name +"_"+s->object.name;
+  this->dir_val.key = key;
+  int ret = this->store->get_key(this->dir_val);  
+  if (this->dir_val.location == "cache") {
+    ldpp_dout(this, 10) << "data in cache" << dendl;
+  } else if (this->dir_val.location == "datalake") {
+    ldpp_dout(this, 10) << "data in datalake" << dendl;
+  }
 }

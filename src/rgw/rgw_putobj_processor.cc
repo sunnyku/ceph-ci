@@ -333,7 +333,6 @@ int AtomicObjectProcessor::complete(size_t accounted_size,
   oid = s3_bucket_name+"_"+s3_object_name+"_"+ s3_userid;
 	string dest = "";
 	string op = "wb_update";
-	//rgw_obj src_obj;
     //    RGWRados::Object src_op_target(store, bucket_info, obj_ctx, src_obj);
 	r = store->update_directory(oid,dest,op,store);
   	/*ugur*/
