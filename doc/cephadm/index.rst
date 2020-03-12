@@ -75,6 +75,10 @@ This command does a few things:
 * Generates a new SSH key, and adds the public key to the local root user's
   ``/root/.ssh/authorized_keys`` file.  A copy of the public key is written
   to ``ceph.pub`` in the local directory.
+* Provisions a full monitoring stack to support dashboard metrics
+  collection: prometheus, grafana, alertmanager, and node-exporter.
+  If you do not want this deployed by default, pass
+  ``--skip-monitoring-stack``.
 
 Interacting with the cluster
 ============================
