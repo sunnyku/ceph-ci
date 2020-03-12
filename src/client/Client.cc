@@ -311,6 +311,12 @@ Client::Client(Messenger *m, MonClient *mc, Objecter *objecter_)
 
 Client::~Client()
 {
+  // Make sure the Finisher thread is stopped before Finisher object
+  // being destructed, because the thread maybe still holding the mutex
+  // lock, then the pthread_mutex_destroy() will fail.
+  objecter_finisher.wait_for_empty();
+  objecter_finisher.stop();
+
   ceph_assert(ceph_mutex_is_not_locked(client_lock));
 
   // It is necessary to hold client_lock, because any inode destruction
@@ -589,8 +595,6 @@ void Client::shutdown()
     initialized = false;
     timer.shutdown();
   }
-  objecter_finisher.wait_for_empty();
-  objecter_finisher.stop();
 
   if (logger) {
     cct->get_perfcounters_collection()->remove(logger.get());
