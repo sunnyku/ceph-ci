@@ -2613,6 +2613,29 @@ def command_logs():
 
 ##################################
 
+def list_networks():
+    # type: () -> Dict[str,List[str]]
+    out, _, _ = call_throws(['ip', '-j', 'route', 'ls'])
+    j = json.loads(out)
+    r = {}  # type: Dict[str,List[str]]
+    for x in j:
+        if 'prefsrc' in x and \
+           'dst' in x and \
+           '/' in x['dst'] and \
+           'scope' in x and x['scope'] == 'link':
+            net = x['dst']
+            if net not in r:
+                r[net] = []  # type: List[str]
+            r[net].append(x['prefsrc'])
+    return r
+
+def command_list_networks():
+    # type: () -> None
+    r = list_networks()
+    print(json.dumps(r, indent=4))
+
+##################################
+
 def command_ls():
     # type: () -> None
     ls = list_daemons(detail=not args.no_detail,
@@ -3694,6 +3717,10 @@ def _get_parser():
         '--legacy-dir',
         default='/',
         help='base directory for legacy daemon data')
+
+    parser_list_networks = subparsers.add_parser(
+        'list-networks', help='list IP networks')
+    parser_list_networks.set_defaults(func=command_list_networks)
 
     parser_adopt = subparsers.add_parser(
         'adopt', help='adopt daemon deployed with a different tool')
