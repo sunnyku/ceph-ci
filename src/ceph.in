@@ -1279,4 +1279,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print('Interrupted')
         retval = errno.EINTR
-    sys.exit(retval)
+    os._exit(retval)
