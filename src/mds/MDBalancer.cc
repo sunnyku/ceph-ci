@@ -146,7 +146,7 @@ void MDBalancer::handle_export_pins(void)
         /* Only export a directory if it's non-empty. An empty directory will
          * be sent back by the importer.
          */
-        if (dir->get_num_head_items() > 0) {
+        if (dir->get_num_head_items() > 0 || export_pin != MDS_RANK_NONE) {
 	  mds->mdcache->migrator->export_dir(dir, export_pin);
         }
 	remove = false;
