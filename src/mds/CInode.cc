@@ -4078,10 +4078,14 @@ void CInode::_encode_base(bufferlist& bl, uint64_t features)
   encode(old_inodes, bl, features);
   encode(damage_flags, bl);
   encode_snap(bl);
+  if(is_ephemeral_rand()) {
+    encode(CInode::STATE_RANDEPHEMERALPIN, bl);
+  }
   ENCODE_FINISH(bl);
 }
 void CInode::_decode_base(bufferlist::const_iterator& p)
 {
+  int mask;
   DECODE_START(1, p);
   decode(first, p);
   decode(inode, p);
@@ -4095,6 +4099,13 @@ void CInode::_decode_base(bufferlist::const_iterator& p)
   decode(old_inodes, p);
   decode(damage_flags, p);
   decode_snap(p);
+  if(p.get_off() < struct_end)
+  {
+    decode(mask, p);
+    if(mask == CInode::STATE_RANDEPHEMERALPIN) {
+      set_ephemeral_rand(true);
+    }
+  }
   DECODE_FINISH(p);
 }
 

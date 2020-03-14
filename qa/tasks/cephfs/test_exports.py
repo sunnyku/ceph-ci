@@ -351,7 +351,6 @@ class TestEphemeralPins(CephFSTestCase):
         rank2_distributed_subtree_ratio = len(self.get_distributed_auth_subtrees(status, 2))/len(self.get_auth_subtrees(status, 2))
         self.assertGreaterEqual(rank2_distributed_subtree_ratio, 0.2)
 
-    @unittest.skip("random pinning needs fixed for subtree migration")
     def test_ephemeral_random(self):
         
         # Check if export ephemeral random is applied hierarchically
