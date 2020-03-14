@@ -28,7 +28,7 @@ monitoring by following the steps below.
 
 #. Deploy a node-exporter service on every node of the cluster.  The node-exporter provides host-level metrics like CPU and memory utilization.::
 
-     ceph orch apply node-exporter all:true
+     ceph orch apply node-exporter '*'
 
 #. Deploy alertmanager::
 
