@@ -10,11 +10,14 @@ CEPHADM=${CEPHADM_SRC_DIR}/cephadm
 function test_install_uninstall() {
     ( sudo apt update && \
 	  sudo apt -y install cephadm && \
-	  sudo apt -y remove cephadm ) || \
+	  sudo $CEPHADM install && \
+	  sudo apt -y remove cephadm ceph-common ) || \
 	( sudo yum -y install cephadm && \
-	      sudo yum -y remove cephadm ) || \
+	      sudo $CEPHADM install && \
+	      sudo yum -y remove cephadm ceph-common ) || \
 	( sudo dnf -y install cephadm && \
-	      sudo dnf -y remove cephadm )
+	      sudo $CEPHADM install && \
+	      sudo dnf -y remove cephadm ceph-common )
 }
 
 sudo $CEPHADM -v add-repo --release octopus
