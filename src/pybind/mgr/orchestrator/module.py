@@ -429,16 +429,28 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule):
 
     @_cli_write_command(
         'orch apply osd',
+        'name=all_available_devices,type=CephBool,req=false',
         desc='Create an OSD daemons using drive_groups')
-    def _apply_osd(self, inbuf=None):
+    def _apply_osd(self, all_available_devices=False, inbuf=None):
         # type: (Optional[str]) -> HandleCommandResult
         """Apply DriveGroupSpecs to create OSDs"""
         usage = """
 Usage:
   ceph orch apply osd -i <json_file/yaml_file>
 """
-        if not inbuf:
+        if not inbuf and not all_available_devices:
             return HandleCommandResult(-errno.EINVAL, stderr=usage)
+        if all_available_devices:
+            if inbuf:
+                raise OrchestratorError('--all-available-devices cannot be combined iwth a osd spec')
+            inbuf = """
+service_type: osd
+service_id: all-available-devices
+placement:
+  host_pattern: '*'
+data_devices:
+  all: True
+"""
         try:
             drivegroups = yaml.load_all(inbuf)
             dg_specs = [ServiceSpec.from_json(dg) for dg in drivegroups]
