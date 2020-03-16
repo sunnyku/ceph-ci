@@ -435,22 +435,34 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule):
 
     @_cli_write_command(
         'orch apply osd',
-        desc='Create an OSD daemons using drive_groups')
-    def _apply_osd(self, inbuf=None):
-        # type: (Optional[str]) -> HandleCommandResult
+        'name=all_available_devices,type=CephBool,req=false',
+        'Create OSD daemon(s) using a drive group spec')
+    def _apply_osd(self, all_available_devices=False, inbuf=None):
+        # type: (bool, Optional[str]) -> HandleCommandResult
         """Apply DriveGroupSpecs to create OSDs"""
         usage = """
 Usage:
   ceph orch apply osd -i <json_file/yaml_file>
 """
-        if not inbuf:
+        if not inbuf and not all_available_devices:
             return HandleCommandResult(-errno.EINVAL, stderr=usage)
-        try:
-            drivegroups = yaml.load_all(inbuf)
-            dg_specs = [ServiceSpec.from_json(dg) for dg in drivegroups]
-        except ValueError as e:
-            msg = 'Failed to read JSON/YAML input: {}'.format(str(e)) + usage
-            return HandleCommandResult(-errno.EINVAL, stderr=msg)
+        if all_available_devices:
+            if inbuf:
+                raise OrchestratorError('--all-available-devices cannot be combined iwth a osd spec')
+            dg_specs = [
+                DriveGroupSpec(
+                    service_id='all-available-devices',
+                    placement=PlacementSpec(host_pattern='*'),
+                    data_devices=DeviceSelection(all=True),
+                )
+            ]
+        elif inbuf:
+            try:
+                drivegroups = yaml.load_all(inbuf)
+                dg_specs = [ServiceSpec.from_json(dg) for dg in drivegroups]
+            except ValueError as e:
+                msg = 'Failed to read JSON/YAML input: {}'.format(str(e)) + usage
+                return HandleCommandResult(-errno.EINVAL, stderr=msg)
 
         completions = self.apply_drivegroups(dg_specs)
         [self._orchestrator_wait([completion]) for completion in completions]  # type: ignore
