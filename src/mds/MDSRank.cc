@@ -1027,6 +1027,9 @@ bool MDSRankDispatcher::ms_dispatch(const Message::const_ref &m)
 
 bool MDSRank::_dispatch(const Message::const_ref &m, bool new_msg)
 {
+  if (m->get_type() == MSG_MGR_MAP) {
+    return false;
+  }
   if (is_stale_message(m)) {
     return true;
   }
