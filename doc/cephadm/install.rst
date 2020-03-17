@@ -351,3 +351,8 @@ and optional *namespace*
 To deploy a NFS Ganesha gateway,::
 
   # ceph orch apply nfs *<svc_id>* *<pool>* *<namespace>* *<num-daemons>* [*<host1>* ...]
+
+For example, to deploy NFS with a service id of *foo*, that will use the
+RADOS pool *cephfs.a.data* and namespace *nfs-ns*,::
+
+  # ceph orch apply nfs foo cephfs.a.data nfs-ns
