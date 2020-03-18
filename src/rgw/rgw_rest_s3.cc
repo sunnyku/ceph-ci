@@ -180,8 +180,6 @@ int RGWGetObj_ObjStore_S3::send_response_data(bufferlist& bl, off_t bl_ofs,
   map<string, string> response_attrs;
   map<string, string>::iterator riter;
   bufferlist metadata_bl;
-  total_len = 8000000;
-  s->obj_size = total_len;
   if (sent_header)
     goto send_data;
 
@@ -203,7 +201,6 @@ int RGWGetObj_ObjStore_S3::send_response_data(bufferlist& bl, off_t bl_ofs,
   if (s->system_request &&
       s->info.args.exists(RGW_SYS_PARAM_PREFIX "prepend-metadata")) {
 
-    ldout(s->cct, 0) << "ugur girdi prepend-metadata" << dendl;
     dump_header(s, "Rgwx-Object-Size", (long long)total_len);
     
     if (rgwx_stat) {

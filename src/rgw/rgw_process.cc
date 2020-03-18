@@ -71,6 +71,7 @@ int rgw_process_authenticated(RGWHandler_REST * const handler,
   if ( (strcmp("get_obj",op->name()) == 0) && (s->cct->_conf->rgw_datacache_local_enabled) ){
     op->directory_lookup(); 
     if ( op->dir_val.location == "datalake" || ret < 0 ) { 
+      s->obj_size = 8000000;
       ldpp_dout(op, 2) << "Cache miss reading from datalake" << ret << dendl;
       ldpp_dout(op, 2) << "init op - ugur" << dendl;
       ret = op->init_processing();

@@ -7163,6 +7163,7 @@ void RGWGetClusterStat::execute()
 void RGWGetObj::fetch_remote_execute()
 { 
   ldpp_dout(this, 10) << "fetch_remote_execute is running" << dendl;
+  this->total_len = s->obj_size;
   RGWGetObj_CB cb(this);
   RGWGetObj_Filter* filter = (RGWGetObj_Filter *)&cb;
   RGWBucketInfo dest_bucket_info; 

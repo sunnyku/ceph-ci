@@ -1501,8 +1501,6 @@ int RGWGetObj_ObjStore_SWIFT::send_response_data(bufferlist& bl,
                                                  const off_t bl_len)
 {
   string content_type;
-  total_len=8000000;
-  s->obj_size = total_len;
   if (sent_header) {
     goto send_data;
   }

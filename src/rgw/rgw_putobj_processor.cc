@@ -332,10 +332,10 @@ int AtomicObjectProcessor::complete(size_t accounted_size,
   // https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html
   string key = s3_bucket_name+"_"+s3_object_name;
 	string dest = "";
-  string etag ="";
     //    RGWRados::Object src_op_target(store, bucket_info, obj_ctx, src_obj);
 //	r = store->update_directory(oid,dest,op,store);
-   r = store->set_key(key, "cache", s3_userid); 
+//	  uint64_t get_obj_size()
+   r = store->set_key(key, "cache", s3_userid, manifest.get_obj_size(), etag); 
   	/*ugur*/
   }
   if (pcanceled) {

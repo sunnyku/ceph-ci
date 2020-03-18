@@ -3324,10 +3324,11 @@ public:
     string key;
     string location;
     string etag;
+    uint64_t obj_size;
   };
 
   int get_key(directory_values &dir_val); //ugur-wb
-  int set_key(string key, string location, string owner); //ugur-wb
+  int set_key(string key, string location, string owner, uint64_t obj_size, string etag); //ugur-wb
 
   virtual int issue_remote_wb(librados::L2CacheRequest *cr);
   virtual int update_directory(string key, string value, string op, RGWRados *store);

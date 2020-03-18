@@ -7243,7 +7243,6 @@ public:
 
     const uint64_t lofs = data_len;
     data_len += size;
-   
      
     bufferlist bl_temp;
     bl_temp.append(bl);
@@ -11041,7 +11040,7 @@ int RGWRados::get_key(directory_values &dir_val){
 	return 0;
 }
 
-int RGWRados::set_key(string key, string location, string owner){
+int RGWRados::set_key(string key, string location, string owner, uint64_t obj_size, string etag){
   dout(10) << __func__ << " redis set key ="  << key << dendl;
   cpp_redis::client client;
   client.connect();
