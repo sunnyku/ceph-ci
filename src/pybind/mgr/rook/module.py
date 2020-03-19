@@ -336,7 +336,7 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
     def _list_daemons(self, daemon_type=None, daemon_id=None, host=None,
                       refresh=False):
         pods = self.rook_cluster.describe_pods(daemon_type, daemon_id, host)
-
+        self.log.debug('pods %s' % pods)
         result = []
         for p in pods:
             sd = orchestrator.DaemonDescription()
@@ -355,6 +355,8 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
 
             if 'ceph_daemon_id' in p['labels']:
                 sd.daemon_id = p['labels']['ceph_daemon_id']
+            elif 'ceph-osd-id' in p['labels']:
+                sd.daemon_id = p['labels']['ceph-osd-id']
             else:
                 # Unknown type -- skip it
                 continue
@@ -376,11 +378,6 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
             message="Creating {} services for {}".format(typename, spec.service_id),
             mgr=self
         )
-
-    def add_rgw(self, spec):
-        # type: (RGWSpec) -> RookCompletion
-        return self._service_add_decorate('RGW', spec,
-                                       self.rook_cluster.add_objectstore)
 
     def add_nfs(self, spec):
         # type: (NFSServiceSpec) -> RookCompletion
@@ -424,6 +421,12 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
         # type: (ServiceSpec) -> RookCompletion
         return self._service_add_decorate('MDS', spec,
                                           self.rook_cluster.apply_filesystem)
+
+    def apply_rgw(self, spec):
+        # type: (RGWSpec) -> RookCompletion
+        return self._service_add_decorate('RGW', spec,
+                                          self.rook_cluster.apply_objectstore)
+
 
     def apply_nfs(self, spec):
         # type: (NFSServiceSpec) -> RookCompletion
