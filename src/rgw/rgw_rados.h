@@ -7,6 +7,9 @@
 #include <functional>
 #include <fcntl.h>
 #include <aio.h>
+#include <utility>
+#include <vector>
+#include <string>
 
 
 #include "include/rados/librados.hpp"
@@ -30,6 +33,7 @@
 #include "rgw_sync_module.h"
 #include "rgw_sync_log_trim.h"
 #include "common/Throttle.h"
+#include <cpp_redis/cpp_redis> /*directort*/
 
 
 
@@ -2361,7 +2365,14 @@ public:
                cr_registry(NULL),
                zone_short_id(0),
                rest_master_conn(NULL),
-               meta_mgr(NULL), data_log(NULL), reshard(NULL) {}
+               meta_mgr(NULL), data_log(NULL), reshard(NULL) {
+    client.connect("127.0.0.1", 7000, [](const std::string& host, std::size_t port, cpp_redis::client::connect_state status) {
+    if (status == cpp_redis::client::connect_state::dropped) {
+      std::cout << "client disconnected from " << host << ":" << port << std::endl;
+    }
+  });
+
+  }
 
   uint64_t get_new_req_id() {
     return ++max_req_id;
@@ -3318,17 +3329,22 @@ public:
 
 
   /*ugur*/
+   
+  cpp_redis::client client;
+
   //virtual int issue_remote_wb(librados::L2CacheRequest *cr, RGWRados *store);
   struct directory_values { // ugur_wb
-    string owner;
     string key;
+    string owner;
+    string time;
     string location;
-    string etag;
     uint64_t obj_size;
+    string etag;
   };
 
-  int get_key(directory_values &dir_val); //ugur-wb
-  int set_key(string key, string location, string owner, uint64_t obj_size, string etag); //ugur-wb
+  int set_key(string key, string timeStr, string location, string owner, uint64_t obj_size, string etag);
+  void get_key(string key, directory_values &dir_val);
+  std::vector<std::pair<std::string, std::string>> get_aged_keys(string startTime, string endTime);
 
   virtual int issue_remote_wb(librados::L2CacheRequest *cr);
   virtual int update_directory(string key, string value, string op, RGWRados *store);

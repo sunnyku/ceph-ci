@@ -7176,7 +7176,7 @@ void RGWGetObj::directory_lookup()
 {
   string key = s->bucket_name +"_"+s->object.name;
   this->dir_val.key = key;
-  int ret = this->store->get_key(this->dir_val);  
+  this->store->get_key(key, this->dir_val);  
   if (this->dir_val.location == "cache") {
     ldpp_dout(this, 10) << "data in cache" << dendl;
   } else if (this->dir_val.location == "datalake") {

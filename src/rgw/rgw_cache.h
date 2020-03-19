@@ -26,7 +26,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <iostream>
-#include <cpp_redis/cpp_redis> /*directort*/
 #include "rgw_putobj_processor.h" /*wb*/
 #include "rgw_rest_client.h"
 #include "rgw_tools.h" /*wb*/
@@ -132,7 +131,6 @@ private:
   struct ChunkDataInfo *head;
   struct ChunkDataInfo *tail;
 
-  cpp_redis::client client;
 
 
 
@@ -144,13 +142,13 @@ public:
   ~DataCache() {}
 
   /*directory*/
-  std::string setKey(string key, string timeStr, string owner, string loc0, string loc1, string flag0, string flag1);
-  std::vector<std::pair<std::string, std::string>> getKey(string startTime, string endTime);
-  std::string get_key(string key, bool wb_cache);
-  int remove_s3_key(string prefix);
-  std::string get_s3_key(string prefix);
-  int set_key(string key, string location, bool wb_cache);
-  int remove_value(string key, string location);
+  //std::string setKey(string key, string timeStr, string owner, string loc0, string loc1, string flag0, string flag1);
+  //std::vector<std::pair<std::string, std::string>> getKey(string startTime, string endTime);
+  //std::string get_key(string key, bool wb_cache);
+  //int remove_s3_key(string prefix);
+  //std::string get_s3_key(string prefix);
+  //int set_key(string key, string location, bool wb_cache);
+  //int remove_value(string key, string location);
  
 
   /**/
@@ -867,7 +865,7 @@ public:
   }
 
   int issue_remote_wb(librados::L2CacheRequest *cr);
-  int update_directory(string key, string value, string op, RGWRados *store);
+  //int update_directory(string key, string value, string op, RGWRados *store);
   int flush_read_list(struct get_obj_data *d);
   int get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,
       const RGWBucketInfo& bucket_info, const rgw_obj& obj,
@@ -925,6 +923,7 @@ int RGWDataCache<T>::issue_remote_wb(librados::L2CacheRequest *cc){
 }
 
 
+/*
 template <typename T>
 int RGWDataCache<T>::update_directory(string key, string value, string op, RGWRados *store){
     if (op =="wb_update"){
@@ -939,7 +938,7 @@ int RGWDataCache<T>::update_directory(string key, string value, string op, RGWRa
     }
     return 0;
 }
-
+*/
 
 template<typename T>
 int RGWDataCache<T>::get_obj_iterate_cb(RGWObjectCtx *ctx, RGWObjState *astate,

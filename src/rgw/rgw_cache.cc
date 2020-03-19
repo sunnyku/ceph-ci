@@ -1024,6 +1024,7 @@ int HttpL2Request::sign_request(RGWAccessKey& key, RGWEnv& env, req_info& info)
 }
 
 /* AMIN_START */
+/*
 std::string DataCache::setKey(string key, string timeStr, string owner, string loc0, string loc1, string flag0, string flag1){
 
   std::vector<std::pair<std::string, std::string>> list;
@@ -1090,14 +1091,7 @@ std::vector<std::pair<std::string, std::string>> DataCache::getKey(string startT
 
 }
 
-
 std::string DataCache::get_key(string key, bool wb_cache){
-
-  /*std::string key = argv[1];
-  std::string timeStr = argv[2];
-  std::string startTime = argv[3];
-  std::string endTime = argv[4];
-  */
 
   std::string timeStr = "t";
   std::string startTime = "t";
@@ -1154,7 +1148,7 @@ std::string DataCache::get_key(string key, bool wb_cache){
 
 
 }
-
+*/
 
 
 /* AMIN_END */
