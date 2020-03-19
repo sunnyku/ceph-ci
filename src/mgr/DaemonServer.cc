@@ -2559,6 +2559,17 @@ void DaemonServer::adjust_pgs()
 		         << " not clean (" << pg_state_string(q->second.state)
 		         << ")" << dendl;
 	        ok = false;
+	      } else if (q->second.reported_epoch < osdmap.get_epoch()) {
+		dout(10) << "pool " << i.first
+		         << " pg_num_target " << p.get_pg_num_target()
+		         << " pg_num " << p.get_pg_num()
+		         << (is_merge_source ? " - merge source " : " - merge target ")
+                         << merge_participant
+		         << " pg stats slightly stale (reported "
+			 << q->second.reported_epoch << " < "
+			 << " osdmap epoch " << osdmap.get_epoch()
+		         << ")" << dendl;
+		ok = false;
 	      }
             }
 
