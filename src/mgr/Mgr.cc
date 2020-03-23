@@ -578,8 +578,6 @@ void Mgr::handle_fs_map(ref_t<MFSMap> m)
 {
   ceph_assert(ceph_mutex_is_locked_by_me(lock));
 
-  std::set<std::string> names_exist;
-  
   const FSMap &new_fsmap = m->get_fsmap();
 
   fs_map_cond.notify_all();
@@ -594,13 +592,11 @@ void Mgr::handle_fs_map(ref_t<MFSMap> m)
   auto mds_info = new_fsmap.get_mds_info();
   for (const auto &i : mds_info) {
     const auto &info = i.second;
+    dout(10) << "handle_fs_map: mds." << info << dendl;
 
     if (!new_fsmap.gid_exists(i.first)){
       continue;
     }
-
-    // Remember which MDS exists so that we can cull any that don't
-    names_exist.insert(info.name);
 
     const auto k = DaemonKey{"mds", info.name};
     if (daemon_state.is_updating(k)) {
@@ -608,23 +604,28 @@ void Mgr::handle_fs_map(ref_t<MFSMap> m)
     }
 
     bool update = false;
-    if (daemon_state.exists(k)) {
-      auto metadata = daemon_state.get(k);
-      std::lock_guard l(metadata->lock);
-      if (metadata->metadata.empty() ||
-	  metadata->metadata.count("addr") == 0) {
-        update = true;
-      } else {
-        auto metadata_addrs = metadata->metadata.at("addr");
-        const auto map_addrs = info.addrs;
-        update = metadata_addrs != stringify(map_addrs);
-        if (update) {
-          dout(4) << "MDS[" << info.name << "] addr change " << metadata_addrs
-                  << " != " << stringify(map_addrs) << dendl;
+    {
+      std::lock_guard locker(server.lock);
+
+      if (daemon_state.exists(k)) {
+        auto metadata = daemon_state.get(k);
+        std::lock_guard l(metadata->lock);
+        metadata->last_service_beacon = ceph_clock_now();
+        if (metadata->metadata.empty() ||
+            metadata->metadata.count("addr") == 0) {
+          update = true;
+        } else {
+          auto metadata_addrs = metadata->metadata.at("addr");
+          const auto map_addrs = info.addrs;
+          update = metadata_addrs != stringify(map_addrs);
+          if (update) {
+            dout(4) << "MDS[" << info.name << "] addr change " << metadata_addrs
+                    << " != " << stringify(map_addrs) << dendl;
+          }
         }
+      } else {
+        update = true;
       }
-    } else {
-      update = true;
     }
 
     if (update) {
@@ -642,7 +643,6 @@ void Mgr::handle_fs_map(ref_t<MFSMap> m)
           {}, &c->outbl, &c->outs, c);
     }
   }
-  daemon_state.cull("mds", names_exist);
 }
 
 bool Mgr::got_mgr_map(const MgrMap& m)

@@ -79,8 +79,6 @@ protected:
 
   epoch_t pending_service_map_dirty = 0;
 
-  ceph::mutex lock = ceph::make_mutex("DaemonServer");
-
   static void _generate_command_map(cmdmap_t& cmdmap,
                                     map<string,string> &param_str_map);
   static const MonCommand *_get_mgrcommand(const string &cmd_prefix,
@@ -148,6 +146,8 @@ private:
   void update_task_status(DaemonKey key, const ref_t<MMgrReport>& m);
 
 public:
+  ceph::mutex lock = ceph::make_mutex("DaemonServer");
+
   int init(uint64_t gid, entity_addrvec_t client_addrs);
   void shutdown();
 
