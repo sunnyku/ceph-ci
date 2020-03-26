@@ -321,6 +321,7 @@ void MgrStandby::shutdown() {
   finisher.queue(new LambdaContext([&](int) {
         std::unique_lock locker(lock);
         timer.shutdown();
+        py_module_registry.stop();
         send_beacon_and_wait(locker);
       }));
 
