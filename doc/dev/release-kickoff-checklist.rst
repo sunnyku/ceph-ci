@@ -35,4 +35,6 @@ Scripts
 
 Misc
 ~~~~
-- [ ] update src/ceph-volume/ceph_volume/__init__.py (__release__)
+- [x] update src/ceph-volume/ceph_volume/__init__.py (__release__)
+
+
