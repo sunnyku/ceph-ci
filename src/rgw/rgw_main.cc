@@ -49,6 +49,7 @@
 #include "rgw_asio_frontend.h"
 #endif /* WITH_RADOSGW_BEAST_FRONTEND */
 #include "rgw_dmclock_scheduler_ctx.h"
+#include "rgw_notify.h"
 
 #include "services/svc_zone.h"
 
@@ -403,6 +404,9 @@ int radosgw_Main(int argc, const char **argv)
         dout(1) << "ERROR: failed to initialize Kafka manager" << dendl;
     }
 #endif
+    if (!rgw::notify::init(cct.get(), store)) {
+        dout(1) << "ERROR: failed to initialize notification manager" << dendl;
+    }
   }
 
   if (apis_map.count("swift") > 0) {
@@ -664,6 +668,7 @@ int radosgw_Main(int argc, const char **argv)
 #ifdef WITH_RADOSGW_KAFKA_ENDPOINT
   rgw::kafka::shutdown();
 #endif
+  rgw::notify::shutdown();
 
   rgw_perf_stop(g_ceph_context);
 
