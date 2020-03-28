@@ -389,9 +389,30 @@ static DaemonKey key_from_service(
   }
 }
 
+void DaemonServer::fetch_missing_metadata(DaemonKey)
+{
+  if (!daemon_state.is_updating(key) &&
+      (key.type == "osd" || key.type == "mds" || key.type == "mon")) {
+    std::ostringstream oss;
+    auto c = new MetadataUpdate(daemon_state, key);
+    if (key.type == "osd") {
+      oss << "{\"prefix\": \"osd metadata\", \"id\": "
+	  << key.name<< "}";
+    } else if (key.type == "mds") {
+      c->set_default("addr", stringify(m->get_source_addr()));
+      oss << "{\"prefix\": \"mds metadata\", \"who\": \""
+	  << key.name << "\"}";
+    } else if (key.type == "mon") {
+      oss << "{\"prefix\": \"mon metadata\", \"id\": \""
+	  << key.name << "\"}";
+    }
+    monc->start_mon_command({oss.str()}, {}, &c->outbl, &c->outs, c);
+  }
+}
+
 bool DaemonServer::handle_open(const ref_t<MMgrOpen>& m)
 {
-  std::lock_guard l(lock);
+  std::unique_lock l(lock);
 
   DaemonKey key = key_from_service(m->service_name,
 				   m->get_connection()->get_peer_type(),
@@ -421,6 +442,8 @@ bool DaemonServer::handle_open(const ref_t<MMgrOpen>& m)
       dout(2) << "ignoring open from " << key << " " << con->get_peer_addr()
               << "; not ready for session (expect reconnect)" << dendl;
       con->mark_down();
+      l.unlock();
+      fetch_missing_metadata(key);
       return true;
     }
   }
@@ -553,29 +576,7 @@ bool DaemonServer::handle_report(const ref_t<MMgrReport>& m)
       dout(5) << "rejecting report from " << key << ", since we do not have its metadata now."
               << dendl;
       // issue metadata request in background
-      if (!daemon_state.is_updating(key) && 
-          (key.type == "osd" || key.type == "mds" || key.type == "mon")) {
-
-        std::ostringstream oss;
-        auto c = new MetadataUpdate(daemon_state, key);
-        if (key.type == "osd") {
-          oss << "{\"prefix\": \"osd metadata\", \"id\": "
-              << key.name<< "}";
-
-        } else if (key.type == "mds") {
-          c->set_default("addr", stringify(m->get_source_addr()));
-          oss << "{\"prefix\": \"mds metadata\", \"who\": \""
-              << key.name << "\"}";
- 
-        } else if (key.type == "mon") {
-          oss << "{\"prefix\": \"mon metadata\", \"id\": \""
-              << key.name << "\"}";
-        } else {
-          ceph_abort();
-        }
-
-        monc->start_mon_command({oss.str()}, {}, &c->outbl, &c->outs, c);
-      }
+      fetch_missing_metadata(key);
 
       locker.lock();
 
