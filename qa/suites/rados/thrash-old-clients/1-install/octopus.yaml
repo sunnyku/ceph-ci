@@ -5,3 +5,5 @@ overrides:
 tasks:
 - install:
     branch: octopus
+    exclude_packages:
+      - ceph-mgr-dashboard
