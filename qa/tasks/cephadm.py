@@ -1054,7 +1054,7 @@ def task(ctx, config):
         ctx.ceph[cluster_name].first_mon = first_mon
         ctx.ceph[cluster_name].first_mon_role = 'mon.' + first_mon
     else:
-        first_mon_role = sorted(mons.keys())[0]
+        first_mon_role = sorted(ctx.ceph[cluster_name].mons.keys())[0]
         _, _, first_mon = teuthology.split_role(first_mon_role)
         (bootstrap_remote,) = ctx.cluster.only(first_mon_role).remotes.keys()
         log.info('First mon is mon.%s on %s' % (first_mon,
