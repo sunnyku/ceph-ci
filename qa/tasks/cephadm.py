@@ -1040,6 +1040,15 @@ def task(ctx, config):
                 first_mon = remote.shortname
                 bootstrap_remote = remote
         log.info('No roles; fabricating mons %s' % roles)
+        
+    ctx.ceph[cluster_name].mons = get_mons(
+        roles, ips, cluster_name,
+        mon_bind_msgr2=config.get('mon_bind_msgr2', True),
+        mon_bind_addrvec=config.get('mon_bind_addrvec', True),
+    )
+    log.info('Monitor IPs: %s' % ctx.ceph[cluster_name].mons)
+
+    if config.get('roleless', False):
         ctx.ceph[cluster_name].roleless = True
         ctx.ceph[cluster_name].bootstrap_remote = bootstrap_remote
         ctx.ceph[cluster_name].first_mon = first_mon
@@ -1063,12 +1072,6 @@ def task(ctx, config):
         log.info('First mgr is %s' % (first_mgr))
         ctx.ceph[cluster_name].first_mgr = first_mgr
         
-    ctx.ceph[cluster_name].mons = get_mons(
-        roles, ips, cluster_name,
-        mon_bind_msgr2=config.get('mon_bind_msgr2', True),
-        mon_bind_addrvec=config.get('mon_bind_addrvec', True),
-    )
-    log.info('Monitor IPs: %s' % ctx.ceph[cluster_name].mons)
 
     with contextutil.nested(
             lambda: ceph_initial(),
