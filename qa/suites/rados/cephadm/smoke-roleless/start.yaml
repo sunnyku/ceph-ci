@@ -1,6 +1,12 @@
 tasks:
 - cephadm:
     roleless: true
+    conf:
+      osd:
+        debug ms: 1
+        debug osd: 20
+        debug asok: 20
+        debug monc: 20
 - cephadm.shell:
     host.a:
       - ceph orch status
