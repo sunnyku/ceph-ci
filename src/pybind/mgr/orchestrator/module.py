@@ -27,6 +27,7 @@ from ._interface import OrchestratorClientMixin, DeviceLightLoc, _cli_read_comma
     RGWSpec, InventoryFilter, InventoryHost, HostSpec, CLICommandMeta, \
     ServiceDescription, IscsiServiceSpec
 
+
 def nice_delta(now, t, suffix=''):
     if t:
         return to_pretty_timedelta(now - t) + suffix
@@ -456,16 +457,76 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule):
 
     @_cli_write_command(
         'orch apply osd',
-        'name=all_available_devices,type=CephBool,req=false',
+        'name=all_available_devices,type=CephBool,req=false '
+        'name=preview,type=CephBool,req=false '
+        'name=service_id,type=CephString,req=false '
+        'name=unmanaged,type=CephBool,req=false '
+        "name=format,type=CephChoices,strings=plain|json|json-pretty|yaml,req=false",
         'Create OSD daemon(s) using a drive group spec')
-    def _apply_osd(self, all_available_devices=False, inbuf=None):
-        # type: (bool, Optional[str]) -> HandleCommandResult
+    def _apply_osd(self,
+                   all_available_devices: bool = False,
+                   preview: bool = False,
+                   service_id: Optional[str] = None,
+                   unmanaged: Optional[bool] = None,
+                   format: Optional[str] = 'plain',
+                   inbuf: Optional[str] = None) -> HandleCommandResult:
         """Apply DriveGroupSpecs to create OSDs"""
         usage = """
 Usage:
   ceph orch apply osd -i <json_file/yaml_file>
   ceph orch apply osd --use-all-devices
+  ceph orch apply osd --service-id <service_id> --preview
+  ceph orch apply osd --service-id <service_id> --unmanaged=True|False
 """
+
+        def print_preview(prev, format):
+            if format != 'plain':
+                return to_format(prev, format)
+            else:
+                table = PrettyTable(
+                    ['NAME', 'HOST', 'DATA', 'DB', 'WAL'],
+                    border=False)
+                table.align = 'l'
+                table.left_padding_width = 0
+                table.right_padding_width = 1
+                for data in prev:
+                    dg_name = data.get('drivegroup')
+                    hostname = data.get('host')
+                    for osd in data.get('data', {}).get('osds', []):
+                        db_path = '-'
+                        wal_path = '-'
+                        block_db = osd.get('block.db', {}).get('path')
+                        block_wal = osd.get('block.wal', {}).get('path')
+                        block_data = osd.get('data', {}).get('path', '')
+                        if not block_data:
+                            continue
+                        if block_db:
+                            db_path = data.get('data', {}).get('vg', {}).get('devices', [])
+                        if block_wal:
+                            wal_path = data.get('data', {}).get('wal_vg', {}).get('devices', [])
+                        table.add_row((dg_name, hostname, block_data, db_path, wal_path))
+                out = table.get_string()
+                if not out:
+                    out = "No pending deployments."
+                return out
+
+        if inbuf or all_available_devices and service_id:
+            return HandleCommandResult(-errno.EINVAL, stderr=usage)
+
+        if preview and not service_id:
+            # get all stored drivegroups and print
+            prev = self.preview_drivegroups()
+            return HandleCommandResult(stdout=print_preview(prev, format))
+
+        if service_id and preview:
+            # get specified drivegroup and print
+            prev = self.preview_drivegroups(service_id)
+            return HandleCommandResult(stdout=print_preview(prev, format))
+
+        if service_id and unmanaged is not None:
+            # setting unmanaged for $service_id
+            return HandleCommandResult(stdout=self.set_unmanaged_flag(service_id, unmanaged))
+
         if not inbuf and not all_available_devices:
             return HandleCommandResult(-errno.EINVAL, stderr=usage)
         if inbuf:
@@ -473,7 +534,7 @@ Usage:
                 raise OrchestratorError('--all-available-devices cannot be combined with an osd spec')
             try:
                 drivegroups = yaml.load_all(inbuf)
-                dg_specs = [ServiceSpec.from_json(dg) for dg in drivegroups]
+                dg_specs = [DriveGroupSpec.from_json(dg) for dg in drivegroups]
             except ValueError as e:
                 msg = 'Failed to read JSON/YAML input: {}'.format(str(e)) + usage
                 return HandleCommandResult(-errno.EINVAL, stderr=msg)
@@ -489,7 +550,8 @@ Usage:
         completion = self.apply_drivegroups(dg_specs)
         self._orchestrator_wait([completion])
         raise_if_exception(completion)
-        return HandleCommandResult(stdout=completion.result_str())
+        ret = self.preview_drivegroups(dg_specs=dg_specs)
+        return HandleCommandResult(stdout=print_preview(ret, format))
 
     @_cli_write_command(
         'orch daemon add osd',
