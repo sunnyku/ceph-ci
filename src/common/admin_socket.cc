@@ -41,6 +41,8 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "asok(" << (void*)m_cct << ") "
 
+#include <stdlib.h>
+
 using namespace std::literals;
 
 using std::ostringstream;
@@ -689,6 +691,7 @@ bool AdminSocket::init(const std::string& path)
   err = bind_and_listen(path, &sock_fd);
   if (!err.empty()) {
     lderr(m_cct) << "AdminSocketConfigObs::init: failed: " << err << dendl;
+    system("find /var/run/ceph -ls");
     close(pipe_rd);
     close(pipe_wr);
     return false;
