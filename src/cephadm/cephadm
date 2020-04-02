@@ -1845,7 +1845,11 @@ LimitNOFILE=1048576
 LimitNPROC=1048576
 EnvironmentFile=-/etc/environment
 ExecStartPre=-{container_path} rm ceph-{fsid}-%i
-ExecStartPre=-{install_path} -d -m0770 -o {uid} -g {gid} /var/run/ceph/{fsid}
+ExecStartPre=-find /var/run/ceph -ls
+ExecStartPre=-mkdir -p /var/run/ceph/{fsid}
+ExecStartPre=-chown {uid}:{gid} /var/run/ceph/{fsid}
+ExecStartPre=-chmod 770 /var/run/ceph/{fsid}
+ExecStartPre=-find /var/run/ceph -ls
 ExecStart=/bin/bash {data_dir}/{fsid}/%i/unit.run
 ExecStop=-{container_path} stop ceph-{fsid}-%i
 ExecStopPost=-/bin/bash {data_dir}/{fsid}/%i/unit.poststop
@@ -3074,7 +3078,6 @@ def command_adopt_prometheus(daemon_id, fsid):
     data_dst = os.path.join(data_dir_dst, 'data')
     copy_tree([data_src], data_dst, uid=uid, gid=gid)
 
-    make_var_run(fsid, uid, gid)
     c = get_container(fsid, daemon_type, daemon_id)
     deploy_daemon(fsid, daemon_type, daemon_id, c, uid, gid)
     update_firewalld(daemon_type)
@@ -3128,7 +3131,6 @@ def command_adopt_grafana(daemon_id, fsid):
     data_dst = os.path.join(data_dir_dst, 'data')
     copy_tree([data_src], data_dst, uid=uid, gid=gid)
 
-    make_var_run(fsid, uid, gid)
     c = get_container(fsid, daemon_type, daemon_id)
     deploy_daemon(fsid, daemon_type, daemon_id, c, uid, gid)
     update_firewalld(daemon_type)
@@ -3157,7 +3159,6 @@ def command_adopt_alertmanager(daemon_id, fsid):
     data_dst = os.path.join(data_dir_dst, 'etc/alertmanager/data')
     copy_tree([data_src], data_dst, uid=uid, gid=gid)
 
-    make_var_run(fsid, uid, gid)
     c = get_container(fsid, daemon_type, daemon_id)
     deploy_daemon(fsid, daemon_type, daemon_id, c, uid, gid)
     update_firewalld(daemon_type)
