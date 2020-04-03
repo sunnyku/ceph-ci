@@ -9,7 +9,7 @@ meta:
 upgrade-sequence:
    sequential:
    - ceph.restart:
-       daemons: [mgr.x, mon.a]
+       daemons: [mon.a]
        wait-for-healthy: true
    - sleep:
        duration: 60
@@ -20,7 +20,7 @@ upgrade-sequence:
    - sleep:
        duration: 60
    - ceph.restart:
-       daemons: [mon.c]
+       daemons: [mon.c, mgr.x]
        wait-for-healthy: false
        mon-health-to-clog: false
    - ceph.healthy:
