@@ -13,6 +13,7 @@ import fnmatch
 import time
 import threading
 import socket
+import six
 from six.moves import urllib
 import cherrypy
 
@@ -25,6 +26,12 @@ from . import logger, mgr
 from .exceptions import ViewCacheNoDataException
 from .settings import Settings
 from .services.auth import JwtManager
+
+
+def dec_to_utf8(text):
+    if six.PY2:
+        return text.decode('utf-8')
+    return text
 
 
 class RequestLoggingTool(cherrypy.Tool):
@@ -42,15 +49,22 @@ class RequestLoggingTool(cherrypy.Tool):
     def request_begin(self):
         req = cherrypy.request
         user = JwtManager.get_username()
+        # In PY2, because `user` is unicode type, `req.path_info` (str) is
+        # implicitly decoded with ascii encoding when logger performs string
+        # formatting. Explicitly decode `req.path_info` wtih utf-8 in advance
+        # to prevent error.
+        path_info = dec_to_utf8(req.path_info)
         # Log the request.
         logger.debug('[%s:%s] [%s] [%s] %s', req.remote.ip, req.remote.port,
-                     req.method, user, req.path_info)
+                     req.method, user, path_info)
         # Audit the request.
         if Settings.AUDIT_API_ENABLED and req.method not in ['GET']:
             url = build_url(req.remote.ip, scheme=req.scheme,
                             port=req.remote.port)
-            msg = '[DASHBOARD] from=\'{}\' path=\'{}\' method=\'{}\' ' \
-                'user=\'{}\''.format(url, req.path_info, req.method, user)
+            # In PY2, without the `u` prefix, arguments will be implicitly encoded
+            # with ascii encoding.
+            msg = u'[DASHBOARD] from=\'{}\' path=\'{}\' method=\'{}\' ' \
+                'user=\'{}\''.format(url, path_info, req.method, user)
             if Settings.AUDIT_API_LOG_PAYLOAD:
                 params = dict(req.params or {}, **get_request_body_params(req))
                 # Hide sensitive data like passwords, secret keys, ...
@@ -64,7 +78,7 @@ class RequestLoggingTool(cherrypy.Tool):
                     keys.extend([x for x in params.keys() if key in x])
                 for key in keys:
                     params[key] = '***'
-                msg = '{} params=\'{}\''.format(msg, json.dumps(params))
+                msg = u'{} params=\'{}\''.format(msg, dec_to_utf8(json.dumps(params)))
             mgr.cluster_log('audit', mgr.CLUSTER_LOG_PRIO_INFO, msg)
 
     def request_error(self):
@@ -115,11 +129,11 @@ class RequestLoggingTool(cherrypy.Tool):
         if user:
             logger_fn("[%s:%s] [%s] [%s] [%s] [%s] [%s] %s", req.remote.ip,
                       req.remote.port, req.method, status,
-                      "{0:.3f}s".format(lat), user, length, req.path_info)
+                      "{0:.3f}s".format(lat), user, length, dec_to_utf8(req.path_info))
         else:
             logger_fn("[%s:%s] [%s] [%s] [%s] [%s] %s", req.remote.ip,
                       req.remote.port, req.method, status,
-                      "{0:.3f}s".format(lat), length, req.path_info)
+                      "{0:.3f}s".format(lat), length, dec_to_utf8(req.path_info))
 
 
 # pylint: disable=too-many-instance-attributes
