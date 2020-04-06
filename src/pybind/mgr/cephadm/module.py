@@ -98,7 +98,7 @@ except ImportError:
             self.cleanup()
 
 
-class SpecStore(object):
+class SpecStore():
     def __init__(self, mgr):
         # type: (CephadmOrchestrator) -> None
         self.mgr = mgr
@@ -141,7 +141,7 @@ class SpecStore(object):
             del self.spec_created[service_name]
             self.mgr.set_store(SPEC_STORE_PREFIX + service_name, None)
 
-    def find(self, service_name: Optional[str] = None) -> List[Any]:
+    def find(self, service_name: Optional[str] = None) -> List[ServiceSpec]:
         specs = []
         for sn, spec in self.specs.items():
             if not service_name or \
@@ -2135,6 +2135,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             spec.unmanaged = unmanaged_flag
             self.spec_store.save(spec)
             self.log.debug(f"Set unmanaged flag to <{unmanaged_flag}> for spec <{spec}>")
+        self._kick_serve_loop()
         return f"Changed <unmanaged> flag to <{unmanaged_flag}>"
 
     def driveselection_to_ceph_volume(self, drive_group: DriveGroupSpec,
@@ -2145,11 +2146,13 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         self.log.debug(f"Resulting ceph-volume cmd: {cmd}")
         return cmd
 
-    def preview_drivegroups(self, drive_group_name: Optional[str] = 'osd',
+    def preview_drivegroups(self, drive_group_name: Optional[str] = None,
                             dg_specs: Optional[List[DriveGroupSpec]] = None) -> List[Dict[str, Dict[Any, Any]]]:
         # find drivegroups
         if drive_group_name:
-            drive_groups: List[DriveGroupSpec] = self.spec_store.find(service_name=drive_group_name)
+            default_dg_prefix = 'osd.'
+            drive_groups = cast(List[DriveGroupSpec],
+                                self.spec_store.find(service_name=f"{default_dg_prefix}{drive_group_name}"))
         elif dg_specs:
             drive_groups = dg_specs
         else:

@@ -510,10 +510,11 @@ Usage:
                     out = "No pending deployments."
                 return out
 
-        if inbuf or all_available_devices and service_id:
+        if (inbuf or all_available_devices) and service_id:
+            # mutually exclusive
             return HandleCommandResult(-errno.EINVAL, stderr=usage)
 
-        if preview and not service_id:
+        if preview and not (service_id or all_available_devices or inbuf):
             # get all stored drivegroups and print
             prev = self.preview_drivegroups()
             return HandleCommandResult(stdout=print_preview(prev, format))
@@ -546,6 +547,10 @@ Usage:
                     data_devices=DeviceSelection(all=True),
                 )
             ]
+
+        if preview:
+            # Not sure if this is too hacky..
+            _ = [setattr(dg, 'unmanaged', True) for dg in dg_specs]
 
         completion = self.apply_drivegroups(dg_specs)
         self._orchestrator_wait([completion])

@@ -243,8 +243,8 @@ class TestCephadm(object):
             _find_store.return_value = [dg]
             _prepare_dg.return_value = [('host1', 'ds_dummy')]
             _run_c_v_command.return_value = ("{}", '', 0)
-            cephadm_module.preview_drivegroups('foo')
-            _find_store.assert_called_once_with(service_name='foo')
+            cephadm_module.preview_drivegroups(drive_group_name='foo')
+            _find_store.assert_called_once_with(service_name='osd.foo')
             _prepare_dg.assert_called_once_with(dg)
             _run_c_v_command.assert_called_once()
 
