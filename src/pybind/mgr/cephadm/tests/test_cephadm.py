@@ -244,27 +244,9 @@ class TestCephadm(object):
             _prepare_dg.return_value = [('host1', 'ds_dummy')]
             _run_c_v_command.return_value = ("{}", '', 0)
             cephadm_module.preview_drivegroups(drive_group_name='foo')
-            _find_store.assert_called_once_with(service_name='osd.foo')
+            _find_store.assert_called_once_with(service_name='foo')
             _prepare_dg.assert_called_once_with(dg)
             _run_c_v_command.assert_called_once()
-
-    @pytest.mark.parametrize(
-        "s_id,flag",
-        [
-            ('osd.test', True),
-            ('mgr.test', False)
-        ]
-    )
-    @mock.patch("cephadm.module.SpecStore.save")
-    @mock.patch("cephadm.module.SpecStore.find")
-    def test_set_unmanaged_flag(self, _find_store, _save_store, cephadm_module, s_id, flag):
-        ss = ServiceSpec(service_type='osd', service_id='test', unmanaged=False)
-        _find_store.return_value = [ss]
-        out = cephadm_module.set_unmanaged_flag(s_id, flag)
-        _find_store.assert_called_once_with(service_name=s_id)
-        assert ss.unmanaged == flag
-        _save_store.assert_called_once_with(ss)
-        assert out == f"Changed <unmanaged> flag to <{flag}>"
 
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm(
         json.dumps([

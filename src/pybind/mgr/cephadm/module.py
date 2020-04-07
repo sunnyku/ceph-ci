@@ -2129,15 +2129,6 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             host_ds_map.append((host, drive_selection))
         return host_ds_map
 
-    def set_unmanaged_flag(self, service_id, unmanaged_flag):
-        specs = self.spec_store.find(service_name=service_id)
-        for spec in specs:
-            spec.unmanaged = unmanaged_flag
-            self.spec_store.save(spec)
-            self.log.debug(f"Set unmanaged flag to <{unmanaged_flag}> for spec <{spec}>")
-        self._kick_serve_loop()
-        return f"Changed <unmanaged> flag to <{unmanaged_flag}>"
-
     def driveselection_to_ceph_volume(self, drive_group: DriveGroupSpec,
                                       drive_selection: DriveSelection,
                                       preview: bool = False) -> Optional[str]:
@@ -2150,9 +2141,8 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
                             dg_specs: Optional[List[DriveGroupSpec]] = None) -> List[Dict[str, Dict[Any, Any]]]:
         # find drivegroups
         if drive_group_name:
-            default_dg_prefix = 'osd.'
             drive_groups = cast(List[DriveGroupSpec],
-                                self.spec_store.find(service_name=f"{default_dg_prefix}{drive_group_name}"))
+                                self.spec_store.find(service_name=drive_group_name))
         elif dg_specs:
             drive_groups = dg_specs
         else:

@@ -455,18 +455,38 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule):
 
             return HandleCommandResult(stdout=table.get_string())
 
+    def set_unmanaged_flag(self, service_name: str, unmanaged_flag: bool) -> HandleCommandResult:
+        # setting unmanaged for $service_name
+        completion = self.describe_service(service_name=service_name)
+        self._orchestrator_wait([completion])
+        raise_if_exception(completion)
+        services: List[ServiceDescription] = completion.result
+        specs = list()
+        for service in services:
+            spec = service.spec
+            spec.unmanaged = unmanaged_flag
+            specs.append(spec)
+        completion = self.apply(specs)
+        self._orchestrator_wait([completion])
+        raise_if_exception(completion)
+        if specs:
+            return HandleCommandResult(stdout=f"Changed <unmanaged> flag to <{unmanaged_flag}> for "
+                                              f"{[spec.service_name() for spec in specs]}")
+        else:
+            return HandleCommandResult(stdout=f"No specs found with the <service_name> -> {service_name}")
+
     @_cli_write_command(
         'orch apply osd',
         'name=all_available_devices,type=CephBool,req=false '
         'name=preview,type=CephBool,req=false '
-        'name=service_id,type=CephString,req=false '
+        'name=service_name,type=CephString,req=false '
         'name=unmanaged,type=CephBool,req=false '
         "name=format,type=CephChoices,strings=plain|json|json-pretty|yaml,req=false",
         'Create OSD daemon(s) using a drive group spec')
     def _apply_osd(self,
                    all_available_devices: bool = False,
                    preview: bool = False,
-                   service_id: Optional[str] = None,
+                   service_name: Optional[str] = None,
                    unmanaged: Optional[bool] = None,
                    format: Optional[str] = 'plain',
                    inbuf: Optional[str] = None) -> HandleCommandResult:
@@ -475,8 +495,8 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule):
 Usage:
   ceph orch apply osd -i <json_file/yaml_file>
   ceph orch apply osd --use-all-devices
-  ceph orch apply osd --service-id <service_id> --preview
-  ceph orch apply osd --service-id <service_id> --unmanaged=True|False
+  ceph orch apply osd --service-name <service_name> --preview
+  ceph orch apply osd --service-name <service_name> --unmanaged=True|False
 """
 
         def print_preview(prev, format):
@@ -510,23 +530,22 @@ Usage:
                     out = "No pending deployments."
                 return out
 
-        if (inbuf or all_available_devices) and service_id:
+        if (inbuf or all_available_devices) and service_name:
             # mutually exclusive
             return HandleCommandResult(-errno.EINVAL, stderr=usage)
 
-        if preview and not (service_id or all_available_devices or inbuf):
+        if preview and not (service_name or all_available_devices or inbuf):
             # get all stored drivegroups and print
             prev = self.preview_drivegroups()
             return HandleCommandResult(stdout=print_preview(prev, format))
 
-        if service_id and preview:
+        if service_name and preview:
             # get specified drivegroup and print
-            prev = self.preview_drivegroups(service_id)
+            prev = self.preview_drivegroups(service_name)
             return HandleCommandResult(stdout=print_preview(prev, format))
 
-        if service_id and unmanaged is not None:
-            # setting unmanaged for $service_id
-            return HandleCommandResult(stdout=self.set_unmanaged_flag(service_id, unmanaged))
+        if service_name and unmanaged is not None:
+            return self.set_unmanaged_flag(service_name, unmanaged)
 
         if not inbuf and not all_available_devices:
             return HandleCommandResult(-errno.EINVAL, stderr=usage)
@@ -548,13 +567,10 @@ Usage:
                 )
             ]
 
-        if preview:
-            # Not sure if this is too hacky..
-            _ = [setattr(dg, 'unmanaged', True) for dg in dg_specs]
-
-        completion = self.apply_drivegroups(dg_specs)
-        self._orchestrator_wait([completion])
-        raise_if_exception(completion)
+        if not preview:
+            completion = self.apply_drivegroups(dg_specs)
+            self._orchestrator_wait([completion])
+            raise_if_exception(completion)
         ret = self.preview_drivegroups(dg_specs=dg_specs)
         return HandleCommandResult(stdout=print_preview(ret, format))
 
