@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 
-DEFAULT_IMAGE='docker.io/ceph/ceph:v15'
+# Use the latest stable containers also on the master branch.
+# Mainly to prevent mistakes
+DEFAULT_IMAGE='docker.io/ceph/ceph:v15.2'
 DATA_DIR='/var/lib/ceph'
 LOG_DIR='/var/log/ceph'
 LOCK_DIR='/run/cephadm'
