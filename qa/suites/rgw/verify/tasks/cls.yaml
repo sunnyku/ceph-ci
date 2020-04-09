@@ -9,3 +9,4 @@ tasks:
         - rgw/test_rgw_gc_log.sh
         - rgw/test_rgw_obj.sh
         - rgw/test_rgw_throttle.sh
+        - rgw/test_rgw_reshard.py
