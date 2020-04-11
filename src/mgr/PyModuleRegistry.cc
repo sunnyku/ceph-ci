@@ -32,7 +32,9 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "mgr[py] "
 
-
+std::set<std::string> obsolete_modules = {
+  "orchestrator_cli",
+};
 
 void PyModuleRegistry::init()
 {
@@ -70,6 +72,11 @@ void PyModuleRegistry::init()
   std::set<std::string> module_names = probe_modules(module_path);
   // Load python code
   for (const auto& module_name : module_names) {
+    if (obsolete_modules.count(module_name)) {
+      dout(10) << "skipping obsolete module " << module_name << dendl;
+      continue;
+    }
+
     dout(1) << "Loading python module '" << module_name << "'" << dendl;
 
     // Everything starts disabled, set enabled flag on module
