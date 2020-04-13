@@ -1094,8 +1094,11 @@ int CephFuse::Handle::init(int argc, const char *argv[])
     "fuse_allow_other");
   auto fuse_default_permissions = client->cct->_conf.get_val<bool>(
     "fuse_default_permissions");
+  /* big_writes is deprecated since libfuse 3.0.0, and always be active */
+#ifndef LIBFUSE_VERSION3
   auto fuse_big_writes = client->cct->_conf.get_val<bool>(
     "fuse_big_writes");
+#endif
   auto fuse_atomic_o_trunc = client->cct->_conf.get_val<bool>(
     "fuse_atomic_o_trunc");
   auto fuse_debug = client->cct->_conf.get_val<bool>(
@@ -1112,10 +1115,12 @@ int CephFuse::Handle::init(int argc, const char *argv[])
     newargv[newargc++] = "default_permissions";
   }
 #if defined(__linux__)
+#ifndef LIBFUSE_VERSION3
   if (fuse_big_writes) {
     newargv[newargc++] = "-o";
     newargv[newargc++] = "big_writes";
   }
+#endif
   if (fuse_max_write > 0) {
     char strsplice[65];
     newargv[newargc++] = "-o";
