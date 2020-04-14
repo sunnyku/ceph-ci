@@ -453,12 +453,21 @@ void BlueFS::dump_block_extents(ostream& out)
     }
     auto owned = get_total(i);
     auto free = get_free(i);
+
     out << i << " : device size 0x" << std::hex << bdev[i]->get_size()
         << " : own 0x" << block_all[i]
         << " = 0x" << owned
         << " : using 0x" << owned - free
-	<< std::dec << "(" << byte_u_t(owned - free) << ")"
-        << "\n";
+	<< std::dec << "(" << byte_u_t(owned - free) << ")";
+    if (i == _get_slow_device_id()) {
+      ceph_assert(slow_dev_expander);
+      ceph_assert(alloc[i]);
+      free = slow_dev_expander->available_freespace(alloc_size[i]);
+      out << std::hex
+          << " : bluestore has 0x" << free
+          << std::dec << "(" << byte_u_t(free) << ") available";
+    }
+    out << "\n";
   }
 }
 
@@ -705,11 +714,11 @@ int BlueFS::maybe_verify_layout(const bluefs_layout_t& layout) const
   return 0;
 }
 
-void BlueFS::umount()
+void BlueFS::umount(bool avoid_compact)
 {
   dout(1) << __func__ << dendl;
 
-  sync_metadata();
+  sync_metadata(avoid_compact);
 
   _close_writer(log_writer);
   log_writer = NULL;
@@ -1010,7 +1019,7 @@ int BlueFS::_replay(bool noop, bool to_stdout)
     uint64_t read_pos = pos;
     bufferlist bl;
     {
-      int r = _read(log_reader, &log_reader->buf, read_pos, super.block_size,
+      int r = _read(log_reader, read_pos, super.block_size,
 		    &bl, NULL);
       ceph_assert(r == (int)super.block_size);
       read_pos += r;
@@ -1063,7 +1072,7 @@ int BlueFS::_replay(bool noop, bool to_stdout)
       dout(20) << __func__ << " need 0x" << std::hex << more << std::dec
                << " more bytes" << dendl;
       bufferlist t;
-      int r = _read(log_reader, &log_reader->buf, read_pos, more, &t, NULL);
+      int r = _read(log_reader, read_pos, more, &t, NULL);
       if (r < (int)more) {
 	derr  << __func__ << " 0x" << std::hex << pos
               << ": stop: len is 0x" << bl.length() + more << std::dec
@@ -1133,7 +1142,7 @@ int BlueFS::_replay(bool noop, bool to_stdout)
 	  uint64_t skip = offset - read_pos;
 	  if (skip) {
 	    bufferlist junk;
-	    int r = _read(log_reader, &log_reader->buf, read_pos, skip, &junk,
+	    int r = _read(log_reader, read_pos, skip, &junk,
 			  NULL);
 	    if (r != (int)skip) {
 	      dout(10) << __func__ << " 0x" << std::hex << read_pos
@@ -1964,12 +1973,13 @@ int BlueFS::_read_random(
 
 int BlueFS::_read(
   FileReader *h,         ///< [in] read from here
-  FileReaderBuffer *buf, ///< [in] reader state
   uint64_t off,          ///< [in] offset
   size_t len,            ///< [in] this many bytes
   bufferlist *outbl,     ///< [out] optional: reference the result here
   char *out)             ///< [out] optional: or copy it here
 {
+  FileReaderBuffer *buf = &(h->buf);
+
   bool prefetch = !outbl && !out;
   dout(10) << __func__ << " h " << h
            << " 0x" << std::hex << off << "~" << len << std::dec
@@ -3031,9 +3041,9 @@ int BlueFS::_expand_slow_device(uint64_t need, PExtentVector& extents)
 {
   int r = -ENOSPC;
   if (slow_dev_expander) {
-    int id = _get_slow_device_id();
+    auto id = _get_slow_device_id();
     auto min_alloc_size = alloc_size[id];
-    ceph_assert(id <= (int)alloc.size() && alloc[id]);
+    ceph_assert(id <= alloc.size() && alloc[id]);
     auto min_need = round_up_to(need, min_alloc_size);
     need = std::max(need,
       slow_dev_expander->get_recommended_expansion_delta(
@@ -3186,7 +3196,7 @@ int BlueFS::_preallocate(FileRef f, uint64_t off, uint64_t len)
   return 0;
 }
 
-void BlueFS::sync_metadata()
+void BlueFS::sync_metadata(bool avoid_compact)
 {
   std::unique_lock l(lock);
   if (log_t.empty() && dirty_files.empty()) {
@@ -3199,7 +3209,7 @@ void BlueFS::sync_metadata()
     dout(10) << __func__ << " done in " << (ceph_clock_now() - start) << dendl;
   }
 
-  if (_should_compact_log()) {
+  if (!avoid_compact && _should_compact_log()) {
     if (cct->_conf->bluefs_compact_log_sync) {
       _compact_log_sync();
     } else {

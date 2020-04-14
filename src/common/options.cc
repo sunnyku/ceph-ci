@@ -445,7 +445,7 @@ std::vector<Option> get_global_options() {
     Option("container_image", Option::TYPE_STR, Option::LEVEL_BASIC)
     .set_description("container image (used by cephadm orchestrator)")
     .set_flag(Option::FLAG_STARTUP)
-    .set_default("docker.io/ceph/ceph:v15"),
+    .set_default("docker.io/ceph/daemon-base:latest-master-devel"),
 
     Option("no_config_file", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)
@@ -2038,17 +2038,17 @@ std::vector<Option> get_global_options() {
     .set_description("file to dump paxos transactions to")
     .add_see_also("mon_debug_dump_transactions"),
 
-    Option("mon_debug_no_require_nautilus", Option::TYPE_BOOL, Option::LEVEL_DEV)
-    .set_default(false)
-    .add_service("mon")
-    .set_flag(Option::FLAG_CLUSTER_CREATE)
-    .set_description("do not set nautilus feature for new mon clusters"),
-
     Option("mon_debug_no_require_octopus", Option::TYPE_BOOL, Option::LEVEL_DEV)
     .set_default(false)
     .add_service("mon")
     .set_flag(Option::FLAG_CLUSTER_CREATE)
     .set_description("do not set octopus feature for new mon clusters"),
+
+    Option("mon_debug_no_require_pacific", Option::TYPE_BOOL, Option::LEVEL_DEV)
+    .set_default(false)
+    .add_service("mon")
+    .set_flag(Option::FLAG_CLUSTER_CREATE)
+    .set_description("do not set pacific feature for new mon clusters"),
 
     Option("mon_debug_no_require_bluestore_for_ec_overwrites", Option::TYPE_BOOL, Option::LEVEL_DEV)
     .set_default(false)
@@ -3286,11 +3286,11 @@ std::vector<Option> get_global_options() {
     .set_description(""),
 
     Option("osd_class_load_list", Option::TYPE_STR, Option::LEVEL_ADVANCED)
-    .set_default("cephfs hello journal lock log numops " "otp rbd refcount rgw rgw_gc timeindex user version cas")
+    .set_default("cephfs hello journal lock log numops " "otp rbd refcount rgw rgw_gc timeindex user version cas cmpomap")
     .set_description(""),
 
     Option("osd_class_default_list", Option::TYPE_STR, Option::LEVEL_ADVANCED)
-    .set_default("cephfs hello journal lock log numops " "otp rbd refcount rgw rgw_gc timeindex user version cas")
+    .set_default("cephfs hello journal lock log numops " "otp rbd refcount rgw rgw_gc timeindex user version cas cmpomap")
     .set_description(""),
 
     Option("osd_check_for_log_corruption", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
@@ -4200,7 +4200,7 @@ std::vector<Option> get_global_options() {
     .set_description("Writes smaller than this size will be written to the journal and then asynchronously written to the device.  This can be beneficial when using rotational media where seeks are expensive, and is helpful both with and without solid state journal/wal devices."),
 
     Option("bluestore_prefer_deferred_size_hdd", Option::TYPE_SIZE, Option::LEVEL_ADVANCED)
-    .set_default(32768)
+    .set_default(65536)
     .set_flag(Option::FLAG_RUNTIME)
     .set_description("Default bluestore_prefer_deferred_size for rotational media")
     .add_see_also("bluestore_prefer_deferred_size"),

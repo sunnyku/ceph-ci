@@ -236,6 +236,15 @@ public:
     void skip(size_t n) {
       pos += n;
     }
+
+    // For the sake of simplicity, we invalidate completed rather than
+    // for the provided extent
+    void invalidate_cache(uint64_t offset, uint64_t length) {
+      if (offset >= bl_off && offset < get_buf_end()) {
+	bl.clear();
+	bl_off = 0;
+      }
+    }
   };
 
   struct FileReader {
@@ -338,7 +347,9 @@ private:
   FileRef _get_file(uint64_t ino);
   void _drop_link(FileRef f);
 
-  int _get_slow_device_id() { return bdev[BDEV_SLOW] ? BDEV_SLOW : BDEV_DB; }
+  unsigned _get_slow_device_id() {
+    return bdev[BDEV_SLOW] ? BDEV_SLOW : BDEV_DB;
+  }
   const char* get_device_name(unsigned id);
   int _expand_slow_device(uint64_t min_size, PExtentVector& extents);
   int _allocate(uint8_t bdev, uint64_t len,
@@ -390,7 +401,6 @@ private:
 
   int _read(
     FileReader *h,   ///< [in] read from here
-    FileReaderBuffer *buf, ///< [in] reader state
     uint64_t offset, ///< [in] offset
     size_t len,      ///< [in] this many bytes
     ceph::buffer::list *outbl,   ///< [out] optional: reference the result here
@@ -439,7 +449,7 @@ public:
   int mkfs(uuid_d osd_uuid, const bluefs_layout_t& layout);
   int mount();
   int maybe_verify_layout(const bluefs_layout_t& layout) const;
-  void umount();
+  void umount(bool avoid_compact = false);
   int prepare_new_device(int id, const bluefs_layout_t& layout);
   
   int log_dump();
@@ -510,7 +520,7 @@ public:
   void compact_log();
 
   /// sync any uncommitted state to disk
-  void sync_metadata();
+  void sync_metadata(bool avoid_compact);
 
   void set_slow_device_expander(BlueFSDeviceExpander* a) {
     slow_dev_expander = a;
@@ -559,12 +569,12 @@ public:
     std::unique_lock l(lock);
     return _fsync(h, l);
   }
-  int read(FileReader *h, FileReaderBuffer *buf, uint64_t offset, size_t len,
+  int read(FileReader *h, uint64_t offset, size_t len,
 	   ceph::buffer::list *outbl, char *out) {
     // no need to hold the global lock here; we only touch h and
     // h->file, and read vs write or delete is already protected (via
     // atomics and asserts).
-    return _read(h, buf, offset, len, outbl, out);
+    return _read(h, offset, len, outbl, out);
   }
   int read_random(FileReader *h, uint64_t offset, size_t len,
 		  char *out) {
