@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 def verify_mds_metrics(fs, active_mds_count=1, client_count=1):
     def verify_metrics_cbk(metrics):
         mds_metrics = metrics['metrics']
+        log.debug("metrics={}".format(metrics))
         if not len(mds_metrics) == active_mds_count + 1: # n active mdss + delayed set
             return False
         fs_status = fs.status()

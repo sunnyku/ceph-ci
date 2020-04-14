@@ -391,22 +391,23 @@ class FSPerfStats(object):
                     client_meta = result_meta.setdefault(client_id, {})
                     client_meta.update(self.client_metadata["metadata"][client_id])
 
-        # start populating global perf metrics w/ client metadata
-        metrics = result.setdefault("global_metrics", {})
-        for client_id, counters in raw_perfs.items():
-            global_client_metrics = metrics.setdefault(client_id, [])
-            del global_client_metrics[:]
-            global_client_metrics.extend(counters)
+            # start populating global perf metrics w/ client metadata
+            metrics = result.setdefault("global_metrics", {})
+            for client_id, counters in raw_perfs.items():
+                global_client_metrics = metrics.setdefault(client_id, [])
+                del global_client_metrics[:]
+                global_client_metrics.extend(counters)
 
-        # and, now per-mds metrics keyed by mds rank along with delayed ranks
-        raw_perfs = user_query.setdefault(QUERY_RAW_COUNTERS, {})
-        metrics = result.setdefault("metrics", {})
+            # and, now per-mds metrics keyed by mds rank along with delayed ranks
+            raw_perfs = user_query.setdefault(QUERY_RAW_COUNTERS, {})
+            metrics = result.setdefault("metrics", {})
 
-        metrics["delayed_ranks"] = [rank for rank,counters in raw_perfs.items() if counters[0]]
-        for rank, counters in raw_perfs.items():
-            mds_key = "mds.{}".format(rank)
-            mds_metrics = metrics.setdefault(mds_key, {})
-            mds_metrics.update(counters[1])
+            metrics["delayed_ranks"] = [rank for rank,counters in raw_perfs.items() if counters[0]]
+            for rank, counters in raw_perfs.items():
+                mds_key = "mds.{}".format(rank)
+                mds_metrics = metrics.setdefault(mds_key, {})
+                mds_metrics.update(counters[1])
+        self.log.debug("perf_result={}".format(result))
         return result
 
     def extract_query_filters(self, cmd):
