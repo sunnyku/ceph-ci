@@ -2366,11 +2366,11 @@ public:
                zone_short_id(0),
                rest_master_conn(NULL),
                meta_mgr(NULL), data_log(NULL), reshard(NULL) {
-    client.connect("127.0.0.1", 7000, [](const std::string& host, std::size_t port, cpp_redis::client::connect_state status) {
+    client.connect("127.0.0.1", 7000/*, [](const std::string& host, std::size_t port, cpp_redis::client::connect_state status) {
     if (status == cpp_redis::client::connect_state::dropped) {
       std::cout << "client disconnected from " << host << ":" << port << std::endl;
     }
-  });
+  }*/);
 
   }
 
@@ -3332,7 +3332,27 @@ public:
    
   cpp_redis::client client;
 
+
+  struct directory_values { 
+    string key;
+    string owner;
+    string time;
+    string bucket_name;
+    string obj_name;
+    string location;
+    uint64_t obj_size;
+    string etag;
+  };
+
+  int get_key(directory_values &dir_val); 
+  int set_key(string key, string timeStr, string bucket_name, string obj_name, string location, string owner, uint64_t obj_size, string etag);
+  std::vector<std::pair<std::string, std::string>> get_aged_keys(string startTime, string endTime);
+  // datacache
+
+
+
   //virtual int issue_remote_wb(librados::L2CacheRequest *cr, RGWRados *store);
+/*
   struct directory_values { // ugur_wb
     string key;
     string owner;
@@ -3345,6 +3365,8 @@ public:
   int set_key(string key, string timeStr, string location, string owner, uint64_t obj_size, string etag);
   void get_key(string key, directory_values &dir_val);
   std::vector<std::pair<std::string, std::string>> get_aged_keys(string startTime, string endTime);
+*/
+
 
   virtual int issue_remote_wb(librados::L2CacheRequest *cr);
   virtual int update_directory(string key, string value, string op, RGWRados *store);

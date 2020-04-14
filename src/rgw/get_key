@@ -1,0 +1,1340 @@
+librgw.cc:    const uint64_t reqid = store->get_new_req_id();
+librgw.cc:    rgw_rest_init(g_ceph_context, store, store->get_zonegroup());
+librgw.cc:    const string& ldap_uri = store->ctx()->_conf->rgw_ldap_uri;
+librgw.cc:    const string& ldap_binddn = store->ctx()->_conf->rgw_ldap_binddn;
+librgw.cc:    const string& ldap_searchdn = store->ctx()->_conf->rgw_ldap_searchdn;
+librgw.cc:    const string& ldap_searchfilter = store->ctx()->_conf->rgw_ldap_searchfilter;
+librgw.cc:      store->ctx()->_conf->rgw_ldap_dnattr;
+librgw.cc:    std::string ldap_bindpw = parse_rgw_ldap_bindpw(store->ctx());
+librgw.cc:    rgw_bucket_init(store->meta_mgr);
+librgw.cc:    r = store->register_to_service_map("rgw-nfs", service_map_meta);
+rgw_admin.cc:    CephContext *get_cct() const override { return store->ctx(); }
+rgw_admin.cc:      r = store->get_bucket_info(obj_ctx, tenant_name, bucket_name, bucket_info, nullptr, pattrs);
+rgw_admin.cc:      r = store->get_bucket_instance_info(obj_ctx, bucket_instance_id, bucket_info, NULL, pattrs);
+rgw_admin.cc:  int r = store->get_bucket_info(obj_ctx, tenant_name, bucket_name, bucket_info, NULL, &attrs);
+rgw_admin.cc:   r = store->put_bucket_instance_info(bucket_info, false, real_time(), &attrs);
+rgw_admin.cc:    lderr(store->ctx()) << "ERROR: failed to stat object, returned error: " << cpp_strerror(-ret) << dendl;
+rgw_admin.cc:    ldout(store->ctx(), 0) << "ERROR: failed to decode manifest" << dendl;
+rgw_admin.cc:    ret = store->fix_head_obj_locator(bucket_info, needs_fixing, remove_bad, key);
+rgw_admin.cc:  int ret = store->fix_tail_obj_locator(bucket_info, key, fix, &needs_fixing);
+rgw_admin.cc:      cerr << "ERROR: store->list_objects(): " << cpp_strerror(-ret) << std::endl;
+rgw_admin.cc:  int r = store->get_bucket_info(obj_ctx, tenant_name, bucket_name, bucket_info, NULL, &attrs);
+rgw_admin.cc:  r = store->put_bucket_instance_info(bucket_info, false, real_time(), &attrs);
+rgw_admin.cc:    r = store->stop_bi_log_entries(bucket_info, -1);
+rgw_admin.cc:      lderr(store->ctx()) << "ERROR: failed writing stop bilog" << dendl;
+rgw_admin.cc:    r = store->resync_bi_log_entries(bucket_info, -1);
+rgw_admin.cc:      lderr(store->ctx()) << "ERROR: failed writing resync bilog" << dendl;
+rgw_admin.cc:    r = store->data_log->add_entry(bucket_info.bucket, shard_id);
+rgw_admin.cc:      lderr(store->ctx()) << "ERROR: failed writing data log" << dendl;
+rgw_admin.cc:    conn.emplace(store->ctx(), store, remote, zonegroup.endpoints);
+rgw_admin.cc:        conn.emplace(store->ctx(), store, remote, zone.endpoints);
+rgw_admin.cc:  if (store->get_zone_params().get_id() == master_zone) {
+rgw_admin.cc:  RGWMetaSyncStatusManager sync(store, store->get_async_rados());
+rgw_admin.cc:  string master_period = store->get_current_period_id();
+rgw_admin.cc:  auto ziter = store->zone_by_id.find(source_zone);
+rgw_admin.cc:  if (ziter == store->zone_by_id.end()) {
+rgw_admin.cc:  if (!store->zone_syncs_from(store->get_zone(), sz)) {
+rgw_admin.cc:  RGWDataSyncStatusManager sync(store, store->get_async_rados(), source_zone);
+rgw_admin.cc:  RGWRealm& realm = store->realm;
+rgw_admin.cc:  RGWZoneGroup& zonegroup = store->get_zonegroup();
+rgw_admin.cc:  RGWZone& zone = store->get_zone();
+rgw_admin.cc:  if (store->is_meta_master()) {
+rgw_admin.cc:  for (auto iter : store->zone_conn_map) {
+rgw_admin.cc:    auto siter = store->zone_by_id.find(source_id);
+rgw_admin.cc:    if (siter != store->zone_by_id.end()) {
+rgw_admin.cc:    lderr(store->ctx()) << "failed to fetch remote log markers: " << cpp_strerror(r) << dendl;
+rgw_admin.cc:    lderr(store->ctx()) << "failed to decode remote log markers" << dendl;
+rgw_admin.cc:    lderr(store->ctx()) << "failed to read bucket sync status: " << cpp_strerror(r) << dendl;
+rgw_admin.cc:    lderr(store->ctx()) << "failed to read remote log: " << cpp_strerror(r) << dendl;
+rgw_admin.cc:  RGWRealm& realm = store->realm;
+rgw_admin.cc:  RGWZoneGroup& zonegroup = store->get_zonegroup();
+rgw_admin.cc:  RGWZone& zone = store->get_zone();
+rgw_admin.cc:      lderr(store->ctx()) << "Source zone not found in zonegroup "
+rgw_admin.cc:    auto c = store->zone_conn_map.find(source_zone_id);
+rgw_admin.cc:    if (c == store->zone_conn_map.end()) {
+rgw_admin.cc:      lderr(store->ctx()) << "No connection to zone " << z->second.name << dendl;
+rgw_admin.cc:    auto c = store->zone_conn_map.find(z.second.id);
+rgw_admin.cc:    if (c != store->zone_conn_map.end()) {
+rgw_admin.cc:  int ret = store->get_rados_handle()->ioctx_create(pool.to_str().c_str(), io_ctx);
+rgw_admin.cc:  if (num_shards > (int)store->get_max_bucket_shards()) {
+rgw_admin.cc:    cerr << "ERROR: num_shards too high, max value: " << store->get_max_bucket_shards() << std::endl;
+rgw_admin.cc:  store->create_bucket_id(&new_bucket_info.bucket.bucket_id);
+rgw_admin.cc:  int ret = store->init_bucket_index(new_bucket_info, new_bucket_info.num_shards);
+rgw_admin.cc:  ret = store->put_bucket_instance_info(new_bucket_info, true, real_time(), &attrs);
+rgw_admin.cc:    int ret = store->time_log_trim(oid, start_time, end_time,
+rgw_admin.cc:    if (!store->find_zone_id_by_name(source_zone_name, &source_zone)) {
+rgw_admin.cc:  rgw_bucket_init(store->meta_mgr);
+rgw_admin.cc:	int ret = store->list_periods(periods);
+rgw_admin.cc:	ret = store->list_realms(realms);
+rgw_admin.cc:	ret = store->list_periods(period_id, periods);
+rgw_admin.cc:	ret = store->list_zonegroups(zonegroups);
+rgw_admin.cc:	ret = store->list_zonegroups(zonegroups);
+rgw_admin.cc:	int ret = store->list_zones(zones);
+rgw_admin.cc:     ret = store->meta_mgr->list_keys_init(metadata_key, &handle);
+rgw_admin.cc:	ret = store->meta_mgr->list_keys_next(handle, max, user_ids,
+rgw_admin.cc:      store->meta_mgr->list_keys_complete(handle);
+rgw_admin.cc:          cerr << "ERROR: store->list_objects(): " << cpp_strerror(-ret) << std::endl;
+rgw_admin.cc:    int r = store->log_list_init(date, &h);
+rgw_admin.cc:        int r = store->log_list_next(h, &name);
+rgw_admin.cc:      int r = store->log_show_init(oid, &h);
+rgw_admin.cc:      r = store->log_show_next(h, &entry);
+rgw_admin.cc:	r = store->log_show_next(h, &entry);
+rgw_admin.cc:      int r = store->log_remove(oid);
+rgw_admin.cc:    int ret = store->add_bucket_placement(pool);
+rgw_admin.cc:    int ret = store->remove_bucket_placement(pool);
+rgw_admin.cc:    int ret = store->list_placement_set(pools);
+rgw_admin.cc:    ret = store->get_olh(bucket_info, obj, &olh);
+rgw_admin.cc:    ret = store->get_obj_state(&rctx, bucket_info, obj, &state, false); /* don't follow olh */
+rgw_admin.cc:    ret = store->bucket_index_read_olh_log(bucket_info, *state, obj, 0, &log, &is_truncated);
+rgw_admin.cc:    ret = store->bi_get(bucket, obj, bi_index_type, &entry);
+rgw_admin.cc:    ret = store->bi_put(bucket, obj, entry);
+rgw_admin.cc:        ret = store->bi_list(bs, object, marker, max_entries, &entries, &is_truncated);
+rgw_admin.cc:      ret = store->bi_remove(bs);
+rgw_admin.cc:        ldout(store->ctx(), 0) << "WARNING: check_min_obj_stripe_size failed, r=" << ret << dendl;
+rgw_admin.cc:      ret = store->rewrite_obj(bucket_info, obj);
+rgw_admin.cc:      ldout(store->ctx(), 20) << "skipped object" << dendl;
+rgw_admin.cc:    if (!store->process_expire_objects()) {
+rgw_admin.cc:	store->cls_bucket_list_ordered(bucket_info, RGW_NO_SHARD, marker,
+rgw_admin.cc:              ldout(store->ctx(), 0) << "WARNING: check_min_obj_stripe_size failed, r=" << r << dendl;
+rgw_admin.cc:            r = store->rewrite_obj(bucket_info, obj);
+rgw_admin.cc:    int num_logshards = store->ctx()->_conf->rgw_reshard_num_logs;
+rgw_admin.cc:    ret = store->remove_objs_from_index(bucket_info, oid_list);
+rgw_admin.cc:      int ret = store->list_gc_objs(&index, marker, 1000, !include_all, result, &truncated);
+rgw_admin.cc:    int ret = store->process_gc(!include_all);
+rgw_admin.cc:      int ret = store->list_lc_progress(marker, max_entries, &bucket_lc_map);
+rgw_admin.cc:    int ret = store->process_lc();
+rgw_admin.cc:      ret = store->cls_user_reset_stats(user_str);
+rgw_admin.cc:    int ret = store->cls_user_get_header(user_str, &header);
+rgw_admin.cc:    int ret = store->meta_mgr->get(metadata_key, formatter);
+rgw_admin.cc:    ret = store->meta_mgr->put(metadata_key, bl, RGWMetadataHandler::RGWMetadataHandler::APPLY_ALWAYS);
+rgw_admin.cc:    int ret = store->meta_mgr->remove(metadata_key);
+rgw_admin.cc:    int ret = store->meta_mgr->list_keys_init(metadata_key, marker, &handle);
+rgw_admin.cc:      ret = store->meta_mgr->list_keys_next(handle, left, keys, &truncated);
+rgw_admin.cc:        encode_json("marker", store->meta_mgr->get_marker(handle), formatter);
+rgw_admin.cc:    store->meta_mgr->list_keys_complete(handle);
+rgw_admin.cc:    RGWMetadataLog *meta_log = store->meta_mgr->get_log(period_id);
+rgw_admin.cc:          store->meta_mgr->dump_log_entry(entry, formatter);
+rgw_admin.cc:    RGWMetadataLog *meta_log = store->meta_mgr->get_log(period_id);
+rgw_admin.cc:    store->meta_mgr->init_oldest_log_period();
+rgw_admin.cc:    RGWCoroutinesManager crs(store->ctx(), store->get_cr_registry());
+rgw_admin.cc:    RGWHTTPManager http(store->ctx(), crs.get_completion_mgr());
+rgw_admin.cc:    RGWMetadataLog *meta_log = store->meta_mgr->get_log(period_id);
+rgw_admin.cc:    RGWMetaSyncStatusManager sync(store, store->get_async_rados());
+rgw_admin.cc:    RGWMetaSyncStatusManager sync(store, store->get_async_rados());
+rgw_admin.cc:    RGWMetaSyncStatusManager sync(store, store->get_async_rados());
+rgw_admin.cc:    RGWDataSyncStatusManager sync(store, store->get_async_rados(), source_zone);
+rgw_admin.cc:    RGWDataSyncStatusManager sync(store, store->get_async_rados(), source_zone);
+rgw_admin.cc:    int ret = store->get_sync_modules_manager()->create_instance(g_ceph_context, store->get_zone().tier_type, 
+rgw_admin.cc:        store->get_zone_params().tier_config, &sync_module);
+rgw_admin.cc:    RGWDataSyncStatusManager sync(store, store->get_async_rados(), source_zone, sync_module);
+rgw_admin.cc:    if (!store->is_meta_master()) {
+rgw_admin.cc:      ret = store->list_bi_log_entries(bucket_info, shard_id, marker, max_entries - count, entries, &truncated);
+rgw_admin.cc:        ret = store->time_log_list(oid, start_time.to_real_time(), end_time.to_real_time(),
+rgw_admin.cc:          cerr << "ERROR: store->time_log_list(): " << cpp_strerror(-ret) << std::endl;
+rgw_admin.cc:    ret = store->trim_bi_log_entries(bucket_info, shard_id, start_marker, end_marker);
+rgw_admin.cc:    ret = store->get_bi_log_status(bucket_info, shard_id, markers);
+rgw_admin.cc:    RGWCoroutinesManager crs(store->ctx(), store->get_cr_registry());
+rgw_admin.cc:    RGWHTTPManager http(store->ctx(), crs.get_completion_mgr());
+rgw_admin.cc:    configure_bucket_trim(store->ctx(), config);
+rgw_admin.cc:    RGWDataChangesLog *log = store->data_log;
+rgw_admin.cc:    RGWDataChangesLog *log = store->data_log;
+rgw_admin.cc:    RGWDataChangesLog *log = store->data_log;
+rgw_admin.cc:    string oid = store->get_mfa_oid(user_id);
+rgw_admin.cc:    int ret = store->meta_mgr->mutate(rgw_otp_get_handler(), oid, mtime, &objv_tracker,
+rgw_admin.cc:      return store->create_mfa(user_id, config, &objv_tracker, mtime);
+rgw_admin.cc:    string oid = store->get_mfa_oid(user_id);
+rgw_admin.cc:    int ret = store->meta_mgr->mutate(rgw_otp_get_handler(), oid, mtime, &objv_tracker,
+rgw_admin.cc:      return store->remove_mfa(user_id, totp_serial, &objv_tracker, mtime);
+rgw_admin.cc:    int ret = store->get_mfa(user_id, totp_serial, &result);
+rgw_admin.cc:    int ret = store->list_mfa(user_id, &result);
+rgw_admin.cc:    int ret = store->check_mfa(user_id, totp_serial, totp_pin.front());
+rgw_admin.cc:    int ret = store->get_mfa(user_id, totp_serial, &config);
+rgw_admin.cc:    ret = store->otp_get_current_time(user_id, &now);
+rgw_admin.cc:    ret = scan_totp(store->ctx(), now, config, totp_pin, &time_ofs);
+rgw_admin.cc:    string oid = store->get_mfa_oid(user_id);
+rgw_admin.cc:    ret = store->meta_mgr->mutate(rgw_otp_get_handler(), oid, mtime, &objv_tracker,
+rgw_admin.cc:      return store->create_mfa(user_id, config, &objv_tracker, mtime);
+rgw_asio_frontend.cc:  auto cct = env.store->ctx();
+rgw_asio_frontend.cc:      RGWRequest req{env.store->get_new_req_id()};
+rgw_asio_frontend.cc:  CephContext* ctx() const { return env.store->ctx(); }
+rgw_bucket.cc:  rgw_raw_obj obj(store->get_zone_params().user_uid_pool, buckets_obj_id);
+rgw_bucket.cc:    ret = store->cls_user_list_buckets(obj, m, end_marker, max - total, entries, &m, &truncated);
+rgw_bucket.cc:    ret = store->update_containers_stats(m);
+rgw_bucket.cc:      ldout(store->ctx(), 0) << "ERROR: could not get stats for buckets" << dendl;
+rgw_bucket.cc:  rgw_raw_obj obj(store->get_zone_params().user_uid_pool, buckets_obj_id);
+rgw_bucket.cc:  return store->cls_user_sync_bucket_stats(obj, bucket_info);
+rgw_bucket.cc:  int ret = store->get_bucket_info(obj_ctx, tenant_name, bucket_name, bucket_info, NULL);
+rgw_bucket.cc:    ldout(store->ctx(), 0) << "ERROR: could not fetch bucket info: ret=" << ret << dendl;
+rgw_bucket.cc:    ldout(store->ctx(), 0) << "ERROR: could not sync user stats for bucket " << bucket_name << ": ret=" << ret << dendl;
+rgw_bucket.cc:    ret = store->get_bucket_entrypoint_info(obj_ctx, tenant_name, bucket_name, ep, &ot, NULL, &attrs);
+rgw_bucket.cc:      ldout(store->ctx(), 0) << "ERROR: store->get_bucket_entrypoint_info() returned: "
+rgw_bucket.cc:  rgw_raw_obj obj(store->get_zone_params().user_uid_pool, buckets_obj_id);
+rgw_bucket.cc:  ret = store->cls_user_add_bucket(obj, new_bucket);
+rgw_bucket.cc:    ldout(store->ctx(), 0) << "ERROR: error adding bucket to directory: "
+rgw_bucket.cc:  ret = store->put_bucket_entrypoint_info(tenant_name, bucket_name, ep, false, ot, real_time(), &attrs);
+rgw_bucket.cc:    ldout(store->ctx(), 0) << "ERROR: failed unlinking bucket on error cleanup: "
+rgw_bucket.cc:  rgw_raw_obj obj(store->get_zone_params().user_uid_pool, buckets_obj_id);
+rgw_bucket.cc:  ret = store->cls_user_remove_bucket(obj, bucket);
+rgw_bucket.cc:    ldout(store->ctx(), 0) << "ERROR: error removing bucket from directory: "
+rgw_bucket.cc:  ret = store->get_bucket_entrypoint_info(obj_ctx, tenant_name, bucket_name, ep, &ot, NULL, &attrs);
+rgw_bucket.cc:    ldout(store->ctx(), 0) << "bucket entry point user mismatch, can't unlink bucket: " << ep.owner << " != " << user_id << dendl;
+rgw_bucket.cc:  return store->put_bucket_entrypoint_info(tenant_name, bucket_name, ep, false, ot, real_time(), &attrs);
+rgw_bucket.cc:  return store->meta_mgr->put_entry(bucket_meta_handler, bucket_name, bl, exclusive, objv_tracker, mtime, pattrs);
+rgw_bucket.cc:  return store->meta_mgr->put_entry(bucket_instance_meta_handler, entry, bl, exclusive, objv_tracker, mtime, pattrs);
+rgw_bucket.cc:  return store->meta_mgr->remove_entry(bucket_instance_meta_handler, entry, objv_tracker);
+rgw_bucket.cc:    int ret = store->convert_old_bucket_info(obj_ctx, bucket.tenant, bucket.name);
+rgw_bucket.cc:      ldout(store->ctx(), 0) << "ERROR: failed converting old bucket info: " << ret << dendl;
+rgw_bucket.cc:  CephContext *cct = store->ctx();
+rgw_bucket.cc:      ldout(store->ctx(), 0) << "failed to read user buckets: "
+rgw_bucket.cc:      int r = store->get_bucket_info(obj_ctx, user_id.tenant, bucket.name, bucket_info, &mtime);
+rgw_bucket.cc:        ldout(store->ctx(), 0) << "could not get bucket info for bucket=" << bucket << dendl;
+rgw_bucket.cc:  return store->delete_obj(rctx, bucket_info, obj, bucket_info.versioning_status());
+rgw_bucket.cc:  ret = store->get_bucket_info(obj_ctx, bucket.tenant, bucket.name, info, NULL);
+rgw_bucket.cc:  ret = store->get_bucket_stats(info, RGW_NO_SHARD, &bucket_ver, &master_ver, stats, NULL);
+rgw_bucket.cc:  CephContext *cct = store->ctx();
+rgw_bucket.cc:      lderr(store->ctx()) << "ERROR: could not remove non-empty bucket " << bucket.name << dendl;
+rgw_bucket.cc:  ret = store->delete_bucket(info, objv_tracker);
+rgw_bucket.cc:    lderr(store->ctx()) << "ERROR: could not remove bucket " << bucket.name << dendl;
+rgw_bucket.cc:    lderr(store->ctx()) << "ERROR: unable to remove user bucket information" << dendl;
+rgw_bucket.cc:  CephContext *cct = store->ctx();
+rgw_bucket.cc:  ret = store->get_bucket_info(obj_ctx, bucket.tenant, bucket.name, info, NULL);
+rgw_bucket.cc:  ret = store->get_bucket_stats(info, RGW_NO_SHARD, &bucket_ver, &master_ver, stats, NULL);
+rgw_bucket.cc:      ret = store->get_obj_state(&obj_ctx, info, obj, &astate, false);
+rgw_bucket.cc:        lderr(store->ctx()) << "ERROR: get obj state returned with error " << ret << dendl;
+rgw_bucket.cc:        store->obj_to_raw(info.placement_rule, head_obj, &raw_head_obj);
+rgw_bucket.cc:              lderr(store->ctx()) << "ERROR: could not drain handles as aio completion returned with " << ret << dendl;
+rgw_bucket.cc:          ret = store->delete_raw_obj_aio(last_obj, handles);
+rgw_bucket.cc:            lderr(store->ctx()) << "ERROR: delete obj aio failed with " << ret << dendl;
+rgw_bucket.cc:        ret = store->delete_obj_aio(head_obj, info, astate, handles, keep_index_consistent);
+rgw_bucket.cc:          lderr(store->ctx()) << "ERROR: delete obj aio failed with " << ret << dendl;
+rgw_bucket.cc:          lderr(store->ctx()) << "ERROR: could not drain handles as aio completion returned with " << ret << dendl;
+rgw_bucket.cc:    lderr(store->ctx()) << "ERROR: could not drain handles as aio completion returned with " << ret << dendl;
+rgw_bucket.cc:  ret = store->delete_bucket(info, objv_tracker);
+rgw_bucket.cc:    lderr(store->ctx()) << "ERROR: could not remove bucket " << bucket.name << dendl;
+rgw_bucket.cc:    lderr(store->ctx()) << "ERROR: unable to remove user bucket information" << dendl;
+rgw_bucket.cc:  return store->meta_mgr->remove_entry(bucket_meta_handler, key, &objv_tracker);
+rgw_bucket.cc:    int r = store->get_bucket_info(obj_ctx, tenant, bucket_name, bucket_info, NULL);
+rgw_bucket.cc:      ldout(store->ctx(), 0) << "could not get bucket info for bucket=" << bucket_name << dendl;
+rgw_bucket.cc:  const rgw_pool& root_pool = store->get_zone_params().domain_root;
+rgw_bucket.cc:  int r = store->get_bucket_instance_info(obj_ctx, bucket, bucket_info, NULL, &attrs);
+rgw_bucket.cc:      ldout(store->ctx(), 0) << "WARNING: user " << user_info.user_id << " has no display name set" << dendl;
+rgw_bucket.cc:    r = store->set_bucket_owner(bucket_info.bucket, owner);
+rgw_bucket.cc:    r = store->system_obj_set_attr(NULL, obj, RGW_ATTR_ACL, aclbl, &objv_tracker);
+rgw_bucket.cc:    store->get_bucket_instance_obj(bucket, obj_bucket_instance);
+rgw_bucket.cc:    r = store->system_obj_set_attr(NULL, obj_bucket_instance, RGW_ATTR_ACL, aclbl, &objv_tracker);
+rgw_bucket.cc:  int r = store->get_bucket_info(obj_ctx, bucket.tenant, bucket.name, bucket_info, NULL, &attrs);
+rgw_bucket.cc:  r = store->put_bucket_instance_info(bucket_info, false, real_time(), &attrs);
+rgw_bucket.cc:  int r = store->get_bucket_instance_info(obj_ctx, bucket, bucket_info, nullptr, nullptr);
+rgw_bucket.cc:    ldout(store->ctx(), 0) << "ERROR: " << __func__ << "(): get_bucket_instance_info(bucket=" << bucket << ") returned r=" << r << dendl;
+rgw_bucket.cc:	int r = store->remove_objs_from_index(bucket_info, objs_to_unlink);
+rgw_bucket.cc:    int r = store->remove_objs_from_index(bucket_info, objs_to_unlink);
+rgw_bucket.cc:  store->cls_obj_set_bucket_tag_timeout(bucket_info, BUCKET_TAG_TIMEOUT);
+rgw_bucket.cc:    int r = store->cls_bucket_list_ordered(bucket_info, RGW_NO_SHARD,
+rgw_bucket.cc:  store->cls_obj_set_bucket_tag_timeout(bucket_info, 0);
+rgw_bucket.cc:  int r = store->bucket_check_index(bucket_info, &existing_stats, &calculated_stats);
+rgw_bucket.cc:    r = store->bucket_rebuild_index(bucket_info);
+rgw_bucket.cc:    ldout(store->ctx(), 0) << "ERROR: caught buffer::error, could not decode policy" << dendl;
+rgw_bucket.cc:  int ret = store->get_bucket_info(obj_ctx, bucket.tenant, bucket.name, bucket_info, NULL, &attrs);
+rgw_bucket.cc:  RGWAccessControlPolicy policy(store->ctx());
+rgw_bucket.cc:  RGWAccessControlPolicy_S3 policy(store->ctx());
+rgw_bucket.cc:    lderr(store->ctx()) << "ERROR: " << err_msg << dendl;
+rgw_bucket.cc:  int r = store->get_bucket_info(obj_ctx, tenant_name, bucket_name, bucket_info, &mtime);
+rgw_bucket.cc:  int ret = store->get_bucket_stats(bucket_info, RGW_NO_SHARD, &bucket_ver, &master_ver, stats, &max_marker);
+rgw_bucket.cc:    store->ctx()->_conf->rgw_list_buckets_max_chunk;
+rgw_bucket.cc:    store->ctx()->_conf->rgw_safe_max_objects_per_shard;
+rgw_bucket.cc:    store->ctx()->_conf->rgw_shard_warning_threshold;
+rgw_bucket.cc:	ret = store->get_bucket_info(obj_ctx, bucket.tenant, bucket.name,
+rgw_bucket.cc:	ret = store->get_bucket_stats(info, RGW_NO_SHARD, &bucket_ver,
+rgw_bucket.cc:  CephContext *cct = store->ctx();
+rgw_bucket.cc:    if (store->list_buckets_init(&handle) >= 0) {
+rgw_bucket.cc:      while (store->list_buckets_next(obj, &handle) >= 0) {
+rgw_bucket.cc:  if (!store->need_to_log_data())
+rgw_bucket.cc:    store->time_log_prepare_entry(entry, ut, section, change.key, bl);
+rgw_bucket.cc:    int ret = store->time_log_add(oids[miter->first], entries, NULL);
+rgw_bucket.cc:      lderr(cct) << "ERROR: store->time_log_add() returned " << ret << dendl;
+rgw_bucket.cc:  if (!store->need_to_log_data())
+rgw_bucket.cc:    ret = store->time_log_add(oid, now, section, change.key, bl);
+rgw_bucket.cc:  int ret = store->time_log_list(oids[shard], start_time, end_time,
+rgw_bucket.cc:  int ret = store->time_log_info(oid, &header);
+rgw_bucket.cc:  ret = store->time_log_trim(oids[shard_id], start_time, end_time, start_marker, end_marker);
+rgw_bucket.cc:    int ret = store->time_log_trim(oids[shard], start_time, end_time, start_marker, end_marker);
+rgw_bucket.cc:    int ret = store->get_bucket_entrypoint_info(obj_ctx, tenant_name, bucket_name, be, &ot, &mtime, &attrs);
+rgw_bucket.cc:    int ret = store->get_bucket_entrypoint_info(obj_ctx, tenant_name, bucket_name, old_be, &old_ot, &orig_mtime, &attrs);
+rgw_bucket.cc:    ret = store->put_bucket_entrypoint_info(tenant_name, bucket_name, be, false, objv_tracker, mtime, &attrs);
+rgw_bucket.cc:    int ret = store->get_bucket_entrypoint_info(obj_ctx, tenant_name, bucket_name, be, &objv_tracker, NULL, NULL);
+rgw_bucket.cc:      lderr(store->ctx()) << "could not unlink bucket=" << entry << " owner=" << be.owner << dendl;
+rgw_bucket.cc:      lderr(store->ctx()) << "could not delete bucket=" << entry << dendl;
+rgw_bucket.cc:    pool = store->get_zone_params().domain_root;
+rgw_bucket.cc:    int ret = store->list_raw_objects_init(store->get_zone_params().domain_root, marker,
+rgw_bucket.cc:    int ret = store->list_raw_objects_next(no_filter, max, info->ctx,
+rgw_bucket.cc:    return info->store->list_raw_objs_get_cursor(info->ctx);
+rgw_bucket.cc:    int ret = store->get_bucket_instance_info(obj_ctx, oid, bci.info, &mtime, &bci.attrs);
+rgw_bucket.cc:    int ret = store->get_bucket_instance_info(obj_ctx, entry, old_bci.info,
+rgw_bucket.cc:      ret = store->select_bucket_location_by_rule(bci.info.placement_rule, &rule_info);
+rgw_bucket.cc:        ldout(store->ctx(), 0) << "ERROR: select_bucket_placement() returned " << ret << dendl;
+rgw_bucket.cc:      ret = store->stop_bi_log_entries(bci.info, -1);
+rgw_bucket.cc:	   lderr(store->ctx()) << "ERROR: failed writing bilog" << dendl;
+rgw_bucket.cc:        ret = store->resync_bi_log_entries(bci.info, -1);
+rgw_bucket.cc:	   lderr(store->ctx()) << "ERROR: failed writing bilog" << dendl;
+rgw_bucket.cc:        ret = store->data_log->add_entry(bci.info.bucket, shard_id);
+rgw_bucket.cc:	   lderr(store->ctx()) << "ERROR: failed writing data log" << dendl;
+rgw_bucket.cc:    ret = store->put_bucket_instance_info(bci.info, false, mtime, &bci.attrs);
+rgw_bucket.cc:    ret = store->init_bucket_index(bci.info, bci.info.num_shards);
+rgw_bucket.cc:    int ret = store->get_bucket_instance_info(obj_ctx, entry, info, NULL, NULL);
+rgw_bucket.cc:    pool = store->get_zone_params().domain_root;
+rgw_bucket.cc:    int ret = store->list_raw_objects_init(store->get_zone_params().domain_root, marker,
+rgw_bucket.cc:    int ret = store->list_raw_objects_next(no_filter, max, info->ctx,
+rgw_bucket.cc:    return info->store->list_raw_objs_get_cursor(info->ctx);
+rgw_bucket.h:    return store->lock_exclusive(store->get_zone_params().log_pool, oids[shard_id], duration, zone_id, owner_id);
+rgw_bucket.h:    return store->unlock(store->get_zone_params().log_pool, oids[shard_id], zone_id, owner_id);
+rgw_cache.cc:  ret = store->rados.get_pool_stats(pool_names, stats);
+rgw_cache.cc:  int r = store->get_bucket_info(obj_ctx, "", dest_bucket_name, bucket_info, NULL, &bucket_attrs); 
+rgw_cache.cc:		//int ret = rgw_get_system_obj(store, obj_ctx, store->get_zone_params().user_uid_pool, userid, bl, &objv_tracker, pmtime, NULL, NULL);
+rgw_cache.cc:  ret = store->get_bucket_info(obj_ctx, "", dest_obj_name, dest_bucket_info, NULL, &dest_attrs);
+rgw_cache.cc:    ret = store->get_obj_state(&obj_ctx, dest_bucket_info, dest_obj, &dest_state, false);
+rgw_cache.cc:		int ret = store->get_bucket_info(obj_ctx, src_tenant_name, src_bucket_name, src_bucket_info, NULL, &src_attrs);
+rgw_cache.cc:	ret = rgw_get_system_obj(store, obj_ctx2, store->get_zone_params().user_uid_pool, userid, bl, &objv_tracker, pmtime, NULL, NULL);
+rgw_cache.cc:	ret = store->get_bucket_info(obj_ctx, src_tenant_name, src_bucket_name, src_bucket_info, NULL, &src_attrs);
+rgw_cache.cc:	ret = store->get_obj_state(&obj_ctx, src_bucket_info, src_obj, &astate, NULL);
+rgw_civetweb_frontend.cc:  RGWRequest req(env.store->get_new_req_id());
+rgw_cr_rados.cc:  : store(_store), m_tp(store->ctx(), "RGWAsyncRadosProcessor::m_tp", "rados_async", num_threads),
+rgw_cr_rados.cc:    req_throttle(store->ctx(), "rgw_async_rados_ops", num_threads * 2),
+rgw_cr_rados.cc:  return store->get_system_obj(obj_ctx, read_state, &objv_tracker,
+rgw_cr_rados.cc:  return store->put_system_obj_data(NULL, obj, bl, -1, exclusive, &objv_tracker);
+rgw_cr_rados.cc:  return store->system_obj_set_attrs(nullptr, obj, attrs, nullptr, &objv_tracker);
+rgw_cr_rados.cc:                      : RGWConsumerCR<string>(_store->ctx()), async_rados(_async_rados),
+rgw_cr_rados.cc:  int r = store->get_raw_obj_ref(obj, &ref);
+rgw_cr_rados.cc:    lderr(store->ctx()) << "ERROR: failed to get ref for (" << obj << ") ret=" << r << dendl;
+rgw_cr_rados.cc:  int r = store->get_raw_obj_ref(obj, &ref);
+rgw_cr_rados.cc:    lderr(store->ctx()) << "ERROR: failed to get ref for (" << obj << ") ret=" << r << dendl;
+rgw_cr_rados.cc:                      map<string, bufferlist>& _entries) : RGWSimpleCoroutine(_store->ctx()),
+rgw_cr_rados.cc:  int r = store->get_raw_obj_ref(obj, &ref);
+rgw_cr_rados.cc:    lderr(store->ctx()) << "ERROR: failed to get ref for (" << obj << ") ret=" << r << dendl;
+rgw_cr_rados.cc:  : RGWSimpleCoroutine(_store->ctx()), store(_store), obj(_obj),
+rgw_cr_rados.cc:  int r = store->get_raw_obj_ref(obj, &result->ref);
+rgw_cr_rados.cc:    lderr(store->ctx()) << "ERROR: failed to get ref for (" << obj << ") ret=" << r << dendl;
+rgw_cr_rados.cc:                      const set<string>& _keys) : RGWSimpleCoroutine(_store->ctx()),
+rgw_cr_rados.cc:  int r = store->get_raw_obj_ref(obj, &ref);
+rgw_cr_rados.cc:    lderr(store->ctx()) << "ERROR: failed to get ref for (" << obj << ") ret=" << r << dendl;
+rgw_cr_rados.cc:  : RGWSimpleCoroutine(store->ctx()), store(store), obj(obj)
+rgw_cr_rados.cc:  auto rados = store->get_rados_handle();
+rgw_cr_rados.cc:                      uint32_t _duration) : RGWSimpleCoroutine(_store->ctx()),
+rgw_cr_rados.cc:                      const string& _cookie) : RGWSimpleCoroutine(_store->ctx()),
+rgw_cr_rados.cc:  int r = store->get_bucket_instance_from_oid(obj_ctx, oid, bucket_info, NULL, NULL);
+rgw_cr_rados.cc:    ldout(store->ctx(), 0) << "ERROR: failed to get bucket instance info for "
+rgw_cr_rados.cc:  : RGWSimpleCoroutine(store->ctx()), bs(store),
+rgw_cr_rados.cc:  snprintf(buf, sizeof(buf), ".%lld", (long long)store->instance_id());
+rgw_cr_rados.cc:  int r = store->fetch_remote_obj(obj_ctx,
+rgw_cr_rados.cc:    ldout(store->ctx(), 0) << "store->fetch_remote_obj() returned r=" << r << dendl;
+rgw_cr_rados.cc:  snprintf(buf, sizeof(buf), ".%lld", (long long)store->instance_id());
+rgw_cr_rados.cc:  int r = store->stat_remote_obj(obj_ctx,
+rgw_cr_rados.cc:    ldout(store->ctx(), 0) << "store->fetch_remote_obj() returned r=" << r << dendl;
+rgw_cr_rados.cc:  ldout(store->ctx(), 0) << __func__ << "(): deleting obj=" << obj << dendl;
+rgw_cr_rados.cc:  int ret = store->get_obj_state(&obj_ctx, bucket_info, obj, &state);
+rgw_cr_rados.cc:    ldout(store->ctx(), 20) << __func__ << "(): get_obj_state() obj=" << obj << " returned ret=" << ret << dendl;
+rgw_cr_rados.cc:    ldout(store->ctx(), 20) << __func__ << "(): skipping object removal obj=" << obj << " (obj mtime=" << state->mtime << ", request timestamp=" << timestamp << ")" << dendl;
+rgw_cr_rados.cc:      ldout(store->ctx(), 0) << "ERROR: could not decode policy, caught buffer::error" << dendl;
+rgw_cr_rados.cc:    ldout(store->ctx(), 20) << __func__ << "(): delete_obj() obj=" << obj << " returned ret=" << ret << dendl;
+rgw_cr_rados.cc:        ldout(store->ctx(), 20) << *this << ": couldn't lock " << obj << ":" << lock_name << ": retcode=" << retcode << dendl;
+rgw_cr_rados.cc:                      const cls_log_entry& entry) : RGWSimpleCoroutine(_store->ctx()),
+rgw_cr_rados.cc:  return store->time_log_add(oid, entries, cn->completion(), true);
+rgw_cr_rados.cc:  : RGWSimpleCoroutine(store->ctx()), store(store), oid(oid),
+rgw_cr_rados.cc:  return store->time_log_trim(oid, start_time, end_time, from_marker,
+rgw_cr_rados.cc:    cct(store->ctx()), last_trim_marker(last_trim_marker)
+rgw_cr_rados.cc:  store->obj_to_raw(bucket_info.placement_rule, obj, &raw_obj);
+rgw_cr_rados.cc:  return store->raw_obj_stat(raw_obj, psize, pmtime, pepoch,
+rgw_cr_rados.cc:  : RGWSimpleCoroutine(store->ctx()), store(store), async_rados(async_rados),
+rgw_cr_rados.cc:  : RGWSimpleCoroutine(store->ctx()), store(store), obj(obj),
+rgw_cr_rados.cc:  int r = store->get_raw_obj_ref(obj, &ref);
+rgw_cr_rados.cc:    lderr(store->ctx()) << "ERROR: failed to get ref for (" << obj << ") ret=" << r << dendl;
+rgw_cr_rados.h:    : RGWSimpleCoroutine(_store->ctx()), async_rados(_async_rados), store(_store),
+rgw_cr_rados.h:		      map<string, bufferlist> *_pattrs) : RGWSimpleCoroutine(_store->ctx()),
+rgw_cr_rados.h:    : RGWSimpleCoroutine(_store->ctx()), async_rados(_async_rados),
+rgw_cr_rados.h:    : RGWSimpleCoroutine(_store->ctx()), async_rados(_async_rados),
+rgw_cr_rados.h:    : RGWSimpleCoroutine(_store->ctx()), async_rados(_async_rados), store(_store),
+rgw_cr_rados.h:    : RGWSimpleCoroutine(_store->ctx()), async_rados(_async_rados), store(_store),
+rgw_cr_rados.h:                      bool _if_newer, rgw_zone_set *_zones_trace) : RGWSimpleCoroutine(_store->ctx()), cct(_store->ctx()),
+rgw_cr_rados.h:                      map<string, string> *_pheaders) : RGWSimpleCoroutine(_store->ctx()), cct(_store->ctx()),
+rgw_cr_rados.h:                      rgw_zone_set *_zones_trace) : RGWSimpleCoroutine(_store->ctx()), cct(_store->ctx()),
+rgw_cr_rados.h:    : RGWCoroutine(_store->ctx()), async_rados(_async_rados), store(_store),
+rgw_data_sync.cc:               rgw_raw_obj(env->store->get_zone_params().log_pool, RGWDataSyncStatusManager::shard_obj_name(env->source_zone, shard_id)),
+rgw_data_sync.cc:  spawn(new RGWRadosGetOmapKeysCR(env->store, rgw_raw_obj(env->store->get_zone_params().log_pool, error_oid),
+rgw_data_sync.cc:                          rgw_raw_obj(sync_env->store->get_zone_params().log_pool, RGWDataSyncStatusManager::sync_status_oid(sync_env->source_zone)),
+rgw_data_sync.cc:    : RGWSimpleCoroutine(env->store->ctx()), sync_env(env), http_op(NULL),
+rgw_data_sync.cc:      ldout(store->ctx(), 0) << "ERROR: failed to read from " << p << dendl;
+rgw_data_sync.cc:      ldout(sync_env->store->ctx(), 0) << "ERROR: failed to list remote datalog shard, ret=" << ret << dendl;
+rgw_data_sync.cc:      pool(store->get_zone_params().log_pool),
+rgw_data_sync.cc:        RGWRESTConn *conn = store->get_zone_conn_by_id(sync_env->source_zone);
+rgw_data_sync.cc:  sync_env.init(dpp, store->ctx(), store, _conn, async_rados, &http_manager, _error_logger,
+rgw_data_sync.cc:  RGWCoroutinesManager crs(store->ctx(), store->get_cr_registry());
+rgw_data_sync.cc:  RGWHTTPManager http_manager(store->ctx(), crs.get_completion_mgr());
+rgw_data_sync.cc:  RGWCoroutinesManager crs(store->ctx(), store->get_cr_registry());
+rgw_data_sync.cc:  RGWHTTPManager http_manager(store->ctx(), crs.get_completion_mgr());
+rgw_data_sync.cc:  RGWCoroutinesManager crs(store->ctx(), store->get_cr_registry());
+rgw_data_sync.cc:  RGWHTTPManager http_manager(store->ctx(), crs.get_completion_mgr());
+rgw_data_sync.cc:        call(new RGWReadRESTResourceCR<list<string> >(store->ctx(), sync_env->conn, sync_env->http_manager,
+rgw_data_sync.cc:						  store->get_zone_params().log_pool,
+rgw_data_sync.cc:          call(new RGWReadRESTResourceCR<bucket_instance_meta_info>(store->ctx(), sync_env->conn, sync_env->http_manager, path, pairs, &meta_info));
+rgw_data_sync.cc:            yield entries_index->append(s, store->data_log->get_log_shard_id(meta_info.data.get_bucket_info().bucket, i));
+rgw_data_sync.cc:          yield entries_index->append(key, store->data_log->get_log_shard_id(meta_info.data.get_bucket_info().bucket, -1));
+rgw_data_sync.cc:                                                                rgw_raw_obj(store->get_zone_params().log_pool, RGWDataSyncStatusManager::shard_obj_name(sync_env->source_zone, shard_id)),
+rgw_data_sync.cc:                                                           rgw_raw_obj(store->get_zone_params().log_pool, marker_oid),
+rgw_data_sync.cc:                                            rgw_raw_obj(store->get_zone_params().log_pool, status_oid),
+rgw_data_sync.cc:                                                             rgw_raw_obj(store->get_zone_params().log_pool, status_oid),
+rgw_data_sync.cc:                                                          rgw_raw_obj(store->get_zone_params().log_pool, RGWDataSyncStatusManager::shard_obj_name(sync_env->source_zone, shard_id)),
+rgw_data_sync.cc:            RGWDataSyncShardControlCR *cr = new RGWDataSyncShardControlCR(sync_env, sync_env->store->get_zone_params().log_pool,
+rgw_data_sync.cc:                                                         rgw_raw_obj(store->get_zone_params().log_pool, RGWDataSyncStatusManager::sync_status_oid(sync_env->source_zone)),
+rgw_data_sync.cc:  auto zone_def_iter = store->zone_by_id.find(source_zone);
+rgw_data_sync.cc:  if (zone_def_iter == store->zone_by_id.end()) {
+rgw_data_sync.cc:  if (!store->get_sync_modules_manager()->supports_data_export(zone_def.tier_type)) {
+rgw_data_sync.cc:  RGWZoneParams& zone_params = store->get_zone_params();
+rgw_data_sync.cc:    sync_module = store->get_sync_module();
+rgw_data_sync.cc:  conn = store->get_zone_conn_by_id(source_zone);
+rgw_data_sync.cc:  int r = source_log.init(source_zone, conn, error_logger, store->get_sync_tracer(), sync_module);
+rgw_data_sync.cc:  sync_env.init(dpp, store->ctx(), store, conn, async_rados, http_manager,
+rgw_data_sync.cc:        rgw_raw_obj obj(store->get_zone_params().log_pool, sync_status_oid);
+rgw_data_sync.cc:                                                   rgw_raw_obj(sync_env->store->get_zone_params().log_pool, oid),
+rgw_data_sync.cc:      yield call(new RGWRadosGetOmapKeysCR(store, rgw_raw_obj(store->get_zone_params().log_pool, error_oid), 
+rgw_data_sync.cc:                      rgw_raw_obj(store->get_zone_params().log_pool, status_oid),
+rgw_data_sync.cc:  RGWCoroutinesManager crs(store->ctx(), store->get_cr_registry());
+rgw_data_sync.cc:  RGWHTTPManager http_manager(store->ctx(), crs.get_completion_mgr());
+rgw_data_sync.cc:  RGWCoroutinesStack* recovering_stack = new RGWCoroutinesStack(store->ctx(), &crs);
+rgw_data_sync.cc:  RGWCoroutinesStack* pending_stack = new RGWCoroutinesStack(store->ctx(), &crs);
+rgw_data_sync.cc:                                          rgw_raw_obj(store->get_zone_params().log_pool, marker_oid),
+rgw_data_sync.cc:                                          rgw_raw_obj(store->get_zone_params().log_pool, marker_oid),
+rgw_data_sync.cc:    zones_trace.insert(sync_env->store->get_zone().id);
+rgw_data_sync.cc:                                            rgw_raw_obj(store->get_zone_params().log_pool, status_oid),
+rgw_data_sync.cc:      status_oid(status_oid), zone_id(_sync_env->store->get_zone().id),
+rgw_data_sync.cc:                                              rgw_raw_obj(store->get_zone_params().log_pool, status_oid),
+rgw_data_sync.cc:        meta_sync_env.init(sync_env->dpp, cct, sync_env->store, sync_env->store->rest_master_conn, sync_env->async_rados,
+rgw_data_sync.cc:  conn = store->get_zone_conn_by_id(source_zone);
+rgw_data_sync.cc:  ret = cr_mgr.run(new RGWReadRESTResourceCR<bucket_instance_meta_info>(store->ctx(), conn, &http_manager, path, pairs, &result));
+rgw_data_sync.cc:  auto async_rados = store->get_async_rados();
+rgw_data_sync.cc:    ret = l->init(source_zone, conn, bucket, (num_shards ? i : -1), error_logger, store->get_sync_tracer(), sync_module);
+rgw_data_sync.cc:    RGWCoroutinesStack *stack = new RGWCoroutinesStack(store->ctx(), &cr_mgr);
+rgw_data_sync.cc:    RGWCoroutinesStack *stack = new RGWCoroutinesStack(store->ctx(), &cr_mgr);
+rgw_data_sync.cc:    RGWCoroutinesStack *stack = new RGWCoroutinesStack(store->ctx(), &cr_mgr);
+rgw_data_sync.cc:    : RGWShardCollectCR(store->ctx(), max_concurrent_shards),
+rgw_data_sync.cc:  env.init(dpp, store->ctx(), store, nullptr, store->get_async_rados(),
+rgw_data_sync.cc:  RGWCoroutinesManager crs(store->ctx(), store->get_cr_registry());
+rgw_data_sync.cc:    : RGWCoroutine(store->ctx()), store(store), http(http),
+rgw_data_sync.cc:      zone_id(store->get_zone().id),
+rgw_data_sync.cc:      peer_status(store->zone_conn_map.size()),
+rgw_data_sync.cc:      for (auto& c : store->zone_conn_map) {
+rgw_data_sync.cc:        spawn(new TrimCR(store, store->data_log->get_oid(i),
+rgw_data_sync.cc:    : RGWCoroutine(store->ctx()), store(store), http(http),
+rgw_data_sync.cc:      lock_oid(store->data_log->get_oid(0)),
+rgw_data_sync.cc:      yield call(new RGWSimpleRadosLockCR(store->get_async_rados(), store,
+rgw_data_sync.cc:                                          rgw_raw_obj(store->get_zone_params().log_pool, lock_oid),
+rgw_data_sync.h:    : RGWCoroutinesManager(_store->ctx(), _store->get_cr_registry()),
+rgw_data_sync.h:      http_manager(store->ctx(), completion_mgr),
+rgw_data_sync.h:  CephContext *get_cct() const override { return store->ctx(); }
+rgw_data_sync.h:    : RGWCoroutinesManager(_store->ctx(), _store->get_cr_registry()),
+rgw_data_sync.h:                                                                                     cr_mgr(_store->ctx(), _store->get_cr_registry()),
+rgw_data_sync.h:                                                                                     http_manager(store->ctx(), cr_mgr.get_completion_mgr()),
+rgw_data_sync.h:  CephContext *get_cct() const override { return store->ctx(); }
+rgw_fcgi_process.cc:    RGWFCGXRequest* req = new RGWFCGXRequest(store->get_new_req_id(), &qr);
+rgw_gc.cc:    return store->gc_operate(obj_names[i], &op);
+rgw_gc.cc:  return store->gc_aio_operate(obj_names[i], &op);
+rgw_gc.cc:    return store->gc_operate(obj_names[i], &op);
+rgw_gc.cc:  return store->gc_aio_operate(obj_names[i], &op);
+rgw_gc.cc:  return store->gc_aio_operate(obj_names[index], &op, pc);
+rgw_gc.cc:    int ret = cls_rgw_gc_list(store->gc_pool_ctx, obj_names[*index], marker, max - result.size(), expired_only, entries, truncated, next_marker);
+rgw_gc.cc:  int ret = l.lock_exclusive(&store->gc_pool_ctx, obj_names[index]);
+rgw_gc.cc:    ret = cls_rgw_gc_list(store->gc_pool_ctx, obj_names[index], marker, max, expired_only, entries, &truncated, next_marker);
+rgw_gc.cc:	  ret = rgw_init_ioctx(store->get_rados_handle(), obj.pool, *ctx);
+rgw_gc.cc:          ldout(store->ctx(), 0) << "WARNING: failed to schedule deletion for oid=" << oid << dendl;
+rgw_gc.cc:  l.unlock(&store->gc_pool_ctx, obj_names[index]);
+rgw_gc.cc:  RGWGCIOManager io_manager(store->ctx(), this);
+rgw_lc.cc:    int ret = cls_rgw_lc_list(store->lc_pool_ctx, obj_names[index], marker, MAX_LC_LIST_ENTRIES, entries);
+rgw_lc.cc:      ret = cls_rgw_lc_set_entry(store->lc_pool_ctx, obj_names[index],  entry);
+rgw_lc.cc:          ldout(cct, 0) << "ERROR: store->list_objects():" <<dendl;
+rgw_lc.cc:  int ret = store->get_bucket_info(obj_ctx, bucket_tenant, bucket_name, bucket_info, NULL, &bucket_attrs);
+rgw_lc.cc:          ldout(cct, 0) << "ERROR: store->list_objects():" <<dendl;
+rgw_lc.cc:            int ret = store->get_obj_state(&rctx, bucket_info, obj, &state, false);
+rgw_lc.cc:          ldout(cct, 0) << "ERROR: store->list_objects():" <<dendl;
+rgw_lc.cc:              int ret = store->get_obj_state(&rctx, bucket_info, obj, &state, false);
+rgw_lc.cc:    int ret = l.lock_exclusive(&store->lc_pool_ctx, obj_names[index]);
+rgw_lc.cc:      ret = cls_rgw_lc_rm_entry(store->lc_pool_ctx, obj_names[index],  entry);
+rgw_lc.cc:    ret = cls_rgw_lc_set_entry(store->lc_pool_ctx, obj_names[index],  entry);
+rgw_lc.cc:    l.unlock(&store->lc_pool_ctx, obj_names[index]);
+rgw_lc.cc:    int ret = cls_rgw_lc_list(store->lc_pool_ctx, obj_names[index], marker, max_entries, entries);
+rgw_lc.cc:    int ret = l.lock_exclusive(&store->lc_pool_ctx, obj_names[index]);
+rgw_lc.cc:    ret = cls_rgw_lc_get_head(store->lc_pool_ctx, obj_names[index], head);
+rgw_lc.cc:    ret = cls_rgw_lc_get_next_entry(store->lc_pool_ctx, obj_names[index], head.marker, entry);
+rgw_lc.cc:    ret = cls_rgw_lc_set_entry(store->lc_pool_ctx, obj_names[index],  entry);
+rgw_lc.cc:    ret = cls_rgw_lc_put_head(store->lc_pool_ctx, obj_names[index],  head);
+rgw_lc.cc:    l.unlock(&store->lc_pool_ctx, obj_names[index]);
+rgw_lc.cc:    l.unlock(&store->lc_pool_ctx, obj_names[index]);
+rgw_lib.h:      get_state()->req_id = store->unique_id(id);
+rgw_lib.h:      get_state()->trans_id = store->unique_trans_id(id);
+rgw_lib.h:	get_state()->req_id = store->unique_id(id);
+rgw_lib.h:	get_state()->trans_id = store->unique_trans_id(id);
+rgw_loadgen_process.cc:    new RGWLoadGenRequest(store->get_new_req_id(), method, resource,
+rgw_log.cc:    store->log_usage(old_map);
+rgw_log.cc:    rgw_raw_obj obj(store->get_zone_params().log_pool, oid);
+rgw_log.cc:    ret = store->append_async(obj, bl.length(), bl);
+rgw_log.cc:      ret = store->create_pool(store->get_zone_params().log_pool);
+rgw_log.cc:      ret = store->append_async(obj, bl.length(), bl);
+rgw_main.cc:  RGWSyncModuleInstanceRef sync_module = store->get_sync_module();
+rgw_main.cc:  rgw_rest_init(g_ceph_context, store, store->get_zonegroup());
+rgw_main.cc:  rgw_bucket_init(store->meta_mgr);
+rgw_main.cc:      if (store->get_zonegroup().zones.size() > 1) {
+rgw_main.cc:  r = store->register_to_service_map("rgw", service_map_meta);
+rgw_main.cc:  RGWRealmWatcher realm_watcher(g_ceph_context, store->realm);
+rgw_metadata.cc:  if (!store->need_to_log_metadata())
+rgw_metadata.cc:  store->shard_name(prefix, cct->_conf->rgw_md_log_max_shards, hash_key, oid, &shard_id);
+rgw_metadata.cc:  return store->time_log_add(oid, now, section, key, bl);
+rgw_metadata.cc:  store->shard_name(prefix, shard_id, oid);
+rgw_metadata.cc:  return store->time_log_add(oid, entries, completion, false);
+rgw_metadata.cc:  int ret = store->time_log_list(ctx->cur_oid, ctx->from_time, ctx->end_time,
+rgw_metadata.cc:  int ret = store->time_log_info(oid, &header);
+rgw_metadata.cc:  return store->time_log_info_async(completion->get_io_ctx(), oid,
+rgw_metadata.cc:  ret = store->time_log_trim(oid, from_time, end_time, start_marker, end_marker);
+rgw_metadata.cc:  return store->lock_exclusive(store->get_zone_params().log_pool, oid, duration, zone_id, owner_id);
+rgw_metadata.cc:  return store->unlock(store->get_zone_params().log_pool, oid, zone_id, owner_id);
+rgw_metadata.cc:    store->meta_mgr->get_sections(sections);
+rgw_metadata.cc:  auto& pool = store->get_zone_params().log_pool;
+rgw_metadata.cc:    ret = store->delete_system_obj(obj);
+rgw_metadata.cc:      ldout(store->ctx(), 0) << "ERROR: meta history is empty, but cannot remove it (" << cpp_strerror(-ret) << ")" << dendl;
+rgw_metadata.cc:    ldout(store->ctx(), 1) << "failed to decode the mdlog history: "
+rgw_metadata.cc:  auto& pool = store->get_zone_params().log_pool;
+rgw_metadata.cc:    : RGWCoroutine(store->ctx()), store(store), cursor(cursor),
+rgw_metadata.cc:        rgw_raw_obj obj{store->get_zone_params().log_pool,
+rgw_metadata.cc:        call(new ReadCR(store->get_async_rados(), store, obj,
+rgw_metadata.cc:      *cursor = store->period_history->lookup(state.oldest_realm_epoch);
+rgw_metadata.cc:    : RGWCoroutine(store->ctx()), store(store), cursor(cursor), objv(objv)
+rgw_metadata.cc:        rgw_raw_obj obj{store->get_zone_params().log_pool,
+rgw_metadata.cc:        call(new WriteCR(store->get_async_rados(), store, obj, state, objv));
+rgw_metadata.cc:    : RGWCoroutine(store->ctx()),
+rgw_metadata.cc:  auto cct = store->ctx();
+rgw_metadata.cc:  auto cursor = store->period_history->get_current();
+rgw_metadata.cc:      int r = store->period_puller->pull(predecessor, period);
+rgw_metadata.cc:      auto prev = store->period_history->insert(std::move(period));
+rgw_metadata.cc:  auto cursor = store->period_history->lookup(state.oldest_realm_epoch);
+rgw_metadata.cc:  ret = store->period_puller->pull(state.oldest_period_id, period);
+rgw_metadata.cc:  return store->period_history->attach(std::move(period));
+rgw_metadata.cc:    ldout(store->ctx(), 1) << "failed to read mdlog history: "
+rgw_metadata.cc:  ldout(store->ctx(), 10) << "read mdlog history with oldest period id="
+rgw_metadata.cc:  return store->period_history->lookup(state.oldest_realm_epoch);
+rgw_metadata.cc:      objv_tracker->generate_new_write_ver(store->ctx());
+rgw_metadata.cc:  return store->lock_exclusive(pool, oid, duration, zone_id, owner_id);  
+rgw_metadata.cc:  return store->unlock(pool, oid, zone_id, owner_id);  
+rgw_metadata.cc:  rgw_pool heap_pool(store->get_zone_params().metadata_heap);
+rgw_metadata.cc:    ldout(store->ctx(), 0) << "ERROR: rgw_put_system_obj() oid=" << oid << " returned ret=" << ret << dendl;
+rgw_metadata.cc:  rgw_pool heap_pool(store->get_zone_params().metadata_heap);
+rgw_metadata.cc:  int ret = store->delete_system_obj(obj);
+rgw_metadata.cc:    ldout(store->ctx(), 0) << "ERROR: store->delete_system_obj() oid=" << oid << " returned ret=" << ret << dendl;
+rgw_metadata.cc:    ldout(store->ctx(), 0) << "ERROR: " << __func__ << ": store_in_heap() key=" << key << " returned ret=" << ret << dendl;
+rgw_metadata.cc:      ldout(store->ctx(), 0) << "ERROR: " << __func__ << ": remove_from_heap() key=" << key << " returned ret=" << r << dendl;
+rgw_metadata.cc:  ret = store->delete_system_obj(obj, objv_tracker);
+rgw_metadata.cc:  *shard_id = store->key_to_shard_id(hash_key, cct->_conf->rgw_md_log_max_shards);
+rgw_multi.cc:  store->obj_to_raw(bucket_info.placement_rule, obj, &raw_obj);
+rgw_multi.cc:    ret = store->omap_get_vals(raw_obj, header, p, num_parts + 1, parts_map);
+rgw_multi.cc:    ret = store->omap_get_all(raw_obj, header, parts_map);
+rgw_multi.cc:        ret = store->delete_obj(*obj_ctx, bucket_info, obj, 0);
+rgw_multi.cc:        store->update_gc_chain(meta_obj, obj_part.manifest, &chain);
+rgw_multi.cc:  ret = store->send_chain_to_gc(chain, mp_obj.get_upload_id() , false);  // do it async
+rgw_multi.cc:        ldout(store->ctx(),0) << "WARNING : aborted " << num_deleted << " incomplete multipart uploads" << dendl;
+rgw_object_expirer.cc:  rgw_bucket_init(store->meta_mgr);
+rgw_object_expirer_core.cc:  int ret = store->get_bucket_instance_info(obj_ctx, bucket_instance_id,
+rgw_object_expirer_core.cc:    ldout(store->ctx(), 15) << "NOTICE: cannot find bucket = " \
+rgw_object_expirer_core.cc:    ldout(store->ctx(),  1) << "ERROR: could not init bucket = " \
+rgw_object_expirer_core.cc:  store->set_atomic(&rctx, obj);
+rgw_object_expirer_core.cc:  ret = store->delete_obj(rctx, bucket_info, obj,
+rgw_object_expirer_core.cc:    ldout(store->ctx(), 15) << "got removal hint for: " << iter->key_ts.sec() \
+rgw_object_expirer_core.cc:    int ret = store->objexp_hint_parse(*iter, hint);
+rgw_object_expirer_core.cc:      ldout(store->ctx(), 1) << "cannot parse removal hint for " << hint.obj_key << dendl;
+rgw_object_expirer_core.cc:      ldout(store->ctx(), 15) << "not actual hint for object: " << hint.obj_key << dendl;
+rgw_object_expirer_core.cc:      ldout(store->ctx(), 1) << "cannot remove expired object: " << hint.obj_key << dendl;
+rgw_object_expirer_core.cc:  ldout(store->ctx(), 20) << "trying to trim removal hints to=" << to
+rgw_object_expirer_core.cc:  int ret = store->objexp_hint_trim(shard, rt_from, rt_to,
+rgw_object_expirer_core.cc:    ldout(store->ctx(), 0) << "ERROR during trim: " << ret << dendl;
+rgw_object_expirer_core.cc:  CephContext *cct = store->ctx();
+rgw_object_expirer_core.cc:  int ret = l.lock_exclusive(&store->objexp_pool_ctx, shard);
+rgw_object_expirer_core.cc:    ret = store->objexp_hint_list(shard, rt_last, rt_start,
+rgw_object_expirer_core.cc:  l.unlock(&store->objexp_pool_ctx, shard);
+rgw_object_expirer_core.cc:  CephContext * const cct = store->ctx();
+rgw_object_expirer_core.cc:    store->objexp_get_shard(i, shard);
+rgw_object_expirer_core.cc:    ldout(store->ctx(), 20) << "proceeding shard = " << shard << dendl;
+rgw_object_expirer_core.cc:  worker = new OEWorker(store->ctx(), this);
+rgw_op.cc:  store->set_atomic(s->obj_ctx, read_op.state.obj);
+rgw_op.cc:  return store->set_attrs(s->obj_ctx, s->bucket_info, read_op.state.obj, attrs, NULL);
+rgw_op.cc:      ret = store->get_bucket_info(obj_ctx, s->src_tenant_name, s->src_bucket_name, source_info, NULL);
+rgw_op.cc:      ret = store->get_bucket_instance_info(obj_ctx, s->bucket_instance_id, source_info, NULL, NULL);
+rgw_op.cc:      s->local_source = store->get_zonegroup().equals(zonegroup);
+rgw_op.cc:      ret = store->get_bucket_info(obj_ctx, s->bucket_tenant, s->bucket_name,
+rgw_op.cc:      ret = store->get_bucket_instance_info(obj_ctx, s->bucket_instance_id,
+rgw_op.cc:    int r = store->get_zonegroup(s->bucket_info.zonegroup, zonegroup);
+rgw_op.cc:    if (s->bucket_exists && !store->get_zonegroup().equals(s->bucket_info.zonegroup)) {
+rgw_op.cc:          << store->get_zonegroup().get_id() << ")" << dendl;
+rgw_op.cc:      if (store->get_zonegroup().is_master_zonegroup() && s->system_request) {
+rgw_op.cc:  bool success = store->get_redirect_zone_endpoint(&s->redirect_zone_endpoint);
+rgw_op.cc:    store->set_atomic(s->obj_ctx, obj);
+rgw_op.cc:      store->set_prefetch_data(s->obj_ctx, obj);
+rgw_op.cc:  store->set_atomic(s->obj_ctx, obj);
+rgw_op.cc:  store->set_atomic(s->obj_ctx, obj);
+rgw_op.cc:    store->set_prefetch_data(s->obj_ctx, obj);
+rgw_op.cc:  if (!s->system_request && (required_mask & RGW_OP_TYPE_MODIFY) && !store->zone_is_writeable()) {
+rgw_op.cc:  store->set_atomic(s->obj_ctx, obj);
+rgw_op.cc:  store->set_atomic(s->obj_ctx, obj);
+rgw_op.cc:  store->set_atomic(s->obj_ctx, obj);
+rgw_op.cc:  op_ret = store->set_attrs(s->obj_ctx, s->bucket_info, obj, attrs, &rmattr);
+rgw_op.cc:    bucket_quota = store->get_bucket_quota();
+rgw_op.cc:    user_quota = store->get_user_quota();
+rgw_op.cc:  store->set_prefetch_data(&obj_ctx, part);
+rgw_op.cc:    int r = store->get_bucket_info(obj_ctx, s->user->user_id.tenant,
+rgw_op.cc:        int r = store->get_bucket_info(obj_ctx, s->user->user_id.tenant,
+rgw_op.cc:    int r = store->defer_gc(s->obj_ctx, s->bucket_info, obj);
+rgw_op.cc:    for (const auto& policy : store->get_zonegroup().placement_targets) {
+rgw_op.cc:    op_ret = store->read_usage(s->user->user_id, start_epoch, end_epoch, max_entries,
+rgw_op.cc:  op_ret = store->cls_user_get_header(user_str, &header);
+rgw_op.cc:      for (const auto& policy : store->get_zonegroup().placement_targets) {
+rgw_op.cc:  if (!store->is_meta_master()) {
+rgw_op.cc:      return store->put_bucket_instance_info(s->bucket_info, false, real_time(),
+rgw_op.cc:  if (!store->is_meta_master()) {
+rgw_op.cc:      op_ret = store->put_bucket_instance_info(s->bucket_info, false,
+rgw_op.cc:      op_ret = store->put_bucket_instance_info(s->bucket_info, false,
+rgw_op.cc:  op_ret = store->update_containers_stats(m);
+rgw_op.cc:    op_ret = store->update_containers_stats(m);
+rgw_op.cc:  if (!store->rest_master_conn) {
+rgw_op.cc:  int ret = store->rest_master_conn->forward(uid_str, (forward_info ? *forward_info : s->info),
+rgw_op.cc:  rgw_raw_obj obj(store->get_zone_params().domain_root, bucket_name);
+rgw_op.cc:      !store->has_zonegroup_api(location_constraint)) {
+rgw_op.cc:  if (!relaxed_region_enforcement && !store->get_zonegroup().is_master_zonegroup() && !location_constraint.empty() &&
+rgw_op.cc:      store->get_zonegroup().api_name != location_constraint) {
+rgw_op.cc:                     << " doesn't match zonegroup" << " (" << store->get_zonegroup().api_name << ")"
+rgw_op.cc:  const auto& zonegroup = store->get_zonegroup();
+rgw_op.cc:                     << " (" << store->get_zonegroup().api_name << ")" << dendl;
+rgw_op.cc:  op_ret = store->get_bucket_info(obj_ctx, s->bucket_tenant, s->bucket_name,
+rgw_op.cc:  if (!store->is_meta_master()) {
+rgw_op.cc:      zonegroup_id = store->get_zonegroup().get_id();
+rgw_op.cc:    zonegroup_id = store->get_zonegroup().get_id();
+rgw_op.cc:    op_ret = store->select_bucket_placement(*(s->user), zonegroup_id,
+rgw_op.cc:  op_ret = store->create_bucket(*(s->user), s->bucket, zonegroup_id,
+rgw_op.cc:      op_ret = store->get_bucket_info(obj_ctx, s->bucket_tenant, s->bucket_name,
+rgw_op.cc:  op_ret = store->check_bucket_empty(s->bucket_info);
+rgw_op.cc:  if (!store->is_meta_master()) {
+rgw_op.cc:  op_ret = store->delete_bucket(s->bucket_info, ot, false);
+rgw_op.cc:    store->set_atomic(s->obj_ctx, obj);
+rgw_op.cc:    store->set_prefetch_data(s->obj_ctx, obj);
+rgw_op.cc:    op_ret = store->check_quota(s->bucket_owner.get_id(), s->bucket,
+rgw_op.cc:    op_ret = store->check_bucket_shards(s->bucket_info, s->bucket, bucket_quota);
+rgw_op.cc:    op_ret = store->swift_versioning_copy(obj_ctx,
+rgw_op.cc:  AioThrottle aio(store->ctx()->_conf->rgw_put_obj_min_window_size);
+rgw_op.cc:        store->gen_rand_obj_instance_name(&obj);
+rgw_op.cc:    op_ret = store->get_obj_state(&obj_ctx, copy_source_bucket_info, obj,
+rgw_op.cc:  const auto& compression_type = store->get_zone_params().get_compression_type(
+rgw_op.cc:  op_ret = store->check_quota(s->bucket_owner.get_id(), s->bucket,
+rgw_op.cc:  op_ret = store->check_bucket_shards(s->bucket_info, s->bucket, bucket_quota);
+rgw_op.cc:    op_ret = store->check_quota(s->bucket_owner.get_id(),
+rgw_op.cc:    op_ret = store->check_bucket_shards(s->bucket_info, s->bucket, bucket_quota);
+rgw_op.cc:      store->gen_rand_obj_instance_name(&obj);
+rgw_op.cc:      const auto& compression_type = store->get_zone_params().get_compression_type(
+rgw_op.cc:    op_ret = store->check_quota(s->bucket_owner.get_id(), s->bucket,
+rgw_op.cc:    op_ret = store->check_bucket_shards(s->bucket_info, s->bucket, bucket_quota);
+rgw_op.cc:  store->set_atomic(s->obj_ctx, obj);
+rgw_op.cc:  op_ret = store->set_attrs(s->obj_ctx, s->bucket_info, obj, attrs, &rmattrs);
+rgw_op.cc:    op_ret = store->swift_versioning_restore(*obj_ctx, s->bucket_owner.get_id(),
+rgw_op.cc:    op_ret = store->get_bucket_info(obj_ctx, src_tenant_name, src_bucket_name, src_bucket_info, NULL, &src_attrs);
+rgw_op.cc:    op_ret = store->get_bucket_instance_info(obj_ctx, s->bucket_instance_id, src_bucket_info, NULL, &src_attrs);
+rgw_op.cc:    store->set_atomic(s->obj_ctx, src_obj);
+rgw_op.cc:    store->set_prefetch_data(s->obj_ctx, src_obj);
+rgw_op.cc:    op_ret = store->get_bucket_info(obj_ctx, dest_tenant_name, dest_bucket_name,
+rgw_op.cc:  store->set_atomic(s->obj_ctx, dest_obj);
+rgw_op.cc:  op_ret = store->swift_versioning_copy(obj_ctx,
+rgw_op.cc:  op_ret = store->copy_obj(obj_ctx,
+rgw_op.cc:  if (s->object.empty() && !store->is_meta_master()) {
+rgw_op.cc:    store->set_atomic(s->obj_ctx, obj);
+rgw_op.cc:  librados::IoCtx *ctx = store->get_lc_pool_ctx();
+rgw_op.cc:  librados::IoCtx *ctx = store->get_lc_pool_ctx();
+rgw_op.cc:  if (!store->is_meta_master()) {
+rgw_op.cc:  op_ret = store->put_bucket_instance_info(s->bucket_info, false, real_time(),
+rgw_op.cc:  store->obj_to_raw((s->bucket_info).placement_rule, meta_obj, &raw_obj);
+rgw_op.cc:  store->get_obj_data_pool((s->bucket_info).placement_rule,
+rgw_op.cc:  store->open_pool_ctx(meta_pool, serializer.ioctx);
+rgw_op.cc:      store->gen_rand_obj_instance_name(&target_obj);
+rgw_op.cc:  int r = store->delete_obj(*static_cast<RGWObjectCtx *>(s->obj_ctx),
+rgw_op.cc:  RGWAccessControlPolicy bacl(store->ctx());
+rgw_op.cc:  int ret = store->get_bucket_info(obj_ctx, s->user->user_id.tenant,
+rgw_op.cc:    ret = store->delete_bucket(binfo, ot);
+rgw_op.cc:    if (!store->is_meta_master()) {
+rgw_op.cc:  rgw_raw_obj obj(store->get_zone_params().domain_root,
+rgw_op.cc:  op_ret = store->get_bucket_info(*dir_ctx, s->bucket_tenant, bucket_name,
+rgw_op.cc:  if (! store->is_meta_master()) {
+rgw_op.cc:    op_ret = store->select_bucket_placement(*(s->user),
+rgw_op.cc:                                            store->get_zonegroup().get_id(),
+rgw_op.cc:  op_ret = store->create_bucket(*(s->user),
+rgw_op.cc:                                store->get_zonegroup().get_id(),
+rgw_op.cc:  RGWAccessControlPolicy bacl(store->ctx());
+rgw_op.cc:  op_ret = store->get_bucket_info(obj_ctx, s->user->user_id.tenant,
+rgw_op.cc:  op_ret = store->check_quota(bowner.get_id(), binfo.bucket,
+rgw_op.cc:  op_ret = store->check_bucket_shards(s->bucket_info, s->bucket, bucket_quota);
+rgw_op.cc:    store->gen_rand_obj_instance_name(&obj);
+rgw_op.cc:  AioThrottle aio(store->ctx()->_conf->rgw_put_obj_min_window_size);
+rgw_op.cc:  const auto& compression_type = store->get_zone_params().get_compression_type(
+rgw_op.cc:  op_ret = store->check_quota(bowner.get_id(), binfo.bucket,
+rgw_op.cc:  op_ret = store->check_bucket_shards(s->bucket_info, s->bucket, bucket_quota);
+rgw_op.cc:    store->set_atomic(s->obj_ctx, obj);
+rgw_op.cc:    op_ret = store->set_attrs(s->obj_ctx, s->bucket_info, obj, attrs, nullptr);
+rgw_op.cc:  op_ret = store->put_bucket_instance_info(s->bucket_info, false, real_time(), &s->bucket_attrs);
+rgw_op.cc:  op_ret = store->put_bucket_instance_info(s->bucket_info, false, real_time(), &s->bucket_attrs);
+rgw_op.cc:  if (!store->is_meta_master()) {
+rgw_op.cc:  op_ret = this->store->get_rados_handle()->cluster_stat(stats_op);
+rgw_op.cc:  this->store->get_key(key, this->dir_val);  
+rgw_orphan.cc:    lderr(store->ctx()) << "ERROR: could not decode buffer" << dendl;
+rgw_orphan.cc:        lderr(store->ctx()) << "ERROR: could not decode buffer" << dendl;
+rgw_orphan.cc:  rgw_pool& log_pool = store->get_zone_params().log_pool;
+rgw_orphan.cc:  int r = rgw_init_ioctx(store->get_rados_handle(), log_pool, ioctx);
+rgw_orphan.cc:  ldout(store->ctx(), 20) << "storing " << entries.size() << " entries at " << oid << ": " << dendl;
+rgw_orphan.cc:    ldout(store->ctx(), 20) << " > " << iter->first << dendl;
+rgw_orphan.cc:    lderr(store->ctx()) << "ERROR: " << __func__ << "(" << oid << ") returned ret=" << ret << dendl;
+rgw_orphan.cc:    lderr(store->ctx()) << "ERROR: failed to read state ret=" << r << dendl;
+rgw_orphan.cc:      lderr(store->ctx()) << "ERROR: failed to write state ret=" << r << dendl;
+rgw_orphan.cc:      lderr(store->ctx()) << "ERROR: job not found" << dendl;
+rgw_orphan.cc:         ldout(store->ctx(), 20) << "adding obj: " << *cur << dendl;
+rgw_orphan.cc:  int ret = rgw_init_ioctx(store->get_rados_handle(), search_info.pool, ioctx);
+rgw_orphan.cc:    lderr(store->ctx()) << __func__ << ": rgw_init_ioctx() returned ret=" << ret << dendl;
+rgw_orphan.cc:    ldout(store->ctx(), 20) << "oid_fp=" << oid_fp << dendl;
+rgw_orphan.cc:      ldout(store->ctx(), 1) << "iterated through " << total << " objects" << dendl;
+rgw_orphan.cc:  int ret = store->meta_mgr->list_keys_init(section, &handle);
+rgw_orphan.cc:    lderr(store->ctx()) << "ERROR: can't get key: " << cpp_strerror(-ret) << dendl;
+rgw_orphan.cc:    ret = store->meta_mgr->list_keys_next(handle, max, keys, &truncated);
+rgw_orphan.cc:      lderr(store->ctx()) << "ERROR: lists_keys_next(): " << cpp_strerror(-ret) << dendl;
+rgw_orphan.cc:      ldout(store->ctx(), 10) << "bucket_instance=" << *iter << " total=" << total << dendl;
+rgw_orphan.cc:          lderr(store->ctx()) << __func__ << ": ERROR: log_oids() returned ret=" << ret << dendl;
+rgw_orphan.cc:    lderr(store->ctx()) << __func__ << ": ERROR: log_oids() returned ret=" << ret << dendl;
+rgw_orphan.cc:  store->meta_mgr->list_keys_complete(handle);
+rgw_orphan.cc:    ldout(store->ctx(), 20) << __func__ << ": oid for obj=" << result.obj << ": " << *iter << dendl;
+rgw_orphan.cc:      lderr(store->ctx()) << "ERROR: stat_async() returned error: " << cpp_strerror(-ret) << dendl;
+rgw_orphan.cc:    lderr(store->ctx()) << "ERROR: handle_stat_response() returned error: " << cpp_strerror(-ret) << dendl;
+rgw_orphan.cc:  ldout(store->ctx(), 10) << "building linked oids for bucket instance: " << bucket_instance_id << dendl;
+rgw_orphan.cc:  int ret = store->get_bucket_instance_info(obj_ctx, bucket_instance_id, bucket_info, NULL, NULL);
+rgw_orphan.cc:    lderr(store->ctx()) << __func__ << ": ERROR: RGWRados::get_bucket_instance_info() returned ret=" << ret << dendl;
+rgw_orphan.cc:      cerr << "ERROR: store->list_objects(): " << cpp_strerror(-ret) << std::endl;
+rgw_orphan.cc:        ldout(store->ctx(), 20) << "obj entry: " << entry.key.name << dendl;
+rgw_orphan.cc:        ldout(store->ctx(), 20) << "obj entry: " << entry.key.name << " [" << entry.key.instance << "]" << dendl;
+rgw_orphan.cc:      ldout(store->ctx(), 20) << __func__ << ": entry.key.name=" << entry.key.name << " entry.key.instance=" << entry.key.instance << dendl;
+rgw_orphan.cc:        lderr(store->ctx()) << "ERROR: stat_async() returned error: " << cpp_strerror(-ret) << dendl;
+rgw_orphan.cc:            lderr(store->ctx()) << "ERROR: stat_async() returned error: " << cpp_strerror(-ret) << dendl;
+rgw_orphan.cc:        lderr(store->ctx()) << "ERROR: stat_async() returned error: " << cpp_strerror(-ret) << dendl;
+rgw_orphan.cc:    ldout(store->ctx(), 0) << "building linked oids index: " << iter->first << "/" << buckets_instance_index.size() << dendl;
+rgw_orphan.cc:        lderr(store->ctx()) << __func__ << ": ERROR: read_entries() oid=" << oid << " returned ret=" << ret << dendl;
+rgw_orphan.cc:        ldout(store->ctx(), 20) << " indexed entry: " << eiter->first << dendl;
+rgw_orphan.cc:          lderr(store->ctx()) << __func__ << ": ERROR: build_linked_oids_for_bucket() indexed entry=" << eiter->first
+rgw_orphan.cc:  int ret = rgw_init_ioctx(store->get_rados_handle(), search_info.pool, data_ioctx);
+rgw_orphan.cc:    lderr(store->ctx()) << __func__ << ": rgw_init_ioctx() returned ret=" << ret << dendl;
+rgw_orphan.cc:        ldout(store->ctx(), 20) << "linked: " << key << dendl;
+rgw_orphan.cc:          lderr(store->ctx()) << "ERROR: ioctx.stat(" << key << ") returned ret=" << r << dendl;
+rgw_orphan.cc:        ldout(store->ctx(), 20) << "skipping: " << key << " (mtime=" << mtime << " threshold=" << time_threshold << ")" << dendl;
+rgw_orphan.cc:      ldout(store->ctx(), 20) << "leaked: " << key << dendl;
+rgw_orphan.cc:      ldout(store->ctx(), 0) << __func__ << "(): initializing state" << dendl;
+rgw_orphan.cc:        lderr(store->ctx()) << __func__ << ": ERROR: failed to save state, ret=" << r << dendl;
+rgw_orphan.cc:      ldout(store->ctx(), 0) << __func__ << "(): building index of all objects in pool" << dendl;
+rgw_orphan.cc:        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returned ret=" << r << dendl;
+rgw_orphan.cc:        lderr(store->ctx()) << __func__ << ": ERROR: failed to save state, ret=" << r << dendl;
+rgw_orphan.cc:      ldout(store->ctx(), 0) << __func__ << "(): building index of all bucket indexes" << dendl;
+rgw_orphan.cc:        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returned ret=" << r << dendl;
+rgw_orphan.cc:        lderr(store->ctx()) << __func__ << ": ERROR: failed to save state, ret=" << r << dendl;
+rgw_orphan.cc:      ldout(store->ctx(), 0) << __func__ << "(): building index of all linked objects" << dendl;
+rgw_orphan.cc:        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returned ret=" << r << dendl;
+rgw_orphan.cc:        lderr(store->ctx()) << __func__ << ": ERROR: failed to save state, ret=" << r << dendl;
+rgw_orphan.cc:        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returned ret=" << r << dendl;
+rgw_orphan.cc:        ldout(store->ctx(), 0) << "ERROR: couldn't remove " << iter->second << ": ret=" << r << dendl;
+rgw_orphan.cc:    ldout(store->ctx(), 0) << "ERROR: remove_index(" << all_objs_index << ") returned ret=" << r << dendl;
+rgw_orphan.cc:    ldout(store->ctx(), 0) << "ERROR: remove_index(" << buckets_instance_index << ") returned ret=" << r << dendl;
+rgw_orphan.cc:    ldout(store->ctx(), 0) << "ERROR: remove_index(" << linked_objs_index << ") returned ret=" << r << dendl;
+rgw_orphan.cc:    ldout(store->ctx(), 0) << "ERROR: could not remove job name (" << search_info.job_name << ") ret=" << r << dendl;
+rgw_otp.cc:    int r = store->list_mfa(entry, &result, &objv_tracker, &mtime);
+rgw_otp.cc:    int ret = store->meta_mgr->mutate(this, entry, mtime, &objv_tracker,
+rgw_otp.cc:         return store->set_mfa(entry, devices, true, &objv_tracker, mtime);
+rgw_otp.cc:    return store->meta_mgr->remove_entry(this, entry, &objv_tracker);
+rgw_otp.cc:    pool = store->get_zone_params().otp_pool;
+rgw_otp.cc:    int ret = store->list_raw_objects_init(store->get_zone_params().otp_pool, marker,
+rgw_otp.cc:    int ret = store->list_raw_objects_next(no_filter, max, info->ctx,
+rgw_otp.cc:    return info->store->list_raw_objs_get_cursor(info->ctx);
+rgw_otp.cc:  store->meta_mgr->register_handler(otp_meta_handler);
+rgw_period_puller.cc:  int r = period.init(store->ctx(), store);
+rgw_period_puller.cc:    if (store->is_meta_master()) {
+rgw_period_puller.cc:      ldout(store->ctx(), 1) << "metadata master failed to read period "
+rgw_period_puller.cc:    ldout(store->ctx(), 14) << "pulling period " << period_id
+rgw_period_puller.cc:    r = pull_period(store->rest_master_conn, period_id,
+rgw_period_puller.cc:                    store->realm.get_id(), period);
+rgw_period_puller.cc:      lderr(store->ctx()) << "failed to pull period " << period_id << dendl;
+rgw_period_puller.cc:      lderr(store->ctx()) << "failed to store period " << period_id << dendl;
+rgw_period_puller.cc:      lderr(store->ctx()) << "failed to update latest_epoch for period "
+rgw_period_puller.cc:    if (store->realm.get_current_period() == period_id) {
+rgw_period_puller.cc:    ldout(store->ctx(), 14) << "period " << period_id
+rgw_period_puller.cc:    ldout(store->ctx(), 14) << "found period " << period_id
+rgw_period_pusher.cc:  : cct(store->ctx()), store(store)
+rgw_period_pusher.cc:  const auto& realm = store->realm;
+rgw_period_pusher.cc:  auto i = zonegroups.find(store->get_zonegroup().get_id());
+rgw_period_pusher.cc:  if (my_zonegroup.master_zone != store->get_zone_params().get_id())
+rgw_period_pusher.cc:  if (period.get_map().master_zonegroup == store->get_zonegroup().get_id()) {
+rgw_period_pusher.cc:      if (zonegroup.get_id() == store->get_zonegroup().get_id())
+rgw_period_pusher.cc:    if (zone.id == store->get_zone_params().get_id())
+rgw_process.cc:  s->req_id = store->unique_id(req->id);
+rgw_process.cc:  s->trans_id = store->unique_trans_id(req->id);
+rgw_process.cc:  s->host_id = store->host_id;
+rgw_putobj_processor.cc:  int r = store->get_raw_obj_ref(obj, &ref);
+rgw_putobj_processor.cc:  ldout(store->ctx(), 5) << "GENERAL ugur PutObj oid " <<stripe_ref.oid<< "offset" << offset << dendl;
+rgw_putobj_processor.cc:  	ldout(store->ctx(), 5) << "NOTE: ugur  PutObj Process oid " <<stripe_ref.oid<< "offset" << offset << dendl;
+rgw_putobj_processor.cc:	librados::L2CacheRequest *wb_req =  new librados::L2CacheRequest(store->ctx());
+rgw_putobj_processor.cc:  	ldout(store->ctx(), 5) << "ugur PutObj Process after issue_remote_wb " <<stripe_ref.oid<< dendl;
+rgw_putobj_processor.cc:    store->obj_to_raw(bucket_info.placement_rule, head_obj, &*raw_head);
+rgw_putobj_processor.cc:      ldout(store->ctx(), 5) << "NOTE: we should not process the head object (" << obj << ") here" << dendl;
+rgw_putobj_processor.cc:    int r = store->delete_raw_obj(obj);
+rgw_putobj_processor.cc:      ldout(store->ctx(), 5) << "WARNING: failed to remove obj (" << obj << "), leaked" << dendl;
+rgw_putobj_processor.cc:    ldout(store->ctx(), 5) << "NOTE: we are going to process the head obj (" << *raw_head << ")" << dendl;
+rgw_putobj_processor.cc:    int r = store->delete_obj(obj_ctx, bucket_info, head_obj, 0, 0);
+rgw_putobj_processor.cc:      ldout(store->ctx(), 0) << "WARNING: failed to remove obj (" << *raw_head << "), leaked" << dendl;
+rgw_putobj_processor.cc:  r = store->get_max_chunk_size(stripe_obj.pool, &chunk_size);
+rgw_putobj_processor.cc:  int r = store->get_max_chunk_size(bucket_info.placement_rule, head_obj,
+rgw_putobj_processor.cc:  const uint64_t default_stripe_size = store->ctx()->_conf->rgw_obj_stripe_size;
+rgw_putobj_processor.cc:  r = manifest_gen.create_begin(store->ctx(), &manifest,
+rgw_putobj_processor.cc:  r = store->get_max_chunk_size(stripe_obj.pool, &chunk_size);
+rgw_putobj_processor.cc://	r = store->update_directory(oid,dest,op,store);
+rgw_putobj_processor.cc:   r = store->set_key(key, "time", s3_bucket_name, s3_object_name, "cache", s3_userid, actual_size, "flag");
+rgw_putobj_processor.cc:    gen_rand_alphanumeric(store->ctx(), oid_rand.data(), oid_rand.size());
+rgw_putobj_processor.cc:  int r = manifest_gen.create_begin(store->ctx(), &manifest,
+rgw_putobj_processor.cc:  r = store->get_max_chunk_size(stripe_obj.pool, &chunk_size);
+rgw_putobj_processor.cc:  const uint64_t default_stripe_size = store->ctx()->_conf->rgw_obj_stripe_size;
+rgw_putobj_processor.cc:    ldout(store->ctx(), 1) << "cannot get compression info" << dendl;
+rgw_putobj_processor.cc:  store->obj_to_raw(bucket_info.placement_rule, meta_obj, &raw_meta_obj);
+rgw_putobj_processor.cc:  r = store->omap_set(raw_meta_obj, p, bl, must_exist);
+rgw_putobj_throttle.cc:    p->result =  store->issue_remote_wb(wb_req); 
+rgw_quota.cc:      quota.max_size_soft_threshold = quota.max_size * store->ctx()->_conf->rgw_bucket_quota_soft_threshold;
+rgw_quota.cc:      ldout(store->ctx(), 20) << "quota: can't use cached stats, exceeded soft threshold (size): "
+rgw_quota.cc:      quota.max_objs_soft_threshold = quota.max_objects * store->ctx()->_conf->rgw_bucket_quota_soft_threshold;
+rgw_quota.cc:      ldout(store->ctx(), 20) << "quota: can't use cached stats, exceeded soft threshold (num objs): "
+rgw_quota.cc:  ldout(store->ctx(), 20) << "async stats refresh response for bucket=" << bucket << dendl;
+rgw_quota.cc:  ldout(store->ctx(), 20) << "async stats refresh response for bucket=" << bucket << dendl;
+rgw_quota.cc:  qs.expiration += store->ctx()->_conf->rgw_bucket_quota_ttl;
+rgw_quota.cc:  qs.async_refresh_time += store->ctx()->_conf->rgw_bucket_quota_ttl / 2;
+rgw_quota.cc:        ldout(store->ctx(), 0) << "ERROR: quota async refresh returned ret=" << r << dendl;
+rgw_quota.cc:  int r = store->get_bucket_instance_info(obj_ctx, bucket, bucket_info, NULL, NULL);
+rgw_quota.cc:    ldout(store->ctx(), 0) << "could not get bucket info for bucket=" << bucket << " r=" << r << dendl;
+rgw_quota.cc:  ldout(store->ctx(), 20) << "initiating async quota refresh for bucket=" << bucket << dendl;
+rgw_quota.cc:  r = store->get_bucket_stats_async(bucket_info, RGW_NO_SHARD, this);
+rgw_quota.cc:    ldout(store->ctx(), 0) << "could not get bucket info for bucket=" << bucket.name << dendl;
+rgw_quota.cc:    ldout(store->ctx(), 20) << "AsyncRefreshHandler::handle_response() r=" << r << dendl;
+rgw_quota.cc:  explicit RGWBucketStatsCache(RGWRados *_store) : RGWQuotaCache<rgw_bucket>(_store, _store->ctx()->_conf->rgw_bucket_quota_cache_size) {
+rgw_quota.cc:  int r = store->get_bucket_instance_info(obj_ctx, bucket, bucket_info, NULL, NULL);
+rgw_quota.cc:    ldout(store->ctx(), 0) << "could not get bucket info for bucket=" << bucket << " r=" << r << dendl;
+rgw_quota.cc:  r = store->get_bucket_stats(bucket_info, RGW_NO_SHARD, &bucket_ver,
+rgw_quota.cc:    ldout(store->ctx(), 0) << "could not get bucket stats for bucket="
+rgw_quota.cc:  ldout(store->ctx(), 20) << "initiating async quota refresh for user=" << user << dendl;
+rgw_quota.cc:  int r = store->get_user_stats_async(user, this);
+rgw_quota.cc:    ldout(store->ctx(), 0) << "could not get bucket info for user=" << user << dendl;
+rgw_quota.cc:    ldout(store->ctx(), 20) << "AsyncRefreshHandler::handle_response() r=" << r << dendl;
+rgw_quota.cc:  RGWUserStatsCache(RGWRados *_store, bool quota_threads) : RGWQuotaCache<rgw_user>(_store, _store->ctx()->_conf->rgw_bucket_quota_cache_size),
+rgw_quota.cc:      buckets_sync_thread = new BucketsSyncThread(store->ctx(), this);
+rgw_quota.cc:      user_sync_thread = new UserSyncThread(store->ctx(), this);
+rgw_quota.cc:  int r = store->get_user_stats(user, stats);
+rgw_quota.cc:    ldout(store->ctx(), 0) << "could not get user stats for user=" << user << dendl;
+rgw_quota.cc:  int r = store->get_bucket_instance_info(obj_ctx, bucket, bucket_info, NULL, NULL);
+rgw_quota.cc:    ldout(store->ctx(), 0) << "could not get bucket info for bucket=" << bucket << " r=" << r << dendl;
+rgw_quota.cc:    ldout(store->ctx(), 0) << "ERROR: rgw_bucket_sync_user_stats() for user=" << user << ", bucket=" << bucket << " returned " << r << dendl;
+rgw_quota.cc:  int ret = store->cls_user_get_header(user_str, &header);
+rgw_quota.cc:    ldout(store->ctx(), 5) << "ERROR: can't read user header: ret=" << ret << dendl;
+rgw_quota.cc:  if (!store->ctx()->_conf->rgw_user_quota_sync_idle_users &&
+rgw_quota.cc:    ldout(store->ctx(), 20) << "user is idle, not doing a full sync (user=" << user << ")" << dendl;
+rgw_quota.cc:  when_need_full_sync += make_timespan(store->ctx()->_conf->rgw_user_quota_sync_wait_time);
+rgw_quota.cc:    ldout(store->ctx(), 0) << "ERROR: failed user stats sync, ret=" << ret << dendl;
+rgw_quota.cc:  int ret = store->meta_mgr->list_keys_init(key, &handle);
+rgw_quota.cc:    ldout(store->ctx(), 10) << "ERROR: can't get key: ret=" << ret << dendl;
+rgw_quota.cc:    ret = store->meta_mgr->list_keys_next(handle, max, keys, &truncated);
+rgw_quota.cc:      ldout(store->ctx(), 0) << "ERROR: lists_keys_next(): ret=" << ret << dendl;
+rgw_quota.cc:      ldout(store->ctx(), 20) << "RGWUserStatsCache: sync user=" << user << dendl;
+rgw_quota.cc:        ldout(store->ctx(), 5) << "ERROR: sync_user() failed, user=" << user << " ret=" << ret << dendl;
+rgw_quota.cc:  store->meta_mgr->list_keys_complete(handle);
+rgw_quota.cc:    ldout(store->ctx(), 20) << entity
+rgw_quota.cc:    ldout(store->ctx(), 20) << entity << " quota OK:"
+rgw_quota.cc:      ldout(store->ctx(), 0) << __func__ << ": resharding needed: stats.num_objects=" << bucket_stats.num_objects
+rgw_rados.cc:    store->obj_to_raw(placement_rule, obj, &r);
+rgw_rados.cc:    if (!store->get_sync_modules_manager()->get_module(*ptier_type, nullptr)) {
+rgw_rados.cc:                    << store->get_sync_modules_manager()->get_registered_module_names()
+rgw_rados.cc:    ret = store->delete_system_obj(default_named_obj);
+rgw_rados.cc:    ret = store->delete_system_obj(object_name);
+rgw_rados.cc:  ret = store->delete_system_obj(object_id);
+rgw_rados.cc:  ret = store->delete_system_obj(old_name_obj);
+rgw_rados.cc:  return store->delete_system_obj(obj);
+rgw_rados.cc:  int r = rgw_init_ioctx(store->get_rados_handle(), pool, ctx);
+rgw_rados.cc:  const auto& pool = get_pool(store->ctx());
+rgw_rados.cc:  const auto& pool = get_pool(store->ctx());
+rgw_rados.cc:    int ret = store->delete_system_obj(oid);
+rgw_rados.cc:  int ret = store->delete_system_obj(oid);
+rgw_rados.cc:  int ret = store->list_zonegroups(zonegroups);
+rgw_rados.cc:  RGWMetaSyncStatusManager mgr(store, store->get_async_rados());
+rgw_rados.cc:  if (master_zone != store->get_zone_params().get_id()) {
+rgw_rados.cc:        << store->get_zone_params().get_id() << ", it must be sent to "
+rgw_rados.cc:  int r = store->list_zones(zones);
+rgw_rados.cc:    ldout(cct, 10) << "WARNING: store->list_zones() returned r=" << r << dendl;
+rgw_rados.cc:  int r = store->raw_obj_stat(obj, NULL, NULL, NULL, NULL, NULL, NULL);
+rgw_rados.cc:    ldout(store->ctx(), 10) << "couldn't find old data placement pools config, setting up new ones for the zone" << dendl;
+rgw_rados.cc:  return append(m, store->get_zonegroup(), store->get_zone_params());
+rgw_rados.cc:  RGWMetaNotifierManager(RGWRados *_store) : RGWCoroutinesManager(_store->ctx(), _store->get_cr_registry()), store(_store),
+rgw_rados.cc:                                             http_manager(store->ctx(), completion_mgr) {
+rgw_rados.cc:      RGWCoroutinesStack *stack = new RGWCoroutinesStack(store->ctx(), this);
+rgw_rados.cc:      stack->call(new RGWPostRESTResourceCR<set<int>, int>(store->ctx(), conn, &http_manager, "/admin/log", pairs, shards, NULL));
+rgw_rados.cc:  RGWDataNotifierManager(RGWRados *_store) : RGWCoroutinesManager(_store->ctx(), _store->get_cr_registry()), store(_store),
+rgw_rados.cc:                                             http_manager(store->ctx(), completion_mgr) {
+rgw_rados.cc:                                    { "source-zone", store->get_zone_params().get_id().c_str() },
+rgw_rados.cc:      RGWCoroutinesStack *stack = new RGWCoroutinesStack(store->ctx(), this);
+rgw_rados.cc:      stack->call(new RGWPostRESTResourceCR<map<int, set<string> >, int>(store->ctx(), conn, &http_manager, "/admin/log", pairs, shards, NULL));
+rgw_rados.cc:  notify_mgr.notify_all(store->zone_conn_map, shards);
+rgw_rados.cc:  if (!store->data_log) {
+rgw_rados.cc:  store->data_log->read_clear_modified(shards);
+rgw_rados.cc:  notify_mgr.notify_all(store->zone_data_notify_to_map, shards);
+rgw_rados.cc:      ldout(store->ctx(), 0) << "ERROR: sync.init() returned " << ret << dendl;
+rgw_rados.cc:      crs(store->ctx(), store->get_cr_registry()), store(store),
+rgw_rados.cc:      http(store->ctx(), crs.get_completion_mgr()),
+rgw_rados.cc:    auto meta = new RGWCoroutinesStack(store->ctx(), &crs);
+rgw_rados.cc:    auto data = new RGWCoroutinesStack(store->ctx(), &crs);
+rgw_rados.cc:    auto bucket = new RGWCoroutinesStack(store->ctx(), &crs);
+rgw_rados.cc:  CephContext *get_cct() const override { return store->ctx(); }
+rgw_rados.cc:    ldout(store->ctx(), 20) << __func__ << "(): handling completion for key=" << c->key << dendl;
+rgw_rados.cc:    r = store->guard_reshard(&bs, c->obj, [&](RGWRados::BucketShard *bs) -> int { 
+rgw_rados.cc:    r = store->data_log->add_entry(bs.bucket, bs.shard_id);
+rgw_rados.cc:      lderr(store->ctx()) << "ERROR: failed writing data log" << dendl;
+rgw_rados.cc:    num_shards = store->ctx()->_conf->rgw_thread_pool_size;
+rgw_rados.cc:    entry->zones_trace.insert(store->get_zone().id);
+rgw_rados.cc:  int ret = store->get_bucket_instance_info(obj_ctx, bucket, bucket_info, nullptr, nullptr);
+rgw_rados.cc:  CephContext *cct = store->ctx();
+rgw_rados.cc:    int r = store->cls_bucket_list_ordered(target->get_bucket_info(),
+rgw_rados.cc:  CephContext *cct = store->ctx();
+rgw_rados.cc:    int r = store->cls_bucket_list_unordered(target->get_bucket_info(),
+rgw_rados.cc:  int ret = store->get_bucket_instance_info(obj_ctx, bucket, bucket_info, NULL, NULL);
+rgw_rados.cc:  ret = store->open_bucket_index_shard(bucket_info, index_ctx, obj.get_hash_object(), &bucket_obj, &shard_id);
+rgw_rados.cc:    ldout(store->ctx(), 0) << "ERROR: open_bucket_index_shard() returned ret=" << ret << dendl;
+rgw_rados.cc:  ldout(store->ctx(), 20) << " bucket index object: " << bucket_obj << dendl;
+rgw_rados.cc:  int ret = store->get_bucket_instance_info(obj_ctx, bucket, bucket_info, NULL, NULL);
+rgw_rados.cc:  ret = store->open_bucket_index_shard(bucket_info, index_ctx, shard_id, &bucket_obj);
+rgw_rados.cc:    ldout(store->ctx(), 0) << "ERROR: open_bucket_index_shard() returned ret=" << ret << dendl;
+rgw_rados.cc:  ldout(store->ctx(), 20) << " bucket index object: " << bucket_obj << dendl;
+rgw_rados.cc:  int ret = store->open_bucket_index_shard(bucket_info, index_ctx, shard_id, &bucket_obj);
+rgw_rados.cc:    ldout(store->ctx(), 0) << "ERROR: open_bucket_index_shard() returned ret=" << ret << dendl;
+rgw_rados.cc:  ldout(store->ctx(), 20) << " bucket index object: " << bucket_obj << dendl;
+rgw_rados.cc:    req_id = store->unique_id(store->get_new_req_id());
+rgw_rados.cc:    ldout(store->ctx(), 0) << "ERROR: " << __func__ << "(): cannot write object with empty name" << dendl;
+rgw_rados.cc:  r = store->get_obj_head_ref(target->get_bucket_info(), obj, &ref);
+rgw_rados.cc:    encode(store->get_zone_short_id(), bl);
+rgw_rados.cc:    ldout(store->ctx(), 0) << "ERROR: complete_atomic_modification returned r=" << r << dendl;
+rgw_rados.cc:    r = store->set_olh(target->get_ctx(), target->get_bucket_info(), obj, false, NULL, *meta.olh_epoch, real_time(), false, meta.zones_trace);
+rgw_rados.cc:    r = store->objexp_hint_add(meta.delete_at,
+rgw_rados.cc:      ldout(store->ctx(), 0) << "ERROR: objexp_hint_add() returned r=" << r << ", object will not get removed" << dendl;
+rgw_rados.cc:  	store->quota_handler->update_stats(meta.owner, obj.bucket, (orig_exists ? 0 : 1),
+rgw_rados.cc:    store->quota_handler->update_stats(meta.owner, obj.bucket, (orig_exists ? 0 : 1),
+rgw_rados.cc:    ldout(store->ctx(), 0) << "ERROR: index_op.cancel()() returned ret=" << ret << dendl;
+rgw_rados.cc:  store->update_gc_chain(obj, state->manifest, &chain);
+rgw_rados.cc:  return store->gc->send_chain(chain, tag, false);  // do it async
+rgw_rados.cc:        store->gen_rand_obj_instance_name(&marker);
+rgw_rados.cc:      int r = store->set_olh(target->get_ctx(), target->get_bucket_info(), marker, true, &meta, params.olh_epoch, params.unmod_since, params.high_precision_time, params.zones_trace);
+rgw_rados.cc:      int r = store->bi_get_instance(target->get_bucket_info(), obj, &dirent);
+rgw_rados.cc:      r = store->unlink_obj_instance(target->get_ctx(), target->get_bucket_info(), obj, params.olh_epoch, params.zones_trace);
+rgw_rados.cc:      ldout(store->ctx(), 5) << "failed to get BucketShard object: r=" << r << dendl;
+rgw_rados.cc:      r = store->data_log->add_entry(bs->bucket, bs->shard_id);
+rgw_rados.cc:        lderr(store->ctx()) << "ERROR: failed writing data log" << dendl;
+rgw_rados.cc:  int r = store->get_obj_head_ref(target->get_bucket_info(), obj, &ref);
+rgw_rados.cc:    ldout(store->ctx(), 10) << "If-UnModified-Since: " << params.unmod_since << " Last-Modified: " << ctime << dendl;
+rgw_rados.cc:    store->cls_obj_check_mtime(op, params.unmod_since, params.high_precision_time, CLS_RGW_CHECK_TIME_MTIME_LE);
+rgw_rados.cc:        ldout(store->ctx(), 0) << "ERROR: couldn't decode RGW_ATTR_DELETE_AT" << dendl;
+rgw_rados.cc:  store->remove_rgw_head_obj(op);
+rgw_rados.cc:    tombstone_cache_t *obj_tombstone_cache = store->get_tombstone_cache();
+rgw_rados.cc:      ldout(store->ctx(), 0) << "ERROR: complete_atomic_modification returned ret=" << ret << dendl;
+rgw_rados.cc:      ldout(store->ctx(), 0) << "ERROR: index_op.cancel() returned ret=" << ret << dendl;
+rgw_rados.cc:  store->quota_handler->update_stats(params.bucket_owner, obj.bucket, -1, 0, obj_accounted_size);
+rgw_rados.cc:  ldout(store->ctx(), 10) << "generate_fake_tag new tag=" << tag << dendl;
+rgw_rados.cc:  int r = store->get_obj_head_ioctx(source->get_bucket_info(), obj, &state.io_ctx);
+rgw_rados.cc:    ldout(store->ctx(), 5) << __func__
+rgw_rados.cc:      ldout(store->ctx(), 0) << "ERROR: " << __func__ << ": failed to decode manifest"  << dendl;
+rgw_rados.cc:  return store->get_obj_state(&ctx, bucket_info, obj, pstate, follow_olh, assume_noent);
+rgw_rados.cc:    ldout(store->ctx(), 20) << "prepare_atomic_modification: state is not atomic. state=" << (void *)state << dendl;
+rgw_rados.cc:      store->remove_rgw_head_obj(op); // we're not dropping reference here, actually removing object
+rgw_rados.cc:      store->remove_rgw_head_obj(op);
+rgw_rados.cc:    append_rand_alpha(store->ctx(), state->write_tag, state->write_tag, 32);
+rgw_rados.cc:  ldout(store->ctx(), 10) << "setting object write_tag=" << state->write_tag << dendl;
+rgw_rados.cc:  CephContext *cct = store->ctx();
+rgw_rados.cc:  store->obj_to_raw(bucket_info.placement_rule, state.obj, &state.head_obj);
+rgw_rados.cc:  r = store->get_obj_head_ioctx(bucket_info, state.obj, &state.io_ctx);
+rgw_rados.cc:      ldout(store->ctx(), 5) << "failed to get BucketShard object: ret=" << ret << dendl;
+rgw_rados.cc:    ldout(store->ctx(), 0) << "NOTICE: resharding operation on bucket index detected, blocking" << dendl;
+rgw_rados.cc:    r = store->block_while_resharding(bs, &new_bucket_id);
+rgw_rados.cc:    ldout(store->ctx(), 20) << "reshard completion identified, new_bucket_id=" << new_bucket_id << dendl;
+rgw_rados.cc:      ldout(store->ctx(), 0) << "ERROR: update_bucket_id() new_bucket_id=" << new_bucket_id << " returned r=" << r << dendl;
+rgw_rados.cc:  return store->stat_system_obj(source->get_ctx(), state, obj, stat_params.attrs,
+rgw_rados.cc:      append_rand_alpha(store->ctx(), optag, optag, 32);
+rgw_rados.cc:    return store->cls_obj_prepare_op(*bs, op, optag, obj, bilog_flags, zones_trace);
+rgw_rados.cc:    ldout(store->ctx(), 5) << "failed to get BucketShard object: ret=" << ret << dendl;
+rgw_rados.cc:    int ret = store->decode_policy(*acl_bl, &owner);
+rgw_rados.cc:      ldout(store->ctx(), 0) << "WARNING: could not decode policy ret=" << ret << dendl;
+rgw_rados.cc:  ret = store->cls_obj_complete_add(*bs, obj, optag, poolid, epoch, ent, category, remove_objs, bilog_flags, zones_trace);
+rgw_rados.cc:    int r = store->data_log->add_entry(bs->bucket, bs->shard_id);
+rgw_rados.cc:      lderr(store->ctx()) << "ERROR: failed writing data log" << dendl;
+rgw_rados.cc:    ldout(store->ctx(), 5) << "failed to get BucketShard object: ret=" << ret << dendl;
+rgw_rados.cc:  ret = store->cls_obj_complete_del(*bs, optag, poolid, epoch, obj, removed_mtime, remove_objs, bilog_flags, zones_trace);
+rgw_rados.cc:    int r = store->data_log->add_entry(bs->bucket, bs->shard_id);
+rgw_rados.cc:      lderr(store->ctx()) << "ERROR: failed writing data log" << dendl;
+rgw_rados.cc:    return store->cls_obj_complete_cancel(*bs, optag, obj, bilog_flags, zones_trace);
+rgw_rados.cc:    int r = store->data_log->add_entry(bs->bucket, bs->shard_id);
+rgw_rados.cc:      lderr(store->ctx()) << "ERROR: failed writing data log" << dendl;
+rgw_rados.cc:  CephContext *cct = store->ctx();
+rgw_rados.cc:  r = store->get_max_chunk_size(read_obj.pool, &max_chunk_size);
+rgw_rados.cc:    r = store->append_atomic_test(&source->get_ctx(), source->get_bucket_info(), state.obj, op, &astate);
+rgw_rados.cc:    int r = store->get_raw_obj_ref(obj, &ref);
+rgw_rados.cc:  return store->get_system_obj(source->get_ctx(), state, objv_tracker, obj, bl,
+rgw_rados.cc:  return store->system_obj_get_attr(obj, name, dest);
+rgw_rados.cc:  CephContext *cct = store->ctx();
+rgw_rados.cc:  int r = store->iterate_obj(obj_ctx, source->get_bucket_info(), state.obj, ofs, end, cct->_conf->rgw_get_obj_max_req_size, _get_obj_iterate_cb, (void *)data);
+rgw_rados.cc:    r = store->flush_read_list(data);
+rgw_rados.cc:  CephContext *cct = store->ctx();
+rgw_rados.cc:  int r = store->fetch_remote(store, userid, bucket_name, obj_name, cb, obj_ctx );
+rgw_rados.cc://  int r = store->get_bucket_info(obj_ctx2, "", dest_bucket_name, bucket_info, NULL, &bucket_attrs);
+rgw_rados.cc:      ret = store->get_bucket_info(obj_ctx2, "", dest_bucket_name, bucket_info, NULL, &bucket_attrs); 
+rgw_rados.cc:  if (store->initialize(cct, use_gc_thread, use_lc_thread, quota_threads, run_sync_thread, run_reshard_thread) < 0) {
+rgw_rados.cc:  store->set_context(cct);
+rgw_rados.cc:  if (store->init_rados() < 0) {
+rgw_rados.cc:  store->finalize();
+rgw_rados.h:    store->register_chained_cache(this);
+rgw_rados.h:    expiry = std::chrono::seconds(store->ctx()->_conf.get_val<uint64_t>(
+rgw_rados.h:    return store->chain_cache_entry(cache_info_entries, &chain_entry);
+rgw_rados.h:    : worker(NULL), cct(_store->ctx()), store(_store), thread_name(thread_name) {}
+rgw_realm_reloader.cc:    timer(store->ctx(), mutex, USE_SAFE_TIMER_CALLBACKS),
+rgw_realm_reloader.cc:  CephContext *const cct = store->ctx();
+rgw_realm_reloader.cc:  CephContext *const cct = store->ctx();
+rgw_realm_reloader.cc:  int r = store->register_to_service_map("rgw", service_map_meta);
+rgw_realm_reloader.cc:  rgw_rest_init(cct, store, store->get_zonegroup());
+rgw_realm_reloader.cc:  rgw_bucket_init(store->meta_mgr);
+rgw_reshard.cc:      store->bi_put(op, bs, entry);
+rgw_reshard.cc:        ldout(store->ctx(), 20) << __func__ << ": shard->wait_all_aio() returned ret=" << ret << dendl;
+rgw_reshard.cc:  utime_t lock_duration(store->ctx()->_conf->rgw_reshard_bucket_lock_duration, 0);
+rgw_reshard.cc:  gen_rand_alphanumeric(store->ctx(), cookie_buf, sizeof(cookie_buf) - 1);
+rgw_reshard.cc:  int ret = reshard_lock.lock_exclusive(&store->reshard_pool_ctx, reshard_oid);
+rgw_reshard.cc:    ldout(store->ctx(), 0) << "RGWReshard::add failed to acquire lock on " << reshard_oid << " ret=" << ret << dendl;
+rgw_reshard.cc:  int ret = reshard_lock.unlock(&store->reshard_pool_ctx, reshard_oid);
+rgw_reshard.cc:    ldout(store->ctx(), 0) << "WARNING: RGWReshard::add failed to drop lock on " << reshard_oid << " ret=" << ret << dendl;
+rgw_reshard.cc:    ldout(store->ctx(), 0) << __func__ << " missing new bucket instance id" << dendl;
+rgw_reshard.cc:  int ret = store->bucket_set_reshard(bucket_info, instance_entry);
+rgw_reshard.cc:    ldout(store->ctx(), 0) << "RGWReshard::" << __func__ << " ERROR: error setting bucket resharding flag on bucket index: "
+rgw_reshard.cc:  int ret = store->bucket_set_reshard(bucket_info, instance_entry);
+rgw_reshard.cc:    ldout(store->ctx(), 0) << "RGWReshard::" << __func__ << " ERROR: error setting bucket resharding flag on bucket index: "
+rgw_reshard.cc:  store->create_bucket_id(&new_bucket_info.bucket.bucket_id);
+rgw_reshard.cc:  int ret = store->init_bucket_index(new_bucket_info, new_bucket_info.num_shards);
+rgw_reshard.cc:  ret = store->put_bucket_instance_info(new_bucket_info, true, real_time(), &attrs);
+rgw_reshard.cc:    int ret = store->put_bucket_instance_info(bucket_info, false, real_time(), &bucket_attrs);
+rgw_reshard.cc:      ldout(store->ctx(), 0) << "ERROR: failed to write bucket info, ret=" << ret << dendl;
+rgw_reshard.cc:    ldout(store->ctx(), 0) << __func__ << ": can't reshard, negative max_entries" << dendl;
+rgw_reshard.cc:    ldout(store->ctx(), 0) << __func__ << ": failed to update bucket info ret=" << ret << dendl;
+rgw_reshard.cc:      ret = store->bi_list(bucket, i, string(), marker, max_entries, &entries, &is_truncated);
+rgw_reshard.cc:	int ret = store->get_target_shard_id(new_bucket_info, obj.get_hash_object(), &target_shard_id);
+rgw_reshard.cc:	  lderr(store->ctx()) << "ERROR: get_target_shard_id() returned ret=" << ret << dendl;
+rgw_reshard.cc:    lderr(store->ctx()) << "ERROR: failed to reshard" << dendl;
+rgw_reshard.cc:    lderr(store->ctx()) << "failed to link new bucket instance (bucket_id=" << new_bucket_info.bucket.bucket_id << ": " << cpp_strerror(-ret) << ")" << dendl;
+rgw_reshard.cc:    ldout(store->ctx(), 0) << __func__ << ": failed to update bucket info ret=" << ret << dendl;
+rgw_reshard.cc:  int r = store->open_bucket_index(bucket_info, index_ctx, bucket_objs);
+rgw_reshard.cc:      lderr(store->ctx()) << "ERROR: " << __func__ << ": cls_rgw_get_bucket_resharding() returned ret=" << ret << dendl;
+rgw_reshard.cc:  num_logshards = store->ctx()->_conf->rgw_reshard_num_logs;
+rgw_reshard.cc:  if (!store->can_reshard()) {
+rgw_reshard.cc:    ldout(store->ctx(), 20) << __func__ << " Resharding is disabled"  << dendl;
+rgw_reshard.cc:  int ret = store->reshard_pool_ctx.operate(logshard_oid, &op);
+rgw_reshard.cc:    lderr(store->ctx()) << "ERROR: failed to add entry to reshard log, oid=" << logshard_oid << " tenant=" << entry.tenant << " bucket=" << entry.bucket_name << dendl;
+rgw_reshard.cc:    ldout(store->ctx(), 0) << __func__ << ":Error in updating entry bucket " << entry.bucket_name << ": " <<
+rgw_reshard.cc:  int ret = cls_rgw_reshard_list(store->reshard_pool_ctx, logshard_oid, marker, max, entries, is_truncated);
+rgw_reshard.cc:    lderr(store->ctx()) << "ERROR: failed to list reshard log entries, oid=" << logshard_oid << dendl;
+rgw_reshard.cc:      lderr(store->ctx()) << "access denied to pool " << store->get_zone_params().reshard_pool
+rgw_reshard.cc:  int ret = cls_rgw_reshard_get(store->reshard_pool_ctx, logshard_oid, entry);
+rgw_reshard.cc:      lderr(store->ctx()) << "ERROR: failed to get entry from reshard log, oid=" << logshard_oid << " tenant=" << entry.tenant <<
+rgw_reshard.cc:  int ret = store->reshard_pool_ctx.operate(logshard_oid, &op);
+rgw_reshard.cc:    lderr(store->ctx()) << "ERROR: failed to remove entry from reshard log, oid=" << logshard_oid << " tenant=" << entry.tenant << " bucket=" << entry.bucket_name << dendl;
+rgw_reshard.cc:  int ret = cls_rgw_clear_bucket_resharding(store->reshard_pool_ctx, bucket_instance_oid);
+rgw_reshard.cc:    lderr(store->ctx()) << "ERROR: failed to clear bucket resharding, bucket_instance_oid=" << bucket_instance_oid << dendl;
+rgw_reshard.cc:      ldout(store->ctx(), 0) << __func__ << " ERROR: failed to get bucket resharding :"  <<
+rgw_reshard.cc:    ldout(store->ctx(), 20) << "NOTICE: reshard still in progress; " << (i < num_retries - 1 ? "retrying" : "too many retries") << dendl;
+rgw_reshard.cc:      ldout(store->ctx(), 0) << __func__ << " ERROR: bucket is still resharding, please retry" << dendl;
+rgw_reshard.cc:  ldout(store->ctx(), 0) << __func__ << " ERROR: bucket is still resharding, please retry" << dendl;
+rgw_reshard.cc:  CephContext *cct = store->ctx();
+rgw_reshard.cc:  gen_rand_alphanumeric(store->ctx(), cookie_buf, sizeof(cookie_buf) - 1);
+rgw_reshard.cc:  int ret = l.lock_exclusive(&store->reshard_pool_ctx, logshard_oid);
+rgw_reshard.cc:    ldout(store->ctx(), 5) << __func__ << "(): failed to acquire lock on " << logshard_oid << dendl;
+rgw_reshard.cc:	ldout(store->ctx(), 20) << __func__ << " resharding " << entry.bucket_name  << dendl;
+rgw_reshard.cc:	ret = store->get_bucket_info(obj_ctx, entry.tenant, entry.bucket_name, bucket_info, nullptr,
+rgw_reshard.cc:	  ldout (store->ctx(), 0) <<  __func__ << "ERROR in reshard_bucket " << entry.bucket_name << ":" <<
+rgw_reshard.cc:	ldout (store->ctx(), 20) <<  " removing entry" << entry.bucket_name<< dendl;
+rgw_reshard.cc:        ret = l.lock_exclusive(&store->reshard_pool_ctx, logshard_oid);
+rgw_reshard.cc:          ldout(store->ctx(), 5) << __func__ << "(): failed to acquire lock on " << logshard_oid << dendl;
+rgw_reshard.cc:  l.unlock(&store->reshard_pool_ctx, logshard_oid);
+rgw_reshard.cc:  if (!store->can_reshard()) {
+rgw_reshard.cc:    ldout(store->ctx(), 20) << __func__ << " Resharding is disabled"  << dendl;
+rgw_reshard.cc:    ldout(store->ctx(), 20) << "proceeding logshard = " << logshard << dendl;
+rgw_reshard.cc:  worker = new ReshardWorker(store->ctx(), this);
+rgw_rest_bucket.cc:    http_ret = rgw_rest_get_json_input(store->ctx(), s, quota, QUOTA_INPUT_MAX_LEN, &empty);
+rgw_rest_bucket.cc:    http_ret = store->get_bucket_info(obj_ctx, uid.tenant, bucket, bucket_info, NULL, &attrs);
+rgw_rest.cc:  store->init_host_id();
+rgw_rest_config.cc:  const RGWZoneParams& zone_params = store->get_zone_params();
+rgw_rest_conn.cc:    key = store->get_zone_params().system_key;
+rgw_rest_conn.cc:    self_zone_group = store->get_zonegroup().get_id();
+rgw_rest_conn.cc:    self_zone_group = store->get_zonegroup().get_id();
+rgw_rest_log.cc:    period = store->get_current_period_id();
+rgw_rest_log.cc:      store->meta_mgr->dump_log_entry(entry, s->formatter);
+rgw_rest_log.cc:  period = store->meta_mgr->read_oldest_log_period();
+rgw_rest_log.cc:    period = store->get_current_period_id();
+rgw_rest_log.cc:    period = store->get_current_period_id();
+rgw_rest_log.cc:    period = store->get_current_period_id();
+rgw_rest_log.cc:    period = store->get_current_period_id();
+rgw_rest_log.cc:  if (store->ctx()->_conf->subsys.should_gather<ceph_subsys_rgw, 20>()) {
+rgw_rest_log.cc:  store->wakeup_meta_sync_shards(updated_shards);
+rgw_rest_log.cc:    http_ret = store->get_bucket_instance_info(obj_ctx, bucket_instance, bucket_info, NULL, NULL);
+rgw_rest_log.cc:    http_ret = store->get_bucket_info(obj_ctx, tenant_name, bucket_name, bucket_info, NULL, NULL);
+rgw_rest_log.cc:    int ret = store->list_bi_log_entries(bucket_info, shard_id,
+rgw_rest_log.cc:    http_ret = store->get_bucket_instance_info(obj_ctx, bucket_instance, bucket_info, NULL, NULL);
+rgw_rest_log.cc:    http_ret = store->get_bucket_info(obj_ctx, tenant_name, bucket_name, bucket_info, NULL, NULL);
+rgw_rest_log.cc:  int ret =  store->get_bucket_stats(bucket_info, shard_id, &bucket_ver, &master_ver, stats, &max_marker, &syncstopped);
+rgw_rest_log.cc:    http_ret = store->get_bucket_instance_info(obj_ctx, bucket_instance, bucket_info, NULL, NULL);
+rgw_rest_log.cc:    http_ret = store->get_bucket_info(obj_ctx, tenant_name, bucket_name, bucket_info, NULL, NULL);
+rgw_rest_log.cc:  http_ret = store->trim_bi_log_entries(bucket_info, shard_id, start_marker, end_marker);
+rgw_rest_log.cc:  http_ret = store->data_log->list_entries(shard_id, ut_st, ut_et,
+rgw_rest_log.cc:  http_ret = store->data_log->get_info(shard_id, &info);
+rgw_rest_log.cc:  http_ret = store->data_log->lock_exclusive(shard_id, make_timespan(dur), zone_id, locker_id);
+rgw_rest_log.cc:  http_ret = store->data_log->unlock(shard_id, zone_id, locker_id);
+rgw_rest_log.cc:  if (store->ctx()->_conf->subsys.should_gather<ceph_subsys_rgw, 20>()) {
+rgw_rest_log.cc:  store->wakeup_data_sync_shards(source_zone, updated_shards);
+rgw_rest_log.cc:  http_ret = store->data_log->trim_entries(shard_id, ut_st, ut_et, start_marker, end_marker);
+rgw_rest_log.cc:  auto sync = store->get_meta_sync_manager();
+rgw_rest_log.cc:  http_ret = store->get_bucket_instance_info(ctx, bucket, info, nullptr, nullptr);
+rgw_rest_log.cc:  auto sync = store->get_data_sync_manager(source_zone);
+rgw_rest_metadata.cc:  http_ret = store->meta_mgr->get(metadata_key, s->formatter);
+rgw_rest_metadata.cc:  http_ret = store->meta_mgr->list_keys_init(metadata_key, marker, &handle);
+rgw_rest_metadata.cc:    http_ret = store->meta_mgr->list_keys_next(handle, left, keys, &truncated);
+rgw_rest_metadata.cc:	rgw::to_base64(store->meta_mgr->get_marker(handle));
+rgw_rest_metadata.cc:  store->meta_mgr->list_keys_complete(handle);
+rgw_rest_metadata.cc:  http_ret = store->meta_mgr->put(metadata_key, bl, sync_type,
+rgw_rest_metadata.cc:  http_ret = store->meta_mgr->remove(metadata_key);
+rgw_rest_metadata.cc:  http_ret = store->meta_mgr->lock_exclusive(metadata_key, make_timespan(dur), lock_id);
+rgw_rest_metadata.cc:  http_ret = store->meta_mgr->unlock(metadata_key, lock_id);
+rgw_rest_realm.cc:  http_ret = period.init(store->ctx(), store, realm_id, realm_name);
+rgw_rest_realm.cc:    ldout(store->ctx(), 5) << "failed to read period" << dendl;
+rgw_rest_realm.cc:  auto cct = store->ctx();
+rgw_rest_realm.cc:  if (period.get_realm() != store->realm.get_id()) {
+rgw_rest_realm.cc:        << " doesn't match current realm " << store->realm.get_id() << std::endl;
+rgw_rest_realm.cc:  if (period.get_master_zone() == store->get_zone_params().get_id()) {
+rgw_rest_realm.cc:    auto cursor = store->period_history->attach(RGWPeriod{period});
+rgw_rest_realm.cc:  store->period_history->insert(RGWPeriod{period});
+rgw_rest_realm.cc:    lderr(store->ctx()) << "failed to read realm id=" << id
+rgw_rest_s3.cc:  int ret = store->get_zonegroup(s->bucket_info.zonegroup, zonegroup);
+rgw_rest_s3.cc:  if (!store->is_meta_master()) {
+rgw_rest_s3.cc:    ret = store->get_bucket_info(obj_ctx,
+rgw_rest_s3.cc:  if (!store->is_meta_master()) {
+rgw_rest_s3.cc:    ldout(store->ctx(), 5) << "NOTICE: invalid mfa string provided: " << mfa_str << dendl;
+rgw_rest_s3.cc:    ldout(store->ctx(), 5) << "NOTICE: user does not have mfa device with serial=" << serial << dendl;
+rgw_rest_s3.cc:  int ret = store->check_mfa(user->user_id, serial, pin);
+rgw_rest_s3.cc:    ldout(store->ctx(), 20) << "NOTICE: failed to check MFA, serial=" << serial << dendl;
+rgw_rest_s3.cc:  if (!store->ctx()->_conf->rgw_s3_auth_use_rados &&
+rgw_rest_s3.cc:      !store->ctx()->_conf->rgw_s3_auth_use_keystone &&
+rgw_rest_s3.cc:      !store->ctx()->_conf->rgw_s3_auth_use_ldap) {
+rgw_rest_s3.cc:  if (store->get_obj_state(&obj_ctx, s->bucket_info, obj, &state, false) < 0) {
+rgw_rest_s3.cc:  int ret = store->get_bucket_info(obj_ctx, s->bucket_tenant,
+rgw_rest_swift.cc:  location_constraint = store->get_zonegroup().api_name;
+rgw_rest_swift.cc:    r = store->get_bucket_info(obj_ctx, s->user->user_id.tenant,
+rgw_rest_swift.cc:  int ret = store->get_bucket_info(*static_cast<RGWObjectCtx *>(s->obj_ctx),
+rgw_rest_swift.cc:  if (store->get_obj_state(&obj_ctx, s->bucket_info, obj, &state, false) < 0) {
+rgw_rest_swift.cc:  if (store->get_obj_state(&obj_ctx, s->bucket_info, obj, &state, false) < 0) {
+rgw_rest_user.cc:    ldout(store->ctx(), 20) << "invalid quota type" << dendl;
+rgw_rest_user.cc:    ldout(store->ctx(), 20) << "quota type was not specified, can't set all quotas via http headers" << dendl;
+rgw_rest_user.cc:    ldout(store->ctx(), 20) << "failed initializing user info: " << http_ret << dendl;
+rgw_rest_user.cc:    if ((http_ret = rgw_rest_get_json_input(store->ctx(), s, quotas, QUOTA_INPUT_MAX_LEN, NULL)) < 0) {
+rgw_rest_user.cc:      ldout(store->ctx(), 20) << "failed to retrieve input" << dendl;
+rgw_rest_user.cc:      http_ret = rgw_rest_get_json_input(store->ctx(), s, quota, QUOTA_INPUT_MAX_LEN, &empty);
+rgw_rest_user.cc:        ldout(store->ctx(), 20) << "failed to retrieve input" << dendl;
+rgw_rest_user.cc:        ldout(store->ctx(), 20) << "failed to get user info: " << http_ret << dendl;
+rgw_rest_user.cc:    ldout(store->ctx(), 20) << "failed updating user info: " << http_ret << ": " << err << dendl;
+rgw_role.cc:  return rgw_put_system_obj(store, store->get_zone_params().roles_pool, oid,
+rgw_role.cc:  return rgw_put_system_obj(store, store->get_zone_params().roles_pool, oid,
+rgw_role.cc:  return rgw_put_system_obj(store, store->get_zone_params().roles_pool, oid,
+rgw_role.cc:  auto& pool = store->get_zone_params().roles_pool;
+rgw_role.cc:  auto& pool = store->get_zone_params().roles_pool;
+rgw_role.cc:  auto& pool = store->get_zone_params().roles_pool;
+rgw_role.cc:  auto& pool = store->get_zone_params().roles_pool;
+rgw_role.cc:  auto& pool = store->get_zone_params().roles_pool;
+rgw_role.cc:  auto& pool = store->get_zone_params().roles_pool;
+rgw_role.cc:  auto pool = store->get_zone_params().roles_pool;
+rgw_role.cc:    int r = store->list_raw_objects(pool, prefix, 1000, ctx, oids, &is_truncated);
+rgw_swift_auth.cc:  int ret = store->get_bucket_info(*static_cast<RGWObjectCtx *>(s->obj_ctx),
+rgw_sync.cc:  store->time_log_prepare_entry(entry, real_clock::now(), section, name, bl);
+rgw_sync.cc:  if (store->is_meta_master()) {
+rgw_sync.cc:  if (store->is_meta_master()) {
+rgw_sync.cc:  conn = store->rest_master_conn;
+rgw_sync.cc:  if (store->is_meta_master()) {
+rgw_sync.cc:  if (!store->rest_master_conn) {
+rgw_sync.cc:    lderr(store->ctx()) << "no REST connection to master zone" << dendl;
+rgw_sync.cc:  int r = rgw_init_ioctx(store->get_rados_handle(), store->get_zone_params().log_pool, ioctx, true);
+rgw_sync.cc:    lderr(store->ctx()) << "ERROR: failed to open log pool (" << store->get_zone_params().log_pool << " ret=" << r << dendl;
+rgw_sync.cc:    lderr(store->ctx()) << "ERROR: failed to init remote log, r=" << r << dendl;
+rgw_sync.cc:    lderr(store->ctx()) << "ERROR: failed to read sync status, r=" << r << dendl;
+rgw_sync.cc:    shard_objs[i] = rgw_raw_obj(store->get_zone_params().log_pool, sync_env.shard_obj_name(i));
+rgw_sync.cc:    : RGWCoroutine(env->store->ctx()), env(env), http_op(NULL),
+rgw_sync.cc:    RGWRESTConn *conn = store->rest_master_conn;
+rgw_sync.cc:    : RGWSimpleCoroutine(env->store->ctx()), sync_env(env), http_op(NULL),
+rgw_sync.cc:    : RGWCoroutine(_sync_env->store->ctx()), sync_env(_sync_env),
+rgw_sync.cc:                                                rgw_raw_obj(store->get_zone_params().log_pool, sync_env->status_oid()),
+rgw_sync.cc:                                                           rgw_raw_obj(store->get_zone_params().log_pool, sync_env->status_oid()),
+rgw_sync.cc:                                                                rgw_raw_obj(store->get_zone_params().log_pool, sync_env->shard_obj_name(i)),
+rgw_sync.cc:                                                           rgw_raw_obj(store->get_zone_params().log_pool, sync_env->status_oid()),
+rgw_sync.cc:  rgw_raw_obj obj{env->store->get_zone_params().log_pool,
+rgw_sync.cc:      rgw_raw_obj obj{sync_env->store->get_zone_params().log_pool,
+rgw_sync.cc:                                                rgw_raw_obj(sync_env->store->get_zone_params().log_pool, sync_env->status_oid()),
+rgw_sync.cc:                                                      sync_env->store->get_zone_params().log_pool,
+rgw_sync.cc:            int ret = store->meta_mgr->get_log_shard_id(*sections_iter, *iter, &shard_id);
+rgw_sync.cc:                                                                rgw_raw_obj(sync_env->store->get_zone_params().log_pool, sync_env->shard_obj_name(shard_id)),
+rgw_sync.cc:    int ret = store->meta_mgr->put(raw_key, bl, RGWMetadataHandler::APPLY_ALWAYS);
+rgw_sync.cc:      ldout(store->ctx(), 0) << "ERROR: can't store key: " << raw_key << " ret=" << ret << dendl;
+rgw_sync.cc:    int ret = store->meta_mgr->remove(raw_key);
+rgw_sync.cc:      ldout(store->ctx(), 0) << "ERROR: can't remove key: " << raw_key << " ret=" << ret << dendl;
+rgw_sync.cc:                                                           rgw_raw_obj(store->get_zone_params().log_pool, marker_oid),
+rgw_sync.cc:      pool(sync_env->store->get_zone_params().log_pool),
+rgw_sync.cc:        if (cursor == sync_env->store->period_history->get_current()) {
+rgw_sync.cc:          auto mdlog = sync_env->store->meta_mgr->get_log(period_id);
+rgw_sync.cc:  env->cct = store->ctx();
+rgw_sync.cc:  env->sync_tracer = store->get_sync_tracer();
+rgw_sync.cc:  if (store->is_meta_master()) {
+rgw_sync.cc:  RGWCoroutinesManager crs(store->ctx(), store->get_cr_registry());
+rgw_sync.cc:  RGWHTTPManager http_manager(store->ctx(), crs.get_completion_mgr());
+rgw_sync.cc:  if (store->is_meta_master()) {
+rgw_sync.cc:    lderr(store->ctx()) << "ERROR: fail to fetch master log info (r=" << r << ")" << dendl;
+rgw_sync.cc:  auto cursor = store->period_history->get_current();
+rgw_sync.cc:                                                           rgw_raw_obj(store->get_zone_params().log_pool, sync_env.status_oid()),
+rgw_sync.cc:  auto cursor = store->period_history->lookup(info.realm_epoch);
+rgw_sync.cc:      lderr(store->ctx()) << "ERROR: sync status period=" << info.period
+rgw_sync.cc:  int r = store->period_puller->pull(info.period, period);
+rgw_sync.cc:    lderr(store->ctx()) << "ERROR: failed to read period id "
+rgw_sync.cc:  cursor = store->period_history->attach(std::move(period));
+rgw_sync.cc:    lderr(store->ctx()) << "ERROR: failed to read period history back to "
+rgw_sync.cc:  if (store->is_meta_master()) {
+rgw_sync.cc:      lderr(store->ctx()) << "ERROR: fail to fetch master log info (r=" << r << ")" << dendl;
+rgw_sync.cc:      auto cursor = store->period_history->get_current();
+rgw_sync.cc:    lderr(store->ctx()) << "ERROR: can't sync, mismatch between num shards, master num_shards=" << mdlog_info.num_shards << " local num_shards=" << num_shards << dendl;
+rgw_sync.cc:    : RGWShardCollectCR(store->ctx(), max_concurrent),
+rgw_sync.cc:    : RGWCoroutine(store->ctx()), store(store), metadata(store->meta_mgr),
+rgw_sync.cc:        const auto& pool = store->get_zone_params().log_pool;
+rgw_sync.cc:        new RGWRESTConn(store->ctx(), store, z.first, z.second.endpoints)};
+rgw_sync.cc:      zone(store->get_zone_params().get_id()),
+rgw_sync.cc:      current(store->period_history->get_current())
+rgw_sync.cc:    : RGWShardCollectCR(env.store->ctx(), MAX_CONCURRENT_SHARDS),
+rgw_sync.cc:    : RGWShardCollectCR(env.store->ctx(), MAX_CONCURRENT_SHARDS),
+rgw_sync.cc:    : RGWCoroutine(env.store->ctx()), env(env)
+rgw_sync.cc:    ret = take_min_status(env.store->ctx(), env.peer_status.begin(),
+rgw_sync.cc:        auto mdlog = store->meta_mgr->get_log(env.current.get_period().get_id());
+rgw_sync.cc:    : RGWCoroutine(env.store->ctx()), env(env), mdlog(mdlog),
+rgw_sync.cc:    : RGWShardCollectCR(env.store->ctx(), MAX_CONCURRENT_SHARDS),
+rgw_sync.cc:    meta_env.init(env.dpp, cct, env.store, env.store->rest_master_conn,
+rgw_sync.cc:                  env.store->get_async_rados(), env.http, nullptr,
+rgw_sync.cc:                  env.store->get_sync_tracer());
+rgw_sync.cc:  explicit MetaPeerTrimCR(PeerTrimEnv& env) : RGWCoroutine(env.store->ctx()), env(env) {}
+rgw_sync.cc:      call(new LogInfoCR(cct, env.store->rest_master_conn, env.http,
+rgw_sync.cc:        auto meta_mgr = env.store->meta_mgr;
+rgw_sync.cc:    : RGWCoroutine(store->ctx()), store(store), interval(interval),
+rgw_sync.cc:      obj(store->get_zone_params().log_pool, RGWMetadataLogHistory::oid),
+rgw_sync.cc:      yield call(new RGWSimpleRadosLockCR(store->get_async_rados(), store,
+rgw_sync.cc:        yield call(new RGWSimpleRadosUnlockCR(store->get_async_rados(), store,
+rgw_sync.cc:  if (store->is_meta_master()) {
+rgw_sync.cc:  if (store->is_meta_master()) {
+rgw_sync.h:    : RGWCoroutinesManager(_store->ctx(), _store->get_cr_registry()),
+rgw_sync.h:      http_manager(store->ctx(), completion_mgr),
+rgw_sync.h:  CephContext *get_cct() const override { return store->ctx(); }
+rgw_sync_log_trim.cc:    int r = store->get_raw_obj_ref(obj, &ref);
+rgw_sync_log_trim.cc:      lderr(store->ctx()) << "Failed to watch " << ref.oid
+rgw_sync_log_trim.cc:    ldout(store->ctx(), 10) << "Watching " << ref.oid << dendl;
+rgw_sync_log_trim.cc:      lderr(store->ctx()) << "Failed to unwatch on " << ref.oid
+rgw_sync_log_trim.cc:      lderr(store->ctx()) << "Failed to restart watch on " << ref.oid
+rgw_sync_log_trim.cc:        lderr(store->ctx()) << "no handler for notify type " << type << dendl;
+rgw_sync_log_trim.cc:      lderr(store->ctx()) << "Failed to decode notification: " << e.what() << dendl;
+rgw_sync_log_trim.cc:      ldout(store->ctx(), 4) << "Disconnected watch on " << ref.oid << dendl;
+rgw_sync_log_trim.cc:    : RGWShardCollectCR(store->ctx(), MAX_CONCURRENT_SHARDS),
+rgw_sync_log_trim.cc:    : RGWCoroutine(store->ctx()), store(store),
+rgw_sync_log_trim.cc:      zone_id(store->get_zone().id),
+rgw_sync_log_trim.cc:      peer_status(store->zone_conn_map.size())
+rgw_sync_log_trim.cc:      for (auto& c : store->zone_conn_map) {
+rgw_sync_log_trim.cc:      spawn(new RGWGetBucketInstanceInfoCR(store->get_async_rados(), store,
+rgw_sync_log_trim.cc:    : RGWShardCollectCR(store->ctx(), max_concurrent),
+rgw_sync_log_trim.cc:    : RGWCoroutine(store->ctx()), store(store), http(http), config(config),
+rgw_sync_log_trim.cc:      yield call(new ReadStatus(store->get_async_rados(), store, obj,
+rgw_sync_log_trim.cc:        call(new MetadataListCR(cct, store->get_async_rados(), store->meta_mgr,
+rgw_sync_log_trim.cc:      yield call(new WriteStatus(store->get_async_rados(), store, obj,
+rgw_sync_log_trim.cc:    : RGWCoroutine(store->ctx()), store(store), http(http),
+rgw_sync_log_trim.cc:      yield call(new RGWSimpleRadosLockCR(store->get_async_rados(), store,
+rgw_sync_log_trim.cc:        yield call(new RGWSimpleRadosUnlockCR(store->get_async_rados(), store,
+rgw_sync_log_trim.cc:      status_obj(store->get_zone_params().log_pool, BucketTrimStatus::oid),
+rgw_sync_log_trim.cc:    ldout(store->ctx(), 20) << "get_bucket_counters: " << buckets << dendl;
+rgw_sync_log_trim.cc:    ldout(store->ctx(), 20) << "bucket trim completed" << dendl;
+rgw_sync_log_trim.cc:    ldout(store->ctx(), 20) << "trimmed bucket instance " << bucket_instance << dendl;
+rgw_sync_module_aws.cc:      RGWZoneGroup& zg = sync_env->store->get_zonegroup();
+rgw_sync_module_aws.cc:      RGWZone& zone = sync_env->store->get_zone();
+rgw_sync_module_aws.cc:                                                   status_obj(sync_env->store->get_zone_params().log_pool,
+rgw_sync_module_aws.cc:      source_conn = sync_env->store->get_zone_conn_by_id(sync_env->source_zone);
+rgw_sync_module_es.cc:    conf->init_instance(sync_env->store->get_realm(), instance_id);
+rgw_sync_module_es_rest.cc:      return new RGWMetadataSearch_ObjStore_S3(store->get_sync_module());
+rgw_sync_trace.cc:  int ret = store->update_service_map(std::move(status));
+rgw_sync_trace.cc:    ldout(store->ctx(), 0) << "ERROR: update_service_map() returned ret=" << ret << dendl;
+rgw_tools.cc:  int ret = rgwstore->put_system_obj(NULL, obj, data, exclusive, NULL, *pattrs, objv_tracker, set_mtime);
+rgw_tools.cc:    ret = rgwstore->create_pool(pool);
+rgw_tools.cc:      ret = rgwstore->put_system_obj(NULL, obj, data, exclusive, NULL, *pattrs, objv_tracker, set_mtime);
+rgw_tools.cc:  return rgwstore->delete_system_obj(obj, objv_tracker);
+rgw_torrent.cc:  store->obj_to_raw(s->bucket_info.placement_rule, obj, &raw_obj);
+rgw_torrent.cc:  op_ret = store->omap_set(raw_obj, key, bl);
+rgw_usage.cc:    int ret = store->read_usage(uid, start_epoch, end_epoch, max_entries,
+rgw_usage.cc:  return store->trim_usage(uid, start_epoch, end_epoch);
+rgw_usage.cc:  return store->clear_usage();
+rgw_user.cc:  CephContext *cct = store->ctx();
+rgw_user.cc:      ret = store->get_bucket_info(obj_ctx, user_id.tenant, bucket_ent.bucket.name,
+rgw_user.cc:      ret = store->check_bucket_shards(bucket_info, bucket_info.bucket, bucket_quota);
+rgw_user.cc:  ret = store->complete_sync_user_stats(user_id);
+rgw_user.cc:  CephContext *cct = store->ctx();
+rgw_user.cc:      ret = store->cls_user_get_bucket_stats(bucket_ent.bucket, entry);
+rgw_user.cc:      ot.generate_new_write_ver(store->ctx());
+rgw_user.cc:      ldout(store->ctx(), 0) << "WARNING: can't store user info, swift id (" << k.id
+rgw_user.cc:        ldout(store->ctx(), 0) << "WARNING: can't store user info, access key already mapped to another user" << dendl;
+rgw_user.cc:  ret = store->meta_mgr->put_entry(user_meta_handler, key, data_bl, exclusive, &ot, mtime, pattrs);
+rgw_user.cc:      ret = rgw_put_system_obj(store, store->get_zone_params().user_email_pool, info.user_email,
+rgw_user.cc:      ret = rgw_put_system_obj(store, store->get_zone_params().user_keys_pool, k.id,
+rgw_user.cc:    ret = rgw_put_system_obj(store, store->get_zone_params().user_swift_pool, k.id,
+rgw_user.cc:    ldout(store->ctx(), 0) << "ERROR: failed to decode user info, caught buffer::error" << dendl;
+rgw_user.cc:  int ret = rgw_get_system_obj(store, obj_ctx, store->get_zone_params().user_uid_pool, oid, bl, objv_tracker, pmtime, pattrs, cache_info);
+rgw_user.cc:      lderr(store->ctx())  << "ERROR: rgw_get_user_info_by_uid(): user id mismatch: " << user_id.user_id << " != " << uid << dendl;
+rgw_user.cc:    ldout(store->ctx(), 0) << "ERROR: failed to decode user info, caught buffer::error" << dendl;
+rgw_user.cc:  return rgw_get_user_info_from_index(store, email, store->get_zone_params().user_email_pool, info, objv_tracker, pmtime);
+rgw_user.cc:                                      store->get_zone_params().user_swift_pool,
+rgw_user.cc:                                      store->get_zone_params().user_keys_pool,
+rgw_user.cc:  rgw_raw_obj obj(store->get_zone_params().user_uid_pool, user_id.to_str());
+rgw_user.cc:  rgw_raw_obj obj(store->get_zone_params().user_keys_pool, access_key.id);
+rgw_user.cc:  int ret = store->delete_system_obj(obj);
+rgw_user.cc:  ret = store->meta_mgr->remove_entry(user_meta_handler, oid, &objv_tracker);
+rgw_user.cc:  rgw_raw_obj obj(store->get_zone_params().user_email_pool, email);
+rgw_user.cc:  return store->delete_system_obj(obj);
+rgw_user.cc:  rgw_raw_obj obj(store->get_zone_params().user_swift_pool, swift_name);
+rgw_user.cc:  int ret = store->delete_system_obj(obj);
+rgw_user.cc:    ldout(store->ctx(), 10) << "removing key index: " << kiter->first << dendl;
+rgw_user.cc:      ldout(store->ctx(), 0) << "ERROR: could not remove " << kiter->first << " (access key object), should be fixed (err=" << ret << ")" << dendl;
+rgw_user.cc:    ldout(store->ctx(), 10) << "removing swift subuser index: " << k.id << dendl;
+rgw_user.cc:      ldout(store->ctx(), 0) << "ERROR: could not remove " << k.id << " (swift name object), should be fixed (err=" << ret << ")" << dendl;
+rgw_user.cc:  ldout(store->ctx(), 10) << "removing email index: " << info.user_email << dendl;
+rgw_user.cc:    ldout(store->ctx(), 0) << "ERROR: could not remove email index object for "
+rgw_user.cc:  rgw_raw_obj uid_bucks(store->get_zone_params().user_uid_pool, buckets_obj_id);
+rgw_user.cc:  ldout(store->ctx(), 10) << "removing user buckets index" << dendl;
+rgw_user.cc:  ret = store->delete_system_obj(uid_bucks);
+rgw_user.cc:    ldout(store->ctx(), 0) << "ERROR: could not remove " << info.user_id << ":" << uid_bucks << ", should be fixed (err=" << ret << ")" << dendl;
+rgw_user.cc:  rgw_raw_obj uid_obj(store->get_zone_params().user_uid_pool, key);
+rgw_user.cc:  ldout(store->ctx(), 10) << "removing user index: " << info.user_id << dendl;
+rgw_user.cc:  ret = store->meta_mgr->remove_entry(user_meta_handler, key, &objv_tracker);
+rgw_user.cc:    ldout(store->ctx(), 0) << "ERROR: could not remove " << info.user_id << ":" << uid_obj << ", should be fixed (err=" << ret << ")" << dendl;
+rgw_user.cc:      ldout(store->ctx(), 0) << "ERROR: tenant mismatch: " << old_info.user_id.tenant << " != " << new_info.user_id.tenant << dendl;
+rgw_user.cc:  CephContext *cct = store->ctx();
+rgw_user.cc:  CephContext *cct = store->ctx();
+rgw_user.cc:    ldout(store->ctx(), 10) << "removing email index: " << user_info.user_email << dendl;
+rgw_user.cc:      ldout(store->ctx(), 0) << "ERROR: could not remove " << user_info.user_id << " index (err=" << ret << ")" << dendl;
+rgw_user.cc:    CephContext *cct = store->ctx();
+rgw_user.cc:      ret = store->set_buckets_enabled(bucket_names, !suspended);
+rgw_user.cc:    int ret = store->get_user_stats(info.user_id, stats);
+rgw_user.cc:    pool = store->get_zone_params().user_uid_pool;
+rgw_user.cc:    int ret = store->list_raw_objects_init(store->get_zone_params().user_uid_pool, marker,
+rgw_user.cc:    int ret = store->list_raw_objects_next(no_filter, max, info->ctx,
+rgw_user.cc:    return info->store->list_raw_objs_get_cursor(info->ctx);
+rgw_user.cc:  store->meta_mgr->register_handler(user_meta_handler);

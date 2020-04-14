@@ -335,7 +335,7 @@ int AtomicObjectProcessor::complete(size_t accounted_size,
     //    RGWRados::Object src_op_target(store, bucket_info, obj_ctx, src_obj);
 //	r = store->update_directory(oid,dest,op,store);
 //	  uint64_t get_obj_size()
-   r = store->set_key(key, "time", "cache", s3_userid, manifest.get_obj_size(), etag); 
+   r = store->set_key(key, "time", s3_bucket_name, s3_object_name, "cache", s3_userid, actual_size, "flag");
   	/*ugur*/
   }
   if (pcanceled) {
