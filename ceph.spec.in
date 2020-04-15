@@ -353,8 +353,8 @@ BuildRequires:  libcryptopp-devel
 BuildRequires:  libnuma-devel
 %endif
 %endif
-%if 0%{?rhel} >= 8
-BuildRequires:  /usr/bin/pathfix.py
+%if 0%{without python2}
+BuildRequires:	/usr/bin/pathfix.py
 %endif
 
 %description
@@ -1279,9 +1279,11 @@ install -m 0644 -D udev/95-ceph-osd.rules %{buildroot}%{_udevrulesdir}/95-ceph-o
 # sudoers.d
 install -m 0600 -D sudoers.d/ceph-osd-smartctl %{buildroot}%{_sysconfdir}/sudoers.d/ceph-osd-smartctl
 
-%if 0%{?rhel} >= 8
+%if 0%{without python2}
 pathfix.py -pni "%{__python3} %{py3_shbang_opts}" %{buildroot}%{_bindir}/*
 pathfix.py -pni "%{__python3} %{py3_shbang_opts}" %{buildroot}%{_sbindir}/*
+pathfix.py -pni "%{__python3} %{py3_shbang_opts}" %{buildroot}%{python3_sitearch}
+pathfix.py -pni "%{__python3} %{py3_shbang_opts}" %{buildroot}%{python3_sitelib}
 %endif
 
 #set up placeholder directories
