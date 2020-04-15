@@ -86,6 +86,7 @@
 
 /* Define if you have fuse */
 #cmakedefine HAVE_LIBFUSE
+#cmakedefine LIBFUSE_VERSION3
 
 /* Define to 1 if you have libxfs */
 #cmakedefine HAVE_LIBXFS 1

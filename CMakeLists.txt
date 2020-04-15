@@ -161,6 +161,7 @@ option(WITH_FUSE "Fuse is here" ON)
 if(WITH_FUSE)
   find_package(fuse)
   set(HAVE_LIBFUSE ${FUSE_FOUND})
+  set(LIBFUSE_VERSION3 ${FUSE3_FOUND})
 endif()
 
 option(WITH_XFS "XFS is here" ON)

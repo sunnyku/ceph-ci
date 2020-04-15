@@ -20,6 +20,11 @@ find_library(FUSE_LIBRARIES
   NAMES ${fuse_names}
   PATHS /usr/local/lib64 /usr/local/lib)
 
+find_package(PkgConfig)
+if(PKG_CONFIG_FOUND)
+  pkg_check_modules(FUSE3 fuse>=3.0.0)
+endif()
+
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(fuse DEFAULT_MSG
   FUSE_INCLUDE_DIRS FUSE_LIBRARIES)
