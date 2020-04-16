@@ -2621,7 +2621,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
 
         # make sure the dashboard [does not] references grafana
         try:
-            current_url = self.get_module_option_ex('dashboard',
+            current_url = self.get_module_option_ex('orchestrator',
                                                     'GRAFANA_API_URL')
             if grafanas:
                 host = grafanas[0].hostname
@@ -2629,7 +2629,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
                                                                     host))
                 if current_url != url:
                     self.log.info('Setting dashboard grafana config to %s' % url)
-                    self.set_module_option_ex('dashboard', 'GRAFANA_API_URL',
+                    self.set_module_option_ex('orchestrator', 'GRAFANA_API_URL',
                                               url)
                     # FIXME: is it a signed cert??
         except Exception as e:
