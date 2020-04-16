@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-import logging
+import logging as log
 import time
 import subprocess
 import json
@@ -15,7 +15,11 @@ Rgw manual and dynamic resharding  testing against a running instance
 #
 #
 
-log = logging.getLogger(__name__)
+log.basicConfig(level=log.DEBUG)
+log.getLogger('botocore').setLevel(log.CRITICAL)
+log.getLogger('boto3').setLevel(log.CRITICAL)
+log.getLogger('urllib3').setLevel(log.CRITICAL)
+
 
 """ Constants """
 USER = 'tester'
@@ -33,14 +37,14 @@ def exec_cmd(cmd):
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         out, err = proc.communicate()
         if proc.returncode == 0:
-            print('command succeeded')
-            if out is not None: print(out)
+            log.info('command succeeded')
+            if out is not None: log.info(out)
             return out
         else:
             raise Exception("error: %s \nreturncode: %s" % (err, proc.returncode))
     except Exception as e:
-        print('command failed')
-        print(e)
+        log.error('command failed')
+        log.error(e)
         return False
 
 
@@ -88,7 +92,7 @@ def get_bucket_stats(bucket_name):
     else:
         num_objects = 0
         size_kb = 0
-    print("bucket %s id %s num_objects %d size_kb %d num_shards %d", bucket_name, bucket_id,
+    log.debug("bucket %s id %s num_objects %d size_kb %d num_shards %d", bucket_name, bucket_id,
               num_objects, size_kb, num_shards_op)
     return BucketStats(bucket_name, bucket_id, num_objects, size_kb, num_shards_op)
 
@@ -98,11 +102,11 @@ def get_bucket_num_shards(bucket_name, bucket_id):
     function to get bucket num shards
     """
     metadata = 'bucket.instance:' + bucket_name + ':' + bucket_id
-    print("metadata %s", metadata)
+    log.debug("metadata %s", metadata)
     cmd = exec_cmd('radosgw-admin metadata get %s' % metadata)
     json_op = json.loads(cmd)
     num_shards = json_op['data']['bucket_info']['num_shards']
-    print("bucket %s id %s num_shards %d", bucket_name, bucket_id, num_shards)
+    log.debug("bucket %s id %s num_shards %d", bucket_name, bucket_id, num_shards)
     return num_shards
 
 
@@ -138,26 +142,27 @@ def main():
     ver_bucket_acl = connection.BucketAcl(VER_BUCKET_NAME).load()
 
     # TESTCASE 'reshard-add','reshard','add','add bucket to resharding queue','succeeds'
-    print(' test: reshard add')
+    log.debug(' test: reshard add')
     num_shards_expected = bucket_stats1.num_shards + 1
     cmd = exec_cmd('radosgw-admin reshard add --bucket %s --num-shards %s' % (BUCKET_NAME1, num_shards_expected))
     cmd = exec_cmd('radosgw-admin reshard list')
     json_op = json.loads(cmd)
-    print('bucket name %s', json_op[0]['bucket_name'])
+    log.debug('bucket name %s', json_op[0]['bucket_name'])
     assert json_op[0]['bucket_name'] == BUCKET_NAME1
     assert json_op[0]['new_num_shards'] == num_shards_expected
 
     # TESTCASE 'reshard-process','reshard','','process bucket resharding','succeeds'
-    print(' test: reshard process')
+    log.debug(' test: reshard process')
     cmd = exec_cmd('radosgw-admin reshard process')
     time.sleep(5)
     # check bucket shards num
     bucket_stats1 = get_bucket_stats(BUCKET_NAME1)
-    if bucket_stats1.get_num_shards() != num_shards_expected:
-        print("Resharding failed on bucket %s. Expected number of shards are not created" % BUCKET_NAME1)
+    bucket_stats1.get_num_shards()
+    if bucket_stats1.num_shards != num_shards_expected:
+        log.error("Resharding failed on bucket %s. Expected number of shards are not created" % BUCKET_NAME1)
 
     # TESTCASE 'reshard-add','reshard','add','add non empty bucket to resharding queue','succeeds'
-    print(' test: reshard add non empty bucket')
+    log.debug(' test: reshard add non empty bucket')
     # create objs
     num_objs = 8
     for i in range(0, num_objs):
@@ -167,20 +172,21 @@ def main():
     cmd = exec_cmd('radosgw-admin reshard add --bucket %s --num-shards %s' % (BUCKET_NAME1, num_shards_expected))
     cmd = exec_cmd('radosgw-admin reshard list')
     json_op = json.loads(cmd)
-    print('bucket name %s', json_op[0]['bucket_name'])
+    log.debug('bucket name %s', json_op[0]['bucket_name'])
     assert json_op[0]['bucket_name'] == BUCKET_NAME1
     assert json_op[0]['new_num_shards'] == num_shards_expected
 
     # TESTCASE 'reshard process ,'reshard','process','reshard non empty bucket','succeeds'
-    print(' test: reshard process non empty bucket')
+    log.debug(' test: reshard process non empty bucket')
     cmd = exec_cmd('radosgw-admin reshard process')
     # check bucket shards num
     bucket_stats1 = get_bucket_stats(BUCKET_NAME1)
-    if bucket_stats1.get_num_shards() != num_shards_expected:
-        print("Resharding failed on bucket %s. Expected number of shards are not created" % BUCKET_NAME1)
+    bucket_stats1.get_num_shards()
+    if bucket_stats1.num_shards != num_shards_expected:
+        log.error("Resharding failed on bucket %s. Expected number of shards are not created" % BUCKET_NAME1)
 
     # TESTCASE 'manual resharding','bucket', 'reshard','','manual bucket resharding','succeeds'
-    print(' test: manual reshard bucket')
+    log.debug(' test: manual reshard bucket')
     # create objs
     num_objs = 11
     for i in range(0, num_objs):
@@ -189,17 +195,18 @@ def main():
     time.sleep(10)
     num_shards_expected = bucket_stats2.num_shards + 1
     cmd = exec_cmd('radosgw-admin bucket reshard --bucket %s --num-shards %s' % (BUCKET_NAME2,
-                                                                                       num_shards_expected))
+                                                                                 num_shards_expected))
     # check bucket shards num
     bucket_stats2 = get_bucket_stats(BUCKET_NAME2)
-    if bucket_stats2.get_num_shards() != num_shards_expected:
-        print("Resharding failed on bucket %s. Expected number of shards are not created" % BUCKET_NAME2)
+    bucket_stats2.get_num_shards()
+    if bucket_stats2.num_shards != num_shards_expected:
+        log.error("Resharding failed on bucket %s. Expected number of shards are not created" % BUCKET_NAME2)
 
     # TESTCASE 'versioning reshard-','bucket', reshard','versioning reshard','succeeds'
-    print(' test: reshard versioned bucket')
+    log.debug(' test: reshard versioned bucket')
     num_shards_expected = ver_bucket_stats.num_shards + 1
     cmd = exec_cmd('radosgw-admin bucket reshard --bucket %s --num-shards %s' % (VER_BUCKET_NAME,
-                                                                                       num_shards_expected))
+                                                                                 num_shards_expected))
     # check bucket shards num
     ver_bucket_stats = get_bucket_stats(VER_BUCKET_NAME)
     assert ver_bucket_stats.num_shards == num_shards_expected
@@ -213,15 +220,15 @@ def main():
     assert new_ver_bucket_acl == ver_bucket_acl
 
     # Clean up
-    print("Deleting bucket %s", BUCKET_NAME1)
+    log.debug("Deleting bucket %s", BUCKET_NAME1)
     bucket1.objects.all().delete()
     bucket1.delete()
-    print("Deleting bucket %s", BUCKET_NAME2)
+    log.debug("Deleting bucket %s", BUCKET_NAME2)
     bucket2.objects.all().delete()
     bucket2.delete()
-    print("Deleting bucket %s", VER_BUCKET_NAME)
+    log.debug("Deleting bucket %s", VER_BUCKET_NAME)
     ver_bucket.delete()
 
 
 main()
-print("Completed resharding tests")
+log.info("Completed resharding tests")
