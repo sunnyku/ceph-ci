@@ -1259,7 +1259,11 @@ def osd_scrub_pgs(ctx, config):
         unclean = [stat['pgid'] for stat in stats if 'active+clean' not in stat['state']]
         split_merge = []
         osd_dump = manager.get_osd_dump_json()
-        split_merge = [i['pool_name'] for i in osd_dump['pools'] if i['pg_num'] != i['pg_num_target']]
+        if 'pg_num_target' in i:
+            split_merge = [i['pool_name'] for i in osd_dump['pools'] if i['pg_num'] != i['pg_num_target']]
+        else:
+            # mimic does not adjust pg num automatically
+            split_merge = []
         if not unclean and not split_merge:
             all_clean = True
             break
