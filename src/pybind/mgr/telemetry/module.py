@@ -132,7 +132,8 @@ class Module(MgrModule):
             "perm": "r"
         },
         {
-            "cmd": "telemetry send",
+            "cmd": "telemetry send "
+                   "name=license,type=CephString,req=false",
             "desc": "Force sending data to Ceph telemetry",
             "perm": "rw"
         },
@@ -501,20 +502,31 @@ class Module(MgrModule):
 
         return report
 
-    def send(self, report):
-        self.log.info('Upload report to: %s', self.config['url'])
+    def _try_post(self, what, url, report):
+        self.log.info('Sending %s to: %s' % (what, url))
         proxies = dict()
         if 'proxy' in self.config:
             self.log.info('Using HTTP(S) proxy: %s', self.config['proxy'])
             proxies['http'] = self.config['proxy']
             proxies['https'] = self.config['proxy']
+        try:
+            resp = requests.put(url=url, json=report, proxies=proxies)
+            resp.raise_for_status()
+        except Exception as e:
+            fail_reason = 'Failed to send %s to %s: %s' % (what, url, str(e))
+            self.log.error(fail_reason)
+            return fail_reason
+        return None
 
-        resp = requests.put(url=self.config['url'],
-                            json=report, proxies=proxies)
-        if not resp.ok:
-            self.log.error("Report send failed: %d %s %s" %
-                           (resp.status_code, resp.reason, resp.text))
-        return resp
+    def send(self, report):
+        fail_reason = self._try_post('ceph report', self.config['url'], report)
+        if fail_reason:
+            return 1, '', fail_reason
+        else:
+            now = int(time.time())
+            self.last_upload = now
+            self.set_config('last_upload', str(now))
+            return 0, 'Report sent to {0}'.format(self.config['url']), ''
 
     def handle_command(self, command):
         if command['prefix'] == 'telemetry config-show':
@@ -531,25 +543,25 @@ class Module(MgrModule):
             return 0, 'Configuration option {0} updated'.format(key), ''
         elif command['prefix'] == 'telemetry on':
             if command.get('license') != LICENSE:
-                return -errno.EPERM, '', "Telemetry data is licensed under the " + LICENSE_NAME + " (" + LICENSE_URL + ").\nTo enable, add '--license " + LICENSE + "' to the 'ceph telemetry on' command."
-            self.set_config('enabled', True)
-            self.set_config('last_opt_revision', REVISION)
+                return -errno.EPERM, '', "Telemetry data is licensed under the " + LICENSE_NAME + " (" + LICENSE_URL + ").\nTo enable, add '" + LICENSE + "' to the 'ceph telemetry on' command."
+            self.set_config('enabled', 'True')
+            self.set_config_option('enabled', 'True')
+            self.set_config('last_opt_revision', str(REVISION))
+            self.set_config_option('last_opt_revision', str(REVISION))
             return 0, '', ''
         elif command['prefix'] == 'telemetry off':
-            self.set_config('enabled', False)
-            self.set_config('last_opt_revision', REVISION)
+            self.set_config('enabled', 'False')
+            self.set_config_option('enabled', 'False')
+            self.set_config('last_opt_revision', '1')
+            self.set_config_option('last_opt_revision', '1')
             return 0, '', ''
         elif command['prefix'] == 'telemetry send':
+            if int(self.config['last_opt_revision']) < LAST_REVISION_RE_OPT_IN:
+                if command.get('license') != LICENSE:
+                    self.log.debug('A telemetry send attempt while opted-out. Asking for license agreement')
+                    return -errno.EPERM, '', "Telemetry data is licensed under the " + LICENSE_NAME + " (" + LICENSE_URL + ").\nTo manually send telemetry data, add '" + LICENSE + "' to the 'ceph telemetry send' command.\nPlease consider allowing telemetry module to share data with 'ceph telemetry on'."
             self.last_report = self.compile_report()
-            resp = self.send(self.last_report)
-            if resp.ok:
-                return 0, 'Report sent to {0}'.format(self.config['url']), ''
-            return 1, '', 'Failed to send report to %s: %d %s %s' % (
-                self.config['url'],
-                resp.status_code,
-                resp.reason,
-                resp.text
-            )
+            return self.send(self.last_report)
         elif command['prefix'] == 'telemetry show':
             report = self.compile_report(
                 channels=command.get('channels', None)
@@ -576,7 +588,7 @@ class Module(MgrModule):
 
     def refresh_health_checks(self):
         health_checks = {}
-        if self.enabled and self.last_opt_revision < LAST_REVISION_RE_OPT_IN:
+        if self.config['enabled'] and int(self.config['last_opt_revision']) < LAST_REVISION_RE_OPT_IN:
             health_checks['TELEMETRY_CHANGED'] = {
                 'severity': 'warning',
                 'summary': 'Telemetry requires re-opt-in',
@@ -598,7 +610,7 @@ class Module(MgrModule):
 
             self.refresh_health_checks()
 
-            if self.last_opt_revision < LAST_REVISION_RE_OPT_IN:
+            if int(self.config['last_opt_revision']) < LAST_REVISION_RE_OPT_IN:
                 self.log.debug('Not sending report until user re-opts-in')
                 self.event.wait(1800)
                 continue
@@ -618,15 +630,7 @@ class Module(MgrModule):
                 except:
                     self.log.exception('Exception while compiling report:')
 
-                try:
-                    resp = self.send(self.last_report)
-                    # self.send logs on failure; only update last_upload
-                    # if we succeed
-                    if resp.ok:
-                        self.last_upload = now
-                        self.set_config('last_upload', str(now))
-                except:
-                    self.log.exception('Exception while sending report:')
+                self.send(self.last_report)
             else:
                 self.log.debug('Interval for sending new report has not expired')
 
