@@ -941,6 +941,14 @@ class Orchestrator(object):
         """ Update OSD cluster """
         raise NotImplementedError()
 
+    def set_unmanaged_flag(self, service_name: str, unmanaged_flag: bool) -> HandleCommandResult:
+        raise NotImplementedError()
+
+    def preview_drivegroups(self, drive_group_name: Optional[str] = 'osd',
+                            dg_specs: Optional[List[DriveGroupSpec]] = None) -> List[Dict[str, Dict[Any, Any]]]:
+        """ Get a preview for OSD deployments """
+        raise NotImplementedError()
+
     def remove_osds(self, osd_ids: List[str],
                     replace: bool = False,
                     force: bool = False) -> Completion:
@@ -1280,8 +1288,16 @@ class DaemonDescription(object):
 
     def service_id(self):
         if self.daemon_type == 'rgw':
-            v = self.daemon_id.split('.')
-            return '.'.join(v[0:2])
+            if self.hostname and self.hostname in self.daemon_id:
+                pre, post_ = self.daemon_id.split(self.hostname)
+                return pre[:-1]
+            else:
+                # daemon_id == "realm.zone.host.random"
+                v = self.daemon_id.split('.')
+                if len(v) == 4:
+                    return '.'.join(v[0:2])
+                # subcluster or fqdn? undecidable.
+                raise OrchestratorError(f"DaemonDescription: Cannot calculate service_id: {v}")
         if self.daemon_type in ['mds', 'nfs', 'iscsi']:
             return self.daemon_id.split('.')[0]
         return self.daemon_type
@@ -1410,7 +1426,7 @@ class ServiceDescription(object):
 
         c_status = status.copy()
         for k in ['last_refresh', 'created']:
-            if k in c:
+            if k in c_status:
                 c_status[k] = datetime.datetime.strptime(c_status[k], DATEFMT)
         return cls(spec=spec, **c_status)
 
@@ -1471,10 +1487,10 @@ class InventoryHost(object):
             name = _data.pop('name')
             addr = _data.pop('addr', None) or name
             devices = inventory.Devices.from_json(_data.pop('devices'))
+            labels = _data.pop('labels', list())
             if _data:
                 error_msg = 'Unknown key(s) in Inventory: {}'.format(','.join(_data.keys()))
                 raise OrchestratorValidationError(error_msg)
-            labels = _data.get('labels', list())
             return cls(name, devices, labels, addr)
         except KeyError as e:
             error_msg = '{} is required for {}'.format(e, cls.__name__)

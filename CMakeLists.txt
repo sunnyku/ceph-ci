@@ -159,7 +159,7 @@ endif()
 
 option(WITH_FUSE "Fuse is here" ON)
 if(WITH_FUSE)
-  find_package(fuse)
+  find_package(FUSE)
   set(HAVE_LIBFUSE ${FUSE_FOUND})
 endif()
 
@@ -187,9 +187,12 @@ if(WITH_BLUESTORE)
 endif()
 
 include(CMakeDependentOption)
-CMAKE_DEPENDENT_OPTION(WITH_LIBURING "Build with liburing library support" OFF
+CMAKE_DEPENDENT_OPTION(WITH_LIBURING "Enable io_uring bluestore backend" OFF
   "WITH_BLUESTORE;HAVE_LIBAIO" OFF)
 set(HAVE_LIBURING ${WITH_LIBURING})
+
+CMAKE_DEPENDENT_OPTION(WITH_SYSTEM_LIBURING "Require and build with system liburing" OFF
+  "HAVE_LIBAIO;WITH_BLUESTORE" OFF)
 
 CMAKE_DEPENDENT_OPTION(WITH_BLUESTORE_PMEM "Enable PMDK libraries" OFF
   "WITH_BLUESTORE" OFF)

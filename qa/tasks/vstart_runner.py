@@ -150,6 +150,11 @@ else:
     SRC_PREFIX = "./"
 
 
+def rm_nonascii_chars(var):
+    var = var.replace('\xe2\x80\x98', '\'')
+    var = var.replace('\xe2\x80\x99', '\'')
+    return var
+
 class LocalRemoteProcess(object):
     def __init__(self, args, subproc, check_status, stdout, stderr):
         self.args = args
@@ -170,6 +175,7 @@ class LocalRemoteProcess(object):
                 return
 
         out, err = self.subproc.communicate()
+        out, err = rm_nonascii_chars(out), rm_nonascii_chars(err)
         self.stdout.write(out)
         self.stderr.write(err)
 
@@ -627,33 +633,6 @@ class LocalKernelMount(KernelMount):
         log.info("I think my launching pid was {0}".format(self.fuse_daemon.subproc.pid))
         return path
 
-    def umount(self, force=False):
-        log.debug('Unmounting client client.{id}...'.format(id=self.client_id))
-
-        cmd=['sudo', 'umount', self.mountpoint]
-        if force:
-            cmd.append('-f')
-
-        try:
-            self.client_remote.run(args=cmd, timeout=(15*60), omit_sudo=False)
-        except Exception as e:
-            self.client_remote.run(args=[
-                'sudo',
-                Raw('PATH=/usr/sbin:$PATH'),
-                'lsof',
-                Raw(';'),
-                'ps', 'auxf',
-            ], timeout=(15*60), omit_sudo=False)
-            raise e
-
-        rproc = self.client_remote.run(args=[
-                'rmdir',
-                '--',
-                self.mountpoint,
-            ])
-        rproc.wait()
-        self.mounted = False
-
     def mount(self, mount_path=None, mount_fs_name=None, mount_options=[]):
         self.setupfs(name=mount_fs_name)
 
@@ -814,10 +793,6 @@ class LocalFuseMount(FuseMount):
         path = "{0}/client.{1}.{2}.asok".format(d, self.client_id, self.fuse_daemon.subproc.pid)
         log.info("I think my launching pid was {0}".format(self.fuse_daemon.subproc.pid))
         return path
-
-    def umount(self):
-        if self.is_mounted():
-            super(LocalFuseMount, self).umount()
 
     def mount(self, mount_path=None, mount_fs_name=None, mountpoint=None, mount_options=[]):
         if mountpoint is not None:
