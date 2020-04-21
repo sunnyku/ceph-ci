@@ -58,6 +58,8 @@ fi
 echo start building 
 date
 (cd build; gmake -j$NPROC $BUILDOPTS )
+(cd build; gmake -j$NPROC $BUILDOPTS ceph-disk)
+(cd build; gmake -j$NPROC $BUILDOPTS ceph-detect-init)
 
 echo start testing 
 date
