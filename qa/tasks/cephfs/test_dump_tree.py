@@ -1,11 +1,12 @@
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 import random
 import os
+from io import StringIO
 
 class TestDumpTree(CephFSTestCase):
     def get_paths_to_ino(self):
         inos = {}
-        p = self.mount_a.run_shell(["find", "./"])
+        p = self.mount_a.run_shell(args=["find", "./"], stdout=StringIO())
         paths = p.stdout.getvalue().strip().split()
         for path in paths:
             inos[path] = self.mount_a.path_to_ino(path, False)

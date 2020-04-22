@@ -1,6 +1,7 @@
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 import random
 import os
+from io import StringIO
 
 class TestMetaInjection(CephFSTestCase):
     def test_meta_injection(self):
@@ -15,7 +16,8 @@ class TestMetaInjection(CephFSTestCase):
         
         # export meta of ino
         self.fs.meta_tool(['showm', '-i', str(ino), '-o', '/tmp/meta_out'], 0, True)
-        out = self.mount_a.run_shell(['grep', str(ino),'/tmp/meta_out']).stdout.getvalue().strip()
+        out = self.mount_a.run_shell(args=['grep', str(ino),'/tmp/meta_out'],
+                                     stdout=StringIO()).stdout.getvalue().strip()
         
         # check the metadata of ino
         self.assertNotEqual(out.find(u'"ino":'+ str(ino)), -1)
@@ -26,8 +28,10 @@ class TestMetaInjection(CephFSTestCase):
         self.fs.get_meta_of_fs_file(dirino, "metafile1", "/tmp/meta_obj_chg")
         
         # checkout meta_out after import it
-        ori_mds5 = self.mount_a.run_shell(["md5sum", "/tmp/meta_obj"]).stdout.getvalue().strip().split()
-        chg_mds5 = self.mount_a.run_shell(["md5sum", "/tmp/meta_obj_chg"]).stdout.getvalue().strip().split()
+        ori_mds5 = self.mount_a.run_shell(args=["md5sum", "/tmp/meta_obj"],
+                                          stdout=StringIO()).stdout.getvalue().strip().split()
+        chg_mds5 = self.mount_a.run_shell(["md5sum", "/tmp/meta_obj_chg"],
+                                          stdout=StringIO()).stdout.getvalue().strip().split()
         print(ori_mds5," ==> ", chg_mds5)
         self.assertEqual(len(ori_mds5), 2)
         self.assertEqual(len(chg_mds5), 2)

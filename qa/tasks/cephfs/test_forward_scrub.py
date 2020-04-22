@@ -14,6 +14,7 @@ import six
 
 from collections import namedtuple
 from io import BytesIO
+from io import StringIO
 from textwrap import dedent
 
 from teuthology.orchestra.run import CommandFailedError
@@ -41,7 +42,7 @@ class TestForwardScrub(CephFSTestCase):
 
     def _get_paths_to_ino(self):
         inos = {}
-        p = self.mount_a.run_shell(["find", "./"])
+        p = self.mount_a.run_shell(args=["find", "./"], stdout=StringIO())
         paths = p.stdout.getvalue().strip().split()
         for path in paths:
             inos[path] = self.mount_a.path_to_ino(path)

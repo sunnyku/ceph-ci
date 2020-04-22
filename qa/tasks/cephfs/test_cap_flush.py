@@ -1,6 +1,7 @@
 
 import os
 import time
+from six import StringIO
 from textwrap import dedent
 from tasks.cephfs.fuse_mount import FuseMount
 from tasks.cephfs.cephfs_test_case import CephFSTestCase, for_teuthology
@@ -57,7 +58,8 @@ class TestCapFlush(CephFSTestCase):
         self.fs.mds_fail_restart()
         self.fs.wait_for_daemons()
 
-        mode = self.mount_a.run_shell(['stat', '-c' '%a', file_path]).stdout.getvalue().strip()
+        mode = self.mount_a.run_shell(args=['stat', '-c' '%a', file_path],
+                                      stdout=StringIO()).stdout.getvalue().strip()
         # If the cap flush get dropped, mode should be 0644.
         # (Ax cap stays in dirty state, which prevents setattr reply from updating file mode)
         self.assertEqual(mode, "600")

@@ -2,6 +2,7 @@ import json
 import logging
 import errno
 import re
+from io import StringIO
 from teuthology.contextutil import MaxWhileTries
 from teuthology.exceptions import CommandFailedError
 from teuthology.orchestra.run import wait
@@ -513,7 +514,8 @@ class TestDamage(CephFSTestCase):
         self.fs._write_data_xattr(file1_ino, "parent", "rhubarb")
 
         # Check that touching the hardlink gives EIO
-        ran = self.mount_a.run_shell(["stat", "testdir/hardlink1"], wait=False)
+        ran = self.mount_a.run_shell(args=["stat", "testdir/hardlink1"],
+                                     stderr=StringIO(), wait=False)
         try:
             ran.wait()
         except CommandFailedError:
@@ -538,7 +540,8 @@ class TestDamage(CephFSTestCase):
         self.fs.rados(["rm", "{0:x}.00000000".format(dir2_ino)])
 
         # Check that touching the hardlink gives EIO
-        ran = self.mount_a.run_shell(["stat", "testdir/hardlink2"], wait=False)
+        ran = self.mount_a.run_shell(args=["stat", "testdir/hardlink2"],
+                                     stderr=StringIO(), wait=False)
         try:
             ran.wait()
         except CommandFailedError:

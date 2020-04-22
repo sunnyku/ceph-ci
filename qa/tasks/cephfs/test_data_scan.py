@@ -10,6 +10,7 @@ import time
 import traceback
 
 from io import BytesIO
+from io import StringIO
 from collections import namedtuple, defaultdict
 from textwrap import dedent
 
@@ -475,7 +476,8 @@ class TestDataScan(CephFSTestCase):
         self.fs.mds_restart()
         self.fs.wait_for_daemons()
         self.mount_a.mount_wait()
-        files = self.mount_a.run_shell(["ls", "subdir/"]).stdout.getvalue().strip().split("\n")
+        files = self.mount_a.run_shell(args=["ls", "subdir/"],
+                                       stdout=StringIO()).stdout.getvalue().strip().split("\n")
         self.assertListEqual(sorted(files), sorted(list(set(file_names) - set([victim_dentry]))))
 
         # Stop the filesystem
@@ -495,7 +497,8 @@ class TestDataScan(CephFSTestCase):
         self.fs.mds_restart()
         self.fs.wait_for_daemons()
         self.mount_a.mount_wait()
-        out = self.mount_a.run_shell(["cat", "subdir/{0}".format(victim_dentry)]).stdout.getvalue().strip()
+        out = self.mount_a.run_shell(args=["cat", "subdir/{0}".format(victim_dentry)],
+                                     stdout=StringIO()).stdout.getvalue().strip()
         self.assertEqual(out, victim_dentry)
 
         # Finally, close the loop by checking our injected dentry survives a merge

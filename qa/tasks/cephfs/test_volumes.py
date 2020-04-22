@@ -5,6 +5,7 @@ import errno
 import random
 import logging
 import collections
+from io import StringIO
 
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 from teuthology.exceptions import CommandFailedError
@@ -56,7 +57,7 @@ class TestVolumes(CephFSTestCase):
         path1 = self._get_subvolume_path(self.volname, subvolume, group_name=source_group)
         path2 = self._get_subvolume_path(self.volname, clone, group_name=clone_group)
 
-        p = self.mount_a.run_shell(["find", path1])
+        p = self.mount_a.run_shell(args=["find", path1], stdout=StringIO())
         paths = p.stdout.getvalue().strip().split()
 
         # for each entry in source and clone (sink) verify certain inode attributes:
@@ -1029,9 +1030,12 @@ class TestVolumes(CephFSTestCase):
         subvol3_path = self._get_subvolume_path(self.volname, subvol3, group_name=group)
 
         # check subvolume's  mode
-        actual_mode1 = self.mount_a.run_shell(['stat', '-c' '%a', subvol1_path]).stdout.getvalue().strip()
-        actual_mode2 = self.mount_a.run_shell(['stat', '-c' '%a', subvol2_path]).stdout.getvalue().strip()
-        actual_mode3 = self.mount_a.run_shell(['stat', '-c' '%a', subvol3_path]).stdout.getvalue().strip()
+        actual_mode1 = self.mount_a.run_shell(args=['stat', '-c' '%a', subvol1_path],
+                                              stdout=StringIO()).stdout.getvalue().strip()
+        actual_mode2 = self.mount_a.run_shell(args=['stat', '-c' '%a', subvol2_path],
+                                              stdout=StringIO()).stdout.getvalue().strip()
+        actual_mode3 = self.mount_a.run_shell(args=['stat', '-c' '%a', subvol3_path],
+                                              stdout=StringIO()).stdout.getvalue().strip()
         self.assertEqual(actual_mode1, expected_mode1)
         self.assertEqual(actual_mode2, expected_mode2)
         self.assertEqual(actual_mode3, expected_mode2)

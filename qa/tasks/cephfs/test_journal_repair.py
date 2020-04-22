@@ -7,6 +7,7 @@ import json
 import logging
 from textwrap import dedent
 import time
+from io import StringIO
 
 from teuthology.exceptions import CommandFailedError, ConnectionLostError
 from tasks.cephfs.filesystem import ObjectNotFound, ROOT_INO
@@ -103,7 +104,7 @@ class TestJournalRepair(CephFSTestCase):
         self.mount_a.umount_wait()  # remount to clear client cache before our second ls
         self.mount_a.mount_wait()
 
-        proc = self.mount_a.run_shell(['ls', '-R'])
+        proc = self.mount_a.run_shell(args=['ls', '-R'], stdout=StringIO())
         self.assertEqual(proc.stdout.getvalue().strip(),
                          dedent("""
                          .:

@@ -2,6 +2,7 @@
 from tasks.cephfs.fuse_mount import FuseMount
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 from teuthology.orchestra.run import CommandFailedError, ConnectionLostError
+from io import StringIO
 import errno
 import time
 import json
@@ -168,7 +169,7 @@ class TestMisc(CephFSTestCase):
                                                   '-f', 'json-pretty')
         _ = json.loads(out)
 
-        proc = self.mount_a.run_shell(['df', '.'])
+        proc = self.mount_a.run_shell(args=['df', '.'], stdout=StringIO())
         output = proc.stdout.getvalue()
         fs_avail = output.split('\n')[1].split()[3]
         fs_avail = float(fs_avail) * 1024
