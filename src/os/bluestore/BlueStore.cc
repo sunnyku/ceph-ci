@@ -11084,6 +11084,9 @@ int BlueStore::_upgrade_super()
 	t->rmkey(PREFIX_SUPER, "min_min_alloc_size");
       }
       ondisk_format = 2;
+
+      // make sure upgrade is performed within a single transaction
+      // hence preparing new super record here other than at the end
       _prepare_ondisk_format_super(t);
       int r = db->submit_transaction_sync(t);
       ceph_assert(r == 0);
@@ -11096,18 +11099,22 @@ int BlueStore::_upgrade_super()
       // - super: added per_pool_omap key, which indicates that *all* objects
       //   are using the new prefix and key format
       ondisk_format = 3;
-      KeyValueDB::Transaction t = db->get_transaction();
-      _prepare_ondisk_format_super(t);
-      int r = db->submit_transaction_sync(t);
-      ceph_assert(r == 0);
     }
     if (ondisk_format == 3) {
       // changes:
       // - FreelistManager keeps meta within bdev label
       int r = _write_out_fm_meta(0);
       ceph_assert(r == 0);
-
       ondisk_format = 4;
+    }
+    // This to be the last operation
+    // Upgrade to format 2 is already doned at this point,
+    // perform additional upgrade if needed
+    if (ondisk_format > 2) {
+      KeyValueDB::Transaction t = db->get_transaction();
+      _prepare_ondisk_format_super(t);
+      int r = db->submit_transaction_sync(t);
+      ceph_assert(r == 0);
     }
   }
   // done
