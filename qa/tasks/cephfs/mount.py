@@ -1,11 +1,11 @@
 from contextlib import contextmanager
 from io import BytesIO
+from io import StringIO
 import json
 import logging
 import datetime
 import six
 import time
-from six import StringIO
 from textwrap import dedent
 import os
 import re
@@ -582,14 +582,16 @@ class CephFSMount(object):
         p.wait()
         return six.ensure_str(p.stdout.getvalue().strip())
 
-    def run_shell(self, args, wait=True, stdin=None, check_status=True,
-                  omit_sudo=True):
+    def run_shell(self, args, wait=True, stdin=None, stdout=None, 
+                  stderr=None, check_status=True, omit_sudo=True):
         if isinstance(args, str):
             args = args.split()
 
+        stdout = stdout or StringIO()
+        stderr = stderr or StringIO()
         args = ["cd", self.mountpoint, run.Raw('&&'), "sudo"] + args
-        return self.client_remote.run(args=args, stdout=StringIO(),
-                                      stderr=StringIO(), wait=wait,
+        return self.client_remote.run(args=args, stdout=stdout,
+                                      stderr=stderr, wait=wait,
                                       stdin=stdin, check_status=check_status,
                                       omit_sudo=omit_sudo)
 

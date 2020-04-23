@@ -552,14 +552,16 @@ class LocalKernelMount(KernelMount):
         else:
             return keyring_path
 
-    def run_shell(self, args, wait=True, stdin=None, check_status=True,
-                  omit_sudo=False):
+    def run_shell(self, args, wait=True, stdin=None, stdout=None, stderr=None,
+                  check_status=True, omit_sudo=False):
         # FIXME maybe should add a pwd arg to teuthology.orchestra so that
         # the "cd foo && bar" shenanigans isn't needed to begin with and
         # then we wouldn't have to special case this
+        stdout = stdout or stringIO()
+        stderr = stderr or stringIO()
         return self.client_remote.run(args=args, wait=wait, cwd=self.mountpoint,
-                                      stdin=stdin, check_status=check_status,
-                                      omit_sudo=omit_sudo)
+                                      stdin=stdin, stdout=stdout, stderr=stderr,
+                                      check_status=check_status, omit_sudo=omit_sudo)
 
     def run_as_user(self, args, user, wait=True, stdin=None, check_status=True):
         # FIXME maybe should add a pwd arg to teuthology.orchestra so that
@@ -717,13 +719,16 @@ class LocalFuseMount(FuseMount):
         # to avoid assumptions about daemons' pwd
         return os.path.abspath("./client.{0}.keyring".format(self.client_id))
 
-    def run_shell(self, args, wait=True, stdin=None, check_status=True, omit_sudo=True):
+    def run_shell(self, args, wait=True, stdin=None, stdout=None, stderr=None,
+                  check_status=True, omit_sudo=True):
         # FIXME maybe should add a pwd arg to teuthology.orchestra so that
         # the "cd foo && bar" shenanigans isn't needed to begin with and
         # then we wouldn't have to special case this
+        stdout = stdout or StringIO()
+        stderr = stderr or StringIO()
         return self.client_remote.run(args=args, wait=wait, cwd=self.mountpoint,
-                                      stdin=stdin, check_status=check_status,
-                                      omit_sudo=omit_sudo)
+                                      stdin=stdin, stdout=stdout, stderr=stderr,
+                                      check_status=check_status, omit_sudo=omit_sudo)
 
     def run_as_user(self, args, user, wait=True, stdin=None, check_status=True):
         # FIXME maybe should add a pwd arg to teuthology.orchestra so that
