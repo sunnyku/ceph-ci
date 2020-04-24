@@ -36,7 +36,7 @@
 %bcond_without cephfs_java
 %endif
 %bcond_without amqp_endpoint
-%bcond_without lttng
+%bcond_with lttng
 %bcond_without libradosstriper
 %bcond_without ocf
 %bcond_without kafka_endpoint
