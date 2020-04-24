@@ -1779,7 +1779,7 @@ def deploy_daemon(fsid, daemon_type, daemon_id, c, uid, gid,
 
 def deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c,
                         enable=True, start=True,
-                        osd_fsid=None):
+                        osd_fsid=None, osd_simple=False):
     # type: (str, int, int, str, Union[int, str], CephContainer, bool, bool, Optional[str]) -> None
     # cmd
     data_dir = get_data_dir(fsid, daemon_type, daemon_id)
@@ -1788,6 +1788,11 @@ def deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c,
         if daemon_type == 'osd':
             # osds have a pre-start step
             assert osd_fsid
+            if osd_simple:
+                f.write('# This is a simple OSD. Needs chown on startup:\n')
+                for n in ['block', 'block.db', 'block.wal']:
+                    p = os.path.join(data_dir, n)
+                    f.write('[ -L {p} ] && chown {uid}:{gid} {p}\n'.format(p=p, uid=uid, gid=gid))
             prestart = CephContainer(
                 image=args.image,
                 entrypoint='/usr/sbin/ceph-volume',
@@ -3124,13 +3129,13 @@ class AdoptOsd(object):
             with open(path, 'r') as f:
                 osd_fsid = f.read().strip()
             logger.info("Found online OSD at %s" % path)
-            if os.path.exists(os.path.join(self.osd_data_dir, 'type')):
-                with open(os.path.join(self.osd_data_dir, 'type')) as f:
-                    osd_type = f.read().strip()
-            else:
-                logger.info('"type" file missing for OSD data dir')
         except IOError:
             logger.info('Unable to read OSD fsid from %s' % path)
+        if os.path.exists(os.path.join(self.osd_data_dir, 'type')):
+            with open(os.path.join(self.osd_data_dir, 'type')) as f:
+                osd_type = f.read().strip()
+        else:
+            logger.info('"type" file missing for OSD data dir')
 
         return osd_fsid, osd_type
 
@@ -3212,6 +3217,7 @@ def command_adopt_ceph(daemon_type, daemon_id, fsid):
         if not osd_fsid:
             raise Error('Unable to find OSD {}'.format(daemon_id))
         logger.info('objectstore_type is %s' % osd_type)
+        assert osd_type
         if osd_type == 'filestore':
             raise Error('FileStore is not supported by cephadm')
 
@@ -3257,6 +3263,7 @@ def command_adopt_ceph(daemon_type, daemon_id, fsid):
         if num_renamed:
             logger.info('Renamed %d leveldb *.ldb files to *.sst',
                         num_renamed)
+    osd_simple = False
     if daemon_type == 'osd':
         for n in ['block', 'block.db', 'block.wal']:
             p = os.path.join(data_dir_dst, n)
@@ -3267,6 +3274,7 @@ def command_adopt_ceph(daemon_type, daemon_id, fsid):
         simple_fn = os.path.join('/etc/ceph/osd',
                                  '%s-%s.json' % (daemon_id, osd_fsid))
         if os.path.exists(simple_fn):
+            osd_simple = True
             new_fn = simple_fn + '.adopted-by-cephadm'
             logger.info('Renaming %s -> %s', simple_fn, new_fn)
             os.rename(simple_fn, new_fn)
@@ -3302,7 +3310,7 @@ def command_adopt_ceph(daemon_type, daemon_id, fsid):
     deploy_daemon_units(fsid, uid, gid, daemon_type, daemon_id, c,
                         enable=True,  # unconditionally enable the new unit
                         start=(state == 'running' or args.force_start),
-                        osd_fsid=osd_fsid)
+                        osd_fsid=osd_fsid, osd_simple=osd_simple)
     update_firewalld(daemon_type)
 
 
