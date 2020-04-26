@@ -43,7 +43,7 @@
 %bcond_without amqp_endpoint
 %bcond_with lttng
 %bcond_without libradosstriper
-%bcond_without ocf
+%bcond_with ocf
 %bcond_without kafka_endpoint
 %global _remote_tarball_prefix https://download.ceph.com/tarballs/
 %endif
