@@ -40,7 +40,7 @@
 %else
 %bcond_without cephfs_java
 %endif
-%bcond_without amqp_endpoint
+%bcond_with amqp_endpoint
 %bcond_with lttng
 %bcond_without libradosstriper
 %bcond_with ocf
