@@ -1,4 +1,3 @@
-from io import BytesIO
 from io import StringIO
 import json
 import time
@@ -196,15 +195,15 @@ class FuseMount(CephFSMount):
                 self.mountpoint,
             ],
             cwd=self.test_dir,
-            stdout=BytesIO(),
-            stderr=BytesIO(),
+            stdout=StringIO(),
+            stderr=StringIO(),
             wait=False,
             timeout=(15*60)
         )
         try:
             proc.wait()
         except CommandFailedError:
-            error = six.ensure_str(proc.stderr.getvalue())
+            error = proc.stderr.getvalue()
             if ("endpoint is not connected" in error
             or "Software caused connection abort" in error):
                 # This happens is fuse is killed without unmount
@@ -241,15 +240,20 @@ class FuseMount(CephFSMount):
 
         # Now that we're mounted, set permissions so that the rest of the test will have
         # unrestricted access to the filesystem mount.
-        try:
-            stderr = BytesIO()
-            self.client_remote.run(args=['sudo', 'chmod', '1777', self.mountpoint], timeout=(15*60), cwd=self.test_dir, stderr=stderr)
-        except run.CommandFailedError:
-            stderr = stderr.getvalue()
-            if b"Read-only file system".lower() in stderr.lower():
-                pass
-            else:
-                raise
+        for retry in range(10):
+            try:
+                stderr = StringIO()
+                self.client_remote.run(args=['sudo', 'chmod', '1777', self.mountpoint],
+                                       timeout=(15*60), cwd=self.test_dir, stderr=stderr)
+                break
+            except run.CommandFailedError:
+                stderr = stderr.getvalue()
+                if "Read-only file system".lower() in stderr.lower():
+                    break
+                elif "Permission denied".lower() in stderr.lower():
+                    time.sleep(5)
+                else:
+                    raise
 
     def _mountpoint_exists(self):
         return self.client_remote.run(args=["ls", "-d", self.mountpoint], check_status=False, cwd=self.test_dir, timeout=(15*60)).exitstatus == 0
@@ -260,7 +264,7 @@ class FuseMount(CephFSMount):
 
         try:
             log.info('Running fusermount -u on {name}...'.format(name=self.client_remote.name))
-            stderr = BytesIO()
+            stderr = StringIO()
             self.client_remote.run(
                 args = [
                     'sudo',
@@ -301,7 +305,7 @@ class FuseMount(CephFSMount):
                     """).format(self._fuse_conn))
                     self._fuse_conn = None
 
-                stderr = BytesIO()
+                stderr = StringIO()
                 # make sure its unmounted
                 try:
                     self.client_remote.run(

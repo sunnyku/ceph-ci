@@ -892,6 +892,8 @@ def is_available(what, func):
     num = 1
     while True:
         if func():
+            logger.info('%s is available'
+                    % (what))
             break
         elif num > retry:
             raise Error('%s not available after %s tries'
@@ -1082,10 +1084,12 @@ def _get_default_image():
     if DEFAULT_IMAGE_IS_MASTER:
         yellow = '\033[93m'
         end = '\033[0m'
-        s = '{}Warning: This is a development version of cephadm. Please refer to https://docs.ceph.com/docs/{}/cephadm/install{}'.format(
-            yellow, LATEST_STABLE_RELEASE, end
-        )
-        print(s)
+        warn = '''This is a development version of cephadm.
+For information regarding the latest stable release:
+    https://docs.ceph.com/docs/{}/cephadm/install
+'''.format(LATEST_STABLE_RELEASE)
+        for line in warn.splitlines():
+            logger.warning('{}{}{}'.format(yellow, line, end))
     return DEFAULT_IMAGE
 
 def infer_image(func):
@@ -2482,9 +2486,13 @@ def command_bootstrap():
     def is_mgr_available():
         # type: () -> bool
         timeout=args.timeout if args.timeout else 30 # seconds
-        out = cli(['status', '-f', 'json-pretty'], timeout=timeout)
-        j = json.loads(out)
-        return j.get('mgrmap', {}).get('available', False)
+        try:
+            out = cli(['status', '-f', 'json-pretty'], timeout=timeout)
+            j = json.loads(out)
+            return j.get('mgrmap', {}).get('available', False)
+        except Exception as e:
+            logger.debug('status failed: %s' % e)
+            return False
     is_available('mgr', is_mgr_available)
 
     # wait for mgr to restart (after enabling a module)
@@ -2741,6 +2749,8 @@ def command_shell():
         mounts[pathify(args.config)] = '/etc/ceph/ceph.conf:z'
     if args.keyring:
         mounts[pathify(args.keyring)] = '/etc/ceph/ceph.keyring:z'
+    if args.mount:
+        mounts[pathify(args.mount)] = '/mnt/{}:z'.format(args.mount)
     if args.command:
         command = args.command
     else:
@@ -2810,8 +2820,8 @@ def command_ceph_volume():
     if args.fsid:
         make_log_dir(args.fsid)
 
-    l = FileLock(args.fsid)
-    l.acquire()
+        l = FileLock(args.fsid)
+        l.acquire()
 
     (uid, gid) = (0, 0) # ceph-volume runs as root
     mounts = get_container_mounts(args.fsid, 'osd', None)
@@ -3319,6 +3329,7 @@ def command_adopt_prometheus(daemon_id, fsid):
     config_src = '/etc/prometheus/prometheus.yml'
     config_src = os.path.abspath(args.legacy_dir + config_src)
     config_dst = os.path.join(data_dir_dst, 'etc/prometheus')
+    makedirs(config_dst, uid, gid, 0o755)
     copy_files([config_src], config_dst, uid=uid, gid=gid)
 
     # data
@@ -4263,6 +4274,9 @@ def _get_parser():
     parser_shell.add_argument(
         '--keyring', '-k',
         help='ceph.keyring to pass through to the container')
+    parser_shell.add_argument(
+        '--mount', '-m',
+        help='file or directory path that will be mounted in container /mnt')
     parser_shell.add_argument(
         '--env', '-e',
         action='append',

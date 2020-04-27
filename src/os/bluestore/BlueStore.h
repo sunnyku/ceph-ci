@@ -2294,9 +2294,7 @@ private:
   void _close_db(bool read_only);
   int _open_fm(KeyValueDB::Transaction t, bool read_only);
   void _close_fm();
-  int _write_out_fm_meta(uint64_t target_size,
-    bool update_root_size = false,
-    bluestore_bdev_label_t* res_label = nullptr);
+  int _write_out_fm_meta(uint64_t target_size);
   int _open_alloc();
   void _close_alloc();
   int _open_collections();
@@ -2319,6 +2317,7 @@ public:
 private:
   int _check_or_set_bdev_label(std::string path, uint64_t size, std::string desc,
 			       bool create);
+  int _set_bdev_label_size(const string& path, uint64_t size);
 
   int _open_super_meta();
 
@@ -2947,6 +2946,7 @@ private:
   std::string legacy_statfs_alert;
   std::string no_per_pool_omap_alert;
   std::string disk_size_mismatch_alert;
+  std::string spurious_read_errors_alert;
 
   void _log_alerts(osd_alert_list_t& alerts);
   bool _set_compression_alert(bool cmode, const char* s) {
@@ -2978,6 +2978,10 @@ private:
   void _set_disk_size_mismatch_alert(const std::string& s) {
     std::lock_guard l(qlock);
     disk_size_mismatch_alert = s;
+  }
+  void _set_spurious_read_errors_alert(const string& s) {
+    std::lock_guard l(qlock);
+    spurious_read_errors_alert = s;
   }
 
 private:

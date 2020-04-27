@@ -51,6 +51,7 @@ import platform
 from teuthology import misc
 from teuthology.orchestra.run import Raw, quote
 from teuthology.orchestra.daemon import DaemonGroup
+from teuthology.orchestra.remote import Remote
 from teuthology.config import config as teuth_config
 import six
 import logging
@@ -239,6 +240,9 @@ class LocalRemote(object):
     Run this inside your src/ dir!
     """
 
+    os = Remote.os
+    arch = Remote.arch
+
     def __init__(self):
         self.name = "local"
         self.hostname = "localhost"
@@ -386,12 +390,12 @@ class LocalRemote(object):
                                        env=env)
 
         if stdin:
-            if not isinstance(stdin, str):
-                raise RuntimeError("Can't handle non-string stdins on a vstart cluster")
-
             # Hack: writing to stdin is not deadlock-safe, but it "always" works
             # as long as the input buffer is "small"
-            subproc.stdin.write(stdin.encode())
+            if isinstance(stdin, str):
+                subproc.stdin.write(stdin.encode())
+            else:
+                subproc.stdin.write(stdin)
 
         proc = LocalRemoteProcess(
             args, subproc, check_status,
@@ -413,7 +417,7 @@ class LocalRemote(object):
             remote_date = remote.sh('date')
         """
         if 'stdout' not in kwargs:
-            kwargs['stdout'] = BytesIO()
+            kwargs['stdout'] = StringIO()
         if 'args' not in kwargs:
             kwargs['args'] = script
         proc = self.run(**kwargs)
@@ -936,7 +940,7 @@ class LocalCephManager(CephManager):
         if watch_channel is not None:
             args.append("--watch-channel")
             args.append(watch_channel)
-        proc = self.controller.run(args=args, wait=False, stdout=BytesIO())
+        proc = self.controller.run(args=args, wait=False, stdout=StringIO())
         return proc
 
     def raw_cluster_cmd(self, *args, **kwargs):
@@ -1190,7 +1194,6 @@ class InteractiveFailureResult(unittest.TextTestResult):
 def enumerate_methods(s):
     log.info("e: {0}".format(s))
     for t in s._tests:
-	print("t {0}, s._tests {1}".format(t, s._tests))
         if isinstance(t, suite.BaseTestSuite):
             for sub in enumerate_methods(t):
                 yield sub
@@ -1222,10 +1225,7 @@ def scan_tests(modules):
     max_required_mgr = 0
     require_memstore = False
 
-    print("module = {}".format(overall_suite))
     for suite_, case in enumerate_methods(overall_suite):
-	print("suite {0}".format(suite_))
-	print("case {0}".format(case))
         max_required_mds = max(max_required_mds,
                                getattr(case, "MDSS_REQUIRED", 0))
         max_required_clients = max(max_required_clients,
