@@ -1304,9 +1304,9 @@ class DaemonDescription(object):
                 return None
 
         if self.daemon_type == 'rgw':
-            if self.hostname and self.hostname in self.daemon_id:
-                pre, post_ = self.daemon_id.split(self.hostname)
-                return pre[:-1]
+            service_id = _match()
+            if service_id:
+                return service_id
             else:
                 # daemon_id == "realm.zone.host.random"
                 v = self.daemon_id.split('.')
