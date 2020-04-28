@@ -10,6 +10,7 @@ FSID='00000000-0000-0000-0000-0000deadbeef'
 
 # images that are used
 IMAGE_MASTER=${IMAGE_MASTER:-'docker.io/ceph/daemon-base:latest-master-devel'}
+IMAGE_OCTOPUS=${IMAGE_OCTOPUS:-'docker.io/ceph/daemon-base:latest-octopus'}
 IMAGE_NAUTILUS=${IMAGE_NAUTILUS:-'docker.io/ceph/daemon-base:latest-nautilus'}
 IMAGE_MIMIC=${IMAGE_MIMIC:-'docker.io/ceph/daemon-base:latest-mimic'}
 
@@ -172,6 +173,9 @@ function nfs_stop()
 $SUDO $CEPHADM check-host
 
 ## version + --image
+$SUDO CEPHADM_IMAGE=$IMAGE_OCTOPUS $CEPHADM_BIN version
+$SUDO CEPHADM_IMAGE=$IMAGE_OCTOPUS $CEPHADM_BIN version \
+    | grep 'ceph version 15'
 $SUDO CEPHADM_IMAGE=$IMAGE_NAUTILUS $CEPHADM_BIN version
 $SUDO CEPHADM_IMAGE=$IMAGE_NAUTILUS $CEPHADM_BIN version \
     | grep 'ceph version 14'
@@ -380,8 +384,8 @@ $CEPHADM unit --fsid $FSID --name mon.a -- is-enabled
 ## shell
 $CEPHADM shell --fsid $FSID -- true
 $CEPHADM shell --fsid $FSID -- test -d /var/log/ceph
-expect_false $CEPHADM --timeout 1 shell --fsid $FSID -- sleep 10
-$CEPHADM --timeout 10 shell --fsid $FSID -- sleep 1
+expect_false $CEPHADM --timeout 10 shell --fsid $FSID -- sleep 60
+$CEPHADM --timeout 60 shell --fsid $FSID -- sleep 10
 
 ## enter
 expect_false $CEPHADM enter
@@ -391,8 +395,8 @@ $CEPHADM enter --fsid $FSID --name mon.a -- pidof ceph-mon
 expect_false $CEPHADM enter --fsid $FSID --name mgr.x -- pidof ceph-mon
 $CEPHADM enter --fsid $FSID --name mgr.x -- pidof ceph-mgr
 # this triggers a bug in older versions of podman, including 18.04's 1.6.2
-#expect_false $CEPHADM --timeout 1 enter --fsid $FSID --name mon.a -- sleep 10
-$CEPHADM --timeout 10 enter --fsid $FSID --name mon.a -- sleep 1
+#expect_false $CEPHADM --timeout 5 enter --fsid $FSID --name mon.a -- sleep 30
+$CEPHADM --timeout 60 enter --fsid $FSID --name mon.a -- sleep 10
 
 ## ceph-volume
 $CEPHADM ceph-volume --fsid $FSID -- inventory --format=json \

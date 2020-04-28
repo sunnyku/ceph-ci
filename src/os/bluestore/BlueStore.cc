@@ -4974,7 +4974,6 @@ void BlueStore::_close_bdev()
 int BlueStore::_open_fm(KeyValueDB::Transaction t, bool read_only)
 {
   int r;
-  bluestore_bdev_label_t label;
 
   ceph_assert(fm == NULL);
   fm = FreelistManager::create(cct, freelist_type, PREFIX_ALLOC);
@@ -5047,24 +5046,19 @@ int BlueStore::_open_fm(KeyValueDB::Transaction t, bool read_only)
 	start += l + u;
       }
     }
-    r = _write_out_fm_meta(0, false, &label);
+    r = _write_out_fm_meta(0);
     ceph_assert(r == 0);
   } else {
-    string p = path + "/block";
-    r = _read_bdev_label(cct, p, &label);
+    r = fm->init(db, read_only,
+      [&](const std::string& key, std::string* result) {
+        return read_meta(key, result);
+    });
     if (r < 0) {
-      derr << __func__ << " freelist init failed, error reading bdev label: " << cpp_strerror(r) << dendl;
+      derr << __func__ << " freelist init failed: " << cpp_strerror(r) << dendl;
       delete fm;
       fm = NULL;
       return r;
     }
-  }
-  r = fm->init(label, db, read_only);
-  if (r < 0) {
-    derr << __func__ << " freelist init failed: " << cpp_strerror(r) << dendl;
-    delete fm;
-    fm = NULL;
-    return r;
   }
   // if space size tracked by free list manager is that higher than actual
   // dev size one can hit out-of-space allocation which will result
@@ -5091,31 +5085,18 @@ void BlueStore::_close_fm()
   fm = NULL;
 }
 
-int BlueStore::_write_out_fm_meta(uint64_t target_size,
-  bool update_root_size,
-  bluestore_bdev_label_t* res_label)
+int BlueStore::_write_out_fm_meta(uint64_t target_size)
 {
+  int r = 0;
   string p = path + "/block";
 
   std::vector<std::pair<string, string>> fm_meta;
   fm->get_meta(target_size, &fm_meta);
 
-  bluestore_bdev_label_t label;
-  int r = _read_bdev_label(cct, p, &label);
-  if (r < 0)
-    return r;
-
   for (auto& m : fm_meta) {
-    label.meta[m.first] = m.second;
+    r = write_meta(m.first, m.second);
+    ceph_assert(r == 0);
   }
-  if (update_root_size) {
-    label.size = target_size;
-  }
-  r = _write_bdev_label(cct, p, label);
-  if (res_label) {
-    *res_label = label;
-  }
-
   return r;
 }
 
@@ -5694,7 +5675,7 @@ int BlueStore::_open_db(bool create, bool to_repair_db, bool read_only)
   std::shared_ptr<Int64ArrayMergeOperator> merge_op(new Int64ArrayMergeOperator);
 
   string kv_backend;
-  std::vector<KeyValueDB::ColumnFamily> cfs;
+  std::string sharding_def;
 
   if (create) {
     kv_backend = cct->_conf->bluestore_kvbackend;
@@ -5838,15 +5819,8 @@ int BlueStore::_open_db(bool create, bool to_repair_db, bool read_only)
 
   if (kv_backend == "rocksdb") {
     options = cct->_conf->bluestore_rocksdb_options;
-
-    map<string,string> cf_map;
-    cct->_conf.with_val<string>("bluestore_rocksdb_cfs",
-                                 get_str_map,
-                                 &cf_map,
-                                 " \t");
-    for (auto& i : cf_map) {
-      dout(10) << "column family " << i.first << ": " << i.second << dendl;
-      cfs.push_back(KeyValueDB::ColumnFamily(i.first, i.second));
+    if (cct->_conf.get_val<bool>("bluestore_rocksdb_cf")) {
+      sharding_def = cct->_conf.get_val<std::string>("bluestore_rocksdb_cfs");
     }
   }
 
@@ -5854,17 +5828,13 @@ int BlueStore::_open_db(bool create, bool to_repair_db, bool read_only)
   if (to_repair_db)
     return 0;
   if (create) {
-    if (cct->_conf.get_val<bool>("bluestore_rocksdb_cf")) {
-      r = db->create_and_open(err, cfs);
-    } else {
-      r = db->create_and_open(err);
-    }
+    r = db->create_and_open(err, sharding_def);
   } else {
     // we pass in cf list here, but it is only used if the db already has
     // column families created.
     r = read_only ?
-      db->open_read_only(err, cfs) :
-      db->open(err, cfs);
+      db->open_read_only(err, sharding_def) :
+      db->open(err, sharding_def);
   }
   if (r) {
     derr << __func__ << " erroring opening db: " << err.str() << dendl;
@@ -6859,6 +6829,24 @@ string BlueStore::get_device_path(unsigned id)
   return res;
 }
 
+int BlueStore::_set_bdev_label_size(const string& path, uint64_t size)
+{
+  bluestore_bdev_label_t label;
+  int r = _read_bdev_label(cct, path, &label);
+  if (r < 0) {
+    derr << "unable to read label for " << path << ": "
+          << cpp_strerror(r) << dendl;
+  } else {
+    label.size = size;
+    r = _write_bdev_label(cct, path, label);
+    if (r < 0) {
+      derr << "unable to write label for " << path << ": "
+            << cpp_strerror(r) << dendl;
+    }
+  }
+  return r;
+}
+
 int BlueStore::expand_devices(ostream& out)
 {
   int r = cold_open();
@@ -6891,23 +6879,13 @@ int BlueStore::expand_devices(ostream& out)
 	      <<": can't find device path " << dendl;
 	continue;
       }
-      bluestore_bdev_label_t label;
-      int r = _read_bdev_label(cct, path, &label);
-      if (r < 0) {
-	derr << "unable to read label for " << path << ": "
-	      << cpp_strerror(r) << dendl;
-	continue;
+      if (bluefs->bdev_support_label(devid)) {
+        if (_set_bdev_label_size(p, size) >= 0) {
+          out << devid
+            << " : size label updated to " << size
+            << std::endl;
+        }
       }
-      label.size = size;
-      r = _write_bdev_label(cct, path, label);
-      if (r < 0) {
-	derr << "unable to write label for " << path << ": "
-	      << cpp_strerror(r) << dendl;
-	continue;
-      }
-      out << devid
-	   <<" : size label updated to " << size
-	   << std::endl;
     }
   }
   uint64_t size0 = fm->get_size();
@@ -6916,7 +6894,14 @@ int BlueStore::expand_devices(ostream& out)
     out << bluefs_layout.shared_bdev
       << " : expanding " << " from 0x" << std::hex
       << size0 << " to 0x" << size << std::dec << std::endl;
-    _write_out_fm_meta(size, true);
+    _write_out_fm_meta(size);
+    if (bdev->supported_bdev_label()) {
+      if (_set_bdev_label_size(path, size) >= 0) {
+        out << bluefs_layout.shared_bdev
+          << " : size label updated to " << size
+          << std::endl;
+      }
+    }
     cold_close();
 
     // mount in read/write to sync expansion changes
@@ -9924,6 +9909,9 @@ int BlueStore::_do_read(
     logger->inc(l_bluestore_reads_with_retries);
     dout(5) << __func__ << " read at 0x" << std::hex << offset << "~" << length
             << " failed " << std::dec << retry_count << " times before succeeding" << dendl;
+    stringstream s;
+    s << " reads with retries: " << logger->get(l_bluestore_reads_with_retries);
+    _set_spurious_read_errors_alert(s.str());
   }
   return r;
 }
@@ -15726,6 +15714,11 @@ void BlueStore::_log_alerts(osd_alert_list_t& alerts)
 {
   std::lock_guard l(qlock);
 
+  if (!spurious_read_errors_alert.empty()) {
+    alerts.emplace(
+      "BLUESTORE_SPURIOUS_READ_ERRORS",
+      spurious_read_errors_alert);
+  }
   if (!disk_size_mismatch_alert.empty()) {
     alerts.emplace(
       "BLUESTORE_DISK_SIZE_MISMATCH",
