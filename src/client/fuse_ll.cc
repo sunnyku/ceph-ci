@@ -617,6 +617,22 @@ static void fuse_ll_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
   if (r >= 0) {
     vector<iovec> iov;
     bl.prepare_iov(&iov);
+#ifdef CEPH_HAVE_SPLICE
+    size_t len = sizeof(struct fuse_bufvec) + sizeof(struct fuse_buf) * (iov.size() - 1);
+    struct fuse_bufvec *bufv = (struct fuse_bufvec *)calloc(1, len);
+    int i = 0;
+
+    if (bufv) {
+      bufv->count = iov.size();
+      for (auto &v: iov) {
+        bufv->buf[i].mem = v.iov_base;
+        bufv->buf[i++].size = v.iov_len;
+      }
+      fuse_reply_data(req, bufv, FUSE_BUF_SPLICE_MOVE);
+      free(bufv);
+      return;
+    }
+#endif
     iov.insert(iov.begin(), {0}); // the first one is reserved for fuse_out_header
     fuse_reply_iov(req, &iov[0], iov.size());
   } else
@@ -995,6 +1011,11 @@ static void do_init(void *data, fuse_conn_info *conn)
   fuse_apply_conn_info_opts(cfuse->conn_opts, conn);
 #endif
 
+#ifdef CEPH_HAVE_SPLICE
+    if(conn->capable & FUSE_CAP_SPLICE_MOVE)
+      conn->want |= FUSE_CAP_SPLICE_MOVE;
+#endif
+
 #if !defined(__APPLE__)
   if (!client->fuse_default_permissions && client->ll_handle_umask()) {
     // apply umask in userspace if posix acl is enabled
@@ -1140,7 +1161,7 @@ int CephFuse::Handle::init(int argc, const char *argv[])
 
   // set up fuse argc/argv
   int newargc = 0;
-  const char **newargv = (const char **) malloc((argc + 11) * sizeof(char *));
+  const char **newargv = (const char **) malloc((argc + 17) * sizeof(char *));
   if(!newargv)
     return ENOMEM;
 
@@ -1159,6 +1180,14 @@ int CephFuse::Handle::init(int argc, const char *argv[])
     "fuse_max_write");
   auto fuse_atomic_o_trunc = client->cct->_conf.get_val<bool>(
     "fuse_atomic_o_trunc");
+#ifdef CEPH_HAVE_SPLICE
+  auto fuse_splice_read = client->cct->_conf.get_val<bool>(
+    "fuse_splice_read");
+  auto fuse_splice_write = client->cct->_conf.get_val<bool>(
+    "fuse_splice_write");
+  auto fuse_splice_move = client->cct->_conf.get_val<bool>(
+    "fuse_splice_move");
+#endif
   auto fuse_debug = client->cct->_conf.get_val<bool>(
     "fuse_debug");
 
@@ -1187,6 +1216,20 @@ int CephFuse::Handle::init(int argc, const char *argv[])
     newargv[newargc++] = "-o";
     newargv[newargc++] = "atomic_o_trunc";
   }
+#ifdef CEPH_HAVE_SPLICE
+  if (fuse_splice_read) {
+    newargv[newargc++] = "-o";
+    newargv[newargc++] = "splice_read";
+  }
+  if (fuse_splice_write) {
+    newargv[newargc++] = "-o";
+    newargv[newargc++] = "splice_write";
+  }
+  if (fuse_splice_move) {
+    newargv[newargc++] = "-o";
+    newargv[newargc++] = "splice_move";
+  }
+#endif
 #endif
   if (fuse_debug)
     newargv[newargc++] = "-d";
