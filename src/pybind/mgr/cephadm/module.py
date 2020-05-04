@@ -39,7 +39,8 @@ from orchestrator import OrchestratorError, OrchestratorValidationError, HostSpe
 
 from . import remotes
 from . import utils
-from .services.cephadmservice import MonService, MgrService, MdsService, RgwService
+from .services.cephadmservice import MonService, MgrService, MdsService, RgwService, \
+    RbdMirrorService
 from .services.nfs import NFSService
 from .services.osd import RemoveUtil, OSDRemoval, OSDService
 from .inventory import Inventory
@@ -732,6 +733,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         self.mgr_service = MgrService(self)
         self.mds_service = MdsService(self)
         self.rgw_service = RgwService(self)
+        self.rbd_mirror_service = RbdMirrorService(self)
 
     def shutdown(self):
         self.log.debug('shutdown')
@@ -2223,7 +2225,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             'osd': self.osd_service.create_from_spec,
             'mds': self.mds_service.create,
             'rgw': self.rgw_service.create,
-            'rbd-mirror': self._create_rbd_mirror,
+            'rbd-mirror': self.rbd_mirror_service.create,
             'nfs': self.nfs_service.create,
             'grafana': self._create_grafana,
             'alertmanager': self._create_alertmanager,
@@ -2599,17 +2601,7 @@ api_secure = {api_secure}
         return self._apply(spec)
 
     def add_rbd_mirror(self, spec):
-        return self._add_daemon('rbd-mirror', spec, self._create_rbd_mirror)
-
-    def _create_rbd_mirror(self, daemon_id, host):
-        ret, keyring, err = self.check_mon_command({
-            'prefix': 'auth get-or-create',
-            'entity': 'client.rbd-mirror.' + daemon_id,
-            'caps': ['mon', 'profile rbd-mirror',
-                     'osd', 'profile rbd'],
-        })
-        return self._create_daemon('rbd-mirror', daemon_id, host,
-                                   keyring=keyring)
+        return self._add_daemon('rbd-mirror', spec, self.rbd_mirror_service.create)
 
     @trivial_completion
     def apply_rbd_mirror(self, spec):
