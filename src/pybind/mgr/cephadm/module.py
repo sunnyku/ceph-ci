@@ -39,7 +39,7 @@ from orchestrator import OrchestratorError, OrchestratorValidationError, HostSpe
 
 from . import remotes
 from . import utils
-from .services.nfs import NFSGanesha
+from .services.nfs import NFSService
 from .services.osd import RemoveUtil, OSDRemoval, OSDService
 from .inventory import Inventory
 
@@ -726,6 +726,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
 
         # services:
         self.osd_service = OSDService(self)
+        self.nfs_service = NFSService(self)
 
     def shutdown(self):
         self.log.debug('shutdown')
@@ -2114,7 +2115,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
                        keyring=None,
                        extra_args=None, extra_config=None,
                        reconfig=False,
-                       osd_uuid_map=None):
+                       osd_uuid_map=None) -> str:
         if not extra_args:
             extra_args = []
         if not extra_config:
@@ -2132,7 +2133,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             extra_args.extend(['--config-json', '-'])
         elif daemon_type == 'nfs':
             cephadm_config, deps = \
-                    self._generate_nfs_config(daemon_type, daemon_id, host)
+                    self.nfs_service._generate_nfs_config(daemon_type, daemon_id, host)
             extra_args.extend(['--config-json', '-'])
         elif daemon_type == 'alertmanager':
             cephadm_config, deps = self._generate_alertmanager_config()
@@ -2234,7 +2235,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             'mds': self._create_mds,
             'rgw': self._create_rgw,
             'rbd-mirror': self._create_rbd_mirror,
-            'nfs': self._create_nfs,
+            'nfs': self.nfs_service.create,
             'grafana': self._create_grafana,
             'alertmanager': self._create_alertmanager,
             'prometheus': self._create_prometheus,
@@ -2245,7 +2246,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         config_fns = {
             'mds': self._config_mds,
             'rgw': self._config_rgw,
-            'nfs': self._config_nfs,
+            'nfs': self.nfs_service.config,
             'iscsi': self._config_iscsi,
         }
         create_func = create_fns.get(daemon_type, None)
@@ -2757,61 +2758,8 @@ api_secure = {api_secure}
     def apply_rbd_mirror(self, spec):
         return self._apply(spec)
 
-    def _generate_nfs_config(self, daemon_type, daemon_id, host):
-        # type: (str, str, str) -> Tuple[Dict[str, Any], List[str]]
-        deps = [] # type: List[str]
-
-        # find the matching NFSServiceSpec
-        # TODO: find the spec and pass via _create_daemon instead ??
-        dd = orchestrator.DaemonDescription()
-        dd.daemon_type = daemon_type
-        dd.daemon_id = daemon_id
-        dd.hostname = host
-
-        service_name = dd.service_name()
-        specs = self.spec_store.find(service_name)
-
-        if not specs:
-            raise OrchestratorError('Cannot find service spec %s' % (service_name))
-        elif len(specs) > 1:
-            raise OrchestratorError('Found multiple service specs for %s' % (service_name))
-        else:
-            # cast to keep mypy happy
-            spec = cast(NFSServiceSpec, specs[0])
-
-        nfs = NFSGanesha(self, daemon_id, spec)
-
-        # create the keyring
-        entity = nfs.get_keyring_entity()
-        keyring = nfs.get_or_create_keyring(entity=entity)
-
-        # update the caps after get-or-create, the keyring might already exist!
-        nfs.update_keyring_caps(entity=entity)
-
-        # create the rados config object
-        nfs.create_rados_config_obj()
-
-        # generate the cephadm config
-        cephadm_config = nfs.get_cephadm_config()
-        cephadm_config.update(
-                self._get_config_and_keyring(
-                    daemon_type, daemon_id,
-                    keyring=keyring))
-
-        return cephadm_config, deps
-
     def add_nfs(self, spec):
-        return self._add_daemon('nfs', spec, self._create_nfs, self._config_nfs)
-
-    def _config_nfs(self, spec):
-        self._check_pool_exists(spec.pool, spec.service_name())
-
-        logger.info('Saving service %s spec with placement %s' % (
-            spec.service_name(), spec.placement.pretty_str()))
-        self.spec_store.save(spec)
-
-    def _create_nfs(self, daemon_id, host, spec):
-        return self._create_daemon('nfs', daemon_id, host)
+        return self._add_daemon('nfs', spec, self.nfs_service.create, self.nfs_service.config)
 
     @trivial_completion
     def apply_nfs(self, spec):
