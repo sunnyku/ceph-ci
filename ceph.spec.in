@@ -59,7 +59,7 @@
 %global _fillupdir /var/adm/fillup-templates
 %endif
 %endif
-%bcond_with seastar
+%bcond_without seastar
 %if 0%{?fedora} || 0%{?suse_version} >= 1500
 # distros that ship cmd2 and/or colorama
 %bcond_without cephfs_shell
@@ -1221,6 +1221,7 @@ ${CMAKE} .. \
     -DWITH_BABELTRACE=OFF \
 %endif
     $CEPH_EXTRA_CMAKE_ARGS \
+    -DWITH_SEASTAR=ON \
 %if 0%{with ocf}
     -DWITH_OCF=ON \
 %endif
