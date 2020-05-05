@@ -4324,7 +4324,7 @@ def _get_parser():
         default=[],
         help='set environment variable')
     parser_shell.add_argument(
-        'command', nargs='*',
+        'command', nargs=argparse.REMAINDER,
         help='command (optional)')
 
     parser_enter = subparsers.add_parser(
