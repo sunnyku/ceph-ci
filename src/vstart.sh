@@ -1072,6 +1072,7 @@ start_ganesha() {
         test_user="ganesha-$name"
         pool_name="nfs-ganesha"
         namespace=$name
+        url="rados://$pool_name/$namespace/conf-nfs.$test_user"
 
         prun rm -rf $ganesha_dir
         prun mkdir -p $ganesha_dir
@@ -1103,7 +1104,7 @@ start_ganesha() {
            Minor_Versions = 1, 2;
         }
 
-        %url rados://$pool_name/$namespace/conf-nfs.$test_user
+        %url $url
 
         RADOS_KV {
            pool = $pool_name;
@@ -1114,6 +1115,7 @@ start_ganesha() {
 
         RADOS_URLS {
 	   Userid = $test_user;
+	   watch_url = \"$url\";
         }" > "$ganesha_dir/ganesha.conf"
 	wconf <<EOF
 [ganesha.$name]
