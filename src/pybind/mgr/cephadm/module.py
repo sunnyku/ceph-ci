@@ -741,8 +741,8 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             host_num_daemons = 0
             daemon_detail = []  # type: List[str]
             for item in ls:
-                host = item.get('hostname')
-                daemons = item.get('services')  # misnomer!
+                host = item.get('hostname', '')
+                daemons = item.get('services', [])  # misnomer!
                 missing_names = []
                 for s in daemons:
                     name = '%s.%s' % (s.get('type'), s.get('id'))
@@ -1325,15 +1325,49 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         # type: (Optional[str]) -> List[str]
         return list(self.inventory.filter_by_label(label))
 
+    def _verify_add_host(self, hostname: str):
+        """
+        Make sure, we have sane hostname:
+
+        * Either allowing all hosts as FQDN or as short hostnames.
+        * try to keep in sync with mgr.list_servers()
+        """
+        message = """
+  You may add `--force` to ignore this. Be aware that this might
+  cause CEPHADM_STRAY_HOST HEALTH warnings."""
+        existing_ceph: Set[str] = {s['hostname'] for s in self.list_servers() if
+                                   'hostname' in s}
+
+        for other in existing_ceph:
+            if hostname.startswith(other + '.') or other.startswith(hostname + '.'):
+                # TODO: under some artificial circumstances, this makes it impossible to
+                # add hosts, e.g. add_host('myhost') && add_host('myhost.with-a-dot-in-it')
+                raise OrchestratorValidationError(
+                    f"Failed to add {hostname}: There is already a similar hostname: {other}" + message)
+
+        if self.inventory.keys():
+            fqdns = [i.count('.') > 0 for i in self.inventory.keys()]
+            if hostname.count('.') > 0 and not any(fqdns):
+                raise OrchestratorValidationError(
+                    f"Failed to add {hostname}: Host looks like an FQDN" + message)
+
+            if hostname.count('.') == 0 and all(fqdns):
+                raise OrchestratorValidationError(
+                    f"Failed to add {hostname}: Host does not look like an FQDN" + message)
+
     @async_completion
-    def add_host(self, spec):
-        # type: (HostSpec) -> str
+    def add_host(self, spec, force=False):
+        # type: (HostSpec, bool) -> str
         """
         Add a host to be managed by the orchestrator.
 
         :param host: host name
         """
         assert_valid_host(spec.hostname)
+
+        if not force:
+            self._verify_add_host(spec.hostname)
+
         out, err, code = self._run_cephadm(spec.hostname, 'client', 'check-host',
                                            ['--expect-hostname', spec.hostname],
                                            addr=spec.addr,
@@ -2283,19 +2317,20 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
 
         # make sure the dashboard [does not] references grafana
         try:
-            current_url = self.get_module_option_ex('dashboard',
-                                                    'GRAFANA_API_URL')
+
+            ret, current_url, err = self.check_mon_command({"prefix": "get-grafana-api-url"})
             if grafanas:
                 host = grafanas[0].hostname
                 url = f'https://{self.inventory.get_addr(host)}:3000'
                 if current_url != url:
                     self.log.info('Setting dashboard grafana config to %s' % url)
-                    self.set_module_option_ex('dashboard', 'GRAFANA_API_URL',
-                                              url)
+                    ret, outs, err = self.check_mon_command({
+                        "prefix": "set-grafana-api-url",
+                        "value": url,
+                    })
                     # FIXME: is it a signed cert??
         except Exception as e:
-            self.log.debug('got exception fetching dashboard grafana state: %s',
-                           e)
+            self.log.exception('unable to set dashboard grafana setting')
 
     def _add_daemon(self, daemon_type, spec,
                     create_func, config_func=None):
