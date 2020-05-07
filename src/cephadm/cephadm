@@ -4327,7 +4327,7 @@ def _get_parser():
         default=[],
         help='set environment variable')
     parser_shell.add_argument(
-        'command', nargs='*',
+        'command', nargs=argparse.REMAINDER,
         help='command (optional)')
 
     parser_enter = subparsers.add_parser(
@@ -4589,7 +4589,10 @@ def _get_parser():
 
 def _parse_args(av):
     parser = _get_parser()
-    return parser.parse_args(av)
+    args = parser.parse_args(av)
+    if args.command[0] = "--":
+        args.command.pop(0)
+    return args
 
 if __name__ == "__main__":
     # allow argv to be injected
