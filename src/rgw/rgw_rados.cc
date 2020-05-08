@@ -1781,14 +1781,9 @@ int RGWRados::Bucket::List::list_objects_ordered(
   }
 
   rgw_obj_index_key prev_marker;
-  uint16_t attempt = 0;
-  while (true) {
+  for (uint16_t attempt = 1; /* empty */; ++attempt) {
     ldout(cct, 20) << "RGWRados::Bucket::List::" << __func__ <<
-      " beginning attempt=" << ++attempt << dendl;
-
-    // this loop is generally expected only to have a single
-    // iteration; the standard exit is at the bottom of the loop, but
-    // there's an error condition emergency exit as well
+      " starting attempt " << attempt << dendl;
 
     if (attempt > 1 && !(prev_marker < cur_marker)) {
       // we've failed to make forward progress
@@ -1983,11 +1978,7 @@ int RGWRados::Bucket::List::list_objects_ordered(
       // few, results, return with what we have
       break;
     }
-
-    ldout(cct, 1) << "RGWRados::Bucket::List::" << __func__ <<
-      " INFO ordered bucket listing requires read #" << (1 + attempt) <<
-      dendl;
-  } // read attempt loop
+  } // for (uint16_t attempt...
 
 done:
 
@@ -4701,6 +4692,10 @@ void RGWRados::update_gc_chain(rgw_obj& head_obj, RGWObjManifest& manifest, cls_
 
 int RGWRados::send_chain_to_gc(cls_rgw_obj_chain& chain, const string& tag)
 {
+  if (chain.empty()) {
+    return 0;
+  }
+
   return gc->send_chain(chain, tag);
 }
 
@@ -8349,7 +8344,7 @@ int RGWRados::cls_bucket_list_ordered(RGWBucketInfo& bucket_info,
     // into results_trackers vector
     tracker_idx = candidates.begin()->second;
     auto& tracker = results_trackers.at(tracker_idx);
-    last_entry_visited = &tracker.dir_entry();
+
     const string& name = tracker.entry_name();
     rgw_bucket_dir_entry& dirent = tracker.dir_entry();
 
@@ -8382,10 +8377,12 @@ int RGWRados::cls_bucket_list_ordered(RGWBucketInfo& bucket_info,
       ldout(cct, 10) << "RGWRados::" << __func__ << ": got " <<
 	dirent.key.name << "[" << dirent.key.instance << "]" << dendl;
       m[name] = std::move(dirent);
+      last_entry_visited = &(m[name]);
       ++count;
     } else {
       ldout(cct, 10) << "RGWRados::" << __func__ << ": skipping " <<
 	dirent.key.name << "[" << dirent.key.instance << "]" << dendl;
+      last_entry_visited = &tracker.dir_entry();
     }
 
     // refresh the candidates map
@@ -8437,8 +8434,7 @@ int RGWRados::cls_bucket_list_ordered(RGWBucketInfo& bucket_info,
   }
 
   if (last_entry_visited != nullptr && last_entry) {
-    // since we'll not need this any more, might as well move it...
-    *last_entry = std::move(last_entry_visited->key);
+    *last_entry = last_entry_visited->key;
     ldout(cct, 20) << "RGWRados::" << __func__ <<
       ": returning, last_entry=" << *last_entry << dendl;
   } else {
