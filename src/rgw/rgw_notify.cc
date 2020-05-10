@@ -43,92 +43,48 @@ struct record_with_endpoint_t {
 };
 WRITE_CLASS_ENCODER(record_with_endpoint_t)
 
-// TODO: why decode/encode can't resolve that?
-//using queues_t = std::unordered_set<std::string>;
-
-struct queues_t {
-  std::unordered_set<std::string> list;
-
-  void encode(bufferlist& bl) const {
-    ENCODE_START(1, 1, bl);
-    encode(list, bl);
-    ENCODE_FINISH(bl);
-  }
-  void decode(bufferlist::const_iterator& bl) {
-    DECODE_START(1, bl);
-    decode(list, bl);
-    DECODE_FINISH(bl);
-  }
-};
-WRITE_CLASS_ENCODER(queues_t)
+using queues_t = std::set<std::string>;
 
 class Manager {
   const size_t max_queue_size;
-  const long queues_update_period_ms;
-  const long queues_update_retry_ms;
-  const long queue_idle_sleep_us;
+  const unsigned queues_update_period_ms;
+  const unsigned queues_update_retry_ms;
+  const unsigned queue_idle_sleep_us;
   const utime_t failover_time;
   CephContext* const cct;
   librados::IoCtx& rados_ioctx;
-  RGWUserPubSub ps_user;
   std::unordered_set<std::string> owned_queues;
-  std::atomic_bool list_of_queues_object_created;
+  //std::atomic_bool list_of_queues_object_created;
+  static constexpr auto COOKIE_LEN = 16;
   const std::string lock_cookie;
   boost::asio::io_context io_context;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard;
-  const size_t worker_count;
+  const unsigned worker_count;
   std::vector<std::thread> workers;
  
   const std::string Q_LIST_OBJECT_NAME = "queues_list_object";
 
-  // try create the object holding the list of queues if not created so far
-  // note that in case of race from two threads, or if another rgw
-  // already created the object, one would get -EEXIST, and the function would return 0 (success)
-  int try_to_create_queue_list() {
-    if (!list_of_queues_object_created) {
-      // create the object holding the list of queues
-      const auto ret = rados_ioctx.create(Q_LIST_OBJECT_NAME, false);
-      if (ret < 0 && ret != -EEXIST) {
-        ldout(cct, 1) << "ERROR: failed to create queue list. error: " << ret << dendl;
-        return ret;
-      }
-      list_of_queues_object_created = true;
-    }
-    return 0;
-  }
-
   // read the list of queues from the queue list object
-  int read_queue_list(queues_t& queues) {
-    bufferlist bl;
-    constexpr auto chunk_size = 1024U;
-    auto start_offset = 0U;
-
-    int ret;
-    do {
-      bufferlist chunk_bl;
-      // TODO: add yield ?
-      ret = rados_ioctx.read(Q_LIST_OBJECT_NAME, chunk_bl, chunk_size, start_offset);
+  int read_queue_list(queues_t& queues, optional_yield y) {
+    librados::ObjectReadOperation op;
+    std::string start_after;
+    bool more = true;
+    int rval;
+    while (more) {
+      queues_t queues_chunk;
+      op.omap_get_keys2(start_after, 1024, &queues_chunk, &more, &rval);
+      const auto ret = rgw_rados_operate(rados_ioctx, Q_LIST_OBJECT_NAME, &op, nullptr, y);
+      if (ret == -ENOENT) {
+        // queue list object was not created - nothing to do
+        return 0;
+      }
       if (ret < 0) {
+        // TODO: do we need to check on rval as well as ret?
         ldout(cct, 1) << "ERROR: failed to read queue list. error: " << ret << dendl;
         return ret;
       }
-      start_offset += ret;
-      bl.claim_append(chunk_bl);
-    } while (ret > 0);
-
-    if (bl.length() == 0) {
-      // nothing in the list
-      return 0;
+      queues.merge(queues_chunk);
     }
-
-    auto iter = bl.cbegin();
-    try {
-      decode(queues, iter);
-    } catch (buffer::error& err) {
-      ldout(cct, 1) << "ERROR: failed to decode queue list. error: " << err.what() << dendl;
-      return -EINVAL;
-    }
-
     return 0;
   }
 
@@ -145,80 +101,100 @@ class Manager {
     return 0;
   }
 
-   class tokens_waiter {
-     const boost::posix_time::time_duration infinite_duration = boost::posix_time::hours(1000);
-     size_t pending_tokens = 0;
-     boost::asio::deadline_timer timer;
- 
-     struct token {
-       tokens_waiter& waiter;
-       token(tokens_waiter& _waiter) : waiter(_waiter){
-         ++waiter.pending_tokens;
-       }   
-  
-       ~token() {
-         --waiter.pending_tokens;
-         if (waiter.pending_tokens == 0) {
-           waiter.timer.cancel();
-         }   
-       }   
-     };
-  
-   public:
+  using Clock = ceph::coarse_mono_clock;
+  using Executor = boost::asio::io_context::executor_type;
+  using Timer = boost::asio::basic_waitable_timer<Clock,
+        boost::asio::wait_traits<Clock>, Executor>;
 
-     tokens_waiter(boost::asio::io_context& io_context) : timer(io_context) {}  
+  class tokens_waiter {
+    const std::chrono::hours infinite_duration;
+    size_t pending_tokens;
+    Timer timer;
  
-     void async_wait(spawn::yield_context yield) { 
-       timer.expires_from_now(infinite_duration);
-       boost::system::error_code ec; 
-       timer.async_wait(yield[ec]);
-       // TODO: make sure that the timer was cancelled and not rexpired
-     }   
+    struct token {
+      tokens_waiter& waiter;
+      token(tokens_waiter& _waiter) : waiter(_waiter) {
+        ++waiter.pending_tokens;
+      }
+      
+      ~token() {
+        --waiter.pending_tokens;
+        if (waiter.pending_tokens == 0) {
+          waiter.timer.cancel();
+        }   
+      }   
+    };
+  
+  public:
+
+    tokens_waiter(boost::asio::io_context& io_context) :
+      infinite_duration(1000),
+      pending_tokens(0),
+      timer(io_context) {}  
  
-     token make_token() {    
-       return token(*this);
-     }   
+    void async_wait(spawn::yield_context yield) { 
+      timer.expires_from_now(infinite_duration);
+      boost::system::error_code ec; 
+      timer.async_wait(yield[ec]);
+      ceph_assert(ec == boost::system::errc::operation_canceled);
+    }   
+ 
+    token make_token() {    
+      return token(*this);
+    }   
   };
 
-
   // processing of a specific queue
-  // TODO: use string_view for queue_name
-  void process_queue(spawn::yield_context yield, std::string queue_name) {
-    const auto max_elements = 1024;
-    const std::string start_marker;
-    bool truncated = false;
-    std::string end_marker;
-    std::vector<cls_queue_entry> entries;
-    auto is_idle = true;
-    auto total_entries = 0U;
-    auto pending_work = 0U;
-    tokens_waiter waiter(io_context);
+  void process_queue(const std::string& queue_name, spawn::yield_context yield) {
+    constexpr auto max_elements = 1024;
+    auto is_idle = false;
+    std::string start_marker;
+    while (true) {
+      if (is_idle) {
+        Timer timer(io_context);
+        timer.expires_from_now(std::chrono::microseconds(queue_idle_sleep_us));
+        boost::system::error_code ec;
+	      timer.async_wait(yield[ec]);
+      }
+      is_idle = true;
 
-    const auto ret = cls_2pc_queue_list_entries(rados_ioctx, queue_name, start_marker, max_elements, entries, &truncated, end_marker);
-    if (ret < 0) {
-      ldout(cct, 5) << "WARNING: failed to get list of entries in queue: " 
-        << queue_name << ". error: " << ret << " (will retry)" << dendl;
-      goto sched_next;
-    }
-    total_entries = entries.size();
-    ldout(cct, 20) << "INFO: found: " << total_entries << " entries from: " << queue_name << dendl;
-    if (total_entries == 0) {
-      // nothing in the queue
-      goto sched_next;
-    }
-    
-    is_idle = false;
-    {
+      bool truncated = false;
+      std::string end_marker;
+      std::vector<cls_queue_entry> entries;
+      auto total_entries = 0U;
+
+      auto ret = cls_2pc_queue_list_entries(rados_ioctx, queue_name, start_marker, max_elements, entries, &truncated, end_marker);
+      if (ret == -ENOENT) {
+        owned_queues.erase(queue_name);
+        // queue was deleted
+        ldout(cct, 5) << "INFO: queue: " 
+          << queue_name << ". was removed. processing will stop" << dendl;
+        return;
+      }
+      if (ret < 0) {
+        ldout(cct, 5) << "WARNING: failed to get list of entries in queue: " 
+          << queue_name << ". error: " << ret << " (will retry)" << dendl;
+        continue;
+      }
+      total_entries = entries.size();
+      ldout(cct, 20) << "INFO: found: " << total_entries << " entries from: " << queue_name << dendl;
+      if (total_entries == 0) {
+        // nothing in the queue
+        continue;
+      }
+      
+      is_idle = false;
       auto has_error = false;
       auto remove_entries = false;
       auto entry_idx = 0U;
+      tokens_waiter waiter(io_context);
       for (auto& entry : entries) {
         if (has_error) {
           // bail out on first error
           break;
         }
         // TODO pass entry pointer instead of by-value
-        spawn::spawn(io_context, [this, entry_idx, total_entries, &end_marker, &remove_entries, &has_error, &waiter, entry](spawn::yield_context yield) {
+        spawn::spawn(yield, [this, entry_idx, total_entries, &end_marker, &remove_entries, &has_error, &waiter, entry](spawn::yield_context yield) {
           const auto token = waiter.make_token();
           record_with_endpoint_t record_with_endpoint;
           auto iter = entry.data.cbegin();
@@ -269,42 +245,25 @@ class Manager {
         ++entry_idx;
       }
 
+
       // wait for all pending work to finish
       waiter.async_wait(yield);
 
       // delete all published entries from queue
       if (remove_entries) {
-        librados::ObjectWriteOperation op;
-        cls_2pc_queue_remove_entries(op, end_marker); 
-        // TODO call operate async with yield
-        const auto ret = rados_ioctx.operate(queue_name, &op);
+        librados::ObjectWriteOperation delete_op;
+        cls_2pc_queue_remove_entries(delete_op, end_marker); 
+        ret = rgw_rados_operate(rados_ioctx, queue_name, &delete_op, optional_yield(io_context, yield)); 
         if (ret < 0) {
-          ldout(cct, 1) << "ERROR: failed to remove entries up to: " << end_marker  << " from queue: " 
+          ldout(cct, 1) << "ERROR: failed to remove entries up to: " << end_marker <<  " from queue: " 
             << queue_name << ". error: " << ret << dendl;
         } else {
           ldout(cct, 20) << "INFO: removed entries up to: " << end_marker <<  " from queue: " 
-            << queue_name << dendl;
+          << queue_name << dendl;
         }
       }
+      start_marker = end_marker;
       // TODO: cleanup expired reservations
-    }
-
-sched_next:
-    if (is_idle) {
-      boost::asio::deadline_timer timer(io_context);
-      timer.expires_from_now(boost::posix_time::microseconds(queue_idle_sleep_us));
-	    ldout(cct, 20) << "INFO: queue " << queue_name << " is idle, next processing will happen in: " << queue_idle_sleep_us << " usec" << dendl;
-      boost::system::error_code ec;
-	    timer.async_wait(yield[ec]);
-      // TODO check ec
-	    spawn::spawn(io_context, [this, &queue_name](spawn::yield_context yield) {
-          process_queue(yield, queue_name);
-          });
-    } else {
-	    ldout(cct, 20) << "INFO: queue " << queue_name << " is will be processed again. pending work for this queue: " << pending_work << dendl;
-	    spawn::spawn(io_context, [this, &queue_name](spawn::yield_context yield) {
-        process_queue(yield, queue_name);
-        });
     }
   }
 
@@ -312,25 +271,28 @@ sched_next:
   // find which of the queues is owned by this daemon and process it
   void process_queues(spawn::yield_context yield) {
     auto has_error = false;
-    auto ret = try_to_create_queue_list();
-    if (ret < 0) {
-      // failed to create the queue list object
-      has_error = true;
-      goto sched_next;
-    }
-    {
+    while (true) {
+      Timer timer(io_context);
+      const auto duration = has_error ? 
+        std::chrono::milliseconds(queues_update_retry_ms) : std::chrono::milliseconds(queues_update_period_ms);
+      timer.expires_from_now(duration);
+      const auto tp = ceph::coarse_real_time::clock::to_time_t(ceph::coarse_real_time::clock::now() + duration);
+      ldout(cct, 20) << "INFO: next queue processing will happen at: " << std::ctime(&tp)  << dendl;
+      boost::system::error_code ec;
+      timer.async_wait(yield[ec]);
+
       queues_t queues;
-      ret = read_queue_list(queues);
+      auto ret = read_queue_list(queues, optional_yield(io_context, yield));
       if (ret < 0) {
-        // failed to create the queue list object
         has_error = true;
-        goto sched_next;
+        continue;
       }
 
-      for (const auto& queue_name : queues.list) {
+      for (const auto& queue_name : queues) {
         // try to lock the queue to check if it is owned by this rgw
         // or if ownershif needs to be taken
-        ret = rados::cls::lock::lock(&rados_ioctx, queue_name, queue_name+"_lock", 
+        librados::ObjectWriteOperation op;
+        rados::cls::lock::lock(&op, queue_name+"_lock", 
               LOCK_EXCLUSIVE,
               lock_cookie, 
               "" /*no tag*/,
@@ -338,6 +300,7 @@ sched_next:
               failover_time,
               LOCK_FLAG_MAY_RENEW);
 
+        ret = rgw_rados_operate(rados_ioctx, queue_name, &op, optional_yield(io_context, yield));
         if (ret == -EBUSY) {
           // lock is already taken by another RGW
           ldout(cct, 20) << "INFO: queue: " << queue_name << " owned (locked) by another daemon" << dendl;
@@ -352,38 +315,14 @@ sched_next:
         if (owned_queues.insert(queue_name).second) {
           ldout(cct, 20) << "INFO: queue: " << queue_name << " now owned (locked) by this daemon" << dendl;
           // start processing this queue
-          spawn::spawn(io_context, [this, &queue_name](spawn::yield_context yield) {
-              process_queue(yield, queue_name);
+          spawn::spawn(io_context, [this, queue_name](spawn::yield_context yield) {
+              process_queue(queue_name, yield);
               });
         } else {
           ldout(cct, 20) << "INFO: queue: " << queue_name << " ownership (lock) renewed" << dendl;
         }
       }
     }
-
-sched_next:
-    // schedule next time queues are processed
-    boost::asio::deadline_timer timer(io_context);
-    const auto duration = has_error ? 
-      boost::posix_time::milliseconds(queues_update_retry_ms) : boost::posix_time::milliseconds(queues_update_period_ms);
-    timer.expires_from_now(duration);
-	  ldout(cct, 20) << "INFO: next queue processing will happen in: " << duration.seconds() << " ms" << dendl;
-    boost::system::error_code ec;
-	  timer.async_wait(yield[ec]);
-    // TODO: check on ec
-	  spawn::spawn(io_context, [this](spawn::yield_context yield) {
-        process_queues(yield);
-        });
-  }
-
-  std::string make_lock_cookie() const {
-    // create a lock cookie for the manager
-    // this is needed so that other RGWs won't be able to renew this lock
-    // and will take over only after it expires
-    constexpr auto COOKIE_LEN = 16;
-    char buf[COOKIE_LEN + 1];
-    gen_rand_alphanumeric(cct, buf, sizeof(buf) - 1);
-    return std::string(buf, sizeof(buf));
   }
 
 public:
@@ -395,8 +334,8 @@ public:
   }
 
   // ctor: start all threads
-  Manager(CephContext* _cct, long _max_queue_size, long _queues_update_period_ms, 
-          long _queues_update_retry_ms, long _queue_idle_sleep_us, long failover_time_sec, rgw::sal::RGWRadosStore* store) : 
+  Manager(CephContext* _cct, unsigned _max_queue_size, unsigned _queues_update_period_ms, 
+          unsigned _queues_update_retry_ms, unsigned _queue_idle_sleep_us, unsigned failover_time_sec, unsigned _worker_count, rgw::sal::RGWRadosStore* store) : 
     max_queue_size(_max_queue_size),
     queues_update_period_ms(_queues_update_period_ms),
     queues_update_retry_ms(_queues_update_retry_ms),
@@ -404,13 +343,10 @@ public:
     failover_time(std::chrono::seconds(failover_time_sec)),
     cct(_cct),
     rados_ioctx(store->getRados()->get_notif_pool_ctx()),
-    // TODO: how to get user name
-    ps_user(store, rgw_user("user")),  
-    list_of_queues_object_created(false),
-    lock_cookie(make_lock_cookie()),
+    //list_of_queues_object_created(false),
+    lock_cookie(gen_rand_alphanumeric(cct, COOKIE_LEN)),
     work_guard(boost::asio::make_work_guard(io_context)),
-    // TODO: get from conf
-    worker_count(1)
+    worker_count(_worker_count)
     {
       spawn::spawn(io_context, [this](spawn::yield_context yield) {
             process_queues(yield);
@@ -446,49 +382,41 @@ public:
       return ret;
     }
    
-    ret = try_to_create_queue_list();
+    bufferlist empty_bl;
+    std::map<std::string, bufferlist> new_topic{{topic_name, empty_bl}};
+    op.omap_set(new_topic);
+    ret = rgw_rados_operate(rados_ioctx, Q_LIST_OBJECT_NAME, &op, y);
     if (ret < 0) {
-      return ret;
-    }
-
-    // update the new queue in the list of queues
-    // TODO: make read-modify-write atomic
-    bufferlist bl;
-    constexpr auto chunk_size = 1024U;
-    auto start_offset = 0U;
-    do {
-      // TODO: add yield ?
-      bufferlist chunk_bl;
-      ret = rados_ioctx.read(Q_LIST_OBJECT_NAME, chunk_bl, chunk_size, start_offset);
-      if (ret < 0) {
-        ldout(cct, 1) << "ERROR: failed to read queue list. error: " << ret << dendl;
-        return ret;
-      }
-      start_offset += ret;
-      bl.claim_append(chunk_bl);
-    } while (ret > 0);
-
-    queues_t queues;
-    if (bl.length() > 0) {
-      auto iter = bl.cbegin();
-      try {
-        decode(queues, iter);
-      } catch (buffer::error& err) {
-        ldout(cct, 1) << "ERROR: failed to decode queue list. error: " << err.what() << dendl;
-        return -EINVAL;
-      }
-      bl.clear();
-    }
-
-    // no need to check for duplicate names
-    queues.list.insert(topic_name);
-    encode(queues, bl);
-    ret = rados_ioctx.write_full(Q_LIST_OBJECT_NAME, bl);
-    if (ret < 0) {
-      ldout(cct, 1) << "ERROR: failed to write queue list. error: " << ret << dendl;
+      ldout(cct, 1) << "ERROR: failed to add queue: " << topic_name << " to queue list. error: " << ret << dendl;
       return ret;
     } 
-    ldout(cct, 20) << "INFO: queue: " << topic_name << " added to queue list (has: " << queues.list.size() << " queues)"  << dendl;
+    ldout(cct, 20) << "INFO: queue: " << topic_name << " added to queue list"  << dendl;
+    return 0;
+  }
+  
+  int remove_persistent_topic(const std::string& topic_name, optional_yield y) {
+    librados::ObjectWriteOperation op;
+    op.remove();
+    auto ret = rgw_rados_operate(rados_ioctx, topic_name, &op, y);
+    if (ret == -ENOENT) {
+      // queue already removed - nothing to do
+      ldout(cct, 20) << "INFO: queue for topic: " << topic_name << " already removed. nothing to do" << dendl;
+      return 0;
+    }
+    if (ret < 0) {
+      // failed to remove queue
+      ldout(cct, 1) << "ERROR: failed to remove queue for topic: " << topic_name << ". error: " << ret << dendl;
+      return ret;
+    }
+  
+    std::set<std::string> topic_to_remove{{topic_name}};
+    op.omap_rm_keys(topic_to_remove);
+    ret = rgw_rados_operate(rados_ioctx, Q_LIST_OBJECT_NAME, &op, y);
+    if (ret < 0) {
+      ldout(cct, 1) << "ERROR: failed to remove queue: " << topic_name << " from queue list. error: " << ret << dendl;
+      return ret;
+    } 
+    ldout(cct, 20) << "INFO: queue: " << topic_name << " removed from queue list"  << dendl;
     return 0;
   }
 };
@@ -499,10 +427,11 @@ public:
 static Manager* s_manager = nullptr;
 
 constexpr size_t MAX_QUEUE_SIZE = 128*1024*1024; // 128MB
-constexpr long Q_LIST_UPDATE_MSEC = 1000*30;     // check queue list every 30seconds
-constexpr long Q_LIST_RETRY_MSEC = 1000;         // retry every second if queue list update failed
-constexpr long IDLE_TIMEOUT_USEC = 100*1000;     // idle sleep 100ms
-constexpr long FAILOVER_TIME_SEC = 30;           // FAILOVER TIME 30 SEC
+constexpr unsigned Q_LIST_UPDATE_MSEC = 1000*30;     // check queue list every 30seconds
+constexpr unsigned Q_LIST_RETRY_MSEC = 1000;         // retry every second if queue list update failed
+constexpr unsigned IDLE_TIMEOUT_USEC = 100*1000;     // idle sleep 100ms
+constexpr unsigned FAILOVER_TIME_SEC = 30;           // FAILOVER TIME 30 SEC
+constexpr unsigned WORKER_COUNT = 1;                // 1 worker thread
 
 bool init(CephContext* cct, rgw::sal::RGWRadosStore* store) {
   if (s_manager) {
@@ -510,7 +439,7 @@ bool init(CephContext* cct, rgw::sal::RGWRadosStore* store) {
   }
   // TODO: take conf from CephContext
   s_manager = new Manager(cct, MAX_QUEUE_SIZE, Q_LIST_UPDATE_MSEC, Q_LIST_RETRY_MSEC,
-          IDLE_TIMEOUT_USEC, FAILOVER_TIME_SEC, store);
+          IDLE_TIMEOUT_USEC, FAILOVER_TIME_SEC, WORKER_COUNT, store);
   return true;
 }
 
@@ -524,6 +453,13 @@ int add_persistent_topic(const std::string& topic_name, optional_yield y) {
     return -EAGAIN;
   }
   return s_manager->add_persistent_topic(topic_name, y);
+}
+
+int remove_persistent_topic(const std::string& topic_name, optional_yield y) {
+  if (!s_manager) {
+    return -EAGAIN;
+  }
+  return s_manager->remove_persistent_topic(topic_name, y);
 }
 
 // populate record from request

@@ -38,7 +38,7 @@ import boto.s3.tagging
 # configure logging for the tests module
 log = logging.getLogger(__name__)
 
-skip_push_tests = False
+skip_push_tests = True
 
 ####################################
 # utility functions for pubsub tests

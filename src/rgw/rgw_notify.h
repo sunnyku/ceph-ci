@@ -30,10 +30,12 @@ bool init(CephContext* cct, rgw::sal::RGWRadosStore* store);
 void shutdown();
 
 // create persistent delivery queue for a topic (endpoint)
-// this operation also:
-// * create a (timed) lock to be owned by the RGW that created the topic
-// * add a topic name to the common (to all RGWs) list of all topics
+// this operation also add a topic name to the common (to all RGWs) list of all topics
 int add_persistent_topic(const std::string& topic_name, optional_yield y);
+
+// remove persistent delivery queue for a topic (endpoint)
+// this operation also remove the topic name from the common (to all RGWs) list of all topics
+int remove_persistent_topic(const std::string& topic_name, optional_yield y);
 
 // struct holding reservation information
 // populated in the publish_reserve call

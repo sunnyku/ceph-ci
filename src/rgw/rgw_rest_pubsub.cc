@@ -181,6 +181,19 @@ public:
     }
 
     topic_name = topic_arn->resource;
+
+    // upon deletion it is not known if topic is persistent or not
+    // will try to delete the persistent topic anyway
+    const auto ret = rgw::notify::remove_persistent_topic(topic_name, null_yield);
+    if (ret == -ENOENT) {
+      // topic was not persistent, or already deleted
+      return 0;
+    }
+    if (ret < 0) {
+      ldout(s->cct, 1) << "DeleteTopic Action failed to remove queue for persistent topics. error:" << ret << dendl;
+      return ret;
+    }
+
     return 0;
   }
   
