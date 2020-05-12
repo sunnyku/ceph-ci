@@ -7079,6 +7079,10 @@ std::vector<Option> get_mds_options() {
      .set_default(0)
      .set_description("threshold for cache usage to disallow \"dump cache\" operation to file")
      .set_long_description("Disallow MDS from dumping caches to file via \"dump cache\" command if cache usage exceeds this threshold."),
+
+    Option("mds_skip_trim_if_cache_not_opened", Option::TYPE_BOOL, Option::LEVEL_DEV)
+    .set_default(false)
+    .set_description(""),
   });
 }
 

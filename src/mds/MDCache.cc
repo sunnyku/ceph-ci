@@ -6641,6 +6641,13 @@ std::pair<bool, uint64_t> MDCache::trim(uint64_t count)
           << " reservation=" << cache_reservation
           << "% count=" << count << dendl;
 
+  if (g_conf->get_val<bool>("mds_skip_trim_if_cache_not_opened")) {
+    if (!open) {
+      dout(0) << "skip trim because mdcache not opened yet" << dendl; 
+      return std::pair<bool, uint64_t>(false, 0);
+    }
+  }
+
   // process delayed eval_stray()
   stray_manager.advance_delayed();
 
