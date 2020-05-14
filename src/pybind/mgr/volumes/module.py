@@ -226,8 +226,8 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
             'cmd': 'nfs export create '
             'name=type,type=CephString '
             'name=fsname,type=CephString '
-            'name=binding,type=CephString '
             'name=attach,type=CephString '
+            'name=binding,type=CephString '
             'name=readonly,type=CephBool,req=false '
             'name=path,type=CephString,req=false ',
             'desc': "Create a cephfs export",
@@ -235,8 +235,8 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
         },
         {
             'cmd': 'nfs export delete '
-                   'name=binding,type=CephString '
-                   'name=attach,type=CephString ',
+                   'name=attach,type=CephString '
+                   'name=binding,type=CephString ',
             'desc': "Delete a cephfs export",
             'perm': 'rw'
         },
