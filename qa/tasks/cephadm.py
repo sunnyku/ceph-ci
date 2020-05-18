@@ -719,9 +719,9 @@ def ceph_rgw(ctx, config):
     for realmzone, nodes in nodes.items():
         (realm, zone) = realmzone.split('.', 1)
         _shell(ctx, cluster_name, remote, [
-            'ceph', 'orch', 'apply', 'rgw', '--placement',
-            realm, zone,
-            str(len(nodes)) + ';' + ';'.join(nodes)]
+            'ceph', 'orch', 'apply', 'rgw', realm, zone,
+             '--placement',
+             str(len(nodes)) + ';' + ';'.join(nodes)]
         )
     for role, i in daemons.items():
         remote, id_ = i
