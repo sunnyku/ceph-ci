@@ -26,3 +26,4 @@ overrides:
     conf:
       mon:
         mon warn on osd down out interval zero: false
+        mon pg warn min per osd: 0

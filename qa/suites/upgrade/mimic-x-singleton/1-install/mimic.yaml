@@ -20,3 +20,7 @@ tasks:
 - print: "**** done install mimic"
 - ceph:
 - print: "**** done ceph"
+- ceph:
+    conf:
+      global:
+        mon pg warn min per osd: 0
