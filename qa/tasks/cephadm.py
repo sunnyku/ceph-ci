@@ -451,7 +451,11 @@ def ceph_bootstrap(ctx, config):
         # so, stop them individually
         for role in ctx.daemons.resolve_role_list(None, CEPH_ROLE_TYPES):
             cluster, type_, id_ = teuthology.split_role(role)
-            ctx.daemons.get_daemon(type_, id_, cluster).stop()
+            try:
+                ctx.daemons.get_daemon(type_, id_, cluster).stop()
+            except AttributeError:
+                log.error(f'Failed to stop {(cluster, type_, id_)} "{role}" {ctx.daemons.daemons.keys()}')
+                raise 
 
         # clean up /etc/ceph
         ctx.cluster.run(args=[
@@ -715,7 +719,7 @@ def ceph_rgw(ctx, config):
     for realmzone, nodes in nodes.items():
         (realm, zone) = realmzone.split('.', 1)
         _shell(ctx, cluster_name, remote, [
-            'ceph', 'orch', 'apply', 'rgw',
+            'ceph', 'orch', 'apply', 'rgw', '--placement',
             realm, zone,
             str(len(nodes)) + ';' + ';'.join(nodes)]
         )
