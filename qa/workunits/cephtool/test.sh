@@ -345,29 +345,26 @@ function test_tiering_1()
   ceph osd tier add slow cache
   ceph osd tier add slow cache2
   expect_false ceph osd tier add slow2 cache
+  # forward and proxy are removed/deprecated
+  expect_false ceph osd tier cache-mode cache forward
+  expect_false ceph osd tier cache-mode cache forward --yes-i-really-mean-it
+  expect_false ceph osd tier cache-mode cache proxy
+  expect_false ceph osd tier cache-mode cache proxy --yes-i-really-mean-it
   # test some state transitions
   ceph osd tier cache-mode cache writeback
-  # forward is removed/deprecated
-  expect_false ceph osd tier cache-mode cache forward
-  expect_false ceph osd tier cache-mode cache forward --yes-i-really-mean-it
   expect_false ceph osd tier cache-mode cache readonly
-  ceph osd tier cache-mode cache proxy
+  expect_false ceph osd tier cache-mode cache readonly --yes-i-really-mean-it
+  ceph osd tier cache-mode cache readproxy
   ceph osd tier cache-mode cache none
   ceph osd tier cache-mode cache readonly --yes-i-really-mean-it
-  expect_false ceph osd tier cache-mode cache forward
-  expect_false ceph osd tier cache-mode cache forward --yes-i-really-mean-it
   ceph osd tier cache-mode cache none
   ceph osd tier cache-mode cache writeback
-  ceph osd tier cache-mode cache proxy
-  ceph osd tier cache-mode cache writeback
   expect_false ceph osd tier cache-mode cache none
-  expect_false ceph osd tier cache-mode cache readonly --yes-i-really-mean-it
   # test with dirty objects in the tier pool
   # tier pool currently set to 'writeback'
   rados -p cache put /etc/passwd /etc/passwd
   flush_pg_stats
   # 1 dirty object in pool 'cache'
-  ceph osd tier cache-mode cache proxy
   expect_false ceph osd tier cache-mode cache none
   expect_false ceph osd tier cache-mode cache readonly --yes-i-really-mean-it
   ceph osd tier cache-mode cache writeback
@@ -376,7 +373,6 @@ function test_tiering_1()
   rados -p cache cache-flush-evict-all
   flush_pg_stats
   # no dirty objects in pool 'cache'
-  ceph osd tier cache-mode cache proxy
   ceph osd tier cache-mode cache none
   ceph osd tier cache-mode cache readonly --yes-i-really-mean-it
   TRIES=0
@@ -1108,7 +1104,6 @@ function test_mon_mds()
 
   # Removing tier should be permitted because the underlying pool is
   # replicated (#11504 case)
-  ceph osd tier cache-mode mds-tier proxy
   ceph osd tier remove-overlay fs_metadata
   ceph osd tier remove fs_metadata mds-tier
   ceph osd pool delete mds-tier mds-tier --yes-i-really-really-mean-it
