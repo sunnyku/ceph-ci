@@ -25,6 +25,9 @@ def get_trash_entry_for_volume(volume_client, volname, running_jobs):
     except VolumeException as ve:
         log.error("error fetching trash entry for volume '{0}' ({1})".format(volname, ve))
         return ve.errno, None
+    except Exception as e:
+        log.error("err={}".format(e))
+        return 0, None
 
 # helper for starting a purge operation on a trash entry
 def purge_trash_entry_for_volume(volume_client, volname, purge_dir, should_cancel):
@@ -37,6 +40,8 @@ def purge_trash_entry_for_volume(volume_client, volname, purge_dir, should_cance
                 trashcan.purge(purge_dir, should_cancel)
     except VolumeException as ve:
         ret = ve.errno
+    except Exception as e:
+        pass
     return ret
 
 class ThreadPoolPurgeQueueMixin(AsyncJobs):

@@ -109,6 +109,7 @@ class CephfsConnectionPool(object):
             logger.debug("Setting user ID and group ID of CephFS mount as root...")
             self.fs.conf_set("client_mount_uid", "0")
             self.fs.conf_set("client_mount_gid", "0")
+            self.fs.conf_set("client_mount_timeout", "5")
             logger.debug("CephFS initializing...")
             self.fs.init()
             logger.debug("CephFS mounting...")
@@ -240,7 +241,7 @@ class CephfsClient(object):
         # first, note that we're shutting down
         self.stopping.set()
         # second, delete all libcephfs handles from connection pool
-        self.connection_pool.del_all_handles()
+        #self.connection_pool.del_all_handles()
 
 
 @contextlib.contextmanager
