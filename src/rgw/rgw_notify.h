@@ -54,6 +54,7 @@ struct reservation_t {
   std::vector<topic_t> topics;
   rgw::sal::RGWRadosStore* const store;
   const req_state* const s;
+  size_t size;
 
   reservation_t(rgw::sal::RGWRadosStore* _store, const req_state* _s) : 
       store(_store), s(_s) {}

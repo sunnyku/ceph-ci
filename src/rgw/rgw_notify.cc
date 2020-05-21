@@ -66,11 +66,11 @@ class Manager {
 
   // read the list of queues from the queue list object
   int read_queue_list(queues_t& queues, optional_yield y) {
-    librados::ObjectReadOperation op;
     std::string start_after;
     bool more = true;
     int rval;
     while (more) {
+      librados::ObjectReadOperation op;
       queues_t queues_chunk;
       op.omap_get_keys2(start_after, 1024, &queues_chunk, &more, &rval);
       const auto ret = rgw_rados_operate(rados_ioctx, Q_LIST_OBJECT_NAME, &op, nullptr, y);
@@ -163,18 +163,30 @@ class Manager {
       std::vector<cls_queue_entry> entries;
       auto total_entries = 0U;
 
-      auto ret = cls_2pc_queue_list_entries(rados_ioctx, queue_name, start_marker, max_elements, entries, &truncated, end_marker);
-      if (ret == -ENOENT) {
-        owned_queues.erase(queue_name);
-        // queue was deleted
-        ldout(cct, 5) << "INFO: queue: " 
-          << queue_name << ". was removed. processing will stop" << dendl;
-        return;
-      }
-      if (ret < 0) {
-        ldout(cct, 5) << "WARNING: failed to get list of entries in queue: " 
-          << queue_name << ". error: " << ret << " (will retry)" << dendl;
-        continue;
+      {
+        librados::ObjectReadOperation op;
+        bufferlist obl;
+        int rval;
+        cls_2pc_queue_list_entries(op, start_marker, max_elements, &obl, &rval);
+        auto ret = rgw_rados_operate(rados_ioctx, queue_name, &op, nullptr, optional_yield(io_context, yield));
+        if (ret == -ENOENT) {
+          owned_queues.erase(queue_name);
+          // queue was deleted
+          ldout(cct, 5) << "INFO: queue: " 
+            << queue_name << ". was removed. processing will stop" << dendl;
+          return;
+        }
+        if (ret < 0) {
+          ldout(cct, 5) << "WARNING: failed to get list of entries in queue: " 
+            << queue_name << ". error: " << ret << " (will retry)" << dendl;
+          continue;
+        }
+        ret = cls_2pc_queue_list_entries_result(obl, entries, &truncated, end_marker);
+        if (ret < 0) {
+          ldout(cct, 5) << "WARNING: failed to parse list of entries in queue: " 
+            << queue_name << ". error: " << ret << " (will retry)" << dendl;
+          continue;
+        }
       }
       total_entries = entries.size();
       ldout(cct, 20) << "INFO: found: " << total_entries << " entries from: " << queue_name << dendl;
@@ -253,7 +265,7 @@ class Manager {
       if (remove_entries) {
         librados::ObjectWriteOperation delete_op;
         cls_2pc_queue_remove_entries(delete_op, end_marker); 
-        ret = rgw_rados_operate(rados_ioctx, queue_name, &delete_op, optional_yield(io_context, yield)); 
+        const auto ret = rgw_rados_operate(rados_ioctx, queue_name, &delete_op, optional_yield(io_context, yield)); 
         if (ret < 0) {
           ldout(cct, 1) << "ERROR: failed to remove entries up to: " << end_marker <<  " from queue: " 
             << queue_name << ". error: " << ret << dendl;
@@ -537,15 +549,23 @@ int publish_reserve(EventType event_type,
 
     cls_2pc_reservation::id_t res_id;
     if (topic_cfg.dest.persistent) {
-      librados::ObjectWriteOperation op;
       // TODO: calculate based on max strings sizes?
-      const auto size_to_reserve = 1024;
-      const auto ret = cls_2pc_queue_reserve(res.store->getRados()->get_notif_pool_ctx(),
-            topic_cfg.dest.arn_topic, op, size_to_reserve, 1, res_id);
+      res.size = 1024;
+      librados::ObjectWriteOperation op;
+      bufferlist obl;
+      int rval;
+      cls_2pc_queue_reserve(op, res.size, 1, &obl, &rval);
+      auto ret = rgw_rados_operate(res.store->getRados()->get_notif_pool_ctx(), 
+          topic_cfg.dest.arn_topic, &op, librados::OPERATION_RETURNVEC, res.s->yield);
       if (ret < 0) {
         ldout(res.s->cct, 1) << "ERROR: failed to reserve notification on queue. error: " << ret << dendl;
         // if no space is left in queue we ask client to slow down
         return (ret == -ENOSPC) ? -ERR_RATE_LIMITED : ret;
+      }
+      ret = cls_2pc_queue_reserve_result(obl, res_id);
+      if (ret < 0) {
+        ldout(res.s->cct, 1) << "ERROR: failed to parse reservation id. error: " << ret << dendl;
+        return ret;
       }
     }
     res.topics.emplace_back(topic_filter.s3_id, topic_cfg, res_id);
@@ -575,8 +595,11 @@ int publish_commit(const rgw_obj_key& key,
       record_with_endpoint.arn_topic = std::move(topic.cfg.dest.arn_topic);
       bufferlist bl;
       encode(record_with_endpoint, bl);
+      if (bl.length() > res.size) {
+        ldout(res.s->cct, 1) << "ERROR: committed size: " << bl.length() << " exceeded reserved size: " << res.size << dendl;
+        return -EINVAL;
+      }
       std::vector<bufferlist> bl_data_vec{std::move(bl)};
-      // TODO: check bl size
       librados::ObjectWriteOperation op;
       cls_2pc_queue_commit(op, bl_data_vec, topic.res_id);
       const auto ret = rgw_rados_operate(res.store->getRados()->get_notif_pool_ctx(),
