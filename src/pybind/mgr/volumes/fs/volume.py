@@ -64,8 +64,8 @@ class VolumeClient(CephfsClient):
         self.stopping.set()
         # second, ask purge threads to quit
         self.purge_queue.cancel_all_jobs()
-        # third, delete all libcephfs handles from connection pool
-        self.connection_pool.del_all_handles()
+        # do _not_ cleanup cephfs file handles, just
+        # let they clients get blacklisted.
 
     def cluster_log(self, msg, lvl=None):
         """
