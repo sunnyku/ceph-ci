@@ -144,6 +144,52 @@ class Manager {
     }   
   };
 
+  // processing of a specific entry
+  // return whether processing was successfull (true) or not (false)
+  bool process_entry(const cls_queue_entry& entry, size_t entry_idx, size_t total_entries, std::string& end_marker, spawn::yield_context yield) {
+    record_with_endpoint_t record_with_endpoint;
+    auto iter = entry.data.cbegin();
+    try {
+      decode(record_with_endpoint, iter);
+    } catch (buffer::error& err) {
+      ldout(cct, 5) << "WARNING: failed to decode entry. error: " << err.what() << dendl;
+      return false;
+    }
+    try {
+      // TODO move endpoint creation to queue level
+      const auto push_endpoint = RGWPubSubEndpoint::create(record_with_endpoint.push_endpoint, record_with_endpoint.arn_topic,
+          RGWHTTPArgs(record_with_endpoint.push_endpoint_args), 
+          cct);
+      ldout(cct, 20) << "INFO: push endpoint created: " << record_with_endpoint.push_endpoint <<
+        " for entry: " << entry_idx << "/" << total_entries << " (marker: " << entry.marker << ")" << dendl;
+      const auto ret = push_endpoint->send_to_completion_async(cct, record_with_endpoint.record, optional_yield(io_context, yield));
+      if (ret < 0) {
+        ldout(cct, 5) << "WARNING: push entry: " << entry_idx << "/" << total_entries << " (marker: " << entry.marker << ") to endpoint: " << record_with_endpoint.push_endpoint 
+          << " failed. error: " << ret << " (will retry)" << dendl;
+        if (set_min_marker(end_marker, entry.marker) < 0) {
+          ldout(cct, 1) << "ERROR: cannot determin minimum between malformed markers: " << end_marker << ", " << entry.marker << dendl;
+        } else {
+          ldout(cct, 20) << "INFO: end marker for removal: " << end_marker << dendl;
+        }
+        return false;
+      } else {
+        ldout(cct, 20) << "INFO: push entry: " << entry_idx << "/" << total_entries << " (marker: " << entry.marker << ") to endpoint: " << record_with_endpoint.push_endpoint 
+          << " OK" <<  dendl;
+        if (perfcounter) perfcounter->inc(l_rgw_pubsub_push_ok);
+        return true;
+      }
+    } catch (const RGWPubSubEndpoint::configuration_error& e) {
+      ldout(cct, 5) << "WARNING: failed to create push endpoint: " 
+          << record_with_endpoint.push_endpoint << ". error: " << e.what() << " (will retry) " << dendl;
+      if (set_min_marker(end_marker, entry.marker) < 0) {
+        ldout(cct, 1) << "ERROR: cannot determin minimum between malformed markers: " << end_marker << ", " << entry.marker << dendl;
+      } else {
+        ldout(cct, 20) << "INFO: end marker for removal: " << end_marker << dendl;
+      }
+      return false;
+    }
+  }
+
   // processing of a specific queue
   void process_queue(const std::string& queue_name, spawn::yield_context yield) {
     constexpr auto max_elements = 1024;
@@ -170,7 +216,6 @@ class Manager {
         cls_2pc_queue_list_entries(op, start_marker, max_elements, &obl, &rval);
         auto ret = rgw_rados_operate(rados_ioctx, queue_name, &op, nullptr, optional_yield(io_context, yield));
         if (ret == -ENOENT) {
-          owned_queues.erase(queue_name);
           // queue was deleted
           ldout(cct, 5) << "INFO: queue: " 
             << queue_name << ". was removed. processing will stop" << dendl;
@@ -207,56 +252,15 @@ class Manager {
         }
         // TODO pass entry pointer instead of by-value
         spawn::spawn(yield, [this, entry_idx, total_entries, &end_marker, &remove_entries, &has_error, &waiter, entry](spawn::yield_context yield) {
-          const auto token = waiter.make_token();
-          record_with_endpoint_t record_with_endpoint;
-          auto iter = entry.data.cbegin();
-          try {
-            decode(record_with_endpoint, iter);
-          } catch (buffer::error& err) {
-            ldout(cct, 5) << "WARNING: failed to decode entry. error: " << err.what() << dendl;
-            has_error = true;
-            return;
-          }
-          try {
-            // TODO move endpoint creation outside the entries loop
-            const auto push_endpoint = RGWPubSubEndpoint::create(record_with_endpoint.push_endpoint, record_with_endpoint.arn_topic,
-                RGWHTTPArgs(record_with_endpoint.push_endpoint_args), 
-                cct);
-            ldout(cct, 20) << "INFO: push endpoint created: " << record_with_endpoint.push_endpoint <<
-              " for entry: " << entry_idx << "/" << total_entries << " (marker: " << entry.marker << ")" << dendl;
-            const auto ret = push_endpoint->send_to_completion_async(cct, record_with_endpoint.record, optional_yield(io_context, yield));
-            if (ret < 0) {
-              ldout(cct, 5) << "WARNING: push entry: " << entry_idx << "/" << total_entries << " (marker: " << entry.marker << ") to endpoint: " << record_with_endpoint.push_endpoint 
-                << " failed. error: " << ret << " (will retry)" << dendl;
-              if (set_min_marker(end_marker, entry.marker) < 0) {
-                ldout(cct, 1) << "ERROR: cannot determin minimum between malformed markers: " << end_marker << ", " << entry.marker << dendl;
-              } else {
-                ldout(cct, 20) << "INFO: end marker for removal: " << end_marker << dendl;
-              }
-              has_error = true;
-              return;
-            } else {
-              ldout(cct, 20) << "INFO: push entry: " << entry_idx << "/" << total_entries << " (marker: " << entry.marker << ") to endpoint: " << record_with_endpoint.push_endpoint 
-                << " OK" <<  dendl;
-              if (perfcounter) perfcounter->inc(l_rgw_pubsub_push_ok);
-              // there is at least one entry to remove (was successfully published)
+            const auto token = waiter.make_token();
+            if (process_entry(entry, entry_idx, total_entries, end_marker, yield)) {
               remove_entries = true;
-            }
-          } catch (const RGWPubSubEndpoint::configuration_error& e) {
-            ldout(cct, 5) << "WARNING: failed to create push endpoint: " 
-                << record_with_endpoint.push_endpoint << ". error: " << e.what() << " (will retry) " << dendl;
-            if (set_min_marker(end_marker, entry.marker) < 0) {
-              ldout(cct, 1) << "ERROR: cannot determin minimum between malformed markers: " << end_marker << ", " << entry.marker << dendl;
-            } else {
-              ldout(cct, 20) << "INFO: end marker for removal: " << end_marker << dendl;
-            }
-            has_error = true;
-            return;
-          }
+            }  else {
+              has_error = true;
+            } 
         });
         ++entry_idx;
       }
-
 
       // wait for all pending work to finish
       waiter.async_wait(yield);
@@ -330,6 +334,8 @@ class Manager {
           spawn::spawn(io_context, [this, queue_name](spawn::yield_context yield) {
               process_queue(queue_name, yield);
               });
+          // if queue processing ended, it measn that the queue was removed
+          owned_queues.erase(queue_name);
         } else {
           ldout(cct, 20) << "INFO: queue: " << queue_name << " ownership (lock) renewed" << dendl;
         }
