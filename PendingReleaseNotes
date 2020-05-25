@@ -345,3 +345,4 @@
 * Cephadm: ``ceph orch apply osd`` supports a ``--preview`` flag that prints a preview of
   the OSD specification before deploying OSDs. This makes it possible to
   verify that the specification is correct, before applying it.
+
