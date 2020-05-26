@@ -53,8 +53,6 @@ class Manager {
   const utime_t failover_time;
   CephContext* const cct;
   librados::IoCtx& rados_ioctx;
-  std::unordered_set<std::string> owned_queues;
-  //std::atomic_bool list_of_queues_object_created;
   static constexpr auto COOKIE_LEN = 16;
   const std::string lock_cookie;
   boost::asio::io_context io_context;
@@ -66,13 +64,14 @@ class Manager {
 
   // read the list of queues from the queue list object
   int read_queue_list(queues_t& queues, optional_yield y) {
+    constexpr auto max_chunk = 1024U;
     std::string start_after;
     bool more = true;
     int rval;
     while (more) {
       librados::ObjectReadOperation op;
       queues_t queues_chunk;
-      op.omap_get_keys2(start_after, 1024, &queues_chunk, &more, &rval);
+      op.omap_get_keys2(start_after, max_chunk, &queues_chunk, &more, &rval);
       const auto ret = rgw_rados_operate(rados_ioctx, Q_LIST_OBJECT_NAME, &op, nullptr, y);
       if (ret == -ENOENT) {
         // queue list object was not created - nothing to do
@@ -146,7 +145,7 @@ class Manager {
 
   // processing of a specific entry
   // return whether processing was successfull (true) or not (false)
-  bool process_entry(const cls_queue_entry& entry, size_t entry_idx, size_t total_entries, std::string& end_marker, spawn::yield_context yield) {
+  bool process_entry(const cls_queue_entry& entry, spawn::yield_context yield) {
     record_with_endpoint_t record_with_endpoint;
     auto iter = entry.data.cbegin();
     try {
@@ -161,31 +160,21 @@ class Manager {
           RGWHTTPArgs(record_with_endpoint.push_endpoint_args), 
           cct);
       ldout(cct, 20) << "INFO: push endpoint created: " << record_with_endpoint.push_endpoint <<
-        " for entry: " << entry_idx << "/" << total_entries << " (marker: " << entry.marker << ")" << dendl;
+        " for entry: " << entry.marker << dendl;
       const auto ret = push_endpoint->send_to_completion_async(cct, record_with_endpoint.record, optional_yield(io_context, yield));
       if (ret < 0) {
-        ldout(cct, 5) << "WARNING: push entry: " << entry_idx << "/" << total_entries << " (marker: " << entry.marker << ") to endpoint: " << record_with_endpoint.push_endpoint 
+        ldout(cct, 5) << "WARNING: push entry: " << entry.marker << " to endpoint: " << record_with_endpoint.push_endpoint 
           << " failed. error: " << ret << " (will retry)" << dendl;
-        if (set_min_marker(end_marker, entry.marker) < 0) {
-          ldout(cct, 1) << "ERROR: cannot determin minimum between malformed markers: " << end_marker << ", " << entry.marker << dendl;
-        } else {
-          ldout(cct, 20) << "INFO: end marker for removal: " << end_marker << dendl;
-        }
         return false;
       } else {
-        ldout(cct, 20) << "INFO: push entry: " << entry_idx << "/" << total_entries << " (marker: " << entry.marker << ") to endpoint: " << record_with_endpoint.push_endpoint 
-          << " OK" <<  dendl;
+        ldout(cct, 20) << "INFO: push entry: " << entry.marker << " to endpoint: " << record_with_endpoint.push_endpoint 
+          << " ok" <<  dendl;
         if (perfcounter) perfcounter->inc(l_rgw_pubsub_push_ok);
         return true;
       }
     } catch (const RGWPubSubEndpoint::configuration_error& e) {
       ldout(cct, 5) << "WARNING: failed to create push endpoint: " 
-          << record_with_endpoint.push_endpoint << ". error: " << e.what() << " (will retry) " << dendl;
-      if (set_min_marker(end_marker, entry.marker) < 0) {
-        ldout(cct, 1) << "ERROR: cannot determin minimum between malformed markers: " << end_marker << ", " << entry.marker << dendl;
-      } else {
-        ldout(cct, 20) << "INFO: end marker for removal: " << end_marker << dendl;
-      }
+          << record_with_endpoint.push_endpoint << " for entry: " << entry.marker << ". error: " << e.what() << " (will retry) " << dendl;
       return false;
     }
   }
@@ -194,7 +183,7 @@ class Manager {
   void process_queue(const std::string& queue_name, spawn::yield_context yield) {
     constexpr auto max_elements = 1024;
     auto is_idle = false;
-    std::string start_marker;
+    const std::string start_marker;
     while (true) {
       if (is_idle) {
         Timer timer(io_context);
@@ -234,7 +223,8 @@ class Manager {
         }
       }
       total_entries = entries.size();
-      ldout(cct, 20) << "INFO: found: " << total_entries << " entries from: " << queue_name << dendl;
+      ldout(cct, 20) << "INFO: found: " << total_entries << " entries in: " << queue_name <<
+        ". end marker is: " << end_marker << dendl;
       if (total_entries == 0) {
         // nothing in the queue
         continue;
@@ -243,7 +233,7 @@ class Manager {
       is_idle = false;
       auto has_error = false;
       auto remove_entries = false;
-      auto entry_idx = 0U;
+      auto entry_idx = 1U;
       tokens_waiter waiter(io_context);
       for (auto& entry : entries) {
         if (has_error) {
@@ -251,12 +241,21 @@ class Manager {
           break;
         }
         // TODO pass entry pointer instead of by-value
-        spawn::spawn(yield, [this, entry_idx, total_entries, &end_marker, &remove_entries, &has_error, &waiter, entry](spawn::yield_context yield) {
+        spawn::spawn(yield, [this, &queue_name, entry_idx, total_entries, &end_marker, &remove_entries, &has_error, &waiter, entry](spawn::yield_context yield) {
             const auto token = waiter.make_token();
-            if (process_entry(entry, entry_idx, total_entries, end_marker, yield)) {
+            if (process_entry(entry, yield)) {
+              ldout(cct, 20) << "INFO: processing of entry: " << 
+                entry.marker << " (" << entry_idx << "/" << total_entries << ") from: " << queue_name << " ok" << dendl;
               remove_entries = true;
             }  else {
+              if (set_min_marker(end_marker, entry.marker) < 0) {
+                ldout(cct, 1) << "ERROR: cannot determin minimum between malformed markers: " << end_marker << ", " << entry.marker << dendl;
+              } else {
+                ldout(cct, 20) << "INFO: new end marker for removal: " << end_marker << " from: " << queue_name << dendl;
+              }
               has_error = true;
+              ldout(cct, 20) << "INFO: processing of entry: " << 
+                entry.marker << " (" << entry_idx << "/" << total_entries << ") from: " << queue_name << " failed" << dendl;
             } 
         });
         ++entry_idx;
@@ -278,7 +277,6 @@ class Manager {
           << queue_name << dendl;
         }
       }
-      start_marker = end_marker;
       // TODO: cleanup expired reservations
     }
   }
@@ -287,6 +285,7 @@ class Manager {
   // find which of the queues is owned by this daemon and process it
   void process_queues(spawn::yield_context yield) {
     auto has_error = false;
+    std::unordered_set<std::string> owned_queues;
     while (true) {
       Timer timer(io_context);
       const auto duration = has_error ? 
@@ -304,6 +303,8 @@ class Manager {
         continue;
       }
 
+      std::vector<std::string> queue_gc;
+      std::mutex queue_gc_lock;
       for (const auto& queue_name : queues) {
         // try to lock the queue to check if it is owned by this rgw
         // or if ownershif needs to be taken
@@ -331,14 +332,26 @@ class Manager {
         if (owned_queues.insert(queue_name).second) {
           ldout(cct, 20) << "INFO: queue: " << queue_name << " now owned (locked) by this daemon" << dendl;
           // start processing this queue
-          spawn::spawn(io_context, [this, queue_name](spawn::yield_context yield) {
-              process_queue(queue_name, yield);
-              });
-          // if queue processing ended, it measn that the queue was removed
-          owned_queues.erase(queue_name);
+          spawn::spawn(io_context, [this, &queue_gc, &queue_gc_lock, queue_name](spawn::yield_context yield) {
+            process_queue(queue_name, yield);
+            // if queue processing ended, it measn that the queue was removed
+            // mark it for deletion
+            ldout(cct, 20) << "INFO: queue: " << queue_name << " marked for removal" << dendl;
+            std::lock_guard lock_guard(queue_gc_lock);
+            queue_gc.push_back(queue_name);
+          });
         } else {
           ldout(cct, 20) << "INFO: queue: " << queue_name << " ownership (lock) renewed" << dendl;
         }
+      }
+      // erase all queue that were deleted
+      {
+        std::lock_guard lock_guard(queue_gc_lock);
+        std::for_each(queue_gc.begin(), queue_gc.end(), [this, &owned_queues](const std::string& queue_name) {
+          owned_queues.erase(queue_name);
+          ldout(cct, 20) << "INFO: queue: " << queue_name << " removed" << dendl;
+        });
+        queue_gc.clear();
       }
     }
   }
@@ -449,7 +462,7 @@ constexpr unsigned Q_LIST_UPDATE_MSEC = 1000*30;     // check queue list every 3
 constexpr unsigned Q_LIST_RETRY_MSEC = 1000;         // retry every second if queue list update failed
 constexpr unsigned IDLE_TIMEOUT_USEC = 100*1000;     // idle sleep 100ms
 constexpr unsigned FAILOVER_TIME_SEC = 30;           // FAILOVER TIME 30 SEC
-constexpr unsigned WORKER_COUNT = 1;                // 1 worker thread
+constexpr unsigned WORKER_COUNT = 1;                 // 1 worker thread
 
 bool init(CephContext* cct, rgw::sal::RGWRadosStore* store) {
   if (s_manager) {
