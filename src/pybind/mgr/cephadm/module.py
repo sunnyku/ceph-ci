@@ -1583,13 +1583,13 @@ you may want to run:
                 deps.append(dd.name())
         return sorted(deps)
 
-    def _get_config_and_keyring(self, daemon_type, daemon_id,
+    def _get_config_and_keyring(self, daemon_type, partial_auth_key,
                                 keyring=None,
                                 extra_ceph_config=None):
         # type: (str, str, Optional[str], Optional[str]) -> Dict[str, Any]
         # keyring
         if not keyring:
-            ename = utils.name_to_auth_entity(daemon_type + '.' + daemon_id)
+            ename = utils.name_to_auth_entity(daemon_type + '.' + partial_auth_key)
             ret, keyring, err = self.check_mon_command({
                 'prefix': 'auth get',
                 'entity': ename,
@@ -1646,8 +1646,11 @@ you may want to run:
             extra_args.extend(['--config-json', '-'])
         else:
             # Ceph.daemons (mon, mgr, mds, osd, etc)
+            partial_auth_key = daemon_id
+            if daemon_type == 'crash': #
+                partial_auth_key = host
             cephadm_config = self._get_config_and_keyring(
-                    daemon_type, daemon_id,
+                    daemon_type, partial_auth_key,
                     keyring=keyring,
                     extra_ceph_config=extra_config.pop('config', ''))
             if extra_config:
