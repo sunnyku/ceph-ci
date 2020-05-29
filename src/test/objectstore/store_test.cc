@@ -7624,12 +7624,12 @@ TEST_P(StoreTestSpecificAUSize, ExcessiveFragmentation) {
   }
   {
     // create 2x400MB objects in a way that their pextents are interleaved
-    ObjectStore::Transaction t;
     bufferlist bl;
 
     bl.append(std::string(block_size * 4, 'a')); // 256KB
     uint64_t offs = 0;
     while(offs < (uint64_t)400 * 1024 * 1024) {
+      ObjectStore::Transaction t;
       t.write(cid, hoid1, offs, bl.length(), bl, 0);
       t.write(cid, hoid2, offs, bl.length(), bl, 0);
       r = queue_transaction(store, ch, std::move(t));
@@ -7646,12 +7646,12 @@ TEST_P(StoreTestSpecificAUSize, ExcessiveFragmentation) {
     // fragmented and occuping still unfragmented space at the end
     // So we'll have enough free space but it'll lack long enough (e.g. 1MB)
     // contiguous pextents.
-    ObjectStore::Transaction t;
     bufferlist bl;
 
     bl.append(std::string(block_size * 4, 'a'));
     uint64_t offs = 0;
     while(offs < 112 * 1024 * 1024) {
+      ObjectStore::Transaction t;
       t.write(cid, hoid1, offs, bl.length(), bl, 0);
       t.write(cid, hoid2, offs, bl.length(), bl, 0);
       r = queue_transaction(store, ch, std::move(t));
