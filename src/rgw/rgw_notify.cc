@@ -309,6 +309,7 @@ class Manager {
         // try to lock the queue to check if it is owned by this rgw
         // or if ownershif needs to be taken
         librados::ObjectWriteOperation op;
+        op.assert_exists();
         rados::cls::lock::lock(&op, queue_name+"_lock", 
               LOCK_EXCLUSIVE,
               lock_cookie, 
@@ -323,9 +324,14 @@ class Manager {
           ldout(cct, 20) << "INFO: queue: " << queue_name << " owned (locked) by another daemon" << dendl;
           continue;
         }
+        if (ret == -ENOENT) {
+          // queue is deleted
+          ldout(cct, 20) << "INFO: queue: " << queue_name << " should not be locked - already deleted" << dendl;
+          continue;
+        }
         if (ret < 0) {
           // failed to lock for another reason, continue to process other queues
-          ldout(cct, 1) << "ERROR: failed renew lock on queue: " << queue_name << ". error: " << ret << dendl;
+          ldout(cct, 1) << "ERROR: failed to lock queue: " << queue_name << ". error: " << ret << dendl;
           has_error = true;
         }
         // add queue to list of owned queues
