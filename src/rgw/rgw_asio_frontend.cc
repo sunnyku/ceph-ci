@@ -85,7 +85,7 @@ class StreamIO : public rgw::asio::ClientIO {
   }
 };
 
-// output the http version as a string, ie 'HTTP/1.1'
+// output the HTTP version as a string, ie 'HTTP/1.1'
 struct http_version {
   unsigned major_ver;
   unsigned minor_ver;
