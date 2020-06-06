@@ -42,7 +42,7 @@ from .services.osd import RemoveUtil, OSDRemoval, OSDService
 from .services.monitoring import GrafanaService, AlertmanagerService, PrometheusService, \
     NodeExporterService
 from .schedule import HostAssignment, HostPlacementSpec
-from .inventory import Inventory, SpecStore, HostCache
+from .inventory import Inventory, SpecStore, HostCache, EventStore
 from .upgrade import CEPH_UPGRADE_ORDER, CephadmUpgrade
 from .template import TemplateMgr
 
@@ -337,7 +337,9 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             if h not in self.inventory:
                 self.cache.rm_host(h)
 
+
         # in-memory only.
+        self.events = EventStore(self)
         self.offline_hosts: Set[str] = set()
 
         self.migration = Migrations(self)
