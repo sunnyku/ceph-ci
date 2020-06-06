@@ -27,7 +27,7 @@ from ceph.deployment.service_spec import \
 from mgr_module import MgrModule, HandleCommandResult
 import orchestrator
 from orchestrator import OrchestratorError, OrchestratorValidationError, HostSpec, \
-    CLICommandMeta
+    CLICommandMeta, OrchestratorEvent
 from orchestrator._interface import GenericSpec
 
 from . import remotes
@@ -1695,8 +1695,14 @@ you may want to run:
         self.cache.invalidate_host_daemons(host)
         self.cache.update_daemon_config_deps(host, name, deps, start_time)
         self.cache.save_host(host)
-        return "{} {} on host '{}'".format(
+        msg = "{} {} on host '{}'".format(
             'Reconfigured' if reconfig else 'Deployed', name, host)
+        if not code:
+            self.events.for_daemon(name, OrchestratorEvent.INFO, msg)
+        else:
+            what = 'reconfigure' if reconfig else 'deploy'
+            self.events.for_daemon(name, OrchestratorEvent.ERROR, f'Failed to {what}: {err}')
+        return msg
 
     @forall_hosts
     def _remove_daemons(self, name, host) -> str:
