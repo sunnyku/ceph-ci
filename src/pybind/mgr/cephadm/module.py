@@ -1282,6 +1282,7 @@ you may want to run:
                         container_image_id=dd.container_image_id,
                         container_image_name=dd.container_image_name,
                         spec=spec,
+                        events=self.events.get_for_service(spec.service_name()),
                     )
                 if n in self.spec_store.specs:
                     if dd.daemon_type == 'osd':
@@ -1320,6 +1321,7 @@ you may want to run:
                 spec=spec,
                 size=spec.placement.get_host_selection_size(self.inventory.all_specs()),
                 running=0,
+                events=self.events.get_for_service(spec.service_name()),
             )
             if service_type == 'nfs':
                 spec = cast(NFSServiceSpec, spec)
