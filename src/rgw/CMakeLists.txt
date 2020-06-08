@@ -61,6 +61,7 @@ set(librgw_common_srcs
   rgw_bucket_sync.cc
   rgw_cache.cc
   rgw_common.cc
+  rgw_op_type.cc
   rgw_compression.cc
   rgw_etag_verifier.cc
   rgw_cors.cc
@@ -164,6 +165,12 @@ if(WITH_RADOSGW_KAFKA_ENDPOINT)
   list(APPEND librgw_common_srcs rgw_kafka.cc)
 endif()
 
+if(WITH_RADOSGW_LUA_SCRIPTING)
+  list(APPEND librgw_common_srcs rgw_lua_utils.cc)
+  list(APPEND librgw_common_srcs rgw_lua.cc)
+  list(APPEND librgw_common_srcs rgw_lua_s3.cc)
+endif()
+
 add_library(rgw_common OBJECT ${librgw_common_srcs})
 
 target_include_directories(rgw_common SYSTEM PUBLIC "services")
@@ -252,6 +259,10 @@ if(WITH_CURL_OPENSSL)
   target_link_libraries(rgw_a PRIVATE OpenSSL::Crypto)
 endif()
 
+if(WITH_RADOSGW_LUA_SCRIPTING)
+  target_link_libraries(rgw_a PRIVATE liblua)
+endif()
+
 if(WITH_BOOST_CONTEXT)
   target_link_libraries(rgw_a PUBLIC spawn)
 endif()
@@ -264,6 +275,10 @@ endif()
 if(WITH_RADOSGW_KAFKA_ENDPOINT)
   # used by rgw_kafka.cc
   list(APPEND rgw_libs RDKafka::RDKafka)
+endif()
+
+if(WITH_RADOSGW_LUA_SCRIPTING)
+  list(APPEND rgw_libs ${LUA_LIBRARIES})
 endif()
 
 set(rgw_schedulers_srcs
@@ -397,6 +412,10 @@ endif()
 
 if(WITH_RADOSGW_KAFKA_ENDPOINT)
   target_link_libraries(rgw PRIVATE RDKafka::RDKafka)
+endif()
+
+if(WITH_RADOSGW_LUA_SCRIPTING)
+  target_link_libraries(rgw PRIVATE ${LUA_LIBRARIES})
 endif()
 
 set_target_properties(rgw PROPERTIES OUTPUT_NAME rgw VERSION 2.0.0

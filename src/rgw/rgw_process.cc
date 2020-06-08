@@ -15,6 +15,10 @@
 #include "rgw_client_io.h"
 #include "rgw_opa.h"
 #include "rgw_perf_counters.h"
+#ifdef WITH_RADOSGW_LUA_SCRIPTING
+#include "rgw_lua.h"
+#include "rgw_lua_s3.h"
+#endif
 
 #include "services/svc_zone_utils.h"
 
@@ -236,6 +240,22 @@ int process_request(rgw::sal::RGWRadosStore* const store,
     abort_early(s, NULL, -ERR_METHOD_NOT_ALLOWED, handler);
     goto done;
   }
+#ifdef WITH_RADOSGW_LUA_SCRIPTING
+  {
+    std::string script;
+    auto rc = rgw::lua::read_script(store, s->bucket_tenant, s->yield, rgw::lua::context::preS3, script);
+    if (rc == -ENOENT) {
+      // no script, nothing to do
+    } else if (rc < 0) {
+      ldpp_dout(op, 5) << "WARNING: failed to read pre S3 script. error: " << rc << dendl;
+    } else {
+      rc = rgw::lua::s3::execute(store, rest, olog, s, script);
+      if (rc < 0) {
+        ldpp_dout(op, 5) << "WARNING: failed to execute pre S3 script. error: " << rc << dendl;
+      }
+    }
+  }
+#endif
   std::tie(ret,c) = schedule_request(scheduler, s, op);
   if (ret < 0) {
     if (ret == -EAGAIN) {
@@ -290,6 +310,23 @@ int process_request(rgw::sal::RGWRadosStore* const store,
   }
 
 done:
+#ifdef WITH_RADOSGW_LUA_SCRIPTING
+  if (op) {
+    std::string script;
+    auto rc = rgw::lua::read_script(store, s->bucket_tenant, s->yield, rgw::lua::context::postS3, script);
+    if (rc == -ENOENT) {
+      // no script, nothing to do
+    } else if (rc < 0) {
+      ldpp_dout(op, 5) << "WARNING: failed to read post S3 script. error: " << rc << dendl;
+    } else {
+      rc = rgw::lua::s3::execute(store, rest, olog, s, script);
+      if (rc < 0) {
+        ldpp_dout(op, 5) << "WARNING: failed to execute post S3 script. error: " << rc << dendl;
+      }
+    }
+  }
+#endif
+
   try {
     client_io->complete_request();
   } catch (rgw::io::Exception& e) {
