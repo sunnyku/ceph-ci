@@ -121,6 +121,20 @@ protected:
   string name;
   ACLGroupTypeEnum group;
   string url_spec;
+  rgw_user unified_id;
+
+  void update_unified_id() {
+    switch(type.get_type()) {
+    case ACL_TYPE_EMAIL_USER:
+      unified_id = email;
+      break;
+    case ACL_TYPE_GROUP:
+    case ACL_TYPE_REFERER:
+      break;
+    default:
+      unified_id = id;
+    }
+  }
 
 public:
   ACLGrant() : group(ACL_GROUP_NONE) {}
@@ -129,18 +143,22 @@ public:
   /* there's an assumption here that email/uri/id encodings are
      different and there can't be any overlap */
   bool get_id(rgw_user& _id) const {
+    _id = unified_id;
     switch(type.get_type()) {
     case ACL_TYPE_EMAIL_USER:
-      _id = email; // implies from_str() that parses the 't:u' syntax
       return true;
     case ACL_TYPE_GROUP:
     case ACL_TYPE_REFERER:
       return false;
     default:
-      _id = id;
       return true;
     }
   }
+
+  const rgw_user& get_id() const {
+    return unified_id;
+  }
+
   ACLGranteeType& get_type() { return type; }
   const ACLGranteeType& get_type() const { return type; }
   ACLPermission& get_permission() { return permission; }
@@ -188,6 +206,7 @@ public:
       url_spec.clear();
     }
     DECODE_FINISH(bl);
+    update_unified_id();
   }
   void dump(Formatter *f) const;
   static void generate_test_instances(list<ACLGrant*>& o);
@@ -199,16 +218,19 @@ public:
     id = _id;
     name = _name;
     permission.set_permissions(perm);
+    update_unified_id();
   }
   void set_group(ACLGroupTypeEnum _group, const uint32_t perm) {
     type.set(ACL_TYPE_GROUP);
     group = _group;
     permission.set_permissions(perm);
+    update_unified_id();
   }
   void set_referer(const std::string& _url_spec, const uint32_t perm) {
     type.set(ACL_TYPE_REFERER);
     url_spec = _url_spec;
     permission.set_permissions(perm);
+    update_unified_id();
   }
 
   friend bool operator==(const ACLGrant& lhs, const ACLGrant& rhs);
@@ -295,6 +317,8 @@ namespace auth {
 }
 }
 
+using ACLGrantMap = std::multimap<std::string, ACLGrant>;
+
 class RGWAccessControlList
 {
 protected:
@@ -304,7 +328,7 @@ protected:
   map<string, int> acl_user_map;
   map<uint32_t, int> acl_group_map;
   list<ACLReferer> referer_list;
-  multimap<string, ACLGrant> grant_map;
+  ACLGrantMap grant_map;
   void _add_grant(ACLGrant *grant);
 public:
   explicit RGWAccessControlList(CephContext *_cct) : cct(_cct) {}
@@ -342,7 +366,7 @@ public:
     if (struct_v >= 2) {
       decode(acl_group_map, bl);
     } else if (!maps_initialized) {
-      multimap<string, ACLGrant>::iterator iter;
+      ACLGrantMap::iterator iter;
       for (iter = grant_map.begin(); iter != grant_map.end(); ++iter) {
         ACLGrant& grant = iter->second;
         _add_grant(&grant);
@@ -359,8 +383,8 @@ public:
   void add_grant(ACLGrant *grant);
   void remove_canon_user_grant(rgw_user& user_id);
 
-  multimap<string, ACLGrant>& get_grant_map() { return grant_map; }
-  const multimap<string, ACLGrant>& get_grant_map() const { return grant_map; }
+  ACLGrantMap& get_grant_map() { return grant_map; }
+  const ACLGrantMap& get_grant_map() const { return grant_map; }
 
   void create_default(const rgw_user& id, string name) {
     acl_user_map.clear();
@@ -411,7 +435,7 @@ public:
   rgw_user& get_id() { return id; }
   const rgw_user& get_id() const { return id; }
   string& get_display_name() { return display_name; }
-
+  const string& get_display_name() const { return display_name; }
   friend bool operator==(const ACLOwner& lhs, const ACLOwner& rhs);
   friend bool operator!=(const ACLOwner& lhs, const ACLOwner& rhs);
 };

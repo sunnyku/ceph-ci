@@ -510,6 +510,9 @@ add_subdirectory(global)
 
 add_subdirectory(lua)
 
+include_directories(SYSTEM "${CMAKE_SOURCE_DIR}/src/lua/src")
+include_directories(SYSTEM "${CMAKE_BINARY_DIR}/src/lua")
+
 # rados object classes
 add_subdirectory(cls)
 
