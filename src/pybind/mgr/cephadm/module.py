@@ -1815,12 +1815,16 @@ you may want to run:
 
         # remove any?
         target_hosts = [h.hostname for h in hosts]
-        for d in daemons:
-            if d.hostname not in target_hosts:
-                # NOTE: we are passing the 'force' flag here, which means
-                # we can delete a mon instances data.
-                self._remove_daemon(d.name(), d.hostname)
-                r = True
+        to_remove = [d for d in daemons if d.hostname not in target_hosts]
+        while to_remove and not self.cephadm_services[daemon_type].ok_to_stop([d.daemon_id for d in to_remove]):
+            # let's find a subset that is ok-to-stop
+            daemon_type = daemon_type[1:]
+
+        for d in to_remove:
+            # NOTE: we are passing the 'force' flag here, which means
+            # we can delete a mon instances data.
+            self._remove_daemon(d.name(), d.hostname)
+            r = True
 
         return r
 
