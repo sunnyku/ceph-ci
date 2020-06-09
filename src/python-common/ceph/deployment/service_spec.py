@@ -149,11 +149,7 @@ class PlacementSpec(object):
         self.hosts = []  # type: List[HostPlacementSpec]
 
         if hosts:
-            if all([isinstance(host, HostPlacementSpec) for host in hosts]):
-                self.hosts = hosts  # type: ignore
-            else:
-                self.hosts = [HostPlacementSpec.parse(x, require_network=False)  # type: ignore
-                              for x in hosts if x]
+            self.set_hosts(hosts)
 
         self.count = count  # type: Optional[int]
 
@@ -179,7 +175,11 @@ class PlacementSpec(object):
     def set_hosts(self, hosts):
         # To backpopulate the .hosts attribute when using labels or count
         # in the orchestrator backend.
-        self.hosts = hosts
+        if all([isinstance(host, HostPlacementSpec) for host in hosts]):
+            self.hosts = hosts  # type: ignore
+        else:
+            self.hosts = [HostPlacementSpec.parse(x, require_network=False)  # type: ignore
+                          for x in hosts if x]
 
     def filter_matching_hosts(self, _get_hosts_func: Callable) -> List[str]:
         if self.hosts:
