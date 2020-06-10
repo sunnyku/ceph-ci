@@ -143,7 +143,7 @@ class DriveGroupSpec(ServiceSpec):
         "db_slots", "wal_slots", "block_db_size", "placement", "service_id", "service_type",
         "data_devices", "db_devices", "wal_devices", "journal_devices",
         "data_directories", "osds_per_device", "objectstore", "osd_id_claims",
-        "journal_size", "unmanaged"
+        "journal_size", "unmanaged", "preview_only"
     ]
 
     def __init__(self,
@@ -165,11 +165,13 @@ class DriveGroupSpec(ServiceSpec):
                  journal_size=None,  # type: Optional[int]
                  service_type=None,  # type: Optional[str]
                  unmanaged=False,  # type: bool
+                 preview_only=False,  # type: bool
                  ):
         assert service_type is None or service_type == 'osd'
         super(DriveGroupSpec, self).__init__('osd', service_id=service_id,
                                              placement=placement,
-                                             unmanaged=unmanaged)
+                                             unmanaged=unmanaged,
+                                             preview_only=preview_only)
 
         #: A :class:`ceph.deployment.drive_group.DeviceSelection`
         self.data_devices = data_devices
@@ -214,6 +216,9 @@ class DriveGroupSpec(ServiceSpec):
         #: Optional: mapping of host -> List of osd_ids that should be replaced
         #: See :ref:`orchestrator-osd-replace`
         self.osd_id_claims = osd_id_claims or dict()
+
+        #: If this should be treated as a 'preview' spec
+        self.preview_only = preview_only
 
     @classmethod
     def _from_json_impl(cls, json_drive_group):
