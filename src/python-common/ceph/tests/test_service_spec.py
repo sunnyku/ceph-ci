@@ -90,8 +90,14 @@ def test_servicespec_map_test(s_type, o_spec, s_id):
         "service_id": s_id,
         "service_type": s_type,
         "placement":
-            dict(hosts=["host1:1.1.1.1"])
+            dict(hosts=["host1:1.1.1.1"]),
     }
+    if s_type == 'osd':
+        dict_spec['spec'] = {
+            'data_devices': {
+                'all': True
+            }
+        }
     spec = ServiceSpec.from_json(dict_spec)
     assert isinstance(spec, o_spec)
     assert isinstance(spec.placement, PlacementSpec)
