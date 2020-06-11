@@ -9,4 +9,11 @@ if [ -n "${VALGRIND}" ]; then
 else
   nosetests -v $relpath/test_rbd.py
 fi
+if [ -n "${VALGRIND}" ]; then
+  valgrind ${VALGRIND} --suppressions=${TESTDIR}/valgrind.supp \
+    --errors-for-leak-kinds=definite --error-exitcode=1 \
+    nosetests -v $relpath/test_rbdx.py
+else
+  nosetests -v $relpath/test_rbdx.py
+fi
 exit 0
