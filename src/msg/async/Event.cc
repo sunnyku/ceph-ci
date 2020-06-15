@@ -231,6 +231,7 @@ int EventCenter::create_file_event(int fd, int mask, EventCallbackRef ctxt)
 
   r = driver->add_event(fd, event->mask, mask);
   if (r < 0) {
+    int i = 0;
     // Actually we don't allow any failed error code, caller doesn't prepare to
     // handle error status. So now we need to assert failure here. In practice,
     // add_event shouldn't report error, otherwise it must be a innermost bug!
@@ -238,8 +239,12 @@ int EventCenter::create_file_event(int fd, int mask, EventCallbackRef ctxt)
                << " mask=" << mask << " original mask is " << event->mask << dendl;
     ldout(cct, 1) << __func__ << "lxb add event failed, ret=" << r << " fd=" << fd
                << " mask=" << mask << " original mask is " << event->mask << dendl;
-   // ceph_abort_msg("BUG!");
-    sleep(100);
+    while (i++ < 100) {
+      sleep(1);
+      ldout(cct, 1) << __func__ << "lxb add event failed, ret=" << r << " fd=" << fd
+                 << " mask=" << mask << " original mask is " << event->mask << dendl;
+    }
+    ceph_abort_msg("BUG!");
     return r;
   }
 
