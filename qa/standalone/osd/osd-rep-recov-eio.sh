@@ -231,8 +231,23 @@ function TEST_rados_repair_warning() {
     test "$COUNT" = "$(expr $OBJS \* 3)" || return 1
 
     # Give mon a chance to notice additional OSD and unmute
-    sleep 5
-    ceph health | grep -q "Too many repaired reads on 2 OSDs" || return 1
+    # The default tick time is 5 seconds
+    CHECKTIME=10
+    LOOPS=0
+    while(true)
+    do
+      sleep 1
+      if ceph health | grep -q "Too many repaired reads on 2 OSDs"
+      then
+	      break
+      fi
+      LOOPS=$(expr $LOOPS + 1)
+      if test "$LOOPS" = "$CHECKTIME"
+      then
+	      echo "Too many repaired reads not seen after $CHECKTIME seconds"
+	      return 1
+      fi
+    done
     ceph health detail | grep -q "osd.$primary had $(expr $OBJS \* 2) reads repaired" || return 1
     ceph health detail | grep -q "osd.$bad_peer had $OBJS reads repaired" || return 1
 
