@@ -238,8 +238,8 @@ int EventCenter::create_file_event(int fd, int mask, EventCallbackRef ctxt)
                << " mask=" << mask << " original mask is " << event->mask << dendl;
     ldout(cct, 1) << __func__ << "lxb add event failed, ret=" << r << " fd=" << fd
                << " mask=" << mask << " original mask is " << event->mask << dendl;
-   // ceph_abort_msg("BUG!");
-    sleep(100);
+    ceph_abort_msg("BUG!");
+    //sleep(100);
     return r;
   }
 
