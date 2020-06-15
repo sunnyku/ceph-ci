@@ -2081,53 +2081,78 @@ TEST(LibCephFS, TestUtime) {
 
 TEST(LibCephFS, TestUtimes) {
   struct ceph_mount_info *cmount;
+  fprintf(stderr, "lxb ---------- 1\n");
   ASSERT_EQ(ceph_create(&cmount, NULL), 0);
+  fprintf(stderr, "lxb ---------- 2\n");
   ASSERT_EQ(ceph_conf_read_file(cmount, NULL), 0);
+  fprintf(stderr, "lxb ---------- 3\n");
   ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+  fprintf(stderr, "lxb ----------4 \n");
   ASSERT_EQ(ceph_mount(cmount, NULL), 0);
+  fprintf(stderr, "lxb ---------- 5\n");
 
   char test_file[256];
   char test_symlink[256];
 
   sprintf(test_file, "test_utimes_file_%d", getpid());
   sprintf(test_symlink, "test_utimes_symlink_%d", getpid());
+  fprintf(stderr, "lxb ---------- 6\n");
   int fd = ceph_open(cmount, test_file, O_CREAT, 0666);
+  fprintf(stderr, "lxb ---------- 7\n");
   ASSERT_GT(fd, 0);
 
   ASSERT_EQ(ceph_symlink(cmount, test_file, test_symlink), 0);
+  fprintf(stderr, "lxb ---------- 8\n");
 
   struct timeval times[2];
   struct ceph_statx stx;
 
   get_current_time_timeval(times);
+  fprintf(stderr, "lxb ---------- 9\n");
 
   // ceph_utimes() on symlink, validate target file time
   EXPECT_EQ(0, ceph_utimes(cmount, test_symlink, times));
+  fprintf(stderr, "lxb ---------- 10\n");
   ASSERT_EQ(ceph_statx(cmount, test_symlink, &stx,
                        CEPH_STATX_MTIME|CEPH_STATX_ATIME, 0), 0);
+  fprintf(stderr, "lxb ---------- 11\n");
   ASSERT_EQ(utime_t(stx.stx_atime), utime_t(times[0]));
+  fprintf(stderr, "lxb ---------- 12\n");
   ASSERT_EQ(utime_t(stx.stx_mtime), utime_t(times[1]));
 
+  fprintf(stderr, "lxb ---------- 13\n");
   get_current_time_timeval(times);
 
+  fprintf(stderr, "lxb ---------- 14\n");
   // ceph_lutimes() on symlink, validate symlink time
   EXPECT_EQ(0, ceph_lutimes(cmount, test_symlink, times));
+  fprintf(stderr, "lxb ---------- 15\n");
   ASSERT_EQ(ceph_statx(cmount, test_symlink, &stx,
                        CEPH_STATX_MTIME|CEPH_STATX_ATIME, AT_SYMLINK_NOFOLLOW), 0);
+  fprintf(stderr, "lxb ---------- 16\n");
   ASSERT_EQ(utime_t(stx.stx_atime), utime_t(times[0]));
+  fprintf(stderr, "lxb ---------- 27\n");
   ASSERT_EQ(utime_t(stx.stx_mtime), utime_t(times[1]));
+  fprintf(stderr, "lxb ---------- 28\n");
 
   get_current_time_timeval(times);
+  fprintf(stderr, "lxb ---------- 29\n");
 
   // ceph_futimes()
   EXPECT_EQ(0, ceph_futimes(cmount, fd, times));
+  fprintf(stderr, "lxb ---------- 20\n");
   ASSERT_EQ(ceph_statx(cmount, test_file, &stx,
                        CEPH_STATX_MTIME|CEPH_STATX_ATIME, 0), 0);
+  fprintf(stderr, "lxb ---------- 21\n");
   ASSERT_EQ(utime_t(stx.stx_atime), utime_t(times[0]));
+  fprintf(stderr, "lxb ---------- 22\n");
   ASSERT_EQ(utime_t(stx.stx_mtime), utime_t(times[1]));
+  fprintf(stderr, "lxb ---------- 23\n");
 
   ceph_close(cmount, fd);
+  fprintf(stderr, "lxb ---------- 24\n");
   ceph_shutdown(cmount);
+  fprintf(stderr, "lxb ---------- 25\n");
 }
 
 TEST(LibCephFS, TestFutimens) {
