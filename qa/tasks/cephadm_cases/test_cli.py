@@ -24,14 +24,14 @@ class TestCephadmCLI(MgrTestCase):
         ... assert yaml.dump(OrderedDict()) == '!!python/object/apply:collections.OrderedDict\\n- []\\n'
         """
         out = self._orch_cmd('device', 'ls', '--format', 'yaml')
-        self.assertNotIn('!!pyhton', out)
+        self.assertNotIn('!!python', out)
 
         out = self._orch_cmd('host', 'ls', '--format', 'yaml')
-        self.assertNotIn('!!pyhton', out)
+        self.assertNotIn('!!python', out)
 
         out = self._orch_cmd('ls', '--format', 'yaml')
-        self.assertNotIn('!!pyhton', out)
+        self.assertNotIn('!!python', out)
 
         out = self._orch_cmd('ps', '--format', 'yaml')
-        self.assertNotIn('!!pyhton', out)
+        self.assertNotIn('!!python', out)
 
