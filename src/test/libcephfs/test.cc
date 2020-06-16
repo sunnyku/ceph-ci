@@ -2044,39 +2044,53 @@ static void get_current_time_timespec(struct timespec ts[2])
 TEST(LibCephFS, TestUtime) {
   struct ceph_mount_info *cmount;
   ASSERT_EQ(ceph_create(&cmount, NULL), 0);
+  fprintf(stderr, "lxb ---------- 1\n");
   ASSERT_EQ(ceph_conf_read_file(cmount, NULL), 0);
+  fprintf(stderr, "lxb ---------- 2\n");
   ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+  fprintf(stderr, "lxb ---------- 3\n");
   ASSERT_EQ(ceph_conf_set(cmount, "debug_ms", "30/30"), 0);
+  fprintf(stderr, "lxb ---------- 4\n");
   ASSERT_EQ(ceph_mount(cmount, NULL), 0);
+  fprintf(stderr, "lxb ---------- 5\n");
 
   char test_file[256];
   sprintf(test_file, "test_utime_file_%d", getpid());
   int fd = ceph_open(cmount, test_file, O_CREAT, 0666);
+  fprintf(stderr, "lxb ---------- 6\n");
   ASSERT_GT(fd, 0);
 
   struct utimbuf utb;
   struct ceph_statx stx;
 
   get_current_time_utimbuf(&utb);
+  fprintf(stderr, "lxb ---------- 7\n");
 
   // ceph_utime()
   EXPECT_EQ(0, ceph_utime(cmount, test_file, &utb));
   ASSERT_EQ(ceph_statx(cmount, test_file, &stx,
                        CEPH_STATX_MTIME|CEPH_STATX_ATIME, 0), 0);
+  fprintf(stderr, "lxb ---------- 8\n");
   ASSERT_EQ(utime_t(stx.stx_atime), utime_t(utb.actime, 0));
   ASSERT_EQ(utime_t(stx.stx_mtime), utime_t(utb.modtime, 0));
+  fprintf(stderr, "lxb ---------- 9\n");
 
   get_current_time_utimbuf(&utb);
 
+  fprintf(stderr, "lxb ---------- 10\n");
   // ceph_futime()
   EXPECT_EQ(0, ceph_futime(cmount, fd, &utb));
   ASSERT_EQ(ceph_statx(cmount, test_file, &stx,
                        CEPH_STATX_MTIME|CEPH_STATX_ATIME, 0), 0);
+  fprintf(stderr, "lxb ---------- 11\n");
   ASSERT_EQ(utime_t(stx.stx_atime), utime_t(utb.actime, 0));
   ASSERT_EQ(utime_t(stx.stx_mtime), utime_t(utb.modtime, 0));
+  fprintf(stderr, "lxb ---------- 12\n");
 
   ceph_close(cmount, fd);
+  fprintf(stderr, "lxb ---------- 13\n");
   ceph_shutdown(cmount);
+  fprintf(stderr, "lxb ---------- 14\n");
 }
 
 TEST(LibCephFS, TestUtimes) {

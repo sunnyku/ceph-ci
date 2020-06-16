@@ -14,6 +14,7 @@
  *
  */
 
+#include <iostream>
 #include "include/compat.h"
 #include "common/errno.h"
 #include "Event.h"
@@ -237,12 +238,12 @@ int EventCenter::create_file_event(int fd, int mask, EventCallbackRef ctxt)
     // add_event shouldn't report error, otherwise it must be a innermost bug!
     lderr(cct) << __func__ << "lxb add event failed, ret=" << r << " fd=" << fd
                << " mask=" << mask << " original mask is " << event->mask << dendl;
-    ldout(cct, 1) << __func__ << "lxb add event failed, ret=" << r << " fd=" << fd
-               << " mask=" << mask << " original mask is " << event->mask << dendl;
+    std::cerr << __func__ << "lxb add event failed, ret=" << r << " fd=" << fd
+               << " mask=" << mask << " original mask is " << event->mask << std::endl;
     while (i++ < 100) {
       sleep(1);
-      ldout(cct, 1) << __func__ << "lxb add event failed, ret=" << r << " fd=" << fd
-                 << " mask=" << mask << " original mask is " << event->mask << dendl;
+      std::cerr << __func__ << "lxb add event failed, ret=" << r << " fd=" << fd
+                 << " mask=" << mask << " original mask is " << event->mask << std::endl;
     }
     ceph_abort_msg("BUG!");
     return r;
