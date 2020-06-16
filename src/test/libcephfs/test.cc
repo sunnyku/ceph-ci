@@ -1983,7 +1983,7 @@ TEST(LibCephFS, OperationsOnRoot)
 
   ceph_shutdown(cmount);
 }
-
+#if 0
 static void shutdown_racer_func()
 {
   const int niter = 32;
@@ -2019,7 +2019,7 @@ TEST(LibCephFS, ShutdownRace)
     threads[i].join();
   ASSERT_EQ(setrlimit(RLIMIT_NOFILE, &rold), 0);
 }
-
+#endif
 static void get_current_time_utimbuf(struct utimbuf *utb)
 {
   utime_t t = ceph_clock_now();
