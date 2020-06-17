@@ -641,6 +641,7 @@ class IscsiServiceSpec(ServiceSpec):
                  unmanaged: bool = False
                  ):
         assert service_type == 'iscsi'
+
         super(IscsiServiceSpec, self).__init__('iscsi', service_id=service_id,
                                                placement=placement, unmanaged=unmanaged)
 
@@ -659,6 +660,11 @@ class IscsiServiceSpec(ServiceSpec):
 
     def validate(self):
         super(IscsiServiceSpec, self).validate()
+
+        # for cephadm, `service_id` is fixed to "iscsi" right now.
+        if self.service_id != 'iscsi':
+            raise ServiceSpecValidationError(
+                f'service_id must be `iscsi`, not `{self.service_id or "<unset>"}`')
 
         if not self.pool:
             raise ServiceSpecValidationError(
