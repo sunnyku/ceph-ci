@@ -3,6 +3,7 @@ import json
 import time
 import errno
 import logging
+import unittest
 from io import BytesIO
 
 from tasks.mgr.mgr_test_case import MgrTestCase
@@ -105,6 +106,7 @@ class TestNFS(MgrTestCase):
         self._check_export_obj_deleted()
         self._test_delete_cluster()
 
+    @unittest.skip("https://tracker.ceph.com/issues/46046")
     def test_create_multiple_exports(self):
         #Export-1 with default values
         self._create_default_export()
