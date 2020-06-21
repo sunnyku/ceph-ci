@@ -1890,6 +1890,103 @@ def test_ps_s3_persistent_notification_amqp():
     persistent_notification('amqp')
 
 
+def random_string(length):
+    import string
+    letters = string.ascii_letters
+    return ''.join(random.choice(letters) for i in range(length))
+
+
+def test_ps_s3_persistent_notification_large():
+    """ test pushing persistent notification of large notifications """
+    if skip_push_tests:
+        return SkipTest("PubSub push tests don't run in teuthology")
+    master_zone, _ = init_env(require_ps=False)
+    realm = get_realm()
+    zonegroup = realm.master_zonegroup()
+
+    # create bucket
+    bucket_name = gen_bucket_name()
+    bucket = master_zone.create_bucket(bucket_name)
+    topic_name = bucket_name + TOPIC_SUFFIX
+
+    receiver = {}
+    host = get_ip()
+    proc = init_rabbitmq()
+    if proc is None:
+        return SkipTest('end2end amqp tests require rabbitmq-server installed')
+    # start amqp receiver
+    exchange = 'ex1'
+    task, receiver = create_amqp_receiver_thread(exchange, topic_name)
+    task.start()
+    endpoint_address = 'amqp://' + host
+    opaque_data = random_string(1024*2)
+    endpoint_args = 'push-endpoint='+endpoint_address+'&OpaqueData='+opaque_data+'&amqp-exchange='+exchange+'&amqp-ack-level=broker'+'&persistent=true'
+    # amqp broker guarantee ordering
+    exact_match = True
+
+    # create s3 topic
+    topic_conf = PSTopicS3(master_zone.conn, topic_name, zonegroup.name, endpoint_args=endpoint_args)
+    topic_arn = topic_conf.set_config()
+    # create s3 notification
+    notification_name = bucket_name + NOTIFICATION_SUFFIX
+    topic_conf_list = [{'Id': notification_name, 'TopicArn': topic_arn,
+                         'Events': []
+                       }]
+
+    s3_notification_conf = PSNotificationS3(master_zone.conn, bucket_name, topic_conf_list)
+    response, status = s3_notification_conf.set_config()
+    assert_equal(status/100, 2)
+
+    # create objects in the bucket (async)
+    number_of_objects = 100
+    client_threads = []
+    start_time = time.time()
+    for i in range(number_of_objects):
+        key_value = random_string(63)
+        key = bucket.new_key(key_value)
+        content = str(os.urandom(1024*1024))
+        thr = threading.Thread(target = set_contents_from_string, args=(key, content,))
+        thr.start()
+        client_threads.append(thr)
+    [thr.join() for thr in client_threads] 
+
+    time_diff = time.time() - start_time
+    print('average time for creation + async http notification is: ' + str(time_diff*1000/number_of_objects) + ' milliseconds')
+    
+    keys = list(bucket.list())
+
+    delay = 40
+    print('wait for '+str(delay)+'sec for the messages...')
+    time.sleep(delay)
+
+    receiver.verify_s3_events(keys, exact_match=exact_match, deletions=False)
+
+    # delete objects from the bucket
+    client_threads = []
+    start_time = time.time()
+    for key in bucket.list():
+        thr = threading.Thread(target = key.delete, args=())
+        thr.start()
+        client_threads.append(thr)
+    [thr.join() for thr in client_threads] 
+    
+    time_diff = time.time() - start_time
+    print('average time for deletion + async http notification is: ' + str(time_diff*1000/number_of_objects) + ' milliseconds')
+
+    print('wait for '+str(delay)+'sec for the messages...')
+    time.sleep(delay)
+    
+    receiver.verify_s3_events(keys, exact_match=exact_match, deletions=True)
+
+    # cleanup
+    s3_notification_conf.del_config()
+    topic_conf.del_config()
+    # delete the bucket
+    master_zone.delete_bucket(bucket_name)
+    stop_amqp_receiver(receiver, task)
+    clean_rabbitmq(proc)
+
+
 def test_ps_s3_persistent_notification_pushback():
     """ test pushing persistent notification pushback """
     return SkipTest("only used in manual testing")

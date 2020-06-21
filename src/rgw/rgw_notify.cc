@@ -574,16 +574,19 @@ int publish_reserve(EventType event_type,
 
     cls_2pc_reservation::id_t res_id;
     if (topic_cfg.dest.persistent) {
-      // TODO: calculate based on max strings sizes?
-      res.size = 1024;
+      // TODO: take default reservation size from conf
+      constexpr auto DEFAULT_RESERVATION = 4*1024U; // 4K
+      res.size = DEFAULT_RESERVATION;
       librados::ObjectWriteOperation op;
       bufferlist obl;
       int rval;
+      const auto& queue_name = topic_cfg.dest.arn_topic;
       cls_2pc_queue_reserve(op, res.size, 1, &obl, &rval);
       auto ret = rgw_rados_operate(res.store->getRados()->get_notif_pool_ctx(), 
-          topic_cfg.dest.arn_topic, &op, librados::OPERATION_RETURNVEC, res.s->yield);
+          queue_name, &op, librados::OPERATION_RETURNVEC, res.s->yield);
       if (ret < 0) {
-        ldout(res.s->cct, 1) << "ERROR: failed to reserve notification on queue. error: " << ret << dendl;
+        ldout(res.s->cct, 1) << "ERROR: failed to reserve notification on queue: " << queue_name 
+          << ". error: " << ret << dendl;
         // if no space is left in queue we ask client to slow down
         return (ret == -ENOSPC) ? -ERR_RATE_LIMITED : ret;
       }
@@ -620,19 +623,50 @@ int publish_commit(const rgw_obj_key& key,
       record_with_endpoint.arn_topic = std::move(topic.cfg.dest.arn_topic);
       bufferlist bl;
       encode(record_with_endpoint, bl);
+      const auto& queue_name = topic.cfg.dest.arn_topic;
       if (bl.length() > res.size) {
-        ldout(res.s->cct, 1) << "ERROR: committed size: " << bl.length() << " exceeded reserved size: " << res.size << dendl;
-        return -EINVAL;
+        // try to make a larger reservation, fail only if this is not possible
+        ldout(res.s->cct, 5) << "WARNING: committed size: " << bl.length() << " exceeded reserved size: " << res.size <<
+          " . trying to make a larger reservation on queue:" << queue_name << dendl;
+        // first cancel the existing reservation
+        librados::ObjectWriteOperation op;
+        cls_2pc_queue_abort(op, topic.res_id);
+        auto ret = rgw_rados_operate(res.store->getRados()->get_notif_pool_ctx(),
+            topic.cfg.dest.arn_topic, &op,
+            res.s->yield);
+        if (ret < 0) {
+          ldout(res.s->cct, 1) << "ERROR: failed to abort reservation: " << topic.res_id << 
+            " when trying to make a larger reservation on queue: " << queue_name
+            << ". error: " << ret << dendl;
+          return ret;
+        }
+        // now try to make a bigger one
+        bufferlist obl;
+        int rval;
+        cls_2pc_queue_reserve(op, bl.length(), 1, &obl, &rval);
+        ret = rgw_rados_operate(res.store->getRados()->get_notif_pool_ctx(), 
+          queue_name, &op, librados::OPERATION_RETURNVEC, res.s->yield);
+        if (ret < 0) {
+          ldout(res.s->cct, 1) << "ERROR: failed to reserve extra space on queue: " << queue_name
+            << ". error: " << ret << dendl;
+          return (ret == -ENOSPC) ? -ERR_RATE_LIMITED : ret;
+        }
+        ret = cls_2pc_queue_reserve_result(obl, topic.res_id);
+        if (ret < 0) {
+          ldout(res.s->cct, 1) << "ERROR: failed to parse reservation id for extra space. error: " << ret << dendl;
+          return ret;
+        }
       }
       std::vector<bufferlist> bl_data_vec{std::move(bl)};
       librados::ObjectWriteOperation op;
       cls_2pc_queue_commit(op, bl_data_vec, topic.res_id);
       const auto ret = rgw_rados_operate(res.store->getRados()->get_notif_pool_ctx(),
-            topic.cfg.dest.arn_topic, &op,
+            queue_name, &op,
             res.s->yield);
       topic.res_id = cls_2pc_reservation::NO_ID;
       if (ret < 0) {
-        ldout(res.s->cct, 1) << "ERROR: failed to commit reservation to queue. error: " << ret << dendl;
+        ldout(res.s->cct, 1) << "ERROR: failed to commit reservation to queue: " << queue_name
+          << ". error: " << ret << dendl;
         return ret;
       }
     } else {
@@ -667,14 +701,15 @@ int publish_abort(reservation_t& res) {
       // nothing to abort or already committed/aborted
       continue;
     }
+    const auto& queue_name = topic.cfg.dest.arn_topic;
     librados::ObjectWriteOperation op;
-    cls_2pc_queue_abort(op,  topic.res_id);
+    cls_2pc_queue_abort(op, topic.res_id);
     const auto ret = rgw_rados_operate(res.store->getRados()->get_notif_pool_ctx(),
-      topic.cfg.dest.arn_topic, &op,
+      queue_name, &op,
       res.s->yield);
     if (ret < 0) {
-      ldout(res.s->cct, 1) << "ERROR: failed to abort reservation: " << topic.res_id <<
-          ". error: " << ret << dendl;
+      ldout(res.s->cct, 1) << "ERROR: failed to abort reservation: " << topic.res_id << 
+        " from queue: " << queue_name << ". error: " << ret << dendl;
       return ret;
     }
     topic.res_id = cls_2pc_reservation::NO_ID;
