@@ -19,7 +19,7 @@ from functools import wraps
 
 from ceph.deployment import inventory
 from ceph.deployment.service_spec import ServiceSpec, NFSServiceSpec, RGWSpec, \
-    ServiceSpecValidationError, IscsiServiceSpec
+    ServiceSpecValidationError, IscsiServiceSpec, PlacementSpec, HostPlacementSpec
 from ceph.deployment.drive_group import DriveGroupSpec
 from ceph.deployment.hostspec import HostSpec
 
@@ -893,6 +893,34 @@ class Orchestrator(object):
             completion = completion.then(next)
         return completion
 
+    def add_placement_to_service(self, new_spec: ServiceSpec) -> Completion:
+        def add_placement_to_placement(placement: PlacementSpec):
+            if not placement.is_explicit():
+                raise OrchestratorValidationError(f"service placement not explicit {placement}")
+            if not new_spec.placement.is_explicit():
+                raise OrchestratorValidationError(f"new placement not explicit {new_spec.placement}")
+            placement = placement.copy()
+            placement.hosts = list(HostPlacementSpec.union(new_spec.placement.hosts, placement.hosts))
+            if new_spec.placement.count is not None:
+                if placement.count:
+                    placement.count += new_spec.placement.count
+                else:
+                    placement.count = new_spec.placement.count
+
+            return placement
+
+        def add_host_to_service(services: List[ServiceDescription]):
+            if not services:
+                return self.apply([new_spec])
+            assert len(services) == 1
+            service = services[0]
+            spec = service.spec.copy()
+            spec.placement = add_placement_to_placement(spec.placement)
+            return self.apply([spec])
+
+        service_name = new_spec.service_name()
+        return self.describe_service(service_name=service_name).then(add_host_to_service)
+
     def remove_daemons(self, names):
         # type: (List[str]) -> Completion
         """
@@ -1002,19 +1030,9 @@ class Orchestrator(object):
         """Zap/Erase a device (DESTROYS DATA)"""
         raise NotImplementedError()
 
-    def add_mon(self, spec):
-        # type: (ServiceSpec) -> Completion
-        """Create mon daemon(s)"""
-        raise NotImplementedError()
-
     def apply_mon(self, spec):
         # type: (ServiceSpec) -> Completion
         """Update mon cluster"""
-        raise NotImplementedError()
-
-    def add_mgr(self, spec):
-        # type: (ServiceSpec) -> Completion
-        """Create mgr daemon(s)"""
         raise NotImplementedError()
 
     def apply_mgr(self, spec):
@@ -1022,19 +1040,9 @@ class Orchestrator(object):
         """Update mgr cluster"""
         raise NotImplementedError()
 
-    def add_mds(self, spec):
-        # type: (ServiceSpec) -> Completion
-        """Create MDS daemon(s)"""
-        raise NotImplementedError()
-
     def apply_mds(self, spec):
         # type: (ServiceSpec) -> Completion
         """Update MDS cluster"""
-        raise NotImplementedError()
-
-    def add_rgw(self, spec):
-        # type: (RGWSpec) -> Completion
-        """Create RGW daemon(s)"""
         raise NotImplementedError()
 
     def apply_rgw(self, spec):
@@ -1042,19 +1050,9 @@ class Orchestrator(object):
         """Update RGW cluster"""
         raise NotImplementedError()
 
-    def add_rbd_mirror(self, spec):
-        # type: (ServiceSpec) -> Completion
-        """Create rbd-mirror daemon(s)"""
-        raise NotImplementedError()
-
     def apply_rbd_mirror(self, spec):
         # type: (ServiceSpec) -> Completion
         """Update rbd-mirror cluster"""
-        raise NotImplementedError()
-
-    def add_nfs(self, spec):
-        # type: (NFSServiceSpec) -> Completion
-        """Create NFS daemon(s)"""
         raise NotImplementedError()
 
     def apply_nfs(self, spec):
@@ -1062,19 +1060,9 @@ class Orchestrator(object):
         """Update NFS cluster"""
         raise NotImplementedError()
 
-    def add_iscsi(self, spec):
-        # type: (IscsiServiceSpec) -> Completion
-        """Create iscsi daemon(s)"""
-        raise NotImplementedError()
-
     def apply_iscsi(self, spec):
         # type: (IscsiServiceSpec) -> Completion
         """Update iscsi cluster"""
-        raise NotImplementedError()
-
-    def add_prometheus(self, spec):
-        # type: (ServiceSpec) -> Completion
-        """Create new prometheus daemon"""
         raise NotImplementedError()
 
     def apply_prometheus(self, spec):
@@ -1082,19 +1070,9 @@ class Orchestrator(object):
         """Update prometheus cluster"""
         raise NotImplementedError()
 
-    def add_node_exporter(self, spec):
-        # type: (ServiceSpec) -> Completion
-        """Create a new Node-Exporter service"""
-        raise NotImplementedError()
-
     def apply_node_exporter(self, spec):
         # type: (ServiceSpec) -> Completion
         """Update existing a Node-Exporter daemon(s)"""
-        raise NotImplementedError()
-
-    def add_crash(self, spec):
-        # type: (ServiceSpec) -> Completion
-        """Create a new crash service"""
         raise NotImplementedError()
 
     def apply_crash(self, spec):
@@ -1102,19 +1080,9 @@ class Orchestrator(object):
         """Update existing a crash daemon(s)"""
         raise NotImplementedError()
 
-    def add_grafana(self, spec):
-        # type: (ServiceSpec) -> Completion
-        """Create a new Node-Exporter service"""
-        raise NotImplementedError()
-
     def apply_grafana(self, spec):
         # type: (ServiceSpec) -> Completion
         """Update existing a Node-Exporter daemon(s)"""
-        raise NotImplementedError()
-
-    def add_alertmanager(self, spec):
-        # type: (ServiceSpec) -> Completion
-        """Create a new AlertManager service"""
         raise NotImplementedError()
 
     def apply_alertmanager(self, spec):
