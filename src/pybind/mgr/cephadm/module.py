@@ -887,16 +887,16 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         return executable_path
 
     def _run_cephadm(self,
-                     host: str,
-                     entity: Optional[str],
-                     command: str,
-                     args: List[str],
-                     addr: Optional[str] = None,
-                     stdin: Optional[str] = None,
-                     no_fsid=False,
-                     error_ok=False,
-                     image: Optional[str] = None,
-                     env_vars: Optional[List[str]] = None,
+                     host,                # type str
+                     entity,              # type str
+                     command,             # type str
+                     args,                # type List[str]
+                     addr = "",           # type Optional[str]
+                     stdin = "",          # type Optional[str]
+                     no_fsid = False,     # type Optional[bool]
+                     error_ok = False,    # type Optional[bool]
+                     image = False,       # type Optional[str]
+                     env_vars= None       # type Optional[List[str]]
                      ) -> Tuple[List[str], List[str], int]:
         """
         Run cephadm on the remote host with the given command + args
@@ -1296,7 +1296,7 @@ you may want to run:
                     if dd.daemon_type == 'osd':
                         """
                         The osd count can't be determined by the Placement spec.
-                        It's rather pointless to show a actual/expected representation 
+                        It's rather pointless to show a actual/expected representation
                         here. So we're setting running = size for now.
                         """
                         osd_count += 1
@@ -1594,13 +1594,13 @@ you may want to run:
                 deps.append(dd.name())
         return sorted(deps)
 
-    def _get_config_and_keyring(self, daemon_type, daemon_id,
+    def _get_config_and_keyring(self, daemon_type, daemon_id, host=None,
                                 keyring=None,
                                 extra_ceph_config=None):
-        # type: (str, str, Optional[str], Optional[str]) -> Dict[str, Any]
+        # type: (str, str, Optional[str], Optional[str], Optional[str]) -> Dict[str, Any]
         # keyring
         if not keyring:
-            ename = utils.name_to_auth_entity(daemon_type + '.' + daemon_id)
+            ename = utils.name_to_auth_entity(daemon_type, daemon_id, host=host)
             ret, keyring, err = self.check_mon_command({
                 'prefix': 'auth get',
                 'entity': ename,
@@ -1658,7 +1658,7 @@ you may want to run:
         else:
             # Ceph.daemons (mon, mgr, mds, osd, etc)
             cephadm_config = self._get_config_and_keyring(
-                    daemon_type, daemon_id,
+                    daemon_type, daemon_id, host,
                     keyring=keyring,
                     extra_ceph_config=extra_config.pop('config', ''))
             if extra_config:
@@ -1894,7 +1894,7 @@ you may want to run:
             last_monmap = None   # just in case clocks are skewed
 
         daemons = self.cache.get_daemons()
-        daemons_post = defaultdict(list)
+        daemons_post: Dict[str, List[orchestrator.DaemonDescription]] = defaultdict(list)
         for dd in daemons:
             # orphan?
             spec = self.spec_store.specs.get(dd.service_name(), None)
