@@ -180,11 +180,11 @@ class Manager {
   }
 
   // processing of a specific queue
-  void process_queue(const std::string& queue_name, spawn::yield_context yield) {
+  void process_queue(const std::string& queue_name, const bool* owned, spawn::yield_context yield) {
     constexpr auto max_elements = 1024;
     auto is_idle = false;
     const std::string start_marker;
-    while (true) {
+    while (*owned) {
       if (is_idle) {
         Timer timer(io_context);
         timer.expires_from_now(std::chrono::microseconds(queue_idle_sleep_us));
@@ -223,12 +223,13 @@ class Manager {
         }
       }
       total_entries = entries.size();
-      ldout(cct, 20) << "INFO: found: " << total_entries << " entries in: " << queue_name <<
-        ". end marker is: " << end_marker << dendl;
       if (total_entries == 0) {
         // nothing in the queue
         continue;
       }
+      // log when queue is not idle
+      ldout(cct, 20) << "INFO: found: " << total_entries << " entries in: " << queue_name <<
+        ". end marker is: " << end_marker << dendl;
       
       is_idle = false;
       auto has_error = false;
@@ -281,15 +282,27 @@ class Manager {
     }
   }
 
+  // lits of queue names with an indication it is currently owned
+  using owned_queues_t = std::unordered_map<std::string, bool>;
+
   // process all queues
   // find which of the queues is owned by this daemon and process it
   void process_queues(spawn::yield_context yield) {
     auto has_error = false;
-    std::unordered_set<std::string> owned_queues;
+    owned_queues_t owned_queues;
+
+    // add randomness to the duration between queue checking
+    // to make sure that different daemons are not synced
+    // between 100 and 1000 ms
+    std::random_device seed;
+    std::mt19937 rnd_gen(seed());
+    std::uniform_int_distribution<> duration_jitter(100, 1000);
+
     while (true) {
       Timer timer(io_context);
-      const auto duration = has_error ? 
-        std::chrono::milliseconds(queues_update_retry_ms) : std::chrono::milliseconds(queues_update_period_ms);
+      const auto duration = (has_error ? 
+        std::chrono::milliseconds(queues_update_retry_ms) : std::chrono::milliseconds(queues_update_period_ms)) + 
+        std::chrono::milliseconds(duration_jitter(rnd_gen));
       timer.expires_from_now(duration);
       const auto tp = ceph::coarse_real_time::clock::to_time_t(ceph::coarse_real_time::clock::now() + duration);
       ldout(cct, 20) << "INFO: next queue processing will happen at: " << std::ctime(&tp)  << dendl;
@@ -322,29 +335,38 @@ class Manager {
         if (ret == -EBUSY) {
           // lock is already taken by another RGW
           ldout(cct, 20) << "INFO: queue: " << queue_name << " owned (locked) by another daemon" << dendl;
+          // if queue is owned, processing should be stopped
+          auto it = owned_queues.find(queue_name);
+          if (it != owned_queues.end() && it->second) {
+            it->second = false;
+            ldout(cct, 5) << "WARNING: queue: " << queue_name << " ownership lost. processing will stop" << dendl;
+          }
           continue;
         }
         if (ret == -ENOENT) {
-          // queue is deleted
-          ldout(cct, 20) << "INFO: queue: " << queue_name << " should not be locked - already deleted" << dendl;
+          // queue is deleted - processing will stop the next time we try to read from the queue
+          ldout(cct, 10) << "INFO: queue: " << queue_name << " should not be locked - already deleted" << dendl;
           continue;
         }
         if (ret < 0) {
           // failed to lock for another reason, continue to process other queues
           ldout(cct, 1) << "ERROR: failed to lock queue: " << queue_name << ". error: " << ret << dendl;
           has_error = true;
+          continue;
         }
         // add queue to list of owned queues
-        if (owned_queues.insert(queue_name).second) {
-          ldout(cct, 20) << "INFO: queue: " << queue_name << " now owned (locked) by this daemon" << dendl;
+        const auto insert_result = owned_queues.insert(std::make_pair(queue_name, true));
+        if (insert_result.second) {
+          ldout(cct, 10) << "INFO: queue: " << queue_name << " now owned (locked) by this daemon" << dendl;
           // start processing this queue
-          spawn::spawn(io_context, [this, &queue_gc, &queue_gc_lock, queue_name](spawn::yield_context yield) {
-            process_queue(queue_name, yield);
-            // if queue processing ended, it measn that the queue was removed
+          const bool* owned = &(insert_result.first->second);
+          spawn::spawn(io_context, [this, &queue_gc, &queue_gc_lock, owned, queue_name](spawn::yield_context yield) {
+            process_queue(queue_name, owned, yield);
+            // if queue processing ended, it measn that the queue was removed or not owned anymore
             // mark it for deletion
-            ldout(cct, 20) << "INFO: queue: " << queue_name << " marked for removal" << dendl;
             std::lock_guard lock_guard(queue_gc_lock);
             queue_gc.push_back(queue_name);
+            ldout(cct, 10) << "INFO: queue: " << queue_name << " marked for removal" << dendl;
           });
         } else {
           ldout(cct, 20) << "INFO: queue: " << queue_name << " ownership (lock) renewed" << dendl;
