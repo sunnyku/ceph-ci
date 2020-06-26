@@ -182,8 +182,10 @@ class Prepare(object):
                                  'block_{}_slots'.format(device_type),
                                  1),
             }
+            #TODO use get_block_db_size and co here to get configured size in
+            #conf file
             if size != 0:
-                kwargs['size'] = disk.Size.parse(size)
+                kwargs['size'] = size
             lv = api.create_lv(
                 lv_type,
                 uuid,
@@ -220,7 +222,7 @@ class Prepare(object):
                      }
             logger.debug('data device size: {}'.format(self.args.data_size))
             if self.args.data_size != 0:
-                kwargs['size'] = disk.Size.parse(self.args.data_size)
+                kwargs['size'] = self.args.data_size
             return api.create_lv(
                 lv_name_prefix,
                 osd_uuid,
