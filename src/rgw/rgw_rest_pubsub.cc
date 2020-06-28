@@ -53,7 +53,7 @@ public:
       dest.push_endpoint_args.pop_back();
     }
     if (!dest.push_endpoint.empty() && dest.persistent) {
-      const auto ret = rgw::notify::add_persistent_topic(topic_name, null_yield);
+      const auto ret = rgw::notify::add_persistent_topic(topic_name, s->yield);
       if (ret < 0) {
         ldout(s->cct, 1) << "CreateTopic Action failed to create queue for persistent topics. error:" << ret << dendl;
         return ret;
@@ -184,7 +184,7 @@ public:
 
     // upon deletion it is not known if topic is persistent or not
     // will try to delete the persistent topic anyway
-    const auto ret = rgw::notify::remove_persistent_topic(topic_name, null_yield);
+    const auto ret = rgw::notify::remove_persistent_topic(topic_name, s->yield);
     if (ret == -ENOENT) {
       // topic was not persistent, or already deleted
       return 0;

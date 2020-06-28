@@ -180,11 +180,11 @@ class Manager {
   }
 
   // processing of a specific queue
-  void process_queue(const std::string& queue_name, const bool* owned, spawn::yield_context yield) {
+  void process_queue(const std::string& queue_name, const bool& owned, spawn::yield_context yield) {
     constexpr auto max_elements = 1024;
     auto is_idle = false;
     const std::string start_marker;
-    while (*owned) {
+    while (owned) {
       if (is_idle) {
         Timer timer(io_context);
         timer.expires_from_now(std::chrono::microseconds(queue_idle_sleep_us));
@@ -278,7 +278,36 @@ class Manager {
           << queue_name << dendl;
         }
       }
-      // TODO: cleanup expired reservations
+
+      /*if (next_reservation_cleanup >= now) {
+        librados::ObjectReadOperation list_op;
+        bufferlist obl;
+        int rval;
+        cls_2pc_queue_list_reservations(op, obl, &rval);
+        auto ret = rgw_rados_operate(rados_ioctx, queue_name, &list_op, optional_yield(io_context, yield)); 
+        if (ret < 0) {
+          ldout(cct, 5) << "WARNING: reservation cleanup failed, cannot read reservation list from queue: " 
+            << queue_name << ". error: " << ret << dendl;
+        } else {
+          cls_2pc_reservations reservations;
+          ret = cls_2pc_queue_list_reservations_result(obl, reservations);
+          if (ret < 0) {
+            ldout(cct, 5) << "WARNING: reservation cleanup failed, cannot parse reservation list of queue: " 
+              << queue_name << ". error: " << ret << dendl;
+          } else {
+            librados::ObjectWriteOperation abort_op;
+            for (const auto& r : reservations) {
+              if (r.second.timestamp > stale_time) {
+                cls_2pc_queue_abort(abort_op, r.first);
+              }
+            }
+            // TODO:
+            ret = rgw_rados_operate(rados_ioctx, queue_name, &abort_op, optional_yield(io_context, yield));
+            ldout(cct, 5) << "WARNING: reservation cleanup failed, failed to abort stale reservations from queue: " 
+              << queue_name << ". error: " << ret << dendl;
+          }
+        }
+      }*/
     }
   }
 
@@ -293,10 +322,11 @@ class Manager {
 
     // add randomness to the duration between queue checking
     // to make sure that different daemons are not synced
-    // between 100 and 1000 ms
     std::random_device seed;
     std::mt19937 rnd_gen(seed());
-    std::uniform_int_distribution<> duration_jitter(100, 1000);
+    const auto min_jitter = 100; // ms
+    const auto max_jitter = 500; // ms
+    std::uniform_int_distribution<> duration_jitter(min_jitter, max_jitter);
 
     while (true) {
       Timer timer(io_context);
@@ -324,7 +354,7 @@ class Manager {
         librados::ObjectWriteOperation op;
         op.assert_exists();
         rados::cls::lock::lock(&op, queue_name+"_lock", 
-              LOCK_EXCLUSIVE,
+              ClsLockType::EXCLUSIVE,
               lock_cookie, 
               "" /*no tag*/,
               "" /*no description*/,
@@ -359,8 +389,8 @@ class Manager {
         if (insert_result.second) {
           ldout(cct, 10) << "INFO: queue: " << queue_name << " now owned (locked) by this daemon" << dendl;
           // start processing this queue
-          const bool* owned = &(insert_result.first->second);
-          spawn::spawn(io_context, [this, &queue_gc, &queue_gc_lock, owned, queue_name](spawn::yield_context yield) {
+          const auto& owned = insert_result.first->second;
+          spawn::spawn(io_context, [this, &queue_gc, &queue_gc_lock, &owned, queue_name](spawn::yield_context yield) {
             process_queue(queue_name, owned, yield);
             // if queue processing ended, it measn that the queue was removed or not owned anymore
             // mark it for deletion
@@ -394,12 +424,12 @@ public:
 
   // ctor: start all threads
   Manager(CephContext* _cct, unsigned _max_queue_size, unsigned _queues_update_period_ms, 
-          unsigned _queues_update_retry_ms, unsigned _queue_idle_sleep_us, unsigned failover_time_sec, unsigned _worker_count, rgw::sal::RGWRadosStore* store) : 
+          unsigned _queues_update_retry_ms, unsigned _queue_idle_sleep_us, unsigned failover_time_ms, unsigned _worker_count, rgw::sal::RGWRadosStore* store) : 
     max_queue_size(_max_queue_size),
     queues_update_period_ms(_queues_update_period_ms),
     queues_update_retry_ms(_queues_update_retry_ms),
     queue_idle_sleep_us(_queue_idle_sleep_us),
-    failover_time(std::chrono::seconds(failover_time_sec)),
+    failover_time(std::chrono::milliseconds(failover_time_ms)),
     cct(_cct),
     rados_ioctx(store->getRados()->get_notif_pool_ctx()),
     //list_of_queues_object_created(false),
@@ -485,11 +515,11 @@ public:
 // TODO make the pointer atomic in allocation and deallocation to avoid race conditions
 static Manager* s_manager = nullptr;
 
-constexpr size_t MAX_QUEUE_SIZE = 128*1024*1024; // 128MB
+constexpr size_t MAX_QUEUE_SIZE = 128*1000*1000; // 128MB
 constexpr unsigned Q_LIST_UPDATE_MSEC = 1000*30;     // check queue list every 30seconds
 constexpr unsigned Q_LIST_RETRY_MSEC = 1000;         // retry every second if queue list update failed
 constexpr unsigned IDLE_TIMEOUT_USEC = 100*1000;     // idle sleep 100ms
-constexpr unsigned FAILOVER_TIME_SEC = 30;           // FAILOVER TIME 30 SEC
+constexpr unsigned FAILOVER_TIME_MSEC = 3*Q_LIST_UPDATE_MSEC; // FAILOVER TIME 3x renew time
 constexpr unsigned WORKER_COUNT = 1;                 // 1 worker thread
 
 bool init(CephContext* cct, rgw::sal::RGWRadosStore* store) {
@@ -498,7 +528,7 @@ bool init(CephContext* cct, rgw::sal::RGWRadosStore* store) {
   }
   // TODO: take conf from CephContext
   s_manager = new Manager(cct, MAX_QUEUE_SIZE, Q_LIST_UPDATE_MSEC, Q_LIST_RETRY_MSEC,
-          IDLE_TIMEOUT_USEC, FAILOVER_TIME_SEC, WORKER_COUNT, store);
+          IDLE_TIMEOUT_USEC, FAILOVER_TIME_MSEC, WORKER_COUNT, store);
   return true;
 }
 
