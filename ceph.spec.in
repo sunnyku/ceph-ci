@@ -44,7 +44,7 @@
 %bcond_with lttng
 %bcond_without libradosstriper
 %bcond_with ocf
-%bcond_without kafka_endpoint
+%bcond_with kafka_endpoint
 %global _remote_tarball_prefix https://download.ceph.com/tarballs/
 %endif
 %if 0%{?suse_version}
