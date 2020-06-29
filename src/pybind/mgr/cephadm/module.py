@@ -1300,7 +1300,7 @@ you may want to run:
                     if dd.daemon_type == 'osd':
                         """
                         The osd count can't be determined by the Placement spec.
-                        It's rather pointless to show a actual/expected representation
+                        Showing an actual/expected representation cannot be determined
                         here. So we're setting running = size for now.
                         """
                         osd_count += 1
@@ -1876,6 +1876,8 @@ you may want to run:
                 daemon_id=daemon_id,
             )
             daemons.append(sd)
+            if daemon_type in ['grafana', 'iscsi', 'prometheus', 'alertmanager', 'nfs']:
+                self._get_cephadm_service(daemon_type).daemon_check_post([sd])
             r = True
 
         # remove any?
@@ -1923,6 +1925,7 @@ you may want to run:
 
         daemons = self.cache.get_daemons()
         daemons_post: Dict[str, List[orchestrator.DaemonDescription]] = defaultdict(list)
+        created = set()
         for dd in daemons:
             # orphan?
             spec = self.spec_store.specs.get(dd.service_name(), None)
@@ -1950,6 +1953,7 @@ you may want to run:
                 self.log.info('Reconfiguring %s (unknown last config time)...'% (
                     dd.name()))
                 reconfig = True
+                created.add(dd.daemon_type)
             elif last_deps != deps:
                 self.log.debug('%s deps %s -> %s' % (dd.name(), last_deps,
                                                      deps))
@@ -1967,7 +1971,8 @@ you may want to run:
 
         # do daemon post actions
         for daemon_type, daemon_descs in daemons_post.items():
-            self._get_cephadm_service(daemon_type).daemon_check_post(daemon_descs)
+            if daemon_type in created:
+                self._get_cephadm_service(daemon_type).daemon_check_post(daemon_descs)
 
     def _add_daemon(self, daemon_type, spec,
                     create_func: Callable[..., T], config_func=None) -> List[T]:
