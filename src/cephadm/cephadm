@@ -2292,10 +2292,34 @@ def command_version():
 @infer_image
 def command_pull():
     # type: () -> int
-    logger.info('Pulling latest %s...' % args.image)
-    call_throws([container_path, 'pull', args.image])
+
+    _pull_image(args.image)
     return command_inspect_image()
 
+
+def _pull_image(image) -> None:
+    logger.info('Pulling container image %s...' % image)
+
+    ignorelist = [
+        "error creating read-write layer with ID",
+        "net/http: TLS handshake timeout",
+    ]
+
+    cmd = [container_path, 'pull', image]
+
+    retry = args.retry
+
+    for count in range(retry):
+        out, err, ret = call(cmd)
+        if not ret:
+            return
+
+        if not any(pattern in err for pattern in ignorelist):
+            raise RuntimeError('Failed command: %s' % ' '.join(cmd))
+
+        time.sleep(min(count, 3))
+
+    raise RuntimeError('Failed command: %s: maximum retries reached' % ' '.join(cmd))
 ##################################
 
 @infer_image
@@ -2438,8 +2462,7 @@ def command_bootstrap():
     config = cpf.getvalue()
 
     if not args.skip_pull:
-        logger.info('Pulling latest %s container...' % args.image)
-        call_throws([container_path, 'pull', args.image])
+        _pull_image(args.image)
 
     logger.info('Extracting ceph user uid/gid from container image...')
     (uid, gid) = extract_uid_gid()
@@ -3302,8 +3325,7 @@ def command_adopt():
     # type: () -> None
 
     if not args.skip_pull:
-        logger.info('Pulling latest %s container...' % args.image)
-        call_throws([container_path, 'pull', args.image])
+        _pull_image(args.image)
 
     (daemon_type, daemon_id) = args.name.split('.', 1)
 
