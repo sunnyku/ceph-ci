@@ -462,8 +462,14 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
         ret = self.event.wait(sleep_interval)
         self.event.clear()
 
-    def serve(self):
-        # type: () -> None
+    def serve(self) -> None:
+        """
+        The main loop of cephadm.
+
+        command handler typically change the declarative state
+        of cephadm and then here, we're applying the state to the
+        real world.
+        """
         self.log.debug("serve starting")
         while self.run:
 
@@ -472,19 +478,9 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
             self._refresh_hosts_and_daemons()
 
             self._check_for_strays()
+            self._update_paused_health()
 
-            if self.paused:
-                self.health_checks['CEPHADM_PAUSED'] = {
-                    'severity': 'warning',
-                    'summary': 'cephadm background work is paused',
-                    'count': 1,
-                    'detail': ["'ceph orch resume' to resume"],
-                }
-                self.set_health_checks(self.health_checks)
-            else:
-                if 'CEPHADM_PAUSED' in self.health_checks:
-                    del self.health_checks['CEPHADM_PAUSED']
-                    self.set_health_checks(self.health_checks)
+            if not self.paused:
 
                 self.rm_util._remove_osds_bg()
 
@@ -502,6 +498,20 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule):
 
             self._serve_sleep()
         self.log.debug("serve exit")
+
+    def _update_paused_health(self):
+        if self.paused:
+            self.health_checks['CEPHADM_PAUSED'] = {
+                'severity': 'warning',
+                'summary': 'cephadm background work is paused',
+                'count': 1,
+                'detail': ["'ceph orch resume' to resume"],
+            }
+            self.set_health_checks(self.health_checks)
+        else:
+            if 'CEPHADM_PAUSED' in self.health_checks:
+                del self.health_checks['CEPHADM_PAUSED']
+                self.set_health_checks(self.health_checks)
 
     def config_notify(self):
         """
