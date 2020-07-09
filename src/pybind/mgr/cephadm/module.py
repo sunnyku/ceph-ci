@@ -1629,6 +1629,9 @@ you may want to run:
     def _preview_osdspecs(self,
                           osdspecs: Optional[List[DriveGroupSpec]] = None
                           ):
+        if not osdspecs:
+            return {'n/a': [{'error': True,
+                             'message': 'No OSDSpec or matching hosts found.'}]}
         matching_hosts = self.osd_service.resolve_hosts_for_osdspecs(specs=osdspecs)
         if not matching_hosts:
             return {'n/a': [{'error': True,
@@ -1640,8 +1643,17 @@ you may want to run:
             return {'n/a': [{'error': True,
                              'message': 'Preview data is being generated.. '
                                         'Please re-run this command in a bit.'}]}
-        # drop all keys that are not in search_hosts and return preview struct
-        return {k: v for (k, v) in self.cache.osdspec_previews.items() if k in matching_hosts}
+        # drop all keys that are not in search_hosts and only select reports that match the requested osdspecs
+        previews_for_specs = {}
+        for host, raw_reports in self.cache.osdspec_previews.items():
+            if host not in matching_hosts:
+                continue
+            osd_reports = []
+            for osd_report in raw_reports:
+                if osd_report.get('osdspec') in [x.service_id for x in osdspecs]:
+                    osd_reports.append(osd_report)
+            previews_for_specs.update({host: osd_reports})
+        return previews_for_specs
 
     def _calc_daemon_deps(self, daemon_type, daemon_id):
         need = {
