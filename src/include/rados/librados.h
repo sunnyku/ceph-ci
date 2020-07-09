@@ -2642,6 +2642,12 @@ CEPH_RADOS_API int rados_notify2(rados_ioctx_t io, const char *o,
 				 uint64_t timeout_ms,
 				 char **reply_buffer, size_t *reply_buffer_len);
 
+CEPH_RADOS_API int rados_decode_notify_msg(char *reply_buffer, size_t reply_buffer_len,
+                                           struct notify_ack_t **acks, size_t *nr_acks,
+                                           struct notify_timeout_t **timeouts, size_t *nr_timeouts);
+CEPH_RADOS_API void rados_notify_buffer_free(struct notify_ack_t *acks, size_t nr_acks,
+                                             struct notify_timeout_t *timeouts);
+
 /**
  * Acknolwedge receipt of a notify
  *
