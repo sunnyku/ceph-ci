@@ -2898,6 +2898,81 @@ extern "C" int _rados_notify2(rados_ioctx_t io, const char *o,
 }
 LIBRADOS_C_API_BASE_DEFAULT(rados_notify2);
 
+extern "C" int _rados_decode_notify_msg(char *reply_buffer, size_t reply_buffer_len,
+                                        struct notify_ack_t **acks, size_t *nr_acks,
+                                        struct notify_timeout_t **timeouts, size_t *nr_timeouts) {
+  if (!reply_buffer || !reply_buffer_len) {
+    return -EINVAL;
+  }
+
+  bufferlist bl;
+  try{
+    bufferptr p = buffer::create(reply_buffer_len);
+    memcpy(p.c_str(), reply_buffer, reply_buffer_len);
+    bl.push_back(p);
+  } catch (const ceph::buffer::error &e) {
+    return -EINVAL;
+  }
+
+  map<pair<uint64_t,uint64_t>,bufferlist> acked;
+  set<pair<uint64_t,uint64_t>> missed;
+  auto iter = bl.cbegin();
+  decode(acked, iter);
+  decode(missed, iter);
+
+  *nr_acks = acked.size();
+  if (acked.size()) {
+    *acks = (struct notify_ack_t *)malloc(sizeof(struct notify_ack_t) * acked.size());
+    struct notify_ack_t *ack = *acks;
+    for (auto &p : acked) {
+      ack->notifier_id = p.first.first;
+      ack->cookie = p.first.second;
+      ack->payload = NULL;
+      if (p.second.length()) {
+        ack->payload = (char *)malloc(p.second.length());
+        memcpy(ack->payload, p.second.c_str(), p.second.length());
+        ack->payload[p.second.length()] = '\0';
+      }
+
+      ack++;
+    }
+  }
+
+  *nr_timeouts = missed.size();
+  if (missed.size()) {
+    *timeouts = (struct notify_timeout_t *)malloc(sizeof(struct notify_timeout_t) * missed.size());
+    struct notify_timeout_t *timeout = *timeouts;
+    for (auto &p : missed) {
+      timeout->notifier_id = p.first;
+      timeout->cookie = p.second;
+      timeout++;
+    }
+  }
+
+  return 0;
+}
+LIBRADOS_C_API_BASE_DEFAULT(rados_decode_notify_msg);
+
+
+extern "C" void _rados_notify_buffer_free(struct notify_ack_t *acks, size_t nr_acks,
+                                          struct notify_timeout_t *timeouts) {
+  if (nr_acks) {
+    struct notify_ack_t *ptr = acks;
+    while (nr_acks-- > 0) {
+      if (acks->payload) {
+        free(acks->payload);
+      }
+      ++acks;
+    }
+
+    free(ptr);
+  }
+  if (timeouts) {
+    free(timeouts);
+  }
+}
+LIBRADOS_C_API_BASE_DEFAULT(rados_notify_buffer_free);
+
 extern "C" int _rados_aio_notify(rados_ioctx_t io, const char *o,
                                  rados_completion_t completion,
                                  const char *buf, int buf_len,
