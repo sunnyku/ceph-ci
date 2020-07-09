@@ -18,6 +18,17 @@ struct obj_watch_t {
   uint32_t timeout_seconds;
 }; 
 
+struct notify_ack_t {
+  uint64_t notifier_id;
+  uint64_t cookie;
+  char *payload;
+};
+
+struct notify_timeout_t {
+  uint64_t notifier_id;
+  uint64_t cookie;
+};
+
 /**
  *
  * Pass as nspace argument to rados_ioctx_set_namespace()
