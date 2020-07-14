@@ -2305,6 +2305,7 @@ def _pull_image(image):
     ignorelist = [
         "error creating read-write layer with ID",
         "net/http: TLS handshake timeout",
+        "Digest did not match, expected",
     ]
 
     cmd = [container_path, 'pull', image]
