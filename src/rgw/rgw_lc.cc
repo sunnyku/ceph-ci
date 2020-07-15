@@ -2188,6 +2188,7 @@ std::string s3_expiration_header(
 
     if (filter.has_tags()) {
       bool tag_match = false;
+      size_t tag_count = 0;
       const RGWObjTags& rule_tagset = filter.get_tags();
       for (auto& tag : rule_tagset.get_tags()) {
 	/* remember, S3 tags are {key,value} tuples */
@@ -2199,11 +2200,11 @@ std::string s3_expiration_header(
 			       << " tag=" << tag
 			       << " (ma=" << *ma1 << ")"
 			       << dendl;
-	    tag_match = true;
-	    break;
+	    tag_count++;
 	  }
 	}
       }
+      tag_match = (tag_count == rule_tagset.count());
       if (! tag_match)
 	continue;
     }
