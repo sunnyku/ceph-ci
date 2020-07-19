@@ -112,7 +112,7 @@ static int cls_2pc_queue_reserve(cls_method_context_t hctx, bufferlist *in, buff
   cls_2pc_reservations::iterator last_reservation;
   std::tie(last_reservation, result) = urgent_data.reservations.emplace(std::piecewise_construct,
           std::forward_as_tuple(urgent_data.last_id),
-          std::forward_as_tuple(res_op.size, ceph::real_clock::now()));
+          std::forward_as_tuple(res_op.size, ceph::coarse_real_clock::now()));
   if (!result) {
     // an old reservation that was never committed or aborted is in the map
     // caller should try again assuming other IDs are ok
@@ -149,7 +149,7 @@ static int cls_2pc_queue_reserve(cls_method_context_t hctx, bufferlist *in, buff
     }
     std::tie(std::ignore, result) = xattr_reservations.emplace(std::piecewise_construct,
           std::forward_as_tuple(urgent_data.last_id),
-          std::forward_as_tuple(res_op.size, ceph::real_clock::now()));
+          std::forward_as_tuple(res_op.size, ceph::coarse_real_clock::now()));
     if (!result) {
       // an old reservation that was never committed or aborted is in the map
       // caller should try again assuming other IDs are ok

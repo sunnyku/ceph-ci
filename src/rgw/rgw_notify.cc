@@ -59,6 +59,8 @@ class Manager {
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard;
   const uint32_t worker_count;
   std::vector<std::thread> workers;
+  const uint32_t stale_reservations_period_s;
+  const uint32_t reservations_cleanup_period_s;
  
   const std::string Q_LIST_OBJECT_NAME = "queues_list_object";
 
@@ -179,25 +181,88 @@ class Manager {
     }
   }
 
+  // clear stale reservations on a queue if next cleanup time reached
+  // return the number of clearted reservations and update the next cleanup time
+  uint32_t clean_stale_reservation(std::chrono::time_point<ceph::time_detail::coarse_real_clock>& next_cleanup, 
+      spawn::yield_context yield,
+      const std::string& queue_name) 
+  {
+    const auto now = ceph::coarse_real_time::clock::now();
+    if (now < next_cleanup) {
+      return 0;
+    }
+    const auto stale_timestamp = now - std::chrono::seconds(stale_reservations_period_s);
+    next_cleanup = now + std::chrono::seconds(reservations_cleanup_period_s);
+    const auto tp = ceph::coarse_real_time::clock::to_time_t(next_cleanup);
+    ldout(cct, 20) << "INFO: stale reservation cleanup for queue: " << queue_name 
+      << ". next cleanup will happen at: " << std::ctime(&tp) << dendl;
+    librados::ObjectReadOperation list_op;
+    bufferlist obl;
+    int rval;
+    cls_2pc_queue_list_reservations(list_op, &obl, &rval);
+    auto ret = rgw_rados_operate(rados_ioctx, queue_name, &list_op, nullptr, optional_yield(io_context, yield));
+    if (ret < 0) {
+      ldout(cct, 5) << "WARNING: failed to cleanup stale reservation from queue: " << queue_name
+        << ". failed to get list, error: " << ret << dendl;
+      return 0;
+    }
+
+    cls_2pc_reservations reservations;
+    ret = cls_2pc_queue_list_reservations_result(obl, reservations);
+    if (ret < 0) {
+      ldout(cct, 5) << "WARNING: failed to cleanup stale reservation from queue: " << queue_name
+      << ". failed to parse list, error: " << ret << dendl;
+      return 0;
+    }
+    
+    auto cleaned_reservations = 0U;
+    for (const auto& r : reservations) {
+      if (r.second.timestamp < stale_timestamp) {
+        librados::ObjectWriteOperation abort_op;
+        cls_2pc_queue_abort(abort_op, r.first);
+        ret = rgw_rados_operate(rados_ioctx, queue_name, &abort_op, optional_yield(io_context, yield));
+        if (ret < 0) {
+          ldout(cct, 5) << "WARNING: failed to cleanup stale reservation from queue: " << queue_name
+            << ". failed to abort: " << r.first <<  ", error: " << ret << dendl;
+        } else {
+          ++cleaned_reservations;
+          const auto tp = ceph::coarse_real_time::clock::to_time_t(r.second.timestamp);
+          ldout(cct, 5) << "WARNING: stale reservetion: " << r.first << " with timestamp: " << std::ctime(&tp) 
+            <<  " cleaned from queue: " << queue_name << dendl;
+        }
+      }
+    }
+    return cleaned_reservations;
+  }
+
   // processing of a specific queue
   void process_queue(const std::string& queue_name, const bool& owned, spawn::yield_context yield) {
     constexpr auto max_elements = 1024;
     auto is_idle = false;
     const std::string start_marker;
+    auto next_cleanup = ceph::coarse_real_time::clock::now();
     while (owned) {
+
+      // if queue was empty the last time, sleep for idle timeout
       if (is_idle) {
         Timer timer(io_context);
         timer.expires_from_now(std::chrono::microseconds(queue_idle_sleep_us));
         boost::system::error_code ec;
 	      timer.async_wait(yield[ec]);
       }
-      is_idle = true;
 
+      // this should happen regardless of the queue being idle or not
+      const auto cleaned_reservations = clean_stale_reservation(next_cleanup, yield, queue_name);
+      if (cleaned_reservations > 0) {
+        ldout(cct, 20) << "INFO: " << cleaned_reservations << " stale reservation were cleaned for queue: " << queue_name << dendl;
+      }
+
+      // get list of entries in the queue
+      is_idle = true;
       bool truncated = false;
       std::string end_marker;
       std::vector<cls_queue_entry> entries;
       auto total_entries = 0U;
-
       {
         librados::ObjectReadOperation op;
         bufferlist obl;
@@ -278,7 +343,7 @@ class Manager {
           << queue_name << dendl;
         }
       }
-      // TODO: cleanup expired reservations
+
     }
   }
 
@@ -395,7 +460,9 @@ public:
 
   // ctor: start all threads
   Manager(CephContext* _cct, uint32_t _max_queue_size, uint32_t _queues_update_period_ms, 
-          uint32_t _queues_update_retry_ms, uint32_t _queue_idle_sleep_us, uint32_t failover_time_ms, uint32_t _worker_count, rgw::sal::RGWRadosStore* store) : 
+          uint32_t _queues_update_retry_ms, uint32_t _queue_idle_sleep_us, u_int32_t failover_time_ms, 
+          uint32_t _stale_reservations_period_s, uint32_t _reservations_cleanup_period_s,
+          uint32_t _worker_count, rgw::sal::RGWRadosStore* store) : 
     max_queue_size(_max_queue_size),
     queues_update_period_ms(_queues_update_period_ms),
     queues_update_retry_ms(_queues_update_retry_ms),
@@ -403,10 +470,11 @@ public:
     failover_time(std::chrono::milliseconds(failover_time_ms)),
     cct(_cct),
     rados_ioctx(store->getRados()->get_notif_pool_ctx()),
-    //list_of_queues_object_created(false),
     lock_cookie(gen_rand_alphanumeric(cct, COOKIE_LEN)),
     work_guard(boost::asio::make_work_guard(io_context)),
-    worker_count(_worker_count)
+    worker_count(_worker_count),
+    stale_reservations_period_s(_stale_reservations_period_s),
+    reservations_cleanup_period_s(_reservations_cleanup_period_s)
     {
       spawn::spawn(io_context, [this](spawn::yield_context yield) {
             process_queues(yield);
@@ -420,6 +488,7 @@ public:
             (WORKER_THREAD_NAME+std::to_string(worker_id)).c_str());
         ceph_assert(rc == 0);
       }
+      ldout(cct, 10) << "Started notification manager with: " << worker_count << " workers" << dendl;
     }
 
   int add_persistent_topic(const std::string& topic_name, optional_yield y) {
@@ -492,14 +561,20 @@ constexpr uint32_t Q_LIST_RETRY_MSEC = 1000;         // retry every second if qu
 constexpr uint32_t IDLE_TIMEOUT_USEC = 100*1000;     // idle sleep 100ms
 constexpr uint32_t FAILOVER_TIME_MSEC = 3*Q_LIST_UPDATE_MSEC; // FAILOVER TIME 3x renew time
 constexpr uint32_t WORKER_COUNT = 1;                 // 1 worker thread
+constexpr uint32_t STALE_RESERVATIONS_PERIOD_S = 120;   // cleanup reservations that are more than 2 minutes old
+constexpr uint32_t RESERVATIONS_CLEANUP_PERIOD_S = 30; // reservation cleanup every 30 seconds
 
 bool init(CephContext* cct, rgw::sal::RGWRadosStore* store) {
   if (s_manager) {
     return false;
   }
   // TODO: take conf from CephContext
-  s_manager = new Manager(cct, MAX_QUEUE_SIZE, Q_LIST_UPDATE_MSEC, Q_LIST_RETRY_MSEC,
-          IDLE_TIMEOUT_USEC, FAILOVER_TIME_MSEC, WORKER_COUNT, store);
+  s_manager = new Manager(cct, MAX_QUEUE_SIZE, 
+      Q_LIST_UPDATE_MSEC, Q_LIST_RETRY_MSEC, 
+      IDLE_TIMEOUT_USEC, FAILOVER_TIME_MSEC, 
+      STALE_RESERVATIONS_PERIOD_S, RESERVATIONS_CLEANUP_PERIOD_S,
+      WORKER_COUNT,
+      store);
   return true;
 }
 
