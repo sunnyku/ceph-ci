@@ -6012,7 +6012,7 @@ void RGWSelectObj_ObjStore_S3::encode_int(char* buff, u_int32_t s, int& i)
   memcpy(buff, &x, sizeof(s));
   i+=sizeof(s);
 }
-//nope
+//nope+
 int RGWSelectObj_ObjStore_S3::create_header_records(char* buff)
 {
   int i = 0;
