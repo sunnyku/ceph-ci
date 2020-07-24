@@ -2,12 +2,11 @@ from datetime import datetime
 
 from ceph.deployment.service_spec import PlacementSpec, ServiceSpec, HostPlacementSpec
 from cephadm import CephadmOrchestrator
-from cephadm.tests.fixtures import _run_cephadm, cephadm_module, wait, match_glob, with_host
-from orchestrator import ServiceDescription
+from cephadm.tests.fixtures import _run_cephadm, cephadm_module, wait, with_host
 from tests import mock
 
 @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('[]'))
-def test_service_ls(cephadm_module: CephadmOrchestrator):
+def test_migrate_scheduler(cephadm_module: CephadmOrchestrator):
     with with_host(cephadm_module, 'host1'):
         with with_host(cephadm_module, 'host2'):
 
@@ -43,7 +42,3 @@ def test_service_ls(cephadm_module: CephadmOrchestrator):
             out = [o.spec.placement for o in wait(cephadm_module, cephadm_module.describe_service())]
             assert out == [PlacementSpec(count=2, hosts=[HostPlacementSpec(hostname='host1', network='', name=''), HostPlacementSpec(hostname='host2', network='', name='')])]
 
-
-
-#            assert_rm_service(cephadm_module, 'rgw.r.z')
-#            assert_rm_daemon(cephadm_module, 'mds.name', 'test')
