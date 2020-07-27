@@ -22,7 +22,8 @@ from ceph.deployment.inventory import Devices, Device
 from orchestrator import ServiceDescription, DaemonDescription, InventoryHost, \
     HostSpec, OrchestratorError
 from tests import mock
-from .fixtures import cephadm_module, wait, _run_cephadm, mon_command, match_glob, with_host
+from .fixtures import cephadm_module, wait, _run_cephadm, mon_command, match_glob, with_host, \
+    with_cephadm_module
 from cephadm.module import CephadmOrchestrator, CEPH_DATEFMT
 
 """
@@ -662,3 +663,7 @@ class TestCephadm(object):
 
             cephadm_module.notify('mon_map', mock.MagicMock())
             assert cephadm_module.cache.host_needs_new_etc_ceph_ceph_conf('test')
+
+    def test_etc_ceph_init(self):
+        with with_cephadm_module({'manage_etc_ceph_ceph_conf': True}) as m:
+            assert m.manage_etc_ceph_ceph_conf == True
