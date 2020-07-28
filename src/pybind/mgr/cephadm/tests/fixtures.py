@@ -9,9 +9,9 @@ except ImportError:
 import pytest
 
 from cephadm import CephadmOrchestrator
+from cephadm.services.osd import RemoveUtil, OSD
 from orchestrator import raise_if_exception, Completion, HostSpec
 from tests import mock
-
 
 
 def get_ceph_option(_, key):
@@ -37,14 +37,39 @@ def mon_command(*args, **kwargs):
 @pytest.yield_fixture()
 def cephadm_module():
     with mock.patch("cephadm.module.CephadmOrchestrator.get_ceph_option", get_ceph_option),\
-            mock.patch("cephadm.module.CephadmOrchestrator.remote"),\
-            mock.patch("cephadm.module.CephadmOrchestrator.send_command"), \
-            mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command):
+             mock.patch("cephadm.module.CephadmOrchestrator.remote"), \
+             mock.patch("cephadm.module.CephadmOrchestrator.send_command"), \
+             mock.patch("cephadm.module.CephadmOrchestrator.get_osdmap"), \
+             mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command):
 
         m = CephadmOrchestrator.__new__ (CephadmOrchestrator)
         m.__init__('cephadm', 0, 0)
         m._cluster_fsid = "fsid"
         yield m
+
+
+@pytest.yield_fixture()
+def rm_util():
+    with mock.patch("cephadm.module.CephadmOrchestrator.get_ceph_option", get_ceph_option), \
+             mock.patch("cephadm.module.CephadmOrchestrator.remote"), \
+             mock.patch("cephadm.module.CephadmOrchestrator.send_command"), \
+             mock.patch("cephadm.module.CephadmOrchestrator.get_osdmap"), \
+             mock.patch("cephadm.services.osd.RemoveUtil._run_mon_cmd"), \
+             mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command):
+
+        c = CephadmOrchestrator.__new__ (CephadmOrchestrator)
+        c.__init__('cephadm', 0, 0)
+        c._cluster_fsid = "fsid"
+        m = RemoveUtil.__new__(RemoveUtil)
+        m.__init__(c)
+        yield m
+
+
+@pytest.yield_fixture()
+def osd_obj():
+    with mock.patch("cephadm.services.osd.RemoveUtil"):
+        o = OSD(0, mock.MagicMock())
+        yield o
 
 
 def wait(m, c):
