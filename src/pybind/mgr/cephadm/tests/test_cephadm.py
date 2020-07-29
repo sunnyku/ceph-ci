@@ -47,6 +47,25 @@ def assert_rm_daemon(cephadm: CephadmOrchestrator, prefix, host):
     match_glob(out, f"Removed {d_names}* from host '{host}'")
 
 
+@contextmanager
+def with_daemon(cephadm_module: CephadmOrchestrator, spec: ServiceSpec, meth, host: str):
+    spec.placement = PlacementSpec(hosts=[host], count=1)
+
+    c = meth(cephadm_module, spec)
+    [out] = wait(cephadm_module, c)
+    match_glob(out, f"Deployed {spec.service_name()}.* on host '{host}'")
+
+    dds = cephadm_module.cache.get_daemons_by_service(spec.service_name())
+    for dd in dds:
+        if dd.hostname == host:
+            yield dd.daemon_id
+            assert_rm_daemon(cephadm_module, spec.service_name(), host)
+            return
+
+    assert False, 'Daemon not found'
+
+
+
 class TestCephadm(object):
 
     def test_get_unique_name(self, cephadm_module):
@@ -163,26 +182,33 @@ class TestCephadm(object):
             )
         ])
     ))
-    #@mock.patch("mgr_module.MgrModule._ceph_get")
-    @mock.patch("ceph_module.BaseMgrModule._ceph_get")
-    def test_daemon_action(self, _ceph_get, cephadm_module: CephadmOrchestrator):
+    def test_list_daemons(self, cephadm_module: CephadmOrchestrator):
         cephadm_module.service_cache_timeout = 10
         with with_host(cephadm_module, 'test'):
             c = cephadm_module.list_daemons(refresh=True)
-            wait(cephadm_module, c)
-            c = cephadm_module.daemon_action('redeploy', 'rgw', 'myrgw.foobar')
-            assert wait(cephadm_module, c) == ["Deployed rgw.myrgw.foobar on host 'test'"]
+            assert wait(cephadm_module, c)[0].name() == 'rgw.myrgw.foobar'
 
-            for what in ('start', 'stop', 'restart'):
-                c = cephadm_module.daemon_action(what, 'rgw', 'myrgw.foobar')
-                assert wait(cephadm_module, c) == [what + " rgw.myrgw.foobar from host 'test'"]
+    #@mock.patch("mgr_module.MgrModule._ceph_get")
+    @mock.patch("ceph_module.BaseMgrModule._ceph_get")
+    @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('[]'))
+    @mock.patch("cephadm.services.cephadmservice.RgwService.create_realm_zonegroup_zone", lambda _,__,___: None)
+    def test_daemon_action(self, _ceph_get, cephadm_module: CephadmOrchestrator):
+        cephadm_module.service_cache_timeout = 10
+        with with_host(cephadm_module, 'test'):
+            with with_daemon(cephadm_module, RGWSpec(service_id='myrgw.foobar'), CephadmOrchestrator.add_rgw, 'test') as daemon_id:
 
-            now = datetime.datetime.utcnow().strftime(CEPH_DATEFMT)
-            _ceph_get.return_value = {'modified': now}
+                c = cephadm_module.daemon_action('redeploy', 'rgw', daemon_id)
+                assert wait(cephadm_module, c) == [f"Deployed rgw.{daemon_id} on host 'test'"]
 
-            cephadm_module._check_daemons()
+                for what in ('start', 'stop', 'restart'):
+                    c = cephadm_module.daemon_action(what, 'rgw', daemon_id)
+                    assert wait(cephadm_module, c) == [what + f" rgw.{daemon_id} from host 'test'"]
 
-            assert_rm_daemon(cephadm_module, 'rgw.myrgw.foobar', 'test')
+                now = datetime.datetime.utcnow().strftime(CEPH_DATEFMT)
+                _ceph_get.return_value = {'modified': now}
+
+                cephadm_module._check_daemons()
+
 
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('[]'))
     def test_mon_add(self, cephadm_module):
@@ -430,13 +456,8 @@ class TestCephadm(object):
     @mock.patch("cephadm.services.cephadmservice.RgwService.create_realm_zonegroup_zone", lambda _,__,___: None)
     def test_daemon_add(self, spec: ServiceSpec, meth, cephadm_module):
         with with_host(cephadm_module, 'test'):
-            spec.placement = PlacementSpec(hosts=['test'], count=1)
-
-            c = meth(cephadm_module, spec)
-            [out] = wait(cephadm_module, c)
-            match_glob(out, f"Deployed {spec.service_name()}.* on host 'test'")
-
-            assert_rm_daemon(cephadm_module, spec.service_name(), 'test')
+            with with_daemon(cephadm_module, spec, meth, 'test'):
+                pass
 
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('{}'))
     @mock.patch("cephadm.module.CephadmOrchestrator.rados", mock.MagicMock())
