@@ -54,6 +54,8 @@ if 'UNITTEST' in os.environ:
         def _ceph_get(self, *args):
             return mock.MagicMock()
 
+        def _ceph_send_command(self, ev, *args):
+            ev.complete(0, '', '')
 
         def __init__(self, *args):
             self._store = {}

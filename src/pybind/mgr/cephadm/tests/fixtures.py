@@ -30,16 +30,10 @@ def match_glob(val, pat):
         assert pat in val
 
 
-def mon_command(*args, **kwargs):
-    return 0, '', ''
-
-
 @pytest.yield_fixture()
 def cephadm_module():
     with mock.patch("cephadm.module.CephadmOrchestrator.get_ceph_option", get_ceph_option),\
-            mock.patch("cephadm.module.CephadmOrchestrator.remote"),\
-            mock.patch("cephadm.module.CephadmOrchestrator.send_command"), \
-            mock.patch("cephadm.module.CephadmOrchestrator.mon_command", mon_command):
+            mock.patch("cephadm.module.CephadmOrchestrator.remote"):
 
         m = CephadmOrchestrator.__new__ (CephadmOrchestrator)
         m.__init__('cephadm', 0, 0)
