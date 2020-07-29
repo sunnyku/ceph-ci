@@ -7,6 +7,7 @@ from tasks import ceph_manager
 from tasks.util.rados import rados
 from teuthology import misc as teuthology
 from teuthology.orchestra import run
+import json
 
 log = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ def task(ctx, config):
     """
     Test handling of lost objects.
 
-    A pretty rigid cluseter is brought up andtested by this task
+    A pretty rigid cluseter is brought up and tested by this task
     """
     POOL = 'unfound_pool'
     if config is None:
@@ -140,6 +141,9 @@ def task(ctx, config):
             log.info('listing missing/lost in %s state %s', pg['pgid'],
                      pg['state']);
             m = manager.list_pg_unfound(pg['pgid'])
+            out = manager.raw_cluster_cmd('pg', pg['pgid'], 'query')
+            j = json.loads(out)
+            log.info("pg is %s, query json is %s", pg, j)
             #log.info('%s' % m)
             assert m['num_unfound'] == pg['stat_sum']['num_objects_unfound']
             num_unfound=0
