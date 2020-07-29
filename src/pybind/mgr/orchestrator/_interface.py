@@ -1618,7 +1618,7 @@ class OrchestratorEvent:
     """
     INFO = 'INFO'
     ERROR = 'ERROR'
-    regex_v1 = re.compile(r'^([^ ]+) ([^:]+):([^ ]+) \[([^\]]+)\] "(.*)"$')
+    regex_v1 = re.compile(r'^([^ ]+) ([^:]+):([^ ]+) \[([^\]]+)\] "((?:.|\n)*)"$', re.MULTILINE)
 
     def __init__(self, created: Union[str, datetime.datetime], kind, subject, level, message):
         if isinstance(created, str):
@@ -1646,7 +1646,6 @@ class OrchestratorEvent:
         # Make a long list of events readable.
         created = self.created.strftime(DATEFMT)
         return f'{created} {self.kind_subject()} [{self.level}] "{self.message}"'
-
 
     @classmethod
     @handle_type_error
