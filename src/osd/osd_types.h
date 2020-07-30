@@ -18,6 +18,10 @@
 #ifndef CEPH_OSD_TYPES_H
 #define CEPH_OSD_TYPES_H
 
+#if !defined(BOOST_MPL_LIMIT_LIST_SIZE)
+#   define BOOST_MPL_LIMIT_LIST_SIZE 30
+#endif
+
 #include <atomic>
 #include <sstream>
 #include <cstdio>

@@ -15,6 +15,10 @@
 #ifndef CEPH_OSD_SESSION_H
 #define CEPH_OSD_SESSION_H
 
+#if !defined(BOOST_MPL_LIMIT_LIST_SIZE)
+#   define BOOST_MPL_LIMIT_LIST_SIZE 30
+#endif
+
 #include "common/RefCountedObj.h"
 #include "common/ceph_mutex.h"
 #include "global/global_context.h"
