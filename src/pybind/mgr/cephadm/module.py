@@ -253,6 +253,12 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
             'default': None,
             'desc': 'Custom repository password'
         },
+        {
+            'name': 'convert_to_repo_digest',
+            'type': 'bool',
+            'default': False,
+            'desc': 'Automatically convert image tags to image digest. Make sure all daemons use the same image',
+        }
     ]
 
     def __init__(self, *args, **kwargs):
@@ -292,6 +298,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
             self.registry_url: Optional[str] = None
             self.registry_username: Optional[str] = None
             self.registry_password: Optional[str] = None
+            self.convert_to_repo_digest = False
 
         self._cons = {}  # type: Dict[str, Tuple[remoto.backends.BaseConnection,remoto.backends.LegacyModuleExecute]]
 
@@ -494,6 +501,8 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
 
             try:
 
+                self.convert_tags_to_repo_digest()
+
                 # refresh daemons
                 self.log.debug('refreshing hosts and daemons')
                 self._refresh_hosts_and_daemons()
@@ -523,6 +532,24 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
 
             self._serve_sleep()
         self.log.debug("serve exit")
+
+    def convert_tags_to_repo_digest(self):
+        if not self.convert_to_repo_digest:
+            return
+        settings = self.upgrade.get_distinct_container_image_settings()
+        digests: Dict[str, ContainerInspectInfo] = {}
+        for container_image_ref in settings.values():
+            if '@' not in container_image_ref and container_image_ref not in digests:
+                image_info = self._get_container_image_info(container_image_ref)
+                if image_info.repo_digest:
+                    assert '@' in image_info.repo_digest, image_info
+                digests[container_image_ref] = image_info
+
+        for entity, container_image_ref in settings.items():
+            if '@' not in container_image_ref:
+                image_info = digests[container_image_ref]
+                if image_info.repo_digest:
+                    self.set_container_image(entity, image_info.repo_digest)
 
     def set_container_image(self, entity: str, image):
         self.check_mon_command({
@@ -2508,6 +2535,9 @@ you may want to run:
                         'current_id': dd.container_image_id,
                         'current_version': dd.version,
                     }
+        if self.convert_to_repo_digest:
+            r['target_digest'] = image_info.repo_digest
+
         return json.dumps(r, indent=4, sort_keys=True)
 
     @trivial_completion
