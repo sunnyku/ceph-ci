@@ -776,7 +776,7 @@ class RbdTest(DashboardTestCase):
 
     def test_move_image_to_trash(self):
         id = self.create_image_in_trash('rbd', 'test_rbd')
-        self.assertStatus(200)
+        self.assertStatus([200, 201])
 
         self.get_image('rbd', None, 'test_rbd')
         self.assertStatus(404)
@@ -790,6 +790,7 @@ class RbdTest(DashboardTestCase):
 
     def test_list_trash(self):
         id = self.create_image_in_trash('rbd', 'test_rbd', 0)
+        self.assertStatus([200, 201])
         data = self._get('/api/block/image/trash/?pool_name={}'.format('rbd'))
         self.assertStatus(200)
         self.assertIsInstance(data, list)
@@ -800,6 +801,7 @@ class RbdTest(DashboardTestCase):
 
     def test_restore_trash(self):
         id = self.create_image_in_trash('rbd', 'test_rbd')
+        self.assertStatus([200, 201])
 
         self.restore_trash('rbd', None, id, 'test_rbd')
 
@@ -813,6 +815,7 @@ class RbdTest(DashboardTestCase):
 
     def test_remove_expired_trash(self):
         id = self.create_image_in_trash('rbd', 'test_rbd', 0)
+        self.assertStatus([200, 201])
         self.remove_trash('rbd', id, False)
         self.assertStatus(204)
 
@@ -821,6 +824,7 @@ class RbdTest(DashboardTestCase):
 
     def test_remove_not_expired_trash(self):
         id = self.create_image_in_trash('rbd', 'test_rbd', 9999)
+        self.assertStatus([200, 201])
         self.remove_trash('rbd', id, False)
         self.assertStatus(400)
 
@@ -833,6 +837,7 @@ class RbdTest(DashboardTestCase):
 
     def test_remove_not_expired_trash_with_force(self):
         id = self.create_image_in_trash('rbd', 'test_rbd', 9999)
+        self.assertStatus([200, 201])
         self.remove_trash('rbd', id, True)
         self.assertStatus(204)
 
@@ -841,7 +846,9 @@ class RbdTest(DashboardTestCase):
 
     def test_purge_trash(self):
         id_expired = self.create_image_in_trash('rbd', 'test_rbd_expired', 0)
+        self.assertStatus([200, 201])
         id_not_expired = self.create_image_in_trash('rbd', 'test_rbd', 9999)
+        self.assertStatus([200, 201])
 
         time.sleep(1)
 
