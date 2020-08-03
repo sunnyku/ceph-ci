@@ -1,5 +1,6 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, Input, OnInit } from '@angular/core';
 
+import { OrchestratorFeature } from '../../models/orchestrator.enum';
 import { CephReleaseNamePipe } from '../../pipes/ceph-release-name.pipe';
 import { SummaryService } from '../../services/summary.service';
 
@@ -9,6 +10,9 @@ import { SummaryService } from '../../services/summary.service';
   styleUrls: ['./orchestrator-doc-panel.component.scss']
 })
 export class OrchestratorDocPanelComponent implements OnInit {
+  @Input()
+  missingFeatures: OrchestratorFeature[];
+
   docsUrl: string;
 
   constructor(
