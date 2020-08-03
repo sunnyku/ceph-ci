@@ -6,7 +6,7 @@ from unittest.mock import ANY
 import pytest
 
 from ceph.deployment.drive_group import DriveGroupSpec, DeviceSelection
-from cephadm.services.osd import OSDRemoval
+from cephadm.services.osd import OSD, OSDQueue
 
 try:
     from typing import Any, List
@@ -22,7 +22,8 @@ from ceph.deployment.inventory import Devices, Device
 from orchestrator import ServiceDescription, DaemonDescription, InventoryHost, \
     HostSpec, OrchestratorError
 from tests import mock
-from .fixtures import cephadm_module, wait, _run_cephadm, mon_command, match_glob, with_host
+from .fixtures import cephadm_module, wait, _run_cephadm, mon_command, match_glob, with_host, \
+    with_cephadm_module
 from cephadm.module import CephadmOrchestrator, CEPH_DATEFMT
 
 """
@@ -163,13 +164,13 @@ class TestCephadm(object):
             )
         ])
     ))
-    #@mock.patch("mgr_module.MgrModule._ceph_get")
-    @mock.patch("ceph_module.BaseMgrModule._ceph_get")
-    def test_daemon_action(self, _ceph_get, cephadm_module: CephadmOrchestrator):
+    def test_daemon_action(self, cephadm_module: CephadmOrchestrator):
+
         cephadm_module.service_cache_timeout = 10
         with with_host(cephadm_module, 'test'):
             c = cephadm_module.list_daemons(refresh=True)
             wait(cephadm_module, c)
+            assert len(c.result) == 1
             c = cephadm_module.daemon_action('redeploy', 'rgw', 'myrgw.foobar')
             assert wait(cephadm_module, c) == ["Deployed rgw.myrgw.foobar on host 'test'"]
 
@@ -177,8 +178,12 @@ class TestCephadm(object):
                 c = cephadm_module.daemon_action(what, 'rgw', 'myrgw.foobar')
                 assert wait(cephadm_module, c) == [what + " rgw.myrgw.foobar from host 'test'"]
 
-            now = datetime.datetime.utcnow().strftime(CEPH_DATEFMT)
-            _ceph_get.return_value = {'modified': now}
+            # Make sure, _check_daemons does a redeploy due to monmap change:
+            cephadm_module._store['_ceph_get/mon_map'] = {
+                'modified': datetime.datetime.utcnow().strftime(CEPH_DATEFMT),
+                'fsid': 'foobar',
+            }
+            cephadm_module.notify('mon_map', None)
 
             cephadm_module._check_daemons()
 
@@ -357,6 +362,7 @@ class TestCephadm(object):
             )
         ])
     ))
+    @mock.patch("cephadm.services.osd.OSD.exists", True)
     @mock.patch("cephadm.services.osd.RemoveUtil.get_pg_count", lambda _, __: 0)
     def test_remove_osds(self, cephadm_module):
         with with_host(cephadm_module, 'test'):
@@ -367,16 +373,23 @@ class TestCephadm(object):
             out = wait(cephadm_module, c)
             assert out == ["Removed osd.0 from host 'test'"]
 
-            osd_removal_op = OSDRemoval(0, False, False, 'test', 'osd.0', datetime.datetime.utcnow(), -1)
-            cephadm_module.rm_util.queue_osds_for_removal({osd_removal_op})
-            cephadm_module.rm_util._remove_osds_bg()
-            assert cephadm_module.rm_util.to_remove_osds == set()
+            cephadm_module.to_remove_osds.enqueue(OSD(osd_id=0,
+                                                      replace=False,
+                                                      force=False,
+                                                      hostname='test',
+                                                      fullname='osd.0',
+                                                      process_started_at=datetime.datetime.utcnow(),
+                                                      remove_util=cephadm_module.rm_util
+                                                      ))
+            cephadm_module.rm_util.process_removal_queue()
+            assert cephadm_module.to_remove_osds == OSDQueue()
 
             c = cephadm_module.remove_osds_status()
             out = wait(cephadm_module, c)
-            assert out == set()
+            assert out == []
 
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('{}'))
+    @mock.patch("cephadm.services.cephadmservice.RgwService.create_realm_zonegroup_zone", lambda _,__,___: None)
     def test_rgw_update(self, cephadm_module):
         with with_host(cephadm_module, 'host1'):
             with with_host(cephadm_module, 'host2'):
@@ -426,6 +439,7 @@ class TestCephadm(object):
         ]
     )
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm", _run_cephadm('{}'))
+    @mock.patch("cephadm.services.cephadmservice.RgwService.create_realm_zonegroup_zone", lambda _,__,___: None)
     def test_daemon_add(self, spec: ServiceSpec, meth, cephadm_module):
         with with_host(cephadm_module, 'test'):
             spec.placement = PlacementSpec(hosts=['test'], count=1)
@@ -642,9 +656,11 @@ class TestCephadm(object):
 
     @mock.patch("cephadm.module.CephadmOrchestrator._get_connection")
     @mock.patch("remoto.process.check")
-    def test_etc_ceph(self, _check, _get_connection, cephadm_module: CephadmOrchestrator):
+    def test_etc_ceph(self, _check, _get_connection, cephadm_module):
         _get_connection.return_value = mock.Mock(), mock.Mock()
         _check.return_value = '{}', '', 0
+
+        assert cephadm_module.manage_etc_ceph_ceph_conf is False
 
         with with_host(cephadm_module, 'test'):
             assert not cephadm_module.cache.host_needs_new_etc_ceph_ceph_conf('test')
@@ -659,9 +675,27 @@ class TestCephadm(object):
 
             assert not cephadm_module.cache.host_needs_new_etc_ceph_ceph_conf('test')
 
+            cephadm_module.cache.last_etc_ceph_ceph_conf = {}
+            cephadm_module.cache.load()
+
+            assert not cephadm_module.cache.host_needs_new_etc_ceph_ceph_conf('test')
+
+            # Make sure, _check_daemons does a redeploy due to monmap change:
+            cephadm_module._store['_ceph_get/mon_map'] = {
+                'modified': datetime.datetime.utcnow().strftime(CEPH_DATEFMT),
+                'fsid': 'foobar',
+            }
             cephadm_module.notify('mon_map', mock.MagicMock())
             assert cephadm_module.cache.host_needs_new_etc_ceph_ceph_conf('test')
-        
+            cephadm_module.cache.last_etc_ceph_ceph_conf = {}
+            cephadm_module.cache.load()
+            assert cephadm_module.cache.host_needs_new_etc_ceph_ceph_conf('test')
+
+
+    def test_etc_ceph_init(self):
+        with with_cephadm_module({'manage_etc_ceph_ceph_conf': True}) as m:
+            assert m.manage_etc_ceph_ceph_conf is True
+
     @mock.patch("cephadm.module.CephadmOrchestrator._run_cephadm")
     def test_registry_login(self, _run_cephadm, cephadm_module: CephadmOrchestrator):
         def check_registry_credentials(url, username, password):

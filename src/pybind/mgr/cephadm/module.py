@@ -22,7 +22,7 @@ import subprocess
 from ceph.deployment import inventory
 from ceph.deployment.drive_group import DriveGroupSpec
 from ceph.deployment.service_spec import \
-    NFSServiceSpec, ServiceSpec, PlacementSpec, assert_valid_host
+    NFSServiceSpec, RGWSpec, ServiceSpec, PlacementSpec, assert_valid_host
 from cephadm.services.cephadmservice import CephadmDaemonSpec
 
 from mgr_module import MgrModule, HandleCommandResult
@@ -38,7 +38,7 @@ from .services.cephadmservice import MonService, MgrService, MdsService, RgwServ
     RbdMirrorService, CrashService, CephadmService
 from .services.iscsi import IscsiService
 from .services.nfs import NFSService
-from .services.osd import RemoveUtil, OSDRemoval, OSDService
+from .services.osd import RemoveUtil, OSDQueue, OSDService, OSD, NotFoundError
 from .services.monitoring import GrafanaService, AlertmanagerService, PrometheusService, \
     NodeExporterService
 from .schedule import HostAssignment, HostPlacementSpec
@@ -253,6 +253,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
     def __init__(self, *args, **kwargs):
         super(CephadmOrchestrator, self).__init__(*args, **kwargs)
         self._cluster_fsid = self.get('mon_map')['fsid']
+        self.last_monmap: Optional[datetime.datetime] = None
 
         # for serve()
         self.run = True
@@ -289,6 +290,8 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
 
         self._cons = {}  # type: Dict[str, Tuple[remoto.backends.BaseConnection,remoto.backends.LegacyModuleExecute]]
 
+
+        self.notify('mon_map', None)
         self.config_notify()
 
         path = self.get_ceph_option('cephadm_path')
@@ -315,7 +318,10 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
 
         self.cache = HostCache(self)
         self.cache.load()
+
         self.rm_util = RemoveUtil(self)
+        self.to_remove_osds = OSDQueue()
+        self.rm_util.load_from_store()
 
         self.spec_store = SpecStore(self)
         self.spec_store.load()
@@ -492,7 +498,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
                 self._update_paused_health()
 
                 if not self.paused:
-                    self.rm_util._remove_osds_bg()
+                    self.rm_util.process_removal_queue()
 
                     self.migration.migrate()
                     if self.migration.is_migration_ongoing():
@@ -539,35 +545,42 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
 
         TODO: this method should be moved into mgr_module.py
         """
-        module_options_changed: List[str] = []
         for opt in self.MODULE_OPTIONS:
-            old_val = getattr(self, opt['name'], None)
-            new_val = self.get_module_option(opt['name'])
             setattr(self,
                     opt['name'],  # type: ignore
-                    new_val)  # type: ignore
+                    self.get_module_option(opt['name']))  # type: ignore
             self.log.debug(' mgr option %s = %s',
                            opt['name'], getattr(self, opt['name']))  # type: ignore
-            if old_val != new_val:
-                module_options_changed.append(opt['name'])
         for opt in self.NATIVE_OPTIONS:
             setattr(self,
                     opt,  # type: ignore
                     self.get_ceph_option(opt))
             self.log.debug(' native option %s = %s', opt, getattr(self, opt))  # type: ignore
 
-        for what in module_options_changed:
-            self.config_notify_one(what)
-
         self.event.set()
-
-    def config_notify_one(self, what):
-        if what == 'manage_etc_ceph_ceph_conf' and self.manage_etc_ceph_ceph_conf:
-            self.cache.distribute_new_etc_ceph_ceph_conf()
 
     def notify(self, notify_type, notify_id):
         if notify_type == "mon_map":
-            self.cache.distribute_new_etc_ceph_ceph_conf()
+            # get monmap mtime so we can refresh configs when mons change
+            monmap = self.get('mon_map')
+            self.last_monmap = datetime.datetime.strptime(
+                monmap['modified'], CEPH_DATEFMT)
+            if self.last_monmap and self.last_monmap > datetime.datetime.utcnow():
+                self.last_monmap = None  # just in case clocks are skewed
+        if notify_type == "pg_summary":
+            self._trigger_osd_removal()
+
+    def _trigger_osd_removal(self):
+        data = self.get("osd_stats")
+        for osd in data.get('osd_stats', []):
+            if osd.get('num_pgs') == 0:
+                # if _ANY_ osd that is currently in the queue appears to be empty,
+                # start the removal process
+                if int(osd.get('osd')) in self.to_remove_osds.as_osd_ids():
+                    self.log.debug(f"Found empty osd. Starting removal process")
+                    # if the osd that is now empty is also part of the removal queue
+                    # start the process
+                    self.rm_util.process_removal_queue()
 
     def pause(self):
         if not self.paused:
@@ -1436,7 +1449,8 @@ you may want to run:
                 )
                 if code:
                     return f'failed to create /etc/ceph/ceph.conf on {host}: {err}'
-                self.cache.remove_host_needs_new_etc_ceph_ceph_conf(host)
+                self.cache.update_last_etc_ceph_ceph_conf(host)
+                self.cache.save_host(host)
         except OrchestratorError as e:
             return f'failed to create /etc/ceph/ceph.conf on {host}: {str(e)}'
         return None
@@ -1594,7 +1608,7 @@ you may want to run:
         for a in actions[action]:
             try:
                 out, err, code = self._run_cephadm(
-                    daemon_spec.daemon_type, name, 'unit',
+                    host, name, 'unit',
                     ['--name', name, a])
             except Exception:
                 self.log.exception(f'`{host}: cephadm unit {name} {a}` failed')
@@ -2002,12 +2016,18 @@ you may want to run:
         self.log.debug('Hosts that will loose daemons: %s' % remove_daemon_hosts)
 
         for host, network, name in add_daemon_hosts:
-            if not did_config and config_func:
-                config_func(spec)
-                did_config = True
             daemon_id = self.get_unique_name(daemon_type, host, daemons,
                                              prefix=spec.service_id,
                                              forcename=name)
+
+            if not did_config and config_func:
+                if daemon_type == 'rgw':
+                    rgw_config_func = cast(Callable[[RGWSpec, str], None], config_func)
+                    rgw_config_func(cast(RGWSpec, spec), daemon_id)
+                else:
+                    config_func(spec)
+                did_config = True
+
             daemon_spec = self.cephadm_services[daemon_type].make_daemon_spec(host, daemon_id, network, spec)
             self.log.debug('Placing %s.%s on host %s' % (
                 daemon_type, daemon_id, host))
@@ -2063,12 +2083,6 @@ you may want to run:
                                     f'service {service_name}')
 
     def _check_daemons(self):
-        # get monmap mtime so we can refresh configs when mons change
-        monmap = self.get('mon_map')
-        last_monmap: Optional[datetime.datetime] = datetime.datetime.strptime(
-            monmap['modified'], CEPH_DATEFMT)
-        if last_monmap and last_monmap > datetime.datetime.utcnow():
-            last_monmap = None   # just in case clocks are skewed
 
         daemons = self.cache.get_daemons()
         daemons_post: Dict[str, List[orchestrator.DaemonDescription]] = defaultdict(list)
@@ -2105,8 +2119,8 @@ you may want to run:
                 self.log.info('Reconfiguring %s (dependencies changed)...' % (
                     dd.name()))
                 reconfig = True
-            elif last_monmap and \
-               last_monmap > last_config and \
+            elif self.last_monmap and \
+                    self.last_monmap > last_config and \
                dd.daemon_type in CEPH_TYPES:
                 self.log.info('Reconfiguring %s (monmap changed)...' % dd.name())
                 reconfig = True
@@ -2146,14 +2160,21 @@ you may want to run:
             raise OrchestratorError('too few hosts: want %d, have %s' % (
                 count, hosts))
 
-        if config_func:
-            config_func(spec)
+        did_config = False
 
         args = []  # type: List[CephadmDaemonSpec]
         for host, network, name in hosts:
             daemon_id = self.get_unique_name(daemon_type, host, daemons,
                                              prefix=spec.service_id,
                                              forcename=name)
+
+            if not did_config and config_func:
+                if daemon_type == 'rgw':
+                    config_func(spec, daemon_id)
+                else:
+                    config_func(spec)
+                did_config = True
+
             daemon_spec = self.cephadm_services[daemon_type].make_daemon_spec(host, daemon_id, network, spec)
             self.log.debug('Placing %s.%s on host %s' % (
                 daemon_type, daemon_id, host))
@@ -2457,31 +2478,53 @@ you may want to run:
         """
         Takes a list of OSDs and schedules them for removal.
         The function that takes care of the actual removal is
-        _remove_osds_bg().
+        process_removal_queue().
         """
 
-        daemons = self.cache.get_daemons_by_service('osd')
-        found: Set[OSDRemoval] = set()
+        daemons: List[orchestrator.DaemonDescription] = self.cache.get_daemons_by_service('osd')
+        to_remove_daemons = list()
         for daemon in daemons:
-            if daemon.daemon_id not in osd_ids:
-                continue
-            found.add(OSDRemoval(daemon.daemon_id, replace, force,
-                                 daemon.hostname, daemon.name(),
-                                 datetime.datetime.utcnow(), -1))
+            if daemon.daemon_id in osd_ids:
+                to_remove_daemons.append(daemon)
+        if not to_remove_daemons:
+            return f"Unable to find OSDs: {osd_ids}"
 
-        not_found = {osd_id for osd_id in osd_ids if osd_id not in [x.osd_id for x in found]}
-        if not_found:
-            raise OrchestratorError('Unable to find OSD: %s' % not_found)
-
-        self.rm_util.queue_osds_for_removal(found)
+        for daemon in to_remove_daemons:
+            try:
+                self.to_remove_osds.enqueue(OSD(osd_id=int(daemon.daemon_id),
+                                                replace=replace,
+                                                force=force,
+                                                hostname=daemon.hostname,
+                                                fullname=daemon.name(),
+                                                process_started_at=datetime.datetime.utcnow(),
+                                                remove_util=self.rm_util))
+            except NotFoundError:
+                return f"Unable to find OSDs: {osd_ids}"
 
         # trigger the serve loop to initiate the removal
         self._kick_serve_loop()
         return "Scheduled OSD(s) for removal"
 
     @trivial_completion
-    def remove_osds_status(self) -> Set[OSDRemoval]:
+    def stop_remove_osds(self, osd_ids: List[str]):
+        """
+        Stops a `removal` process for a List of OSDs.
+        This will revert their weight and remove it from the osds_to_remove queue
+        """
+        for osd_id in osd_ids:
+            try:
+                self.to_remove_osds.rm(OSD(osd_id=int(osd_id),
+                                           remove_util=self.rm_util))
+            except (NotFoundError, KeyError):
+                return f'Unable to find OSD in the queue: {osd_id}'
+
+        # trigger the serve loop to halt the removal
+        self._kick_serve_loop()
+        return "Stopped OSD(s) removal"
+
+    @trivial_completion
+    def remove_osds_status(self):
         """
         The CLI call to retrieve an osd removal report
         """
-        return self.rm_util.report
+        return self.to_remove_osds.all_osds()

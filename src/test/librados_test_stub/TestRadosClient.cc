@@ -208,6 +208,8 @@ int TestRadosClient::mon_command(const std::vector<std::string>& cmd,
       return 0;
     } else if ((*j_it)->get_data() == "config-key rm") {
       return 0;
+    } else if ((*j_it)->get_data() == "config set") {
+      return 0;
     } else if ((*j_it)->get_data() == "df") {
       std::stringstream str;
       str << R"({"pools": [)";
@@ -292,7 +294,7 @@ void TestRadosClient::flush_aio_operations(AioCompletionImpl *c) {
 int TestRadosClient::aio_watch_flush(AioCompletionImpl *c) {
   c->get();
   Context *ctx = new LambdaContext(std::bind(
-    &TestRadosClient::finish_aio_completion, this, c, _1));
+    &TestRadosClient::finish_aio_completion, this, c, std::placeholders::_1));
   get_watch_notify()->aio_flush(this, ctx);
   return 0;
 }
