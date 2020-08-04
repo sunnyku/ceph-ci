@@ -171,12 +171,12 @@ class TestCephadm(object):
             c = cephadm_module.list_daemons(refresh=True)
             wait(cephadm_module, c)
             assert len(c.result) == 1
-            c = cephadm_module.daemon_action('redeploy', 'rgw', 'myrgw.foobar')
-            assert wait(cephadm_module, c) == ["Deployed rgw.myrgw.foobar on host 'test'"]
+            c = cephadm_module.daemon_action('redeploy', 'rgw.myrgw.foobar')
+            assert wait(cephadm_module, c) == "Deployed rgw.myrgw.foobar on host 'test'"
 
             for what in ('start', 'stop', 'restart'):
-                c = cephadm_module.daemon_action(what, 'rgw', 'myrgw.foobar')
-                assert wait(cephadm_module, c) == [what + " rgw.myrgw.foobar from host 'test'"]
+                c = cephadm_module.daemon_action(what, 'rgw.myrgw.foobar')
+                assert wait(cephadm_module, c) == what + " rgw.myrgw.foobar from host 'test'"
 
             # Make sure, _check_daemons does a redeploy due to monmap change:
             cephadm_module._store['_ceph_get/mon_map'] = {
