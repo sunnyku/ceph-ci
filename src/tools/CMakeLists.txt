@@ -130,6 +130,10 @@ if(WITH_CEPHFS)
   add_subdirectory(cephfs)
 endif(WITH_CEPHFS)
 
+if(WITH_CEPHFS_MIRROR)
+  add_subdirectory(cephfs_mirror)
+endif(WITH_CEPHFS_MIRROR)
+
 if(WITH_RBD)
   add_subdirectory(rbd)
   add_subdirectory(rbd_mirror)
@@ -140,8 +144,6 @@ if(WITH_RBD)
     add_subdirectory(rbd_ggate)
   endif()
 endif(WITH_RBD)
-
-add_subdirectory(cephfs_mirror)
 
 if(WITH_SEASTAR)
   add_subdirectory(crimson)
