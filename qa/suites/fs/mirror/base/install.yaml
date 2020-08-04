@@ -1,0 +1,9 @@
+meta:
+- desc: run two ceph clusters and install cephfs-mirror
+tasks:
+- install:
+    extra_packages: [cephfs-mirror]
+- ceph:
+    cluster: cluster1
+- ceph:
+    cluster: cluster2
