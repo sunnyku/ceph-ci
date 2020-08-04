@@ -1,0 +1,11 @@
+meta:
+- desc: 1 ceph cluster with 1 mon and 3 osds
+roles:
+- - mon.a
+  - mgr.x
+  - mds.a
+  - osd.0
+  - osd.1
+  - osd.2
+  - client.0
+  - client.mirror
