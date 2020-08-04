@@ -75,6 +75,7 @@ subpackages="
 	$pkgname-osd
 	$pkgname-doc
 	$pkgname-bash-completion:bash_completion
+	cephfs-mirror:cephfs-mirror
 	rbd-fuse:rbd_fuse
 	rbd-mirror:rbd_mirror
 	rbd-nbd:rbd_nbd
@@ -255,6 +256,13 @@ ceph_fuse() {
 
 	_pkg $_bindir ceph-fuse
 	_pkg $_sbindir mount.fuse.ceph
+}
+
+cephfs_mirror() {
+	pkgdesc="Daemon for mirroring CephFS directory snapshots between Ceph clusters."
+        depends="ceph-common librados libcephfs"
+
+	_pkg $_bindir cephfs-mirror
 }
 
 rbd_fuse() {

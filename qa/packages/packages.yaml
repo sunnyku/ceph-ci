@@ -34,6 +34,7 @@ ceph:
   - rbd-fuse-dbg
   - rbd-mirror-dbg
   - rbd-nbd-dbg
+  - cephfs-mirror-dbg
   rpm:
   - ceph-radosgw
   - ceph-test
@@ -59,6 +60,7 @@ ceph:
   - rbd-fuse
   - rbd-mirror
   - rbd-nbd
+  - cephfs-mirror
   - ceph-base-debuginfo
   - ceph-common-debuginfo
   - ceph-immutable-object-cache-debuginfo
@@ -81,3 +83,4 @@ ceph:
   - rbd-fuse-debuginfo
   - rbd-mirror-debuginfo
   - rbd-nbd-debuginfo
+  - cephfs-mirror-debuginfo
