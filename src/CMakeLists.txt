@@ -250,6 +250,8 @@ if(WITH_CEPHFS_JAVA)
   add_subdirectory(java)
 endif()
 
+option(WITH_CEPHFS_MIRROR "build cephfs-mirror daemon" ON)
+
 # Python stuff
 option(WITH_PYTHON2 "build python2 bindings" OFF)
 if(WITH_PYTHON2)
