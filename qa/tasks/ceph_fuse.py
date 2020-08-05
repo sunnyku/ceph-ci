@@ -96,7 +96,8 @@ def task(ctx, config):
     :param ctx: Context
     :param config: Configuration
     """
-    log.info('Running ceph_fuse task...')
+    cluster_name = config.get('cluster', 'ceph')
+    log.info('Running ceph_fuse task (cluster: {})...'.format(cluster_name))
 
     testdir = teuthology.get_testdir(ctx)
     log.info("config is {}".format(str(config)))
@@ -128,7 +129,7 @@ def task(ctx, config):
             continue
 
         if id_ not in all_mounts:
-            fuse_mount = FuseMount(ctx, client_config, testdir, auth_id, remote, brxnet)
+            fuse_mount = FuseMount(ctx, client_config, testdir, auth_id, remote, brxnet, cluster_name)
             all_mounts[id_] = fuse_mount
         else:
             # Catch bad configs where someone has e.g. tried to use ceph-fuse and kcephfs for the same client

@@ -121,17 +121,20 @@ def task(ctx, config):
 
     """
 
-    ceph_cluster = CephCluster(ctx)
+    cluster_name = config.get('cluster', 'ceph')
+    log.info("cephfs_test_runner: cluster={0}".format(cluster_name))
+
+    ceph_cluster = CephCluster(ctx, cluster_name)
 
     if len(list(misc.all_roles_of_type(ctx.cluster, 'mds'))):
-        mds_cluster = MDSCluster(ctx)
-        fs = Filesystem(ctx)
+        mds_cluster = MDSCluster(ctx, cluster_name)
+        fs = Filesystem(ctx, cluster=cluster_name)
     else:
         mds_cluster = None
         fs = None
 
     if len(list(misc.all_roles_of_type(ctx.cluster, 'mgr'))):
-        mgr_cluster = MgrCluster(ctx)
+        mgr_cluster = MgrCluster(ctx, cluster_name)
     else:
         mgr_cluster = None
 
