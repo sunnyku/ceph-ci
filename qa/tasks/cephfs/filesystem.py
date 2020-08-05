@@ -191,13 +191,15 @@ class FSStatus(object):
 class CephCluster(object):
     @property
     def admin_remote(self):
-        first_mon = misc.get_first_mon(self._ctx, None)
+        first_mon = misc.get_first_mon(self._ctx, None, cluster=self.cluster)
         (result,) = self._ctx.cluster.only(first_mon).remotes.keys()
         return result
 
-    def __init__(self, ctx):
+    def __init__(self, ctx, cluster):
         self._ctx = ctx
-        self.mon_manager = ceph_manager.CephManager(self.admin_remote, ctx=ctx, logger=log.getChild('ceph_manager'))
+        self.cluster = cluster
+        self.mon_manager = ceph_manager.CephManager(self.admin_remote, ctx=ctx,
+                                                    logger=log.getChild('ceph_manager'), cluster=cluster)
 
     def get_config(self, key, service_type=None):
         """
@@ -207,17 +209,18 @@ class CephCluster(object):
             service_type = 'mon'
 
         service_id = sorted(misc.all_roles_of_type(self._ctx.cluster, service_type))[0]
+        log.info("service_id={0}".format(service_id))
         return self.json_asok(['config', 'get', key], service_type, service_id)[key]
 
     def set_ceph_conf(self, subsys, key, value):
-        if subsys not in self._ctx.ceph['ceph'].conf:
-            self._ctx.ceph['ceph'].conf[subsys] = {}
-        self._ctx.ceph['ceph'].conf[subsys][key] = value
+        if subsys not in self._ctx.ceph[self.cluster].conf:
+            self._ctx.ceph[self.cluster].conf[subsys] = {}
+        self._ctx.ceph[self.cluster].conf[subsys][key] = value
         write_conf(self._ctx)  # XXX because we don't have the ceph task's config object, if they
                                # used a different config path this won't work.
 
     def clear_ceph_conf(self, subsys, key):
-        del self._ctx.ceph['ceph'].conf[subsys][key]
+        del self._ctx.ceph[self.cluster].conf[subsys][key]
         write_conf(self._ctx)
 
     def json_asok(self, command, service_type, service_id, timeout=None):
@@ -245,10 +248,12 @@ class MDSCluster(CephCluster):
     a parent of Filesystem.  The correct way to use MDSCluster going forward is
     as a separate instance outside of your (multiple) Filesystem instances.
     """
-    def __init__(self, ctx):
-        super(MDSCluster, self).__init__(ctx)
+    def __init__(self, ctx, cluster):
+        super(MDSCluster, self).__init__(ctx, cluster)
 
+        self.cluster = cluster
         self.mds_ids = list(misc.all_roles_of_type(ctx.cluster, 'mds'))
+        log.info("MDSCluster: mds_ids={0}".format(self.mds_ids))
 
         if len(self.mds_ids) == 0:
             raise RuntimeError("This task requires at least one MDS")
@@ -331,7 +336,7 @@ class MDSCluster(CephCluster):
         self.mds_daemons[mds_id].signal(sig, silent);
 
     def newfs(self, name='cephfs', create=True):
-        return Filesystem(self._ctx, name=name, create=create)
+        return Filesystem(self._ctx, cluster=self.cluster, name=name, create=create)
 
     def status(self):
         return FSStatus(self.mon_manager)
@@ -429,9 +434,9 @@ class Filesystem(MDSCluster):
     This object is for driving a CephFS filesystem.  The MDS daemons driven by
     MDSCluster may be shared with other Filesystems.
     """
-    def __init__(self, ctx, fscid=None, name=None, create=False,
+    def __init__(self, ctx, cluster='ceph', fscid=None, name=None, create=False,
                  ec_profile=None):
-        super(Filesystem, self).__init__(ctx)
+        super(Filesystem, self).__init__(ctx, cluster)
 
         self.name = name
         self.ec_profile = ec_profile
@@ -442,8 +447,13 @@ class Filesystem(MDSCluster):
         self.data_pools = None
 
         client_list = list(misc.all_roles_of_type(self._ctx.cluster, 'client'))
+        log.info('client list: {0}'.format(client_list))
         self.client_id = client_list[0]
-        self.client_remote = list(misc.get_clients(ctx=ctx, roles=["client.{0}".format(self.client_id)]))[0][1]
+        if cluster_name == 'ceph':
+            _roles = "client.{0}".format(self.client_id)
+        else:
+            _roles = "{0}.client.{1}".format(cluster_name, self.client_id)
+        self.client_remote = list(misc.get_clients(ctx=ctx, roles=[_roles]))[0][1]
 
         if name is not None:
             if fscid is not None:

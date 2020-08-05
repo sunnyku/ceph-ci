@@ -15,7 +15,7 @@ from tasks.cephfs.filesystem import Filesystem
 log = logging.getLogger(__name__)
 
 class CephFSMount(object):
-    def __init__(self, ctx, test_dir, client_id, client_remote, brxnet):
+    def __init__(self, ctx, test_dir, client_id, client_remote, brxnet, cluster='ceph'):
         """
         :param test_dir: Global teuthology test dir
         :param client_id: Client ID, the 'foo' in client.foo
@@ -36,6 +36,7 @@ class CephFSMount(object):
             self.ceph_brx_net = '192.168.0.0/16'
         else:
             self.ceph_brx_net = brxnet
+        self.cluster = cluster
 
         self.test_files = ['a', 'b', 'c']
 
@@ -102,7 +103,7 @@ class CephFSMount(object):
         if name is None and self.fs is not None:
             # Previous mount existed, reuse the old name
             name = self.fs.name
-        self.fs = Filesystem(self.ctx, name=name)
+        self.fs = Filesystem(self.ctx, cluster=self.cluster, name=name)
         log.info('Wait for MDS to reach steady state...')
         self.fs.wait_for_daemons()
         log.info('Ready to start {}...'.format(type(self).__name__))
