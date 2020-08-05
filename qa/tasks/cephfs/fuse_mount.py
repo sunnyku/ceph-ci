@@ -16,8 +16,8 @@ log = logging.getLogger(__name__)
 
 
 class FuseMount(CephFSMount):
-    def __init__(self, ctx, client_config, test_dir, client_id, client_remote, brxnet):
-        super(FuseMount, self).__init__(ctx, test_dir, client_id, client_remote, brxnet)
+    def __init__(self, ctx, client_config, test_dir, client_id, client_remote, brxnet, cluster='ceph'):
+        super(FuseMount, self).__init__(ctx, test_dir, client_id, client_remote, brxnet, cluster)
 
         self.client_config = client_config if client_config else {}
         self.fuse_daemon = None
@@ -44,7 +44,7 @@ class FuseMount(CephFSMount):
             raise
 
     def _mount(self, mount_path, mount_fs_name, mount_options):
-        log.info("Client client.%s config is %s" % (self.client_id, self.client_config))
+        log.info("Client client.%s config is %s (cluster %s)" % (self.client_id, self.client_config, self.cluster))
 
         daemon_signal = 'kill'
         if self.client_config.get('coverage') or self.client_config.get('valgrind') is not None:
@@ -65,7 +65,7 @@ class FuseMount(CephFSMount):
             daemon_signal,
         ]
 
-        fuse_cmd = ['ceph-fuse', "-f"]
+        fuse_cmd = ['ceph-fuse', "-f", "--cluster={0}".format(self.cluster)]
 
         if mount_path is not None:
             fuse_cmd += ["--client_mountpoint={0}".format(mount_path)]
