@@ -1,0 +1,6 @@
+tasks:
+  - ceph:
+      cluster: cluster1
+  - ceph:
+      cluster: cluster2
+  - ceph-fuse:

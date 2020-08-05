@@ -402,7 +402,7 @@ def cephfs_setup(ctx, config):
     if mdss.remotes:
         log.info('Setting up CephFS filesystem...')
 
-        fs = Filesystem(ctx, name='cephfs', create=True,
+        fs = Filesystem(ctx, cluster=cluster_name, name='cephfs', create=True,
                         ec_profile=config.get('cephfs_ec_profile', None))
 
         max_mds = config.get('max_mds', 1)

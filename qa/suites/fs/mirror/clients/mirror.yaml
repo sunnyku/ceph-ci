@@ -6,19 +6,19 @@ overrides:
       client:
         debug cephfs_mirror: 20
         log to stderr: false
-      # override to make these names predictable
+      # make these predictable
       client.mirror.0:
-        admin socket: /var/run/ceph/rbd-mirror.$cluster-$name.asok
-        pid file: /var/run/ceph/rbd-mirror.$cluster-$name.pid
+        admin socket: /var/run/ceph/cephfs-mirror.$cluster-$name.asok
+        pid file: /var/run/ceph/cephfs-mirror.$cluster-$name.pid
       client.mirror.1:
-        admin socket: /var/run/ceph/rbd-mirror.$cluster-$name.asok
-        pid file: /var/run/ceph/rbd-mirror.$cluster-$name.pid
+        admin socket: /var/run/ceph/cephfs-mirror.$cluster-$name.asok
+        pid file: /var/run/ceph/cephfs-mirror.$cluster-$name.pid
       client.mirror.2:
-        admin socket: /var/run/ceph/rbd-mirror.$cluster-$name.asok
-        pid file: /var/run/ceph/rbd-mirror.$cluster-$name.pid
+        admin socket: /var/run/ceph/cephfs-mirror.$cluster-$name.asok
+        pid file: /var/run/ceph/cephfs-mirror.$cluster-$name.pid
       client.mirror.3:
-        admin socket: /var/run/ceph/rbd-mirror.$cluster-$name.asok
-        pid file: /var/run/ceph/rbd-mirror.$cluster-$name.pid
+        admin socket: /var/run/ceph/cephfs-mirror.$cluster-$name.asok
+        pid file: /var/run/ceph/cephfs-mirror.$cluster-$name.pid
 tasks:
 - exec:
     cluster1.client.mirror.0:

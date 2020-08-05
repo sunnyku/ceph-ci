@@ -195,9 +195,10 @@ class CephCluster(object):
         (result,) = self._ctx.cluster.only(first_mon).remotes.keys()
         return result
 
-    def __init__(self, ctx):
+    def __init__(self, ctx, cluster):
         self._ctx = ctx
-        self.mon_manager = ceph_manager.CephManager(self.admin_remote, ctx=ctx, logger=log.getChild('ceph_manager'))
+        self.mon_manager = ceph_manager.CephManager(self.admin_remote, ctx=ctx,
+                                                    logger=log.getChild('ceph_manager'), cluster=cluster)
 
     def get_config(self, key, service_type=None):
         """
@@ -245,8 +246,8 @@ class MDSCluster(CephCluster):
     a parent of Filesystem.  The correct way to use MDSCluster going forward is
     as a separate instance outside of your (multiple) Filesystem instances.
     """
-    def __init__(self, ctx):
-        super(MDSCluster, self).__init__(ctx)
+    def __init__(self, ctx, cluster):
+        super(MDSCluster, self).__init__(ctx, cluster)
 
         self.mds_ids = list(misc.all_roles_of_type(ctx.cluster, 'mds'))
 
@@ -429,9 +430,9 @@ class Filesystem(MDSCluster):
     This object is for driving a CephFS filesystem.  The MDS daemons driven by
     MDSCluster may be shared with other Filesystems.
     """
-    def __init__(self, ctx, fscid=None, name=None, create=False,
+    def __init__(self, ctx, cluster='ceph', fscid=None, name=None, create=False,
                  ec_profile=None):
-        super(Filesystem, self).__init__(ctx)
+        super(Filesystem, self).__init__(ctx, cluster)
 
         self.name = name
         self.ec_profile = ec_profile
