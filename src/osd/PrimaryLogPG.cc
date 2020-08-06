@@ -10543,15 +10543,36 @@ class C_OSD_RepopCommit : public Context {
 public:
   C_OSD_RepopCommit(PrimaryLogPG *pg, PrimaryLogPG::RepGather *repop)
     : pg(pg), repop(repop) {}
-  void finish(int) override {
-    pg->repop_all_committed(repop.get());
+  void finish(int r) override {
+    if (r)
+      pg->repop_quorum_committed(repop.get());
+    else
+      pg->repop_all_committed(repop.get());
   }
 };
 
+void PrimaryLogPG::repop_quorum_committed(RepGather *repop)
+{
+  if (repop->op) {
+    repop->op->mark_event("repop_quorum_committed");
+    repop->op->pg_trace.event("repop_quorum_committed");
+  }
+  dout(10) << __func__ << ": repop tid " << repop->rep_tid
+           << " quorum committed " << dendl;
+
+  repop->quorum_committed = true;
+  if (!repop->rep_aborted)
+    eval_repop(repop);
+}
+
 void PrimaryLogPG::repop_all_committed(RepGather *repop)
 {
-  dout(10) << __func__ << ": repop tid " << repop->rep_tid << " all committed "
-	   << dendl;
+  if (repop->op) {
+    repop->op->mark_event("repop_all_committed");
+    repop->op->pg_trace.event("repop_all_committed");
+  }
+  dout(10) << __func__ << ": repop tid " << repop->rep_tid
+           << " all committed " << dendl;
   repop->all_committed = true;
   if (!repop->rep_aborted) {
     if (repop->v != eversion_t()) {
@@ -10581,17 +10602,26 @@ void PrimaryLogPG::op_applied(const eversion_t &applied_version)
 
 void PrimaryLogPG::eval_repop(RepGather *repop)
 {
-  dout(10) << "eval_repop " << *repop
-    << (repop->op && repop->op->get_req<MOSDOp>() ? "" : " (no op)") << dendl;
+  dout(10) << __func__ << " " << *repop
+           << (repop->op && repop->op->get_req<MOSDOp>() ? "" : " (no op)")
+           << " quorum_committed: " << repop->quorum_committed
+           << " all_committed " << repop->all_committed
+           << dendl;
 
-  // ondisk?
-  if (repop->all_committed) {
+  // we won't concern about this "if block" whether will be executed twice
+  // because callbacks in "om_commited" will keep a state (ctx->sent_reply = true;)
+  // to represent clients have been responsed.
+  if (repop->quorum_committed || repop->all_committed) {
     dout(10) << " commit: " << *repop << dendl;
     for (auto p = repop->on_committed.begin();
 	 p != repop->on_committed.end();
 	 repop->on_committed.erase(p++)) {
       (*p)();
     }
+  }
+
+  // ondisk?
+  if (repop->all_committed) {
     // send dup commits, in order
     auto it = waiting_for_ondisk.find(repop->v);
     if (it != waiting_for_ondisk.end()) {
