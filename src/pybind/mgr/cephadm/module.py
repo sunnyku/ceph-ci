@@ -2041,6 +2041,7 @@ you may want to run:
         remove_daemon_hosts: Set[orchestrator.DaemonDescription] = ha.remove_daemon_hosts(hosts)
         self.log.debug('Hosts that will loose daemons: %s' % remove_daemon_hosts)
 
+        r = True
         for host, network, name in add_daemon_hosts:
             daemon_id = self.get_unique_name(daemon_type, host, daemons,
                                              prefix=spec.service_id,
@@ -2058,7 +2059,12 @@ you may want to run:
             self.log.debug('Placing %s.%s on host %s' % (
                 daemon_type, daemon_id, host))
 
-            self.cephadm_services[daemon_type].create(daemon_spec)
+            try:
+                self.cephadm_services[daemon_type].create(daemon_spec)
+            except (RuntimeError, OrchestratorError) as e:
+                self.log.warning("Failed while placing %s.%s on %s, skipping:\n%s" % (daemon_type, daemon_id, host, e))
+                r = False
+                continue
 
             # add to daemon list so next name(s) will also be unique
             sd = orchestrator.DaemonDescription(
@@ -2067,7 +2073,6 @@ you may want to run:
                 daemon_id=daemon_id,
             )
             daemons.append(sd)
-            r = True
 
         # remove any?
         def _ok_to_stop(remove_daemon_hosts: Set[orchestrator.DaemonDescription]) -> bool:
@@ -2082,7 +2087,6 @@ you may want to run:
             # NOTE: we are passing the 'force' flag here, which means
             # we can delete a mon instances data.
             self._remove_daemon(d.name(), d.hostname)
-            r = True
 
         return r
 
