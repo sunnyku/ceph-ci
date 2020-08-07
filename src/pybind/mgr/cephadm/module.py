@@ -524,6 +524,14 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
             self._serve_sleep()
         self.log.debug("serve exit")
 
+    def set_container_image(self, entity: str, image):
+        self.check_mon_command({
+            'prefix': 'config set',
+            'name': 'container_image',
+            'value': image,
+            'who': entity,
+        })
+
     def _update_paused_health(self):
         if self.paused:
             self.health_checks['CEPHADM_PAUSED'] = {
@@ -1633,12 +1641,7 @@ To check that the host is reachable:
                     f'Cannot redeploy {daemon_type}.{daemon_id} with a new image: Supported '
                     f'types are: {", ".join(CEPH_TYPES)}')
 
-            self.check_mon_command({
-                'prefix': 'config set',
-                'name': 'container_image',
-                'value': image,
-                'who': utils.name_to_config_section(daemon_type + '.' + daemon_id),
-            })
+            self.set_container_image(utils.name_to_config_section(daemon_type + '.' + daemon_id), image)
 
         if action == 'redeploy':
             # stop, recreate the container+unit, then restart
