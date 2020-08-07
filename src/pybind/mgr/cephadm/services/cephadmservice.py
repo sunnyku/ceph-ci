@@ -450,6 +450,9 @@ class RgwService(CephadmService):
         keyring = self.get_keyring(rgw_id).split('key = ',1)[1].rstrip()
 
         # We can call radosgw-admin within the container, cause cephadm gives the MGR the required keyring permissions
+
+        changes = False
+
         # get realms
         cmd = ['radosgw-admin',
                '--key=%s'%keyring,
@@ -467,40 +470,43 @@ class RgwService(CephadmService):
         if not result.stdout:
             result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             self.mgr.log.info('created realm: %s'%spec.rgw_realm)
+            changes = True
         else:
             try:
                 j = json.loads(result.stdout)
                 if 'realms' not in j or spec.rgw_realm not in j['realms']:
                     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     self.mgr.log.info('created realm: %s'%spec.rgw_realm)
+                    changes = True
             except Exception as e:
                 raise OrchestratorError('failed to parse realm info')
 
-        # get zonegroup
-        cmd = ['radosgw-admin',
-               '--key=%s'%keyring,
-               '--user', 'rgw.%s'%rgw_id,
-               'zonegroup', 'list',
-               '--format=json']
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        #create zonegroup if needed
-        cmd = ['radosgw-admin',
-               '--key=%s'%keyring,
-               '--user', 'rgw.%s'%rgw_id,
-               'zonegroup', 'create',
-               '--rgw-zonegroup=default',
-               '--master', '--default']
-        if not result.stdout:
+        def zonegroup():
+            # get zonegroup
+            cmd = ['radosgw-admin',
+                '--key=%s'%keyring,
+                '--user', 'rgw.%s'%rgw_id,
+                'zonegroup', 'list',
+                '--format=json']
             result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            self.mgr.log.info('created zonegroup: default')
-        else:
-            try:
-                j = json.loads(result.stdout)
-                if 'zonegroups' not in j or 'default' not in j['zonegroups']:
-                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    self.mgr.log.info('created zonegroup: default')
-            except Exception as e:
-                raise OrchestratorError('failed to parse zonegroup info')
+            #create zonegroup if needed
+            cmd = ['radosgw-admin',
+                '--key=%s'%keyring,
+                '--user', 'rgw.%s'%rgw_id,
+                'zonegroup', 'create',
+                '--rgw-zonegroup=default',
+                '--master', '--default']
+            if not result.stdout:
+                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.mgr.log.info('created zonegroup: default')
+            else:
+                try:
+                    j = json.loads(result.stdout)
+                    if 'zonegroups' not in j or 'default' not in j['zonegroups']:
+                        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        self.mgr.log.info('created zonegroup: default')
+                except Exception as e:
+                    raise OrchestratorError('failed to parse zonegroup info')
 
         #get zones
         cmd = ['radosgw-admin',
@@ -510,25 +516,45 @@ class RgwService(CephadmService):
                '--format=json']
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         #create zone if needed
-        cmd = ['radosgw-admin',
-               '--key=%s'%keyring,
-               '--user', 'rgw.%s'%rgw_id,
-               'zone', 'create',
-               '--rgw-zonegroup=default',
-               '--rgw-zone=%s'%spec.rgw_zone,
-               '--master', '--default']
         if not result.stdout:
+            zonegroup()
+            cmd = ['radosgw-admin',
+                   '--key=%s'%keyring,
+                   '--user', 'rgw.%s'%rgw_id,
+                   'zone', 'create',
+                   '--rgw-zonegroup=default',
+                   '--rgw-zone=%s'%spec.rgw_zone,
+                   '--master', '--default']
             result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             self.mgr.log.info('created zone: %s'%spec.rgw_zone)
-        else:
-            try:
+            changes = True
+        else:  
+            try:  
                 j = json.loads(result.stdout)
                 if 'zones' not in j or spec.rgw_zone not in j['zones']:
+                    zonegroup()
+                    cmd = ['radosgw-admin',
+                           '--key=%s'%keyring,
+                           '--user', 'rgw.%s'%rgw_id,
+                           'zone', 'create',
+                           '--rgw-zonegroup=default',
+                           '--rgw-zone=%s'%spec.rgw_zone,
+                           '--master', '--default']
                     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     self.mgr.log.info('created zone: %s'%spec.rgw_zone)
+                    changes = True
             except Exception as e:
                 raise OrchestratorError('failed to parse zone info')
 
+        # update period if changes were made 
+        if changes:
+            cmd = ['radosgw-admin',
+                   '--key=%s'%keyring,
+                   '--user', 'rgw.%s'%rgw_id,
+                   'period', 'update',
+                   '--rgw-realm=%s'%spec.rgw_realm,
+                   '--commit']
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 class RbdMirrorService(CephadmService):
     TYPE = 'rbd-mirror'
