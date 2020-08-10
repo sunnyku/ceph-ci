@@ -3994,7 +3994,7 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
    * note: encoding matches MClientReply::InodeStat
    */
   if (session->info.has_feature(CEPHFS_FEATURE_REPLY_ENCODING)) {
-    ENCODE_START(3, 1, bl);
+    ENCODE_START(4, 1, bl);
     encode(oi->ino, bl);
     encode(snapid, bl);
     encode(oi->rdev, bl);
@@ -4037,6 +4037,11 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
     encode(any_i->change_attr, bl);
     encode(file_i->export_pin, bl);
     encode(snap_btime, bl);
+    if (file_i->mirror_info) {
+      encode(*file_i->mirror_info, bl);
+    } else {
+      encode("", bl);
+    }
     ENCODE_FINISH(bl);
   }
   else {

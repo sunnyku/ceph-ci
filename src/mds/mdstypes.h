@@ -25,6 +25,7 @@
 
 #include "inode_backtrace.h"
 
+#include <boost/optional.hpp>
 #include <boost/spirit/include/qi.hpp>
 #include <boost/pool/pool.hpp>
 #include "include/ceph_assert.h"
@@ -618,6 +619,7 @@ struct inode_t {
 
   std::basic_string<char,std::char_traits<char>,Allocator<char>> stray_prior_path; //stores path before unlink
 
+  boost::optional<std::string> mirror_info;
 private:
   bool older_is_consistent(const inode_t &other) const;
 };
@@ -626,7 +628,7 @@ private:
 template<template<typename> class Allocator>
 void inode_t<Allocator>::encode(ceph::buffer::list &bl, uint64_t features) const
 {
-  ENCODE_START(16, 6, bl);
+  ENCODE_START(17, 6, bl);
 
   encode(ino, bl);
   encode(rdev, bl);
@@ -681,13 +683,19 @@ void inode_t<Allocator>::encode(ceph::buffer::list &bl, uint64_t features) const
   encode(export_ephemeral_random_pin, bl);
   encode(export_ephemeral_distributed_pin, bl);
 
+  if (mirror_info) {
+    encode(*mirror_info, bl);
+  } else {
+    encode("", bl);
+  }
+
   ENCODE_FINISH(bl);
 }
 
 template<template<typename> class Allocator>
 void inode_t<Allocator>::decode(ceph::buffer::list::const_iterator &p)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(16, 6, 6, p);
+  DECODE_START_LEGACY_COMPAT_LEN(17, 6, 6, p);
 
   decode(ino, p);
   decode(rdev, p);
@@ -783,6 +791,16 @@ void inode_t<Allocator>::decode(ceph::buffer::list::const_iterator &p)
   } else {
     export_ephemeral_random_pin = 0;
     export_ephemeral_distributed_pin = false;
+  }
+
+  if (struct_v >= 17) {
+    std::string _mirror_info;
+    decode(_mirror_info, p);
+    if (_mirror_info == "") {
+      mirror_info = boost::none;
+    } else {
+      mirror_info = _mirror_info;
+    }
   }
 
   DECODE_FINISH(p);
