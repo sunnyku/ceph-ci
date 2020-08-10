@@ -215,7 +215,7 @@ public:
                           string name,
                           string value,
                           file_layout_t *layout);
-  void handle_set_vxattr(MDRequestRef& mdr, CInode *cur);
+  void handle_set_vxattr(MDRequestRef& mdr, CInode *cur, int flags);
   void handle_remove_vxattr(MDRequestRef& mdr, CInode *cur);
   void handle_client_setxattr(MDRequestRef& mdr);
   void handle_client_removexattr(MDRequestRef& mdr);
@@ -317,6 +317,10 @@ private:
   friend class ServerContext;
   friend class ServerLogContext;
   friend class Batch_Getattr_Lookup;
+
+  bool is_ceph_vxattr(std::string_view xattr_name) {
+    return xattr_name.compare(0, 5, "ceph.") == 0;
+  }
 
   void reply_client_request(MDRequestRef& mdr, const ref_t<MClientReply> &reply);
   void flush_session(Session *session, MDSGatherBuilder& gather);

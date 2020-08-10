@@ -915,6 +915,11 @@ Inode * Client::add_update_inode(InodeStat *st, utime_t from,
       in->rstat = st->rstat;
       in->quota = st->quota;
       in->dir_pin = st->dir_pin;
+      if (st->mirror_info == "") {
+        in->mirror_info = boost::none;
+      } else {
+        in->mirror_info = st->mirror_info;
+      }
     }
     // move me if/when version reflects fragtree changes.
     if (in->dirfragtree != st->dirfragtree) {
@@ -12193,6 +12198,16 @@ size_t Client::_vxattrcb_snap_btime(Inode *in, char *val, size_t size)
       (long unsigned)in->snap_btime.nsec());
 }
 
+bool Client::_vxattrcb_mirror_info_exists(Inode *in)
+{
+  return in->mirror_info ? true : false;
+}
+
+size_t Client::_vxattrcb_mirror_info(Inode *in, char *val, size_t size)
+{
+  return snprintf(val, size, "%s", (*in->mirror_info).c_str());
+}
+
 #define CEPH_XATTR_NAME(_type, _name) "ceph." #_type "." #_name
 #define CEPH_XATTR_NAME2(_type, _name, _name2) "ceph." #_type "." #_name "." #_name2
 
@@ -12271,6 +12286,13 @@ const Client::VXattr Client::_dir_vxattrs[] = {
     getxattr_cb: &Client::_vxattrcb_snap_btime,
     readonly: true,
     exists_cb: &Client::_vxattrcb_snap_btime_exists,
+    flags: 0,
+  },
+  {
+    name: "ceph.mirror.info",
+    getxattr_cb: &Client::_vxattrcb_mirror_info,
+    readonly: false,
+    exists_cb: &Client::_vxattrcb_mirror_info_exists,
     flags: 0,
   },
   { name: "" }     /* Required table terminator */

@@ -136,6 +136,8 @@ struct InodeStat {
 
   mds_rank_t dir_pin;
 
+  std::string mirror_info;
+
  public:
   InodeStat() {}
   InodeStat(ceph::buffer::list::const_iterator& p, const uint64_t features) {
@@ -193,6 +195,9 @@ struct InodeStat {
       if (struct_v >= 3) {
         decode(snap_btime, p);
       } // else remains zero
+      if (struct_v >= 4) {
+        decode(mirror_info, p);
+      }
       DECODE_FINISH(p);
     }
     else {
