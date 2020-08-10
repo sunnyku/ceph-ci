@@ -5490,7 +5490,7 @@ int Server::check_layout_vxattr(MDRequestRef& mdr,
   return 0;
 }
 
-void Server::handle_set_vxattr(MDRequestRef& mdr, CInode *cur)
+void Server::handle_set_vxattr(MDRequestRef& mdr, CInode *cur, int flags)
 {
   const cref_t<MClientRequest> &req = mdr->client_request;
   string name(req->get_path2());
@@ -5667,6 +5667,37 @@ void Server::handle_set_vxattr(MDRequestRef& mdr, CInode *cur)
     auto pi = cur->project_inode(mdr);
     cur->setxattr_ephemeral_dist(val);
     pip = pi.inode.get();
+  } else if (name == "ceph.mirror.info"sv) {
+    if (!cur->is_root()) {
+      respond_to_request(mdr, -EINVAL);
+      return;
+    }
+    if (value == "") {
+      dout(10) << "bad vxattr value -- empty string for " << name << dendl;
+      respond_to_request(mdr, -EINVAL);
+      return;
+    }
+
+    if (!xlock_policylock(mdr, cur)) {
+      return;
+    }
+
+
+    if ((flags & CEPH_XATTR_CREATE) && cur->get_projected_inode()->mirror_info) {
+      dout(10) << "setxattr '" << name << "' XATTR_CREATE and EEXIST on " << *cur << dendl;
+      respond_to_request(mdr, -EEXIST);
+      return;
+    }
+    if ((flags & CEPH_XATTR_REPLACE) && !cur->get_projected_inode()->mirror_info) {
+      dout(10) << "setxattr '" << name << "' XATTR_REPLACE and ENODATA on " << *cur << dendl;
+      respond_to_request(mdr, -ENODATA);
+      return;
+    }
+
+    auto pi = cur->project_inode(mdr);
+    pi.inode->mirror_info = value;
+    mdr->no_early_reply = true;
+    pip = pi.inode.get();
   } else {
     dout(10) << " unknown vxattr " << name << dendl;
     respond_to_request(mdr, -EINVAL);
@@ -5743,7 +5774,40 @@ void Server::handle_remove_vxattr(MDRequestRef& mdr, CInode *cur)
     // null/none value (empty string, means default layout).  Is equivalent
     // to a setxattr with empty string: pass through the empty payload of
     // the rmxattr request to do this.
-    handle_set_vxattr(mdr, cur);
+    handle_set_vxattr(mdr, cur, 0);
+    return;
+  } else if (name == "ceph.mirror.info"sv) {
+    if (!cur->is_root()) {
+      respond_to_request(mdr, -EINVAL);
+      return;
+    }
+
+    if (!cur->get_projected_inode()->mirror_info) {
+      respond_to_request(mdr, -ENODATA);
+      return;
+    }
+
+    MutationImpl::LockOpVec lov;
+    lov.add_xlock(&cur->policylock);
+    if (!mds->locker->acquire_locks(mdr, lov)) {
+      return;
+    }
+
+    auto pi = cur->project_inode(mdr);
+    pi.inode->mirror_info = boost::none;
+
+    pi.inode->version = cur->pre_dirty();
+
+    // log + wait
+    mdr->ls = mdlog->get_current_segment();
+    EUpdate *le = new EUpdate(mdlog, "remove dir layout vxattr");
+    mdlog->start_entry(le);
+    le->metablob.add_client_req(req->get_reqid(), req->get_oldest_client_tid());
+    mdcache->predirty_journal_parents(mdr, &le->metablob, cur, 0, PREDIRTY_PRIMARY);
+    mdcache->journal_dirty_inode(mdr.get(), &le->metablob, cur);
+
+    mdr->no_early_reply = true;
+    journal_and_reply(mdr, cur, 0, le, new C_MDS_inode_update_finish(this, mdr, cur));
     return;
   }
 
@@ -5754,15 +5818,16 @@ void Server::handle_client_setxattr(MDRequestRef& mdr)
 {
   const cref_t<MClientRequest> &req = mdr->client_request;
   string name(req->get_path2());
+  int flags = req->head.args.setxattr.flags;
 
   // magic ceph.* namespace?
-  if (name.compare(0, 5, "ceph.") == 0) {
+  if (is_ceph_vxattr(name)) {
     // can't use rdlock_path_pin_ref because we need to xlock snaplock/policylock
     CInode *cur = try_get_auth_inode(mdr, req->get_filepath().get_ino());
     if (!cur)
       return;
 
-    handle_set_vxattr(mdr, cur);
+    handle_set_vxattr(mdr, cur, flags);
     return;
   }
 
@@ -5775,7 +5840,7 @@ void Server::handle_client_setxattr(MDRequestRef& mdr)
     return;
   }
 
-  int flags = req->head.args.setxattr.flags;
+
 
   MutationImpl::LockOpVec lov;
   lov.add_xlock(&cur->xattrlock);
@@ -5857,7 +5922,8 @@ void Server::handle_client_removexattr(MDRequestRef& mdr)
   const cref_t<MClientRequest> &req = mdr->client_request;
   std::string name(req->get_path2());
 
-  if (name.compare(0, 5, "ceph.") == 0) {
+  // magic ceph.* namespace?
+  if (is_ceph_vxattr(name)) {
     // can't use rdlock_path_pin_ref because we need to xlock snaplock/policylock
     CInode *cur = try_get_auth_inode(mdr, req->get_filepath().get_ino());
     if (!cur)
