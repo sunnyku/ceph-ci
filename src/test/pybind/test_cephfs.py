@@ -142,6 +142,39 @@ def test_xattr():
     assert_equal("user.big\x00", ret_buff.decode('utf-8'))
 
 @with_setup(setup_test)
+def test_ceph_mirror_xattr():
+    cephfs.setxattr("/", "ceph.mirror.info", b"value", 0)
+    assert_equal(b"value", cephfs.getxattr("/", "ceph.mirror.info"))
+
+    # setting again with XATTR_CREATE should fail
+    assert_raises(libcephfs.ObjectExists, cephfs.setxattr,
+                  "/", "ceph.mirror.info", b"change", os.XATTR_CREATE)
+    # xattr value should not get flipped too
+    assert_equal(b"value", cephfs.getxattr("/", "ceph.mirror.info"))
+
+    # ceph.mirror.info should not show up in listing
+    ret_val, _ = cephfs.listxattr("/")
+    assert_equal(0, ret_val)
+
+    cephfs.setxattr("/", "ceph.mirror.info", b"changed", os.XATTR_REPLACE)
+    assert_equal(b"changed", cephfs.getxattr("/", "ceph.mirror.info"))
+
+    cephfs.removexattr("/", "ceph.mirror.info")
+    # ceph.mirror.info is already removed
+    assert_raises(libcephfs.NoData, cephfs.getxattr, "/", "ceph.mirror.info")
+    # removing again should throw error
+    assert_raises(libcephfs.NoData, cephfs.removexattr, "/", "ceph.mirror.info")
+
+    # cannot set an empty value
+    assert_raises(libcephfs.InvalidValue, cephfs.setxattr,"/", "ceph.mirror.info", b"", 0)
+
+    # attribute is only allowed on root
+    cephfs.mkdir(b"/temp-directory", 0o755)
+    assert_raises(libcephfs.InvalidValue, cephfs.setxattr,
+                  "/temp-directory", "ceph.mirror.info", b"change", 0)
+    cephfs.rmdir(b"/temp-directory")
+
+@with_setup(setup_test)
 def test_fxattr():
     fd = cephfs.open(b'/file-fxattr', 'w', 0o755)
     assert_raises(libcephfs.OperationNotSupported, cephfs.fsetxattr, fd, "key", b"value", 0)
