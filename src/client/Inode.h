@@ -5,6 +5,7 @@
 #define CEPH_CLIENT_INODE_H
 
 #include <numeric>
+#include <boost/optional.hpp>
 
 #include "include/ceph_assert.h"
 #include "include/types.h"
@@ -272,6 +273,8 @@ struct Inode {
   std::set<Fh*> fhs;
 
   mds_rank_t dir_pin;
+
+  boost::optional<std::string> mirror_info;
 
   Inode(Client *c, vinodeno_t vino, file_layout_t *newlayout)
     : client(c), ino(vino.ino), snapid(vino.snapid), faked_ino(0),
