@@ -3,6 +3,7 @@ meta:
 tasks:
 - ssh-keys:
 - ceph-deploy:
+    ceph-deploy-branch: wip-configparser-py2-fix
 - workunit:
     clients:
       client.0:
