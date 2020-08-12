@@ -12,8 +12,8 @@ log = logging.getLogger(__name__)
 
 
 class MgrCluster(CephCluster):
-    def __init__(self, ctx):
-        super(MgrCluster, self).__init__(ctx)
+    def __init__(self, ctx, cluster):
+        super(MgrCluster, self).__init__(ctx, cluster)
         self.mgr_ids = list(misc.all_roles_of_type(ctx.cluster, 'mgr'))
 
         if len(self.mgr_ids) == 0:
