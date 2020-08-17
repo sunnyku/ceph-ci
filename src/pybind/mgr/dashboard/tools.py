@@ -16,6 +16,8 @@ import urllib
 
 import cherrypy
 
+from ceph.deployment.utils import wrap_ipv6
+
 from . import mgr
 from .exceptions import ViewCacheNoDataException
 from .settings import Settings
@@ -686,11 +688,7 @@ def build_url(host, scheme=None, port=None):
     :type port: int
     :rtype: str
     """
-    try:
-        ipaddress.IPv6Address(host)
-        netloc = '[{}]'.format(host)
-    except ValueError:
-        netloc = host
+    netloc = wrap_ipv6(host)
     if port:
         netloc += ':{}'.format(port)
     pr = urllib.parse.ParseResult(
