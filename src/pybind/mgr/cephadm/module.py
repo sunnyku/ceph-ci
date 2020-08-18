@@ -9,7 +9,7 @@ from threading import Event
 
 import string
 from typing import List, Dict, Optional, Callable, Tuple, TypeVar, \
-    Any, Set, TYPE_CHECKING, cast, Iterator, Union
+    Any, Set, TYPE_CHECKING, cast, Iterator, Union, NamedTuple
 
 import datetime
 import os
@@ -102,6 +102,11 @@ def trivial_completion(f: Callable[..., T]) -> Callable[..., CephadmCompletion[T
         return CephadmCompletion(on_complete=lambda _: f(*args, **kwargs))
 
     return wrapper
+
+class ContainerInspectInfo(NamedTuple):
+    image_id: str
+    ceph_version: Optional[str]
+    repo_digest: Optional[str]
 
 
 class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
@@ -248,6 +253,12 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
             'default': None,
             'desc': 'Custom repository password'
         },
+        {
+            'name': 'convert_to_repo_digest',
+            'type': 'bool',
+            'default': False,
+            'desc': 'Automatically convert image tags to image digest. Make sure all daemons use the same image',
+        }
     ]
 
     def __init__(self, *args, **kwargs):
@@ -287,6 +298,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
             self.registry_url: Optional[str] = None
             self.registry_username: Optional[str] = None
             self.registry_password: Optional[str] = None
+            self.convert_to_repo_digest = False
 
         self._cons = {}  # type: Dict[str, Tuple[remoto.backends.BaseConnection,remoto.backends.LegacyModuleExecute]]
 
@@ -489,6 +501,8 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
 
             try:
 
+                self.convert_tags_to_repo_digest()
+
                 # refresh daemons
                 self.log.debug('refreshing hosts and daemons')
                 self._refresh_hosts_and_daemons()
@@ -518,6 +532,32 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
 
             self._serve_sleep()
         self.log.debug("serve exit")
+
+    def convert_tags_to_repo_digest(self):
+        if not self.convert_to_repo_digest:
+            return
+        settings = self.upgrade.get_distinct_container_image_settings()
+        digests: Dict[str, ContainerInspectInfo] = {}
+        for container_image_ref in settings.values():
+            if '@' not in container_image_ref and container_image_ref not in digests:
+                image_info = self._get_container_image_info(container_image_ref)
+                if image_info.repo_digest:
+                    assert '@' in image_info.repo_digest, image_info
+                digests[container_image_ref] = image_info
+
+        for entity, container_image_ref in settings.items():
+            if '@' not in container_image_ref:
+                image_info = digests[container_image_ref]
+                if image_info.repo_digest:
+                    self.set_container_image(entity, image_info.repo_digest)
+
+    def set_container_image(self, entity: str, image):
+        self.check_mon_command({
+            'prefix': 'config set',
+            'name': 'container_image',
+            'value': image,
+            'who': entity,
+        })
 
     def _update_paused_health(self):
         if self.paused:
@@ -1624,12 +1664,7 @@ you may want to run:
                     f'Cannot redeploy {daemon_type}.{daemon_id} with a new image: Supported '
                     f'types are: {", ".join(CEPH_TYPES)}')
 
-            self.check_mon_command({
-                'prefix': 'config set',
-                'name': 'container_image',
-                'value': image,
-                'who': utils.name_to_config_section(daemon_type + '.' + daemon_id),
-            })
+            self.set_container_image(utils.name_to_config_section(daemon_type + '.' + daemon_id), image)
 
         if action == 'redeploy':
             # stop, recreate the container+unit, then restart
@@ -2439,7 +2474,7 @@ you may want to run:
     def apply_alertmanager(self, spec: ServiceSpec) -> str:
         return self._apply(spec)
 
-    def _get_container_image_id(self, image_name):
+    def _get_container_image_info(self, image_name) -> ContainerInspectInfo:
         # pick a random host...
         host = None
         for host_name in self.inventory.keys():
@@ -2457,12 +2492,20 @@ you may want to run:
         if code:
             raise OrchestratorError('Failed to pull %s on %s: %s' % (
                 image_name, host, '\n'.join(out)))
-        j = json.loads('\n'.join(out))
-        image_id = j.get('image_id')
-        ceph_version = j.get('ceph_version')
-        self.log.debug('image %s -> id %s version %s' %
-                       (image_name, image_id, ceph_version))
-        return image_id, ceph_version
+        try:
+            j = json.loads('\n'.join(out))
+            r = ContainerInspectInfo(
+                j['image_id'],
+                j.get('ceph_version'),
+                j.get('repo_digest')
+            )
+            self.log.debug(f'image {image_name} -> {r}')
+            return r
+        except (ValueError, KeyError) as _:
+            msg = 'Failed to pull %s on %s: %s' % (image_name, host, '\n'.join(out))
+            self.log.exception(msg)
+            raise OrchestratorError(msg)
+
 
     @trivial_completion
     def upgrade_check(self, image, version) -> str:
@@ -2473,19 +2516,18 @@ you may want to run:
         else:
             raise OrchestratorError('must specify either image or version')
 
-        target_id, target_version = self._get_container_image_id(target_name)
-        self.log.debug('Target image %s id %s version %s' % (
-            target_name, target_id, target_version))
+        image_info = self._get_container_image_info(target_name)
+        self.log.debug(f'image info {image} -> {image_info}')
         r = {
             'target_name': target_name,
-            'target_id': target_id,
-            'target_version': target_version,
+            'target_id': image_info.image_id,
+            'target_version': image_info.ceph_version,
             'needs_update': dict(),
             'up_to_date': list(),
         }
         for host, dm in self.cache.daemons.items():
             for name, dd in dm.items():
-                if target_id == dd.container_image_id:
+                if image_info.image_id == dd.container_image_id:
                     r['up_to_date'].append(dd.name())
                 else:
                     r['needs_update'][dd.name()] = {
@@ -2493,6 +2535,9 @@ you may want to run:
                         'current_id': dd.container_image_id,
                         'current_version': dd.version,
                     }
+        if self.convert_to_repo_digest:
+            r['target_digest'] = image_info.repo_digest
+
         return json.dumps(r, indent=4, sort_keys=True)
 
     @trivial_completion

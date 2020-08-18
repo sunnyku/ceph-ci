@@ -224,3 +224,64 @@ default via fe80::2480:28ec:5097:3fe2 dev wlp2s0 proto ra metric 20600 pref medi
         with pytest.raises(Exception) as e:
             cd.command_registry_login()
         assert str(e.value) == "Failed to login to custom registry @ sample-url as sample-user with given password"
+
+    def test_get_image_info_from_inspect(self):
+        out = """[
+    {
+        "Id": "0715e5299bacb5204306db07e9a929e962263a068328f5b744e1c26b8e81a8b2",
+        "Digest": "sha256:65c2ca758bd6c80ab89bfdc96aa2057b2e4e5654819172ffeff5f3eb3318ee5b",
+        "RepoTags": [
+            "registry/ceph/ceph:latest"
+        ],
+        "RepoDigests": [
+            "registry/ceph/ceph@sha256:65c2ca758bd6c80ab89bfdc96aa2057b2e4e5654819172ffeff5f3eb3318ee5b"
+        ],
+        "Parent": "",
+        "Comment": "",
+        "Created": "2020-03-13T05:56:12Z",
+        "Config": {
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/mit/bin:/usr/lib/mit/sbin"
+            ],
+            "Cmd": [
+                "/bin/bash",
+                "--login"
+            ],
+            "Labels": {
+                "ceph": "True",
+                "io.ceph.version": "15.1.0"
+            }
+        },
+        "Version": "",
+        "Author": "Author",
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 780375001,
+        "VirtualSize": 780375001,
+        "GraphDriver": {
+            "Name": "vfs",
+            "Data": null
+        },
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:ffed4c6925ef34cf21cdaaf61126b7fd797b12ad5c3d14c0e06cb696d21988e8",
+                "sha256:7752c989a10ebeba24026d38f4613f123552938506b8601efa167e2d3edabe98"
+            ]
+        },
+        "Labels": {
+            "ceph": "True",
+            "io.ceph.version": "15.1.0"
+        },
+        "Annotations": {},
+        "ManifestType": "application/vnd.docker.distribution.manifest.v2+json",
+        "User": "",
+        "History": []
+    }
+]
+"""
+        r = cd.get_image_info_from_inspect(out, 'registry/ceph/ceph:latest')
+        assert r == {
+            'image_id': '0715e5299bacb5204306db07e9a929e962263a068328f5b744e1c26b8e81a8b2',
+            'repo_digest': 'registry/ceph/ceph@sha256:65c2ca758bd6c80ab89bfdc96aa2057b2e4e5654819172ffeff5f3eb3318ee5b'
+        }
