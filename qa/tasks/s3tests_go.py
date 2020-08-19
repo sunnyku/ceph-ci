@@ -1,7 +1,7 @@
 """
 Task for running RGW S3 tests with the AWS GO SDK
 """
-from cStringIO import StringIO
+from io import StringIO
 import logging
 
 import base64
