@@ -148,6 +148,9 @@ empty for all operations not involving the retained snapshots.
 
 .. note:: Retained snapshots can be used as a clone source to recreate the subvolume, or clone to a newer subvolume.
 
+.. warning:: Subvolume snapshots, of subvolumes that have been recreated post being retained with snapshots,
+             may occupy more space in the snapshot, if the asynchronous purge of older content is still in progress.
+
 Resize a subvolume using::
 
     $ ceph fs subvolume resize <vol_name> <subvol_name> <new_size> [--group_name <subvol_group_name>] [--no_shrink]
