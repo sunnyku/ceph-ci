@@ -1672,7 +1672,7 @@ you may want to run:
 
         self._daemon_action_set_image(action, image, d.daemon_type, d.daemon_id)
 
-        self.log.info(f'{action} daemon {daemon_name}')
+        self.log.info(f'Schedule {action} daemon {daemon_name}')
         return self._schedule_daemon_action(daemon_name, action)
 
     def daemon_is_self(self, daemon_type: str, daemon_id: str) -> bool:
@@ -1686,6 +1686,7 @@ you may want to run:
                 f'Unable to schedule redeploy for {daemon_name}: No standby MGRs')
         self.cache.schedule_daemon_action(dd.hostname, dd.name(), action)
         msg = "Scheduled to {} {} on host '{}'".format(action, daemon_name, dd.hostname)
+        self._kick_serve_loop()
         return msg
 
     @trivial_completion
