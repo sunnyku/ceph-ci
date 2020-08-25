@@ -17,6 +17,7 @@
 
 #include "PluginRegistry.h"
 #include "ceph_ver.h"
+#include "common/version.h"
 #include "common/ceph_context.h"
 #include "common/errno.h"
 #include "common/debug.h"
@@ -164,10 +165,10 @@ int PluginRegistry::load(const std::string &type,
     lderr(cct) << __func__ << " code_version == NULL" << dlerror() << dendl;
     return -EXDEV;
   }
-  if (code_version() != string(CEPH_GIT_NICE_VER)) {
+  if (code_version() != ceph_version_to_str()) {
     lderr(cct) << __func__ << " plugin " << fname << " version "
 	       << code_version() << " != expected "
-	       << CEPH_GIT_NICE_VER << dendl;
+	       << ceph_version_to_str() << dendl;
     dlclose(library);
     return -EXDEV;
   }

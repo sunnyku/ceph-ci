@@ -3687,6 +3687,27 @@ void OSDMonitor::_booted(MonOpRequestRef op, bool logit)
 		      << " boot";
   }
 
+  // XXX: Put m["ceph version"] into mon_metadata here?
+  int from = m->get_orig_source().num();
+  // metadata
+  bufferlist osd_metadata;
+  encode(m->metadata, osd_metadata);
+  pending_metadata[from] = osd_metadata;
+  //std::map<int, Metadata> pending_metadata;
+  dout(10) << __func__ << " pending_metadata=" << pending_metadata << dendl;
+  //dout(10) << __func__ << " version=" << << dendl;
+  // There probably isn't an metadata removal pending since this OSD is up
+  pending_metadata_rm.erase(from);
+
+  // metadata, too!
+  auto t(std::make_shared<MonitorDBStore::Transaction>());
+  for (map<int,bufferlist>::iterator p = pending_metadata.begin();
+       p != pending_metadata.end();
+       ++p)
+    t->put(OSD_METADATA_PREFIX, stringify(p->first), p->second);
+  pending_metadata.clear();
+  mon->store->apply_transaction(t);
+
   send_latest(op, m->sb.current_epoch+1);
 }
 

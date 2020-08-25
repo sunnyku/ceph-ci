@@ -16,8 +16,10 @@
  */
 
 #include <errno.h>
+#include <cstring>
 
 #include "ceph_ver.h"
+#include "common/version.h"
 #include "ErasureCodePlugin.h"
 #include "common/errno.h"
 #include "include/dlfcn_compat.h"
@@ -135,8 +137,8 @@ int ErasureCodePluginRegistry::load(const std::string &plugin_name,
     (const char *(*)())dlsym(library, PLUGIN_VERSION_FUNCTION);
   if (erasure_code_version == NULL)
     erasure_code_version = an_older_version;
-  if (erasure_code_version() != string(CEPH_GIT_NICE_VER)) {
-    *ss << "expected plugin " << fname << " version " << CEPH_GIT_NICE_VER
+  if (strcmp(erasure_code_version(),ceph_version_to_str()) != 0) {
+    *ss << "expected plugin " << fname << " version " << ceph_version_to_str()
 	<< " but it claims to be " << erasure_code_version() << " instead";
     dlclose(library);
     return -EXDEV;

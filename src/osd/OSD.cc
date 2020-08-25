@@ -3966,6 +3966,12 @@ void OSD::final_init()
     asok_hook,
     "Scrub purged_snaps vs snapmapper index");
   ceph_assert(r == 0);
+  r = admin_socket->register_command(
+    "set-test-version " \
+    "name=version,type=CephString,req=true",
+    test_ops_hook,
+    "Override ceph version for testing only");
+  ceph_assert(r == 0);
 
   // -- pg commands --
   // old form: ceph pg <pgid> command ...
@@ -6106,6 +6112,16 @@ void TestOpsSocketHook::test_ops(OSDService *service, ObjectStore *store,
       return;
     }
     service->set_injectfull(state, count);
+    return;
+  }
+  if (command == "set-test-version") {
+    string verstr;
+    cmd_getval(cmdmap, "version", verstr);
+    if (verstr.size()) {
+      ss << "Setting version=" << verstr;
+      test_git_nice_ver = verstr;
+      service->osd->_send_boot();
+    }
     return;
   }
   ss << "Internal error - command=" << command;

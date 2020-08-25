@@ -17,6 +17,8 @@
 
 #include <string>
 
+extern std::string test_git_nice_ver;
+
 // Return a string describing the Ceph version
 const char *ceph_version_to_str(void);
 

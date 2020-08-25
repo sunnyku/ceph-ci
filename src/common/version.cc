@@ -23,8 +23,12 @@
 #define _STR(x) #x
 #define STRINGIFY(x) _STR(x)
 
+std::string test_git_nice_ver;
+
 const char *ceph_version_to_str(void)
 {
+  if (test_git_nice_ver.size())
+	  return (const char *)test_git_nice_ver.c_str();
   return CEPH_GIT_NICE_VER;
 }
 
@@ -41,7 +45,7 @@ const char *git_version_to_str(void)
 std::string const pretty_version_to_str(void)
 {
   std::ostringstream oss;
-  oss << "ceph version " << CEPH_GIT_NICE_VER
+  oss << "ceph version " << ceph_version_to_str()
       << " (" << STRINGIFY(CEPH_GIT_VER) << ") "
       << ceph_release_name(CEPH_RELEASE)
       << " (" << CEPH_RELEASE_TYPE << ")";
