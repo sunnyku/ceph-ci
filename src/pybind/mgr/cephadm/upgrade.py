@@ -257,6 +257,7 @@ class CephadmUpgrade:
             self.upgrade_state.target_version = target_version
             self.upgrade_state.repo_digest = repo_digest
             self._save_upgrade_state()
+            target_image = self.target_image
         target_version = self.upgrade_state.target_version
         logger.info('Upgrade: Target is %s with id %s' % (target_image,
                                                           target_id))
