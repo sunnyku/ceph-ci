@@ -696,16 +696,13 @@ bool HealthMonitor::check_leader_health()
     all_versions.erase(all_versions.rbegin()->first);
     ceph_assert(all_versions.size() > 0);
     ostringstream ss, ds;
-    unsigned lower_daemon_count = 0;
+    unsigned daemon_count = 0;
     for (auto& g:all_versions) {
-      lower_daemon_count += g.second.size();
+      daemon_count += g.second.size();
     }
-    if (lower_daemon_count == 1){
-      ss << "There is a daemon running an older version of ceph";
-    }
-    else{
-      ss << "There are daemons running older versions of ceph";
-    }
+    ceph_assert(!(daemon_count == 1 && all_versions.size() != 1));
+    ss << "There " << (daemon_count == 1 ? "is a daemon" : "are daemons")
+       << " running " << (all_versions.size() > 1 ? "old versions" : "an older version")  << " of ceph";
     auto& d = next.add("DAE_INCORRECT_VERSION", HEALTH_WARN, ss.str(), 1);
     for (auto& g:all_versions) {
       for (auto& i : g.second) { // Daemon list
@@ -715,7 +712,6 @@ bool HealthMonitor::check_leader_health()
          << " running an older version of ceph: " << g.first << "\n";
     }
     d.detail.push_back(ds.str());
-    start = time(NULL);
   }
 
   // MON_DOWN
