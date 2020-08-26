@@ -17,6 +17,7 @@
 #include <sstream>
 #include <regex>
 #include <time.h>
+#include <iterator>
 
 #include "include/ceph_assert.h"
 #include "include/common_fwd.h"
@@ -685,36 +686,49 @@ bool HealthMonitor::check_leader_health()
 
  // DAEMON_VERSION_INCORRECT
   std::map<string, std::list<string> > all_versions;
-  //int correct_versions = 0;
-  //double timeout = 600;
-  mon->get_versions(all_versions);
-  if (all_versions.size() > 1){
-    dout(20) << __func__ << " all_versions=" << all_versions << dendl;
 #if 0
-    time_t current = time(NULL);
-    if ((timeout < difftime(current, start))){
-      while (correct_versions > 0){
-        multiple_versions.erase(multiple_versions.begin());
-        correct_versions = correct_versions - 1;
-      }
+  // This needs to be a debug config for testing
+  //double timeout = 600;
+  double timeout = 15;
+  time_t current = time(NULL);
+  if ((timeout < difftime(current, start))) {
+#endif
+    mon->get_versions(all_versions);
+    if (all_versions.size() > 1) {
+      dout(20) << __func__ << " all_versions=" << all_versions << dendl;
+      // The last entry has the largest version
+      dout(20) << __func__ << " highest version daemon count "
+	       << all_versions.rbegin()->second.size() << dendl;
+      // Erase interator converted from reverse iterator
+      all_versions.erase(all_versions.rbegin()->first);
+      ceph_assert(all_versions.size() > 0);
       ostringstream ss, ds;
-      if (multiple_versions.size() == 1){
-        ss << "There is a daemon running an inconsistent version of ceph \n";
+      unsigned lower_daemon_count = 0;
+      for (auto& g:all_versions) {
+	//if (std::next(g,1) == all_versions.end())
+	 // break;
+        lower_daemon_count += g.second.size();
+      }
+      if (lower_daemon_count == 1){
+        ss << "There is a daemon running an older version of ceph \n";
       }
       else{
-        ss << "There are daemons running inconsistent versions of ceph \n";
+        ss << "There are daemons running older versions of ceph \n";
       }
       auto& d = next.add("DAE_INCORRECT_VERSION", HEALTH_WARN, ss.str(), 1);
-      for(auto& g:multiple_versions){
-          for (auto& i : g.second){
-            ds << "daemon id " << i.second.second << "." << mon->monmap->get_name(i.second.first) << " is running incorrect ceph version: " << g.first <<" \n";
+      for (auto& g:all_versions) {
+	//if (std::next(g,1) == all_versions.end())
+//	  break;
+        for (auto& i : g.second) { // Daemon list
+          ds << i << " ";
+          ds << (g.second.size() == 1 ? "is" : "are")
+             << " running an older version of ceph: " << g.first << "\n";
         }
       }
       d.detail.push_back(ds.str());
       start = time(NULL);
-    }
-#endif
-  }
+   }
+  //}
 
   // MON_DOWN
   {

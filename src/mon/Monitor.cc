@@ -5336,10 +5336,10 @@ void Monitor::count_metadata(const string& field, Formatter *f)
 
 void Monitor::get_versions(std::map<string, list<string> > &versions)
 {
-  // monitor
+  // mon
   get_mon_versions(versions);
   // osd
-  // osdmon()->get_daemo_versions(versions);
+  osdmon()->get_osd_versions(versions);
   dout(20) << __func__ << " all versions=" << versions << dendl;
 }
 
@@ -5349,15 +5349,7 @@ void Monitor::get_mon_versions(std::map<string, list<string> > &versions)
   //mon_metadata[0]["ceph_version"]=std::string("15");
   for (auto& p : mon_metadata) {
     auto q = p.second.find("ceph_version");
-#if 0
-    auto l = p.second.find("hostname");
-    if (l == p.second.end()) {
-      // not likely though
-      continue;
-    }
-#endif
     versions[q->second].push_back(string("mon.") + monmap->get_name(p.first));
-    //versions[q->second][i] = std::make_pair(p.first, l->second);
     i = i + 1;
   }
 }
