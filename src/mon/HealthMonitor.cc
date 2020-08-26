@@ -684,11 +684,13 @@ bool HealthMonitor::check_leader_health()
   health_check_map_t next;
 
  // DAEMON_VERSION_INCORRECT
-  std::map<string, map<int, std::pair<int,string>>, std::greater<std::string>> multiple_versions;
-  int correct_versions = 0;
-  double timeout = 600;
-  mon->check_daemon_versions(multiple_versions);
-  if (multiple_versions.size() > 1){
+  std::map<string, std::list<string> > all_versions;
+  //int correct_versions = 0;
+  //double timeout = 600;
+  mon->get_versions(all_versions);
+  if (all_versions.size() > 1){
+    dout(20) << __func__ << " all_versions=" << all_versions << dendl;
+#if 0
     time_t current = time(NULL);
     if ((timeout < difftime(current, start))){
       while (correct_versions > 0){
@@ -711,6 +713,7 @@ bool HealthMonitor::check_leader_health()
       d.detail.push_back(ds.str());
       start = time(NULL);
     }
+#endif
   }
 
   // MON_DOWN
