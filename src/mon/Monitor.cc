@@ -5340,13 +5340,14 @@ void Monitor::get_versions(std::map<string, list<string> > &versions)
   get_mon_versions(versions);
   // osd
   osdmon()->get_osd_versions(versions);
+  // mgr
+  mgrmon()->get_mgr_versions(versions);
   dout(20) << __func__ << " all versions=" << versions << dendl;
 }
 
 void Monitor::get_mon_versions(std::map<string, list<string> > &versions)
 {
   int i = 0;
-  //mon_metadata[0]["ceph_version"]=std::string("15");
   for (auto& p : mon_metadata) {
     auto q = p.second.find("ceph_version_short");
     versions[q->second].push_back(string("mon.") + monmap->get_name(p.first));
