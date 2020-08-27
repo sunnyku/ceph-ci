@@ -628,7 +628,7 @@ private:
   void reencode_full_map(ceph::buffer::list& bl, uint64_t features);
 public:
   void count_metadata(const std::string& field, std::map<std::string,int> *out);
-  void get_osd_versions(std::map<string, list<string> > &versions);
+  void get_versions(std::map<string, list<string> > &versions);
 protected:
   int get_osd_objectstore_type(int osd, std::string *type);
   bool is_pool_currently_all_bluestore(int64_t pool_id, const pg_pool_t &pool,
