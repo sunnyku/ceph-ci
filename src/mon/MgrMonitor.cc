@@ -1290,7 +1290,7 @@ void MgrMonitor::count_metadata(const string& field, Formatter *f)
   f->close_section();
 }
 
-void MgrMonitor::get_mgr_versions(std::map<string, list<string> > &versions)
+void MgrMonitor::get_versions(std::map<string, list<string> > &versions)
 {
   std::set<string> ls = map.get_all_names();
   for (auto& name : ls) {

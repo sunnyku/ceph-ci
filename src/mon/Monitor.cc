@@ -5341,7 +5341,7 @@ void Monitor::get_all_versions(std::map<string, list<string> > &versions)
   // osd
   osdmon()->get_versions(versions);
   // mgr
-  mgrmon()->get_mgr_versions(versions);
+  mgrmon()->get_versions(versions);
   dout(20) << __func__ << " all versions=" << versions << dendl;
 }
 
