@@ -2108,7 +2108,7 @@ void OSDMonitor::get_osd_versions(std::map<string, list<string> > &versions)
     if (osdmap.is_up(osd)) {
       map<string,string> meta;
       load_metadata(osd, meta, nullptr);
-      auto p = meta.find("ceph_version");
+      auto p = meta.find("ceph_version_short");
       if (p == meta.end()) continue;
       versions[p->second].push_back(string("osd.") + stringify(osd));
     }

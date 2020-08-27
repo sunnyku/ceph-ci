@@ -5348,7 +5348,7 @@ void Monitor::get_mon_versions(std::map<string, list<string> > &versions)
   int i = 0;
   //mon_metadata[0]["ceph_version"]=std::string("15");
   for (auto& p : mon_metadata) {
-    auto q = p.second.find("ceph_version");
+    auto q = p.second.find("ceph_version_short");
     versions[q->second].push_back(string("mon.") + monmap->get_name(p.first));
     i = i + 1;
   }
