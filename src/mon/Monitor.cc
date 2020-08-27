@@ -5334,10 +5334,10 @@ void Monitor::count_metadata(const string& field, Formatter *f)
   f->close_section();
 }
 
-void Monitor::get_versions(std::map<string, list<string> > &versions)
+void Monitor::get_all_versions(std::map<string, list<string> > &versions)
 {
   // mon
-  get_mon_versions(versions);
+  get_versions(versions);
   // osd
   osdmon()->get_osd_versions(versions);
   // mgr
@@ -5345,7 +5345,7 @@ void Monitor::get_versions(std::map<string, list<string> > &versions)
   dout(20) << __func__ << " all versions=" << versions << dendl;
 }
 
-void Monitor::get_mon_versions(std::map<string, list<string> > &versions)
+void Monitor::get_versions(std::map<string, list<string> > &versions)
 {
   int i = 0;
   for (auto& p : mon_metadata) {

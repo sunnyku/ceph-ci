@@ -937,8 +937,8 @@ private:
   void count_metadata(const std::string& field, ceph::Formatter *f);
   void count_metadata(const std::string& field, std::map<std::string,int> *out);
   //check_daemon_versions is used to check for any daemon that have a different version than the monitor
+  void get_all_versions(std::map<string, list<string> > &versions);
   void get_versions(std::map<string, list<string> > &versions);
-  void get_mon_versions(std::map<string, list<string> > &versions);
 
   // features
   static CompatSet get_initial_supported_features();

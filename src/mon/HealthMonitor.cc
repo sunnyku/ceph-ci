@@ -686,7 +686,7 @@ bool HealthMonitor::check_leader_health()
 
  // DAEMON_VERSION_INCORRECT
   std::map<string, std::list<string> > all_versions;
-  mon->get_versions(all_versions);
+  mon->get_all_versions(all_versions);
   if (all_versions.size() > 1) {
     dout(20) << __func__ << " all_versions=" << all_versions << dendl;
     // The last entry has the largest version
