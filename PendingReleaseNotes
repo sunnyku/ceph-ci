@@ -106,3 +106,7 @@
 * Alpine build related script, documentation and test have been removed since
   the most updated APKBUILD script of Ceph is already included by Alpine Linux's
   aports repository.
+
+* A new health check will warn if different versions of Ceph are running
+  on deamons. This will be an expected warning while in the middle of
+  an upgrade. Once all updates have been done the warning will go away.
