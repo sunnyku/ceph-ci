@@ -685,6 +685,7 @@ bool HealthMonitor::check_leader_health()
   health_check_map_t next;
 
  // DAEMON_VERSION_INCORRECT
+  if (g_conf().get_val<bool>("mon_warn_on_older_version")) {
   std::map<string, std::list<string> > all_versions;
   mon->get_all_versions(all_versions);
   if (all_versions.size() > 1) {
@@ -713,6 +714,7 @@ bool HealthMonitor::check_leader_health()
          << " running an older version of ceph: " << g.first;
       d.detail.push_back(ds.str());
     }
+  }
   }
 
   // MON_DOWN

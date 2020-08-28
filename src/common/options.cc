@@ -2150,6 +2150,10 @@ std::vector<Option> get_global_options() {
     .add_service("mon")
     .set_description("Timeout (in seconds) for smarctl to run, default is set to 5"),
 
+    Option("mon_warn_on_older_version", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .add_service("mon")
+    .set_description("issue DAE_OLDER_VERSION health warning if daemons are not all running the same version"),
 
     // PAXOS
 
