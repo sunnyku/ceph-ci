@@ -3700,16 +3700,13 @@ void OSDMonitor::_booted(MonOpRequestRef op, bool logit)
 		      << " boot";
   }
 
-  // XXX: Put m["ceph version"] into mon_metadata here?
+  // Get newer metadata which includes changes to m["ceph version_short"]
   int from = m->get_orig_source().num();
   // metadata
   bufferlist osd_metadata;
   encode(m->metadata, osd_metadata);
   pending_metadata[from] = osd_metadata;
-  //std::map<int, Metadata> pending_metadata;
-  dout(10) << __func__ << " pending_metadata=" << pending_metadata << dendl;
-  //dout(10) << __func__ << " version=" << << dendl;
-  // There probably isn't an metadata removal pending since this OSD is up
+  // There probably isn't a metadata removal pending since this OSD is up
   pending_metadata_rm.erase(from);
 
   // metadata, too!
