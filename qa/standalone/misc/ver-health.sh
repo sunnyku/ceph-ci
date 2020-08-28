@@ -62,8 +62,8 @@ function TEST_check_version_health_1() {
     ceph health detail | grep DAE_OLDER_VERSION && return 1
 
     ceph tell osd.1 set-test-version 01.00.00-gversion-test
-    #sleep 30
-    flush_pg_stats
+    # XXX: How do we wait for this, and shorten the time required for warning to be presented
+    sleep 5
 
     ceph health detail
     # Should notice that osd.1 is a different version
@@ -74,8 +74,8 @@ function TEST_check_version_health_1() {
 
     ceph tell osd.2 set-test-version 01.00.00-gversion-test
     ceph tell osd.0 set-test-version 02.00.00-gversion-test
-    #sleep 30
-    flush_pg_stats
+    # XXX: How do we wait for this, and shorten the time required for warning to be presented
+    sleep 5
 
     ceph health detail
     ceph health | grep -q "HEALTH_WARN .* There are daemons running older versions of ceph" || return 1
