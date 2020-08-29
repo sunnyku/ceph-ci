@@ -45,7 +45,7 @@ from .schedule import HostAssignment, HostPlacementSpec
 from .inventory import Inventory, SpecStore, HostCache, EventStore
 from .upgrade import CEPH_UPGRADE_ORDER, CephadmUpgrade
 from .template import TemplateMgr
-from .utils import forall_hosts, CephadmNoImage, cephadmNoImage
+from .utils import forall_hosts, CephadmNoImage, cephadmNoImage, str_to_datetime
 
 try:
     import remoto
@@ -81,7 +81,6 @@ Host *
   ConnectTimeout=30
 """
 
-DATEFMT = '%Y-%m-%dT%H:%M:%S.%f'
 CEPH_DATEFMT = '%Y-%m-%dT%H:%M:%S.%fZ'
 
 CEPH_TYPES = set(CEPH_UPGRADE_ORDER)
@@ -1384,7 +1383,7 @@ To check that the host is reachable:
             for k in ['created', 'started', 'last_configured', 'last_deployed']:
                 v = d.get(k, None)
                 if v:
-                    setattr(sd, k, datetime.datetime.strptime(d[k], DATEFMT))
+                    setattr(sd, k, str_to_datetime(d[k]))
             sd.daemon_type = d['name'].split('.')[0]
             sd.daemon_id = '.'.join(d['name'].split('.')[1:])
             sd.hostname = host

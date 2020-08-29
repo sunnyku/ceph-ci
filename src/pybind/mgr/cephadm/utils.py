@@ -1,6 +1,7 @@
 import logging
 import re
 import json
+import datetime
 from enum import Enum
 from functools import wraps
 from typing import Optional, Callable, TypeVar, List, NewType, TYPE_CHECKING
@@ -14,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 ConfEntity = NewType('ConfEntity', str)
 AuthEntity = NewType('AuthEntity', str)
+
+DATEFMT = '%Y-%m-%dT%H:%M:%S.%f'
 
 
 class CephadmNoImage(Enum):
@@ -103,3 +106,11 @@ def get_cluster_health(mgr: 'CephadmOrchestrator') -> str:
         raise OrchestratorError('failed to parse health status')
 
     return j['status']
+
+
+def str_to_datetime(input: str) -> datetime.datetime:
+    return datetime.datetime.strptime(input, DATEFMT)
+
+
+def datetime_to_str(dt: datetime.datetime) -> str:
+    return dt.strftime(DATEFMT)
