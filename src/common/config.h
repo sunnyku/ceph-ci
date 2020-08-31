@@ -340,6 +340,19 @@ public:
   std::string data_dir_option;  ///< data_dir config option, if any
 
 public:
+  unsigned get_osd_pool_default_primary_write_size(const ConfigValues& values,
+                                                   uint8_t size) const {
+    uint8_t primary_write_size = get_val<uint64_t>(values, "osd_pool_default_primary_write_size");
+    uint8_t min_size = get_osd_pool_default_min_size(values, size);
+
+    if (primary_write_size) {
+      primary_write_size = std::min(primary_write_size, size);
+      return std::max(primary_write_size, min_size);
+    } else {
+      return size;
+    }
+  }
+
   unsigned get_osd_pool_default_min_size(const ConfigValues& values,
                                          uint8_t size) const {
     uint8_t min_size = get_val<uint64_t>(values, "osd_pool_default_min_size");

@@ -185,6 +185,9 @@ public:
     return config.get_val_from_conf_file(values,
 					 sections, key, out, emeta);
   }
+  unsigned get_osd_pool_default_primary_write_size(uint8_t size) const {
+    return config.get_osd_pool_default_primary_write_size(values, size);
+  }
   unsigned get_osd_pool_default_min_size(uint8_t size) const {
     return config.get_osd_pool_default_min_size(values, size);
   }
