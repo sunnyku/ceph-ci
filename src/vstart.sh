@@ -1245,6 +1245,7 @@ if [ $CEPH_NUM_MON -gt 0 ]; then
     cat <<EOF | $CEPH_BIN/ceph -c $conf_fn config assimilate-conf -i -
 [global]
 osd_pool_default_size = $OSD_POOL_DEFAULT_SIZE
+osd_pool_default_primary_write_size = 2
 osd_pool_default_min_size = 1
 
 [mon]
