@@ -207,6 +207,8 @@ class RookCluster(object):
 
     def rook_api_call(self, verb, path, **kwargs):
         full_path = self.rook_url(path)
+        log.info(f"verb : {verb} and path: {path}")
+        log.info(f"THE rook_api_call {full_path}")
         log.debug("[%s] %s" % (verb, full_path))
 
         return self.coreV1_api.api_client.call_api(
