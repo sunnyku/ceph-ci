@@ -182,7 +182,7 @@ class SnapSchedClient(CephfsClient):
                 snap_ts = time.strftime(SNAPSHOT_TS_FORMAT)
                 snap_name = f'{path}/.snap/{SNAPSHOT_PREFIX}-{snap_ts}'
                 fs_handle.mkdir(snap_name, 0o755)
-            log.info(f'created scheduled snapshot of {path}')
+            log.info(f'created scheduled snapshot {snap_name}')
             sched.update_last(time, db)
         except cephfs.Error:
             self._log_exception('create_scheduled_snapshot')
