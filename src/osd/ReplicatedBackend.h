@@ -16,6 +16,7 @@
 #define REPBACKEND_H
 
 #include "PGBackend.h"
+#include "global/global_context.h"
 
 struct C_ReplicatedBackend_OnPullComplete;
 class ReplicatedBackend : public PGBackend {
@@ -339,15 +340,23 @@ private:
     Context *on_commit;
     OpRequestRef op;
     eversion_t v;
+    bool primary_committed;
+    size_t tolerated_uncommit_size;
     bool done() const {
       return waiting_for_commit.empty();
+    }
+    void set_tolerated_uncommit_size(const OSDMapRef osdmap, const pg_t& pgid) {
+      unsigned pool_size = osdmap->get_pg_pool_size(pgid);
+      unsigned primary_write_size = g_conf().get_osd_pool_default_primary_write_size(pool_size);
+      tolerated_uncommit_size = pool_size - primary_write_size;
     }
   private:
     FRIEND_MAKE_REF(InProgressOp);
     InProgressOp(ceph_tid_t tid, Context *on_commit, OpRequestRef op, eversion_t v)
       :
 	tid(tid), on_commit(on_commit),
-	op(op), v(v) {}
+	op(op), v(v), primary_committed(false),
+  tolerated_uncommit_size(0) {}
   };
   std::map<ceph_tid_t, ceph::ref_t<InProgressOp>> in_progress_ops;
 public:
