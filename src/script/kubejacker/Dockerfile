@@ -1,4 +1,4 @@
-FROM ceph/daemon-base:latest-master
+FROM ceph/daemon-base:latest-master-devel
 # for openSUSE, use:
 # FROM registry.opensuse.org/home/ssebastianwagner/rook-ceph/images/opensuse/leap:latest
 
