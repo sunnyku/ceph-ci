@@ -1,6 +1,8 @@
 >= 14.2.11
 ----------
 
+* The ``ceph df`` command now lists the number of pgs in each pool.
+
 * RGW: The ``radosgw-admin`` sub-commands dealing with orphans --
   ``radosgw-admin orphans find``, ``radosgw-admin orphans finish``,
   ``radosgw-admin orphans list-jobs`` -- have been deprecated. They
