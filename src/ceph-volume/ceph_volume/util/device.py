@@ -77,13 +77,17 @@ class Device(object):
         'vendor',
     ]
 
+    # define some class variables; mostly to enable the use of autospec in
+    # unittests
+    lvs = []
+
     def __init__(self, path):
         self.path = path
         # LVs can have a vg/lv path, while disks will have /dev/sda
         self.abspath = path
         self.lv_api = None
-        self.vgs = []
         self.lvs = []
+        self.vgs = []
         self.vg_name = None
         self.lv_name = None
         self.disk_api = {}
@@ -418,6 +422,41 @@ class Device(object):
                    if lv.tags.get("ceph.type") in ["data", "block"]]
         return any(osd_ids)
 
+    @property
+    def vg_free_percent(self):
+        if self.vgs:
+            return [vg.free_percent for vg in self.vgs]
+        else:
+            return [1]
+
+    @property
+    def vg_size(self):
+        if self.vgs:
+            return [vg.size for vg in self.vgs]
+        else:
+            # TODO fix this...we can probably get rid of vg_free
+            return self.vg_free
+
+    @property
+    def vg_free(self):
+        '''
+        Returns the free space in all VGs on this device. If no VGs are
+        present, returns the disk size.
+        '''
+        if self.vgs:
+            return [vg.free for vg in self.vgs]
+        else:
+            # We could also query 'lvmconfig
+            # --typeconfig full' and use allocations -> physical_extent_size
+            # value to project the space for a vg
+            # assuming 4M extents here
+            extent_size = 4194304
+            vg_free = int(self.size / extent_size) * extent_size
+            if self.size % 4194304 == 0:
+                # If the extent size divides size exactly, deduct on extent for
+                # LVM metadata
+                vg_free -= extent_size
+            return [vg_free]
 
     def _check_generic_reject_reasons(self):
         reasons = [
@@ -442,9 +481,9 @@ class Device(object):
     def _check_lvm_reject_reasons(self):
         rejected = []
         if self.vgs:
-            available_vgs = [vg for vg in self.vgs if vg.free >= 5368709120]
+            available_vgs = [vg for vg in self.vgs if int(vg.vg_free_count) > 10]
             if not available_vgs:
-                rejected.append('Insufficient space (<5GB) on vgs')
+                rejected.append('Insufficient space (<10 extents) on vgs')
         else:
             # only check generic if no vgs are present. Vgs might hold lvs and
             # that might cause 'locked' to trigger
