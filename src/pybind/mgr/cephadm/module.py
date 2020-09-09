@@ -2437,6 +2437,8 @@ To check that the host is reachable:
             raise OrchestratorError('cannot scale %s service below 1' % (
                 spec.service_type))
 
+        spec.validate()
+
         HostAssignment(
             spec=spec,
             get_hosts_func=self._get_hosts,
