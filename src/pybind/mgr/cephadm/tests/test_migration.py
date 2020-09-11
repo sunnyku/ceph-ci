@@ -5,6 +5,7 @@ from ceph.deployment.service_spec import PlacementSpec, ServiceSpec, HostPlaceme
 from cephadm import CephadmOrchestrator
 from cephadm.inventory import SPEC_STORE_PREFIX, DATEFMT
 from cephadm.tests.fixtures import _run_cephadm, cephadm_module, wait, with_host
+from cephadm.serve import CephadmServe
 from tests import mock
 
 
@@ -20,7 +21,7 @@ def test_migrate_scheduler(cephadm_module: CephadmOrchestrator):
             )
             assert wait(cephadm_module, c) == 'Scheduled rgw.r.z update...'
 
-            cephadm_module._apply_all_services()
+            CephadmServe(cephadm_module)._apply_all_services()
             out = {o.hostname for o in wait(cephadm_module, cephadm_module.list_daemons())}
             assert out == {'host1', 'host2'}
 
