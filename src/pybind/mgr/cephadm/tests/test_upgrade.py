@@ -5,6 +5,7 @@ import pytest
 
 from ceph.deployment.service_spec import ServiceSpec
 from cephadm import CephadmOrchestrator
+from cephadm.serve import CephadmServe
 from .fixtures import _run_cephadm, wait, cephadm_module, with_host, with_service
 
 
@@ -72,7 +73,7 @@ def test_upgrade_run(use_repo_digest, cephadm_module: CephadmOrchestrator):
                     )
                 ])
             )):
-                cephadm_module._refresh_hosts_and_daemons()
+                CephadmServe(cephadm_module)._refresh_hosts_and_daemons()
 
             cephadm_module.upgrade._do_upgrade()
 
