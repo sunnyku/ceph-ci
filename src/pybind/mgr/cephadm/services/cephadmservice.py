@@ -24,7 +24,7 @@ AuthEntity = NewType('AuthEntity', str)
 
 class CephadmDaemonSpec(Generic[ServiceSpecs]):
     # typing.NamedTuple + Generic is broken in py36
-    def __init__(self, host: str, daemon_id,
+    def __init__(self, host: str, daemon_id: str,
                  spec: Optional[ServiceSpecs] = None,
                  network: Optional[str] = None,
                  keyring: Optional[str] = None,
@@ -72,13 +72,16 @@ class CephadmService(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def TYPE(self):
+    def TYPE(self) -> str:
         pass
 
     def __init__(self, mgr: "CephadmOrchestrator"):
         self.mgr: "CephadmOrchestrator" = mgr
 
-    def make_daemon_spec(self, host, daemon_id, netowrk, spec: ServiceSpecs) -> CephadmDaemonSpec:
+    def make_daemon_spec(self, host: str,
+                         daemon_id: str,
+                         netowrk: str,
+                         spec: ServiceSpecs) -> CephadmDaemonSpec:
         return CephadmDaemonSpec(
             host=host,
             daemon_id=daemon_id,
@@ -86,13 +89,13 @@ class CephadmService(metaclass=ABCMeta):
             network=netowrk
         )
 
-    def create(self, daemon_spec: CephadmDaemonSpec):
+    def create(self, daemon_spec: CephadmDaemonSpec) -> str:
         raise NotImplementedError()
 
     def generate_config(self, daemon_spec: CephadmDaemonSpec) -> Tuple[Dict[str, Any], List[str]]:
         raise NotImplementedError()
 
-    def daemon_check_post(self, daemon_descrs: List[DaemonDescription]):
+    def daemon_check_post(self, daemon_descrs: List[DaemonDescription]) -> None:
         """The post actions needed to be done after daemons are checked"""
         if self.mgr.config_dashboard:
             if 'dashboard' in self.mgr.get('mgr_map')['modules']:
@@ -100,7 +103,7 @@ class CephadmService(metaclass=ABCMeta):
             else:
                 logger.debug('Dashboard is not enabled. Skip configuration.')
 
-    def config_dashboard(self, daemon_descrs: List[DaemonDescription]):
+    def config_dashboard(self, daemon_descrs: List[DaemonDescription]) -> None:
         """Config dashboard settings."""
         raise NotImplementedError()
 
@@ -117,7 +120,7 @@ class CephadmService(metaclass=ABCMeta):
                                       service_name: str,
                                       get_mon_cmd: str,
                                       set_mon_cmd: str,
-                                      service_url: str):
+                                      service_url: str) -> None:
         """A helper to get and set service_url via Dashboard's MON command.
 
            If result of get_mon_cmd differs from service_url, set_mon_cmd will
@@ -139,7 +142,7 @@ class CephadmService(metaclass=ABCMeta):
     def _check_and_set_dashboard(self,
                                  service_name: str,
                                  get_cmd: str,
-                                 get_set_cmd_dicts: Callable[[str], List[dict]]):
+                                 get_set_cmd_dicts: Callable[[str], List[dict]]) -> None:
         """A helper to set configs in the Dashboard.
 
         The method is useful for the pattern:
@@ -415,7 +418,7 @@ class MgrService(CephService):
         # if no active mgr found, return empty Daemon Desc
         return DaemonDescription()
 
-    def fail_over(self):
+    def fail_over(self) -> None:
         if not self.mgr_map_has_standby():
             raise OrchestratorError('Need standby mgr daemon', event_kind_subject=(
                 'daemon', 'mgr' + self.mgr.get_mgr_id()))
@@ -490,7 +493,7 @@ class MdsService(CephService):
 class RgwService(CephService):
     TYPE = 'rgw'
 
-    def config(self, spec: RGWSpec, rgw_id: str):
+    def config(self, spec: RGWSpec, rgw_id: str) -> None:
         assert self.TYPE == spec.service_type
 
         # create realm, zonegroup, and zone if needed
@@ -560,7 +563,7 @@ class RgwService(CephService):
 
         return self.mgr._create_daemon(daemon_spec)
 
-    def get_keyring(self, rgw_id: str):
+    def get_keyring(self, rgw_id: str) -> str:
         ret, keyring, err = self.mgr.check_mon_command({
             'prefix': 'auth get-or-create',
             'entity': self.get_auth_entity(rgw_id),
@@ -570,7 +573,7 @@ class RgwService(CephService):
         })
         return keyring
 
-    def create_realm_zonegroup_zone(self, spec: RGWSpec, rgw_id: str):
+    def create_realm_zonegroup_zone(self, spec: RGWSpec, rgw_id: str) -> None:
         if utils.get_cluster_health(self.mgr) != 'HEALTH_OK':
             raise OrchestratorError('Health not ok, will try agin when health ok')
 
@@ -595,7 +598,7 @@ class RgwService(CephService):
             except Exception as e:
                 raise OrchestratorError('failed to parse realm info')
 
-        def create_realm():
+        def create_realm() -> None:
             cmd = ['radosgw-admin',
                    '--key=%s' % keyring,
                    '--user', 'rgw.%s' % rgw_id,
@@ -621,7 +624,7 @@ class RgwService(CephService):
             except Exception as e:
                 raise OrchestratorError('failed to parse zonegroup info')
 
-        def create_zonegroup():
+        def create_zonegroup() -> None:
             cmd = ['radosgw-admin',
                    '--key=%s' % keyring,
                    '--user', 'rgw.%s' % rgw_id,
@@ -631,7 +634,7 @@ class RgwService(CephService):
             result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             self.mgr.log.info('created zonegroup: default')
 
-        def create_zonegroup_if_required():
+        def create_zonegroup_if_required() -> None:
             zonegroups = get_zonegroups()
             if 'default' not in zonegroups:
                 create_zonegroup()
@@ -652,7 +655,7 @@ class RgwService(CephService):
             except Exception as e:
                 raise OrchestratorError('failed to parse zone info')
 
-        def create_zone():
+        def create_zone() -> None:
             cmd = ['radosgw-admin',
                    '--key=%s' % keyring,
                    '--user', 'rgw.%s' % rgw_id,

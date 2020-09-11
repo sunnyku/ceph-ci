@@ -66,7 +66,7 @@ class GrafanaService(CephadmService):
         # if empty list provided, return empty Daemon Desc
         return DaemonDescription()
 
-    def config_dashboard(self, daemon_descrs: List[DaemonDescription]):
+    def config_dashboard(self, daemon_descrs: List[DaemonDescription]) -> None:
         # TODO: signed cert
         dd = self.get_active_daemon(daemon_descrs)
         service_url = 'https://{}:{}'.format(
@@ -149,9 +149,10 @@ class AlertmanagerService(CephadmService):
         # if empty list provided, return empty Daemon Desc
         return DaemonDescription()
 
-    def config_dashboard(self, daemon_descrs: List[DaemonDescription]):
+    def config_dashboard(self, daemon_descrs: List[DaemonDescription]) -> None:
         dd = self.get_active_daemon(daemon_descrs)
-        service_url = 'http://{}:{}'.format(self._inventory_get_addr(dd.hostname), self.DEFAULT_SERVICE_PORT)
+        service_url = 'http://{}:{}'.format(self._inventory_get_addr(dd.hostname),
+                                            self.DEFAULT_SERVICE_PORT)
         self._set_service_url_on_dashboard(
             'AlertManager',
             'dashboard get-alertmanager-api-host',
@@ -242,7 +243,7 @@ class PrometheusService(CephadmService):
         # if empty list provided, return empty Daemon Desc
         return DaemonDescription()
 
-    def config_dashboard(self, daemon_descrs: List[DaemonDescription]):
+    def config_dashboard(self, daemon_descrs: List[DaemonDescription]) -> None:
         dd = self.get_active_daemon(daemon_descrs)
         service_url = 'http://{}:{}'.format(
             self._inventory_get_addr(dd.hostname), self.DEFAULT_SERVICE_PORT)
