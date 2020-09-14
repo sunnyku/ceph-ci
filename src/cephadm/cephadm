@@ -2524,7 +2524,10 @@ class CephContainer:
             priv = ['--privileged',
                     # let OSD etc read block devs that haven't been chowned
                     '--group-add=disk']
-        if self.ptrace:
+        if self.ptrace and not self.privileged:
+            # if privileged, the SYS_PTRACE cap is already added
+            # in addition, --cap-add and --privileged are mutually
+            # exclusive since podman >= 2.0
             priv.append('--cap-add=SYS_PTRACE')
         init = ['--init'] if self.init else []
         vols = sum(
