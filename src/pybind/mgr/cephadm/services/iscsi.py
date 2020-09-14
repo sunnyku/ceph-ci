@@ -72,7 +72,7 @@ class IscsiService(CephService):
 
         return self.mgr._create_daemon(daemon_spec)
 
-    def config_dashboard(self, daemon_descrs: List[DaemonDescription]):
+    def config_dashboard(self, daemon_descrs: List[DaemonDescription]) -> None:
         def get_set_cmd_dicts(out: str) -> List[dict]:
             gateways = json.loads(out)['gateways']
             cmd_dicts = []
