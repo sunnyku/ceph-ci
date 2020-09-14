@@ -82,4 +82,3 @@ class TemplateMgr:
         if context is not None:
             ctx = {**ctx, **context}
         return self.engine.render(name, ctx)
-

@@ -371,6 +371,19 @@ is_available "nfs" "$cond" 10
 $CEPHADM shell --fsid $FSID --config $CONFIG --keyring $KEYRING -- \
 	 ceph orch resume
 
+# add alertmanager via custom container
+cat ${CEPHADM_SAMPLES_DIR}/custom_container.json | \
+      ${CEPHADM//--image $IMAGE_MASTER/} deploy \
+      --tcp-ports "9093 9094" \
+      --name container.alertmanager.a \
+      --fsid $FSID \
+      --config-json -
+cond="$CEPHADM shell --fsid $FSID -- test -f \
+      /var/lib/ceph/${FSID}/container.alertmanager.a/etc/alertmanager/alertmanager.yml"
+is_available "alertmanager.yml" "$cond" 10
+cond="curl 'http://localhost:9093' | grep -q 'Alertmanager'"
+is_available "alertmanager" "$cond" 10
+
 ## run
 # WRITE ME
 
