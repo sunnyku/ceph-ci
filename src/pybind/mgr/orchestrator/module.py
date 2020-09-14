@@ -492,7 +492,7 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule,
                                            service_name,
                                            refresh=refresh)
         self._orchestrator_wait([completion])
-        self.log.debug(f"IN _list_services COMPLETION IS {completion}")
+        self.log.warning(f"IN _list_services COMPLETION IS {completion}")
         raise_if_exception(completion)
         services: List[ServiceDescription] = completion.result
 

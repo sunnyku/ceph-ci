@@ -264,15 +264,15 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
     @deferred_read
     def describe_service(self, service_type=None, service_name=None,
                          refresh=False):
-        self.log.debug("IN describe_service")
+        self.log.warning("IN describe_service")
         now = datetime.datetime.utcnow()
-        self.log.info(f"WHATS THE time {now}")
-        self.log.debug(f"ROOK CLUSTER {self.rook_cluster}, ROOK ENV {self.rook_cluster.rook_env} AND CLUSTER NAME {self.rook_cluster.rook_env.cluster_name}")
-        self.log.debug(f"WE ARE ASKING ROOK API TO FETCH rook_api_get: cephclusters/{self.rook_cluster.rook_env.cluster_name}")
+        self.log.warning(f"WHATS THE time {now}")
+        self.log.warning(f"ROOK CLUSTER {self.rook_cluster}, ROOK ENV {self.rook_cluster.rook_env} AND CLUSTER NAME {self.rook_cluster.rook_env.cluster_name}")
+        self.log.warning(f"WE ARE ASKING ROOK API TO FETCH rook_api_get: cephclusters/{self.rook_cluster.rook_env.cluster_name}")
         # CephCluster
         cl = self.rook_cluster.rook_api_get(
             "cephclusters/{0}".format(self.rook_cluster.rook_env.cluster_name))
-        self.log.debug(f"WHAT DID WE GET FROM API {cl}")
+        self.log.warning(f"WHAT DID WE GET FROM API {cl}")
         self.log.debug('CephCluster %s' % cl)
         image_name = cl['spec'].get('cephVersion', {}).get('image', None)
         num_nodes = len(self.rook_cluster.get_node_names())
