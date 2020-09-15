@@ -503,6 +503,15 @@ public:
 
     /// Callbacks
     Context *on_all_commit = nullptr;
+
+    bool primary_committed = false;
+
+    size_t tolerated_uncommit_size = 0;
+    void set_tolerated_uncommit_size(const unsigned pool_size, const unsigned pw_size, const bool is_use_tier) {
+      if (!is_use_tier && pw_size > 0)
+        tolerated_uncommit_size = pool_size - pw_size;
+    }
+
     ~Op() {
       delete on_all_commit;
     }

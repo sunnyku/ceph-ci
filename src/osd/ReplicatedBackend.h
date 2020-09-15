@@ -346,7 +346,7 @@ private:
       return waiting_for_commit.empty();
     }
     void set_tolerated_uncommit_size(const unsigned pool_size, const unsigned pw_size, const bool is_use_tier) {
-      if (!is_use_tier)
+      if (!is_use_tier && pw_size > 0)
         tolerated_uncommit_size = pool_size - pw_size;
     }
   private:
