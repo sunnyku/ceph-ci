@@ -200,6 +200,8 @@ class RookCluster(object):
                                                 self.rook_env.cluster_name))
         self.nodes = KubernetesResource(self.coreV1_api.list_node)
 
+        log.warning(f"rook_env = {rook_env} \n coreV1_api = {coreV1_api} \n batchV1_api = {batchV1_api} \n inventory_maps = {self.inventory_maps} \n rook_pods ={self.rook_pods} \n nodes = {self.nodes}\n")
+
     def rook_url(self, path):
         prefix = "/apis/ceph.rook.io/%s/namespaces/%s/" % (
             self.rook_env.crd_version, self.rook_env.namespace)

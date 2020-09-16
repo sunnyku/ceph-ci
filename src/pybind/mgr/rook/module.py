@@ -75,11 +75,15 @@ class RookEnv(object):
         self.namespace = os.environ.get('POD_NAMESPACE', 'rook-ceph')
 
         # ROOK_CEPH_CLUSTER_CRD_NAME is new is Rook 1.0
+
         self.cluster_name = os.environ.get('ROOK_CEPH_CLUSTER_CRD_NAME', self.namespace)
 
         self.operator_namespace = os.environ.get('ROOK_OPERATOR_NAMESPACE', self.namespace)
         self.crd_version = os.environ.get('ROOK_CEPH_CLUSTER_CRD_VERSION', 'v1')
         self.api_name = "ceph.rook.io/" + self.crd_version
+
+        self.log.warning(f"THE POD_NAMESPACE = {self.namespace}, cluster_name/ROOK_CEPH_CLUSTER_CRD_NAME = {self.cluster_name}, "
+                         f"operator_namespace = {self.operator_namespace}, crd_version = {self.crd_version}, api_name = {self.api_name\n")
 
     def api_version_match(self):
         return self.crd_version == 'v1'
@@ -167,15 +171,15 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
         # a Rook cluster.  For development convenience, also support
         # running outside (reading ~/.kube config)
 
-        self.log.info("IN RookOrchestrator SERVE ")
-        self.log.info(f"{self._rook_env.has_namespace()}")
-        self.log.info(f"NAME SPACE {self._rook_env.namespace}")
+        self.log.warning("IN RookOrchestrator SERVE ")
+        self.log.warning(f"{self._rook_env.has_namespace()}")
+        self.log.warning(f"NAME SPACE {self._rook_env.namespace}")
 
         if self._rook_env.has_namespace():
-            self.log.info("ENV HAS NAMESPACE ")
+            self.log.warning("ENV HAS NAMESPACE ")
             config.load_incluster_config()
             cluster_name = self._rook_env.cluster_name
-            self.log.info(f"Cluster name: {cluster_name}")
+            self.log.warning(f"Cluster name: {cluster_name}")
         else:
             self.log.warning("DEVELOPMENT ONLY: Reading kube config from ~")
             config.load_kube_config()
@@ -266,12 +270,15 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
                          refresh=False):
         self.log.warning("IN describe_service")
         now = datetime.datetime.utcnow()
-        self.log.warning(f"WHATS THE time {now}")
         self.log.warning(f"ROOK CLUSTER {self.rook_cluster}, ROOK ENV {self.rook_cluster.rook_env} AND CLUSTER NAME {self.rook_cluster.rook_env.cluster_name}")
         self.log.warning(f"WE ARE ASKING ROOK API TO FETCH rook_api_get: cephclusters/{self.rook_cluster.rook_env.cluster_name}")
         # CephCluster
+        """
         cl = self.rook_cluster.rook_api_get(
             "cephclusters/{0}".format(self.rook_cluster.rook_env.cluster_name))
+        """
+        self.log.warning("INSTEAD WE ARE just asking to fetch cephclusters")
+        cl = self.rook_cluster.rook_api_get("cephclusters")
         self.log.warning(f"WHAT DID WE GET FROM API {cl}")
         self.log.debug('CephCluster %s' % cl)
         image_name = cl['spec'].get('cephVersion', {}).get('image', None)
