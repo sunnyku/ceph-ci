@@ -83,7 +83,7 @@ class RookEnv(object):
         self.api_name = "ceph.rook.io/" + self.crd_version
 
         self.log.warning(f"THE POD_NAMESPACE = {self.namespace}, cluster_name-ROOK_CEPH_CLUSTER_CRD_NAME = {self.cluster_name}, "
-                         f"operator_namespace = {self.operator_namespace}, crd_version = {self.crd_version}, api_name = {self.api_name\n")
+                         f"operator_namespace = {self.operator_namespace}, crd_version = {self.crd_version}, api_name = {self.api_name}\n")
 
     def api_version_match(self):
         return self.crd_version == 'v1'
