@@ -82,9 +82,6 @@ class RookEnv(object):
         self.crd_version = os.environ.get('ROOK_CEPH_CLUSTER_CRD_VERSION', 'v1')
         self.api_name = "ceph.rook.io/" + self.crd_version
 
-        self.log.warning(f"THE POD_NAMESPACE = {self.namespace}, cluster_name-ROOK_CEPH_CLUSTER_CRD_NAME = {self.cluster_name}, "
-                         f"operator_namespace = {self.operator_namespace}, crd_version = {self.crd_version}, api_name = {self.api_name}\n")
-
     def api_version_match(self):
         return self.crd_version == 'v1'
 
@@ -130,7 +127,7 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
             return False, "ceph-mgr not running in Rook cluster"
 
         try:
-            self.k8s.list_namespaced_pod(self._rook_env.cluster_name)
+            self.k8s.list_namespaced_pod(self._rook_env.namespace)
         except ApiException as e:
             return False, "Cannot reach Kubernetes API: {}".format(e)
         else:
@@ -192,13 +189,15 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
 
         self._k8s_CoreV1_api = client.CoreV1Api()
         self._k8s_BatchV1_api = client.BatchV1Api()
+        self.log.warning(f"THE POD_NAMESPACE = {self._rook_env.namespace}, cluster_name-ROOK_CEPH_CLUSTER_CRD_NAME = {self._rook_env.cluster_name}, "
+                         f"operator_namespace = {self._rook_env.operator_namespace}, crd_version = {self._rook_env.crd_version}, api_name = {self._rook_env.api_name}\n")
 
         try:
             # XXX mystery hack -- I need to do an API call from
             # this context, or subsequent API usage from handle_command
             # fails with SSLError('bad handshake').  Suspect some kind of
             # thread context setup in SSL lib?
-            self._k8s_CoreV1_api.list_namespaced_pod(cluster_name)
+            self._k8s_CoreV1_api.list_namespaced_pod(self._rook_env.namespace)
         except ApiException:
             # Ignore here to make self.available() fail with a proper error message
             pass
