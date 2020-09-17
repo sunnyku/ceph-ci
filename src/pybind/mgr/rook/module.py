@@ -272,16 +272,15 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
         self.log.warning(f"ROOK CLUSTER {self.rook_cluster}, ROOK ENV {self.rook_cluster.rook_env} AND CLUSTER NAME {self.rook_cluster.rook_env.cluster_name}")
         self.log.warning(f"WE ARE ASKING ROOK API TO FETCH rook_api_get: cephclusters/{self.rook_cluster.rook_env.cluster_name}")
         # CephCluster
-        """
         cl = self.rook_cluster.rook_api_get(
             "cephclusters/{0}".format(self.rook_cluster.rook_env.cluster_name))
-        """
-        self.log.warning("INSTEAD WE ARE just asking to fetch cephclusters")
-        cl = self.rook_cluster.rook_api_get("cephclusters")
         self.log.warning(f"WHAT DID WE GET FROM API {cl}")
         self.log.debug('CephCluster %s' % cl)
         image_name = cl['spec'].get('cephVersion', {}).get('image', None)
         num_nodes = len(self.rook_cluster.get_node_names())
+
+        self.log.warning(f"image_name = {image_name}")
+        self.log.warning(f"node_names = {self.rook_cluster.get_node_names()}")
 
         spec = {}
         spec['mon'] = orchestrator.ServiceDescription(
@@ -295,6 +294,7 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
             container_image_name=image_name,
             last_refresh=now,
         )
+
         spec['mgr'] = orchestrator.ServiceDescription(
             spec=ServiceSpec(
                 'mgr',
@@ -318,7 +318,7 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
         # CephFilesystems
         all_fs = self.rook_cluster.rook_api_get(
             "cephfilesystems/")
-        self.log.debug('CephFilesystems %s' % all_fs)
+        self.log.warning('CephFilesystems %s' % all_fs)
         for fs in all_fs.get('items', []):
             svc = 'mds.' + fs['metadata']['name']
             if svc in spec:
@@ -342,7 +342,7 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
         # CephObjectstores
         all_zones = self.rook_cluster.rook_api_get(
             "cephobjectstores/")
-        self.log.debug('CephObjectstores %s' % all_zones)
+        self.log.warning('CephObjectstores %s' % all_zones)
         for zone in all_zones.get('items', []):
             rgw_realm = zone['metadata']['name']
             rgw_zone = rgw_realm
@@ -370,10 +370,15 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
                 last_refresh=now,
             )
 
+        self.log.warning(f"WHAT DOES SPEC HAVE \n{spec}")
+        self.log.warning(f"DAEMONS LISTING {self._list_daemons()}")
+
         for dd in self._list_daemons():
             if dd.service_name() not in spec:
                 continue
             spec[dd.service_name()].running += 1
+
+        self.log.warning(f"FINAL EXITING SPEC \n {spec}") 
         return [v for k, v in spec.items()]
 
     @deferred_read
@@ -383,11 +388,13 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
 
     def _list_daemons(self, service_name=None, daemon_type=None, daemon_id=None, host=None,
                       refresh=False):
+        self.log.warning(f"LISTING DAEMONS daemon_type={daemon_type}, daemon_id={daemon_id}, host={host}, service_name={service_name}")
         pods = self.rook_cluster.describe_pods(daemon_type, daemon_id, host)
-        self.log.debug('pods %s' % pods)
+        self.log.warning('pods %s' % pods)
         result = []
         for p in pods:
             sd = orchestrator.DaemonDescription()
+            self.log.warning(f"WHATS DAEMONDescription = {sd}")
             sd.hostname = p['hostname']
             sd.container_id = p['name']
             sd.daemon_type = p['labels']['app'].replace('rook-ceph-', '')
@@ -409,6 +416,8 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
                 # Unknown type -- skip it
                 continue
 
+            self.log.warning(f"sd.service_name = {sd.service_name()}")
+
             if service_name is not None and service_name != sd.service_name():
                 continue
             sd.container_image_name = p['container_image_name']
@@ -419,6 +428,7 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
             sd.last_refresh = p['refreshed']
             result.append(sd)
 
+        self.log.warning(f"List daemon result {result}")
         return result
 
     def _service_add_decorate(self, typename, spec, func):

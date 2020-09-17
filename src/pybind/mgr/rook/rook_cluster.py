@@ -111,7 +111,7 @@ class KubernetesResource(object):
         # metadata is a client.V1ListMeta object type
         metadata = response.metadata  # type: client.V1ListMeta
         self._items = {item.metadata.name: item for item in response.items}
-        log.info('Full fetch of {}. result: {}'.format(self.api_func, len(self._items)))
+        log.warning('Full fetch of {}. result: {}'.format(self.api_func, len(self._items)))
         return metadata.resource_version
 
     @property
@@ -129,7 +129,7 @@ class KubernetesResource(object):
             resource_version = self._fetch()
             if _urllib3_supports_read_chunked:
                 # Start a thread which will use the kubernetes watch client against a resource
-                log.debug("Attaching resource watcher for k8s {}".format(self.api_func))
+                log.warning("Attaching resource watcher for k8s {}".format(self.api_func))
                 self.thread = self._watch(resource_version)
 
         return self._items.values()
@@ -237,6 +237,7 @@ class RookCluster(object):
         return self.rook_api_call("POST", path, **kwargs)
 
     def get_discovered_devices(self, nodenames=None):
+        log.warning(f"IN get_discovered_devices nodenames={nodenames}")
         def predicate(item):
             if nodenames is not None:
                 return item.metadata.labels['rook.io/node'] in nodenames
@@ -244,11 +245,13 @@ class RookCluster(object):
                 return True
 
         try:
+            log.warning(f"INVENTORY MAPS = {self.inventory_maps}")
             result = [i for i in self.inventory_maps.items if predicate(i)]
         except ApiException as dummy_e:
             log.exception("Failed to fetch device metadata")
             raise
 
+        log.warning(f"COLLECTED RESULT = {result}")
         nodename_to_devices = {}
         for i in result:
             drives = json.loads(i.data['devices'])
@@ -263,9 +266,11 @@ class RookCluster(object):
         # return None.
         #
         try:
+            log.warning(f"WE ARE get_nfs_conf_url for nfs_cluster = {nfs_cluster}, instance={instance}")
             ceph_nfs = self.rook_api_get("cephnfses/{0}".format(nfs_cluster))
+            log.warning(f"WE GOT FROM API {ceph_nfs}")
         except ApiException as e:
-            log.info("Unable to fetch cephnfs object: {}".format(e.status))
+            log.warning("Unable to fetch cephnfs object: {}".format(e.status))
             return None
 
         pool = ceph_nfs['spec']['rados']['pool']
@@ -275,6 +280,7 @@ class RookCluster(object):
             url = "rados://{0}/conf-{1}.{2}".format(pool, nfs_cluster, instance)
         else:
             url = "rados://{0}/{1}/conf-{2}.{3}".format(pool, namespace, nfs_cluster, instance)
+        log.warning(f"RETURNING URL = {url}")
         return url
 
     def describe_pods(self, service_type, service_id, nodename):
@@ -320,7 +326,9 @@ class RookCluster(object):
             return True
 
         refreshed = datetime.datetime.utcnow()
+        log.warning(f"DESCRIBE PODS = {self.rook_pods}")
         pods = [i for i in self.rook_pods.items if predicate(i)]
+        log.warning(f"REHASHED PODS \n {pods}")
 
         pods_summary = []
 
@@ -354,10 +362,12 @@ class RookCluster(object):
                     tz=datetime.timezone.utc).replace(tzinfo=None)
 
             pods_summary.append(s)
+        log.warning(f"POD SUMMARY {pods_summary}")
 
         return pods_summary
 
     def remove_pods(self, names):
+        log.warning(f"REMOVAL POD NAMES = {names}")
         pods = [i for i in self.rook_pods.items]
         num = 0
         for p in pods:
@@ -384,7 +394,7 @@ class RookCluster(object):
         except ApiException as e:
             if e.status == 409:
                 # Idempotent, succeed.
-                log.info("{} already exists".format(what))
+                log.warning("{} already exists".format(what))
             else:
                 raise
 
@@ -413,6 +423,7 @@ class RookCluster(object):
                     )
                 )
             )
+        log.warning(f"IN APPLY FILESYSTEM WITH SPEC={spec}")
         return self._create_or_patch(
             cfs.CephFilesystem, 'cephfilesystems', spec.service_id,
             _update_fs, _create_fs)
@@ -480,6 +491,9 @@ class RookCluster(object):
             )
         )
 
+        log.warning(f"IN add_nfsgw spec={spec}")
+        log.warning(f"rook_nfsgw = {rook_nfsgw}")
+
         if spec.namespace:
             rook_nfsgw.spec.rados.namespace = spec.namespace
 
@@ -491,10 +505,11 @@ class RookCluster(object):
         objpath = "{0}/{1}".format(rooktype, service_id)
 
         try:
+            log.warning(f"objpath = {objpath}")
             self.rook_api_delete(objpath)
         except ApiException as e:
             if e.status == 404:
-                log.info("{0} service '{1}' does not exist".format(rooktype, service_id))
+                log.warning("{0} service '{1}' does not exist".format(rooktype, service_id))
                 # Idempotent, succeed.
             else:
                 raise
@@ -523,6 +538,7 @@ class RookCluster(object):
             # type: (cnfs.CephNFS, cnfs.CephNFS) -> cnfs.CephNFS
             new.spec.server.active = newcount
             return new
+        log.warning(f"IN update_nfs_count with svc_id={svc_id} and newcount={newcount}")
         return self._patch(cnfs.CephNFS, 'cephnfses',svc_id, _update_nfs_count)
 
     def add_osds(self, drive_group, matching_hosts):
@@ -601,7 +617,7 @@ class RookCluster(object):
 
         patch = list(jsonpatch.make_patch(current_json, new.to_json()))
 
-        log.info('patch for {}/{}: \n{}'.format(crd_name, cr_name, patch))
+        log.warning('patch for {}/{}: \n{}'.format(crd_name, cr_name, patch))
 
         if len(patch) == 0:
             return "No change"
@@ -622,6 +638,7 @@ class RookCluster(object):
             current_json = self.rook_api_get(
                 "{}/{}".format(crd_name, cr_name)
             )
+            log.warning(f'_create_or_patch {current_json}')
         except ApiException as e:
             if e.status == 404:
                 current_json = None
@@ -636,7 +653,7 @@ class RookCluster(object):
 
             patch = list(jsonpatch.make_patch(current_json, new.to_json()))
 
-            log.info('patch for {}/{}: \n{}'.format(crd_name, cr_name, patch))
+            log.warning('_create_or_patch for {}/{}: \n{}'.format(crd_name, cr_name, patch))
 
             if len(patch) == 0:
                 return "No change"
@@ -662,6 +679,7 @@ class RookCluster(object):
             api_response = self.coreV1_api.list_namespaced_pod(self.rook_env.namespace,
                                                                label_selector="app=rook-ceph-mon",
                                                                timeout_seconds=10)
+            log.warning(f"get_ceph_image api_response = \n {api_response}")
             if api_response.items:
                 return api_response.items[-1].spec.containers[0].image
             else:
