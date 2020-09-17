@@ -166,7 +166,7 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule,
             decoded = json.loads(active)
             self.ident = set(decoded.get('ident', []))
             self.fault = set(decoded.get('fault', []))
-        self.log.debug('ident {}, fault {}'.format(self.ident, self.fault))
+        self.log.warning('ident {}, fault {}'.format(self.ident, self.fault))
 
     def _save(self):
         encoded = json.dumps({
@@ -326,6 +326,8 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule,
             for host in sorted(completion.result, key=lambda h: h.hostname):
                 table.add_row((host.hostname, host.addr, ' '.join(host.labels), host.status))
             output = table.get_string()
+        self.log.warning(f"_get_hosts aka orch host ls \n {completion.result}")
+        self.log.warning(f"FINAL OUTPUT {output}")
         return HandleCommandResult(stdout=output)
 
     @_cli_write_command(
@@ -459,6 +461,8 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule,
                             )
                         )
             out.append(table.get_string())
+            self.log.warning(f"orch device ls aka list_devices = \n {completion.result}")
+            self.log.warning(f"FINAL Output = {out}")
             return HandleCommandResult(stdout='\n'.join(out))
 
     @_cli_write_command(
@@ -492,10 +496,9 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule,
                                            service_name,
                                            refresh=refresh)
         self._orchestrator_wait([completion])
-        self.log.warning(f"IN _list_services COMPLETION IS {completion}")
         raise_if_exception(completion)
         services: List[ServiceDescription] = completion.result
-
+        self.log.warning(f"IN _list_services COMPLETION IS \n {completion.result}")
         def ukn(s):
             return '<unknown>' if s is None else s
 
@@ -534,6 +537,7 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule,
                     pl = '<unmanaged>'
                 else:
                     pl = s.spec.placement.pretty_str()
+                self.log.warning(f"{s.spec.service_name()}")
                 table.add_row((
                     s.spec.service_name(),
                     '%d/%d' % (s.running, s.size),
@@ -564,6 +568,7 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule,
         self._orchestrator_wait([completion])
         raise_if_exception(completion)
         daemons: List[DaemonDescription] = completion.result
+        self.log.warning(f"orch ps AKA _list_daemons :\n {completion.result}")
 
         def ukn(s):
             return '<unknown>' if s is None else s
