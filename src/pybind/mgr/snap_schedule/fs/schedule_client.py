@@ -237,7 +237,7 @@ class SnapSchedClient(CephfsClient):
     @updates_schedule_db
     # TODO improve interface
     def store_snap_schedule(self, fs, path_, args):
-        sched = Schedule(*args)
+        sched = Schedule(*args, allow_minute_snaps=self.mgr.get_module_option('allow_m_granularity'))
         log.debug(f'attempting to add schedule {sched}')
         db = self.get_schedule_db(fs)
         sched.store_schedule(db)
