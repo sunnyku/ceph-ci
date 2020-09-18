@@ -228,6 +228,7 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
     @deferred_read
     def get_inventory(self, host_filter=None, refresh=False):
         host_list = None
+        self.log.warning(f"IN GET_INVENTORY host_filter={host_filter}, refresh={refresh}")
         if host_filter and host_filter.hosts:
             # Explicit host list
             host_list = host_filter.hosts
@@ -237,6 +238,8 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
             raise NotImplementedError()
 
         devs = self.rook_cluster.get_discovered_devices(host_list)
+        self.log.warning(f"HOST LIST={host_list}")
+        self.log.warning(f"get_discovered_devices \n {devs}")
 
         result = []
         for host_name, host_devs in devs.items():
@@ -256,6 +259,7 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
                     ))
 
             result.append(orchestrator.InventoryHost(host_name, inventory.Devices(devs)))
+        self.log.warning(f"EXITING GET_INVENTORY WITH RESULT {result}")
 
         return result
 
