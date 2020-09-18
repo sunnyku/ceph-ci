@@ -126,7 +126,8 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
             return False, "ceph-mgr not running in Rook cluster"
 
         try:
-            self.k8s.list_namespaced_pod(self._rook_env.namespace)
+            i = self.k8s.list_namespaced_pod(self._rook_env.namespace)
+            self.log.warning(f" available WHAT DOES LIST POD OUTPUT \n {i}")
         except ApiException as e:
             return False, "Cannot reach Kubernetes API: {}".format(e)
         else:
@@ -185,7 +186,8 @@ class RookOrchestrator(MgrModule, orchestrator.Orchestrator):
             # this context, or subsequent API usage from handle_command
             # fails with SSLError('bad handshake').  Suspect some kind of
             # thread context setup in SSL lib?
-            self._k8s_CoreV1_api.list_namespaced_pod(self._rook_env.namespace)
+            i = self._k8s_CoreV1_api.list_namespaced_pod(self._rook_env.namespace)
+            self.log.warning(f"IN SERVE list_namespaced_pod do \n {i}")
         except ApiException:
             # Ignore here to make self.available() fail with a proper error message
             pass
