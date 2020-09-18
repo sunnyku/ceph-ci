@@ -254,6 +254,7 @@ target_link_libraries(ceph_test_librgw_file
   ${UNITTEST_LIBS}
   ${EXTRALIBS}
   )
+install(TARGETS ceph_test_librgw_file DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # ceph_test_librgw_file_cd (just the rgw_file create-delete bucket ops)
 add_executable(ceph_test_librgw_file_cd
@@ -266,6 +267,7 @@ target_link_libraries(ceph_test_librgw_file_cd
   ${UNITTEST_LIBS}
   ${EXTRALIBS}
   )
+install(TARGETS ceph_test_librgw_file_cd DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # ceph_test_librgw_file_gp (just the rgw_file get-put bucket ops)
 add_executable(ceph_test_librgw_file_gp
@@ -278,6 +280,7 @@ target_link_libraries(ceph_test_librgw_file_gp
   ${UNITTEST_LIBS}
   ${EXTRALIBS}
   )
+install(TARGETS ceph_test_librgw_file_gp DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # ceph_test_librgw_file_nfsns (nfs namespace tests)
 add_executable(ceph_test_librgw_file_nfsns
@@ -297,6 +300,7 @@ target_link_libraries(ceph_test_librgw_file_nfsns
 if(WITH_BOOST_CONTEXT)
   target_link_libraries(ceph_test_librgw_file_nfsns spawn)
 endif()
+install(TARGETS ceph_test_librgw_file_nfsns DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 
 # ceph_test_librgw_file_aw (nfs write transaction [atomic write] tests)
@@ -310,6 +314,7 @@ target_link_libraries(ceph_test_librgw_file_aw
   ${UNITTEST_LIBS}
   ${EXTRALIBS}
   )
+install(TARGETS ceph_test_librgw_file_aw DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # ceph_test_librgw_file_marker (READDIR with string and uint64 offsets)
 add_executable(ceph_test_librgw_file_marker
@@ -326,6 +331,7 @@ target_link_libraries(ceph_test_librgw_file_marker
 if(WITH_BOOST_CONTEXT)
   target_link_libraries(ceph_test_librgw_file_marker spawn)
 endif()
+install(TARGETS ceph_test_librgw_file_marker DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # ceph_test_rgw_token
 add_executable(ceph_test_rgw_token
