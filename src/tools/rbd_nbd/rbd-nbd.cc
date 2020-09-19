@@ -76,8 +76,10 @@ struct Config {
   int nbds_max = 0;
   int max_part = 255;
   int timeout = -1;
+  int persist_timeout = 60;
 
   bool exclusive = false;
+  bool persist = false;
   bool quiesce = false;
   bool readonly = false;
   bool set_max_part = false;
@@ -104,6 +106,8 @@ static void usage()
             << "  --exclusive             Forbid writes by other clients\n"
             << "  --max_part <limit>      Override for module param max_part\n"
             << "  --nbds_max <limit>      Override for module param nbds_max\n"
+            << "  --persist               Don't disconnect on exit\n"
+            << "  --persist-timeout       Dead device timeout\n"
             << "  --quiesce               Use quiesce callbacks\n"
             << "  --quiesce-hook <path>   Specify quiesce hook path\n"
             << "                          (default: " << Config().quiesce_hook << ")\n"
@@ -120,6 +124,7 @@ static void usage()
 
 static int nbd = -1;
 static int nbd_index = -1;
+static bool nbd_persist = false;
 
 enum Command {
   None,
@@ -181,6 +186,10 @@ public:
         break;
       }
     }
+  }
+
+  Config *get_cfg() const {
+    return cfg;
   }
 
 private:
@@ -894,11 +903,13 @@ static int try_ioctl_setup(Config *cfg, int fd, uint64_t size, uint64_t flags)
   r = ioctl(nbd, NBD_SET_BLKSIZE, RBD_NBD_BLKSIZE);
   if (r < 0) {
     r = -errno;
+    cerr << "rbd-nbd: NBD_SET_BLKSIZE failed" << std::endl;
     goto close_nbd;
   }
 
   r = ioctl(nbd, NBD_SET_SIZE, size);
   if (r < 0) {
+    cerr << "rbd-nbd: NBD_SET_SIZE failed" << std::endl;
     r = -errno;
     goto close_nbd;
   }
@@ -1100,14 +1111,21 @@ static int netlink_connect_cb(struct nl_msg *msg, void *arg)
 }
 
 static int netlink_connect(Config *cfg, struct nl_sock *sock, int nl_id, int fd,
-                           uint64_t size, uint64_t flags)
+                           uint64_t size, uint64_t flags, bool reconnect=false)
 {
   struct nlattr *sock_attr;
   struct nlattr *sock_opt;
   struct nl_msg *msg;
   int ret;
 
-  nl_socket_modify_cb(sock, NL_CB_VALID, NL_CB_CUSTOM, netlink_connect_cb, cfg);
+  if (reconnect) {
+    dout(10) << "netlink try reconnect for " << cfg->devpath << dendl;
+
+    nl_socket_modify_cb(sock, NL_CB_VALID, NL_CB_CUSTOM, genl_handle_msg, NULL);
+  } else {
+    nl_socket_modify_cb(sock, NL_CB_VALID, NL_CB_CUSTOM, netlink_connect_cb,
+                        cfg);
+  }
 
   msg = nlmsg_alloc();
   if (!msg) {
@@ -1115,8 +1133,8 @@ static int netlink_connect(Config *cfg, struct nl_sock *sock, int nl_id, int fd,
     return -ENOMEM;
   }
 
-  if (!genlmsg_put(msg, NL_AUTO_PORT, NL_AUTO_SEQ, nl_id, 0, 0, NBD_CMD_CONNECT,
-                   0)) {
+  if (!genlmsg_put(msg, NL_AUTO_PORT, NL_AUTO_SEQ, nl_id, 0, 0,
+                   reconnect ? NBD_CMD_RECONFIGURE : NBD_CMD_CONNECT, 0)) {
     cerr << "rbd-nbd: Could not setup message." << std::endl;
     goto free_msg;
   }
@@ -1127,6 +1145,9 @@ static int netlink_connect(Config *cfg, struct nl_sock *sock, int nl_id, int fd,
       goto free_msg;
 
     NLA_PUT_U32(msg, NBD_ATTR_INDEX, ret);
+    if (reconnect) {
+      nbd_index = ret;
+    }
   }
 
   if (cfg->timeout >= 0)
@@ -1135,6 +1156,9 @@ static int netlink_connect(Config *cfg, struct nl_sock *sock, int nl_id, int fd,
   NLA_PUT_U64(msg, NBD_ATTR_SIZE_BYTES, size);
   NLA_PUT_U64(msg, NBD_ATTR_BLOCK_SIZE_BYTES, RBD_NBD_BLKSIZE);
   NLA_PUT_U64(msg, NBD_ATTR_SERVER_FLAGS, flags);
+  if (cfg->persist) {
+    NLA_PUT_U64(msg, NBD_ATTR_DEAD_CONN_TIMEOUT, cfg->persist_timeout);
+  }
 
   sock_attr = nla_nest_start(msg, NBD_ATTR_SOCKETS);
   if (!sock_attr) {
@@ -1154,6 +1178,9 @@ static int netlink_connect(Config *cfg, struct nl_sock *sock, int nl_id, int fd,
 
   ret = nl_send_sync(sock, msg);
   if (ret < 0) {
+    if (cfg->persist && !reconnect) {
+      return netlink_connect(cfg, sock, nl_id, fd, size, flags, true);
+    }
     cerr << "rbd-nbd: netlink connect failed: " << nl_geterror(ret)
          << std::endl;
     return -EIO;
@@ -1239,7 +1266,7 @@ static void handle_signal(int signum)
     return;
   }
 
-  dout(20) << __func__ << ": " << "sending NBD_DISCONNECT" << dendl;
+  dout(20) << __func__ << ": " << "sending disconnect" << dendl;
   ret = netlink_disconnect(nbd_index);
   if (ret == 1)
     ret = ioctl(nbd, NBD_DISCONNECT);
@@ -1258,6 +1285,7 @@ static NBDServer *start_server(int fd, librbd::Image& image, Config *cfg)
   server = new NBDServer(fd, image, cfg);
   server->start();
 
+  nbd_persist = cfg->persist;
   init_async_signal_handler();
   register_async_signal_handler(SIGHUP, sighup_handler);
   register_async_signal_handler_oneshot(SIGINT, handle_signal);
@@ -1403,7 +1431,7 @@ static int do_map(int argc, const char *argv[], Config *cfg)
 
   server = start_server(fd[1], image, cfg);
 
-  use_netlink = cfg->try_netlink;
+  use_netlink = cfg->try_netlink || cfg->persist;
   if (use_netlink) {
     r = try_netlink_setup(cfg, fd[0], size, flags);
     if (r < 0) {
@@ -1660,6 +1688,18 @@ static int parse_args(vector<const char*>& args, std::ostream *err_msg,
         return -EINVAL;
       }
       cfg->set_max_part = true;
+    } else if (ceph_argparse_flag(args, i, "--persist", (char *)NULL)) {
+      cfg->persist = true;
+    } else if (ceph_argparse_witharg(args, i, &cfg->persist_timeout, err,
+                                     "--persist-timeout", (char *)NULL)) {
+      if (!err.str().empty()) {
+        *err_msg << "rbd-nbd: " << err.str();
+        return -EINVAL;
+      }
+      if (cfg->persist_timeout <= 0) {
+        *err_msg << "rbd-nbd: Invalid argument for persist-timeout!";
+        return -EINVAL;
+      }
     } else if (ceph_argparse_flag(args, i, "--quiesce", (char *)NULL)) {
       cfg->quiesce = true;
     } else if (ceph_argparse_witharg(args, i, &cfg->quiesce_hook,
@@ -1711,6 +1751,10 @@ static int parse_args(vector<const char*>& args, std::ostream *err_msg,
 
   switch (cmd) {
     case Connect:
+      if (cfg->persist && cfg->devpath.empty()) {
+        *err_msg << "rbd-nbd: must specify device for persist";
+        return -EINVAL;
+      }
       if (args.begin() == args.end()) {
         *err_msg << "rbd-nbd: must specify image-or-snap-spec";
         return -EINVAL;

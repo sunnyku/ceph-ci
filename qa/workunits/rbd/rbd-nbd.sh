@@ -304,4 +304,16 @@ unmap_device ${DEV} ${PID}
 cat ${LOG_FILE}
 expect_false grep 'quiesce failed' ${LOG_FILE}
 
+# test 'persist'
+_sudo rbd-nbd map --persist --device ${DEV} ${POOL}/${IMAGE}
+get_pid
+_sudo mount ${DEV} ${TEMPDIR}/mnt
+_sudo kill ${PID}
+_sudo rbd-nbd map --persist --device ${DEV} ${POOL}/${IMAGE}
+ls ${TEMPDIR}/mnt/
+dd if=${TEMPDIR}/mnt/test of=/dev/null bs=1M count=1
+_sudo dd if=${DATA} of=${TEMPDIR}/mnt/test1 bs=1M count=1 oflag=direct
+_sudo umount ${TEMPDIR}/mnt
+_sudo rbd-nbd unmap ${DEV}
+
 echo OK
