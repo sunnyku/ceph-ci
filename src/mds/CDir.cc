@@ -2289,11 +2289,10 @@ void CDir::_omap_commit_ops(int r, int op_prio, version_t version, bool _new, bu
       encode(item.d_type, bl);
     } else {
       bl.append('I');         // inode
-      encode(*item.inode, bl, item.features);
-      if (item.snaprealm)
-        encode(item.srnode, bl);
-      else
-        encode(bufferlist(), bl);
+      {
+        std::lock_guard l(mdcache->mds->mds_lock);
+        encode(*item.inode, bl, item.features);
+      }
 
       if (!item.symlink.empty())
         encode(item.symlink, bl);
@@ -2301,15 +2300,26 @@ void CDir::_omap_commit_ops(int r, int op_prio, version_t version, bool _new, bu
       // dirfragtree
       bl.append(dftstr + off, item.dft_len);
 
-      if (item.xattrs)
-        encode(*item.xattrs, bl);
-      else
-        encode((__u32)0, bl);
+      {
+        std::lock_guard l(mdcache->mds->mds_lock);
+        if (item.xattrs)
+          encode(*item.xattrs, bl);
+        else
+          encode((__u32)0, bl);
+      }
 
-      if (item.old_inodes)
-        encode(*item.old_inodes, bl, item.features);
+      if (item.snaprealm)
+        encode(item.srnode, bl);
       else
-        encode((__u32)0, bl);
+        encode(bufferlist(), bl);
+
+      {
+        std::lock_guard l(mdcache->mds->mds_lock);
+        if (item.old_inodes)
+          encode(*item.old_inodes, bl, item.features);
+        else
+          encode((__u32)0, bl);
+      }
 
       encode(item.oldest_snap, bl);
       encode(item.damage_flags, bl);
