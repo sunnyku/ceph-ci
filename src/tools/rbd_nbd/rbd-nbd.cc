@@ -25,6 +25,7 @@
 #include <stddef.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -125,6 +126,7 @@ static void usage()
 static int nbd = -1;
 static int nbd_index = -1;
 static bool nbd_persist = false;
+static bool nbd_terminate = false;
 
 enum Command {
   None,
@@ -309,11 +311,39 @@ private:
 
   void reader_entry()
   {
+    struct pollfd poll_fds[1];
+    memset(poll_fds, 0, sizeof(struct pollfd));
+    poll_fds[0].fd = fd;
+    poll_fds[0].events = POLLIN;
+
     while (!terminated) {
       std::unique_ptr<IOContext> ctx(new IOContext());
       ctx->server = this;
 
       dout(20) << __func__ << ": waiting for nbd request" << dendl;
+
+      if (cfg->persist) {
+        // We have to check nbd_terminate flag periodically, which is
+        // set by the signal handler, so we can not block on read.
+        // Use poll with timeout to ensure we have some data comes
+        // before calling read.
+
+        int r = poll(poll_fds, 1, 1000);
+        if (r < 0) {
+          derr << "failed poll nbd: " << cpp_strerror(r) << dendl;
+          goto signal;
+        }
+
+        if (nbd_terminate) {
+          dout(0) << "terminate received" << dendl;
+          goto signal;
+        }
+
+        if ((poll_fds[0].revents & POLLIN) == 0) {
+          dout(20) << __func__ << ": poll timed out" << dendl;
+          continue;
+        }
+      }
 
       int r = safe_read_exact(fd, &ctx->request, sizeof(struct nbd_request));
       if (r < 0) {
@@ -1263,6 +1293,12 @@ static void handle_signal(int signum)
 
   if (nbd < 0 || nbd_index < 0) {
     dout(20) << __func__ << ": " << "disconnect not needed." << dendl;
+    return;
+  }
+
+  if (nbd_persist) {
+    dout(20) << __func__ << ": " << "setting signal flag" << dendl;
+    nbd_terminate = true;
     return;
   }
 
