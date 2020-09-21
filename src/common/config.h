@@ -356,6 +356,8 @@ public:
     uint8_t primary_write_size = get_val<uint64_t>(values, "osd_pool_default_primary_write_size");
     if (primary_write_size) {
       primary_write_size = std::min(primary_write_size, size);
+      if (min_size > size)
+        return primary_write_size;
       return std::max(primary_write_size, min_size);
     } else {
       return size;

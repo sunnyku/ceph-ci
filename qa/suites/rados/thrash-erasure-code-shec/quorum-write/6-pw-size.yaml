@@ -1,0 +1,6 @@
+overrides:
+    ceph:
+      conf:
+        global:
+          osd_objectstore: bluestore
+          osd_pool_default_primary_write_size: 6

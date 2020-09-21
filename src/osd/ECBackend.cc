@@ -1162,6 +1162,9 @@ void ECBackend::handle_sub_write_reply(
     ceph_assert(i->second.pending_apply.count(from));
     i->second.pending_apply.erase(from);
   }
+  if (from == get_parent()->whoami_shard()) {
+    i->second.primary_committed = true;
+  }
 
   if (i->second.pending_commit.empty() &&
       i->second.on_all_commit &&
@@ -1171,6 +1174,12 @@ void ECBackend::handle_sub_write_reply(
     i->second.on_all_commit->complete(0);
     i->second.on_all_commit = 0;
     i->second.trace.event("ec write all committed");
+  }
+  else if (i->second.on_all_commit &&
+           i->second.primary_committed &&
+           i->second.tolerated_uncommit_size == i->second.pending_commit.size()) {
+    i->second.on_all_commit->quorum_complete(i->second.tolerated_uncommit_size);
+    i->second.trace.event("ec write quorum committed");
   }
   check_ops();
 }
@@ -1529,6 +1538,11 @@ void ECBackend::submit_transaction(
   op->client_op = client_op;
   if (client_op)
     op->trace = client_op->pg_trace;
+
+  unsigned pool_size = get_osdmap()->get_pg_pool_size(get_info().pgid.pgid);
+  unsigned pw_size = get_osdmap()->get_pg_pool_primary_write_size(get_info().pgid.pgid);
+  bool is_use_tier = get_parent()->get_pool().has_tiers() || get_parent()->get_pool().is_tier();
+  op->set_tolerated_uncommit_size(pool_size, pw_size, is_use_tier);
   
   dout(10) << __func__ << ": op " << *op << " starting" << dendl;
   start_rmw(op, std::move(t));

@@ -1504,20 +1504,11 @@ map<pg_shard_t, pg_info_t>::const_iterator PeeringState::find_best_info(
       continue;
     }
     // Prefer newer last_update
-    if (pool.info.require_rollback()) {
-      if (p->second.last_update > best->second.last_update)
-	continue;
-      if (p->second.last_update < best->second.last_update) {
-	best = p;
-	continue;
-      }
-    } else {
-      if (p->second.last_update < best->second.last_update)
-	continue;
-      if (p->second.last_update > best->second.last_update) {
-	best = p;
-	continue;
-      }
+    if (p->second.last_update < best->second.last_update)
+      continue;
+    if (p->second.last_update > best->second.last_update) {
+      best = p;
+      continue;
     }
 
     // Prefer longer tail
@@ -1888,6 +1879,8 @@ void PeeringState::choose_async_recovery_ec(
         shard_info.stats.stats.sum.num_objects_missing;
       if (auth_version > candidate_version) {
         approx_missing_objects += auth_version - candidate_version;
+      } else {
+        approx_missing_objects += candidate_version - auth_version;
       }
       if (static_cast<uint64_t>(approx_missing_objects) >
          cct->_conf.get_val<uint64_t>("osd_async_recovery_min_cost")) {

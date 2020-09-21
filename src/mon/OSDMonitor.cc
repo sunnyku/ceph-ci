@@ -7555,8 +7555,11 @@ int OSDMonitor::prepare_pool_size(const unsigned pool_type,
 	*min_size =
 	  erasure_code->get_data_chunk_count() +
 	  std::min<int>(1, erasure_code->get_coding_chunk_count() - 1);
+  *primary_write_size =
+    g_conf().get_osd_pool_default_primary_write_size(*size, *min_size);
 	assert(*min_size <= *size);
 	assert(*min_size >= erasure_code->get_data_chunk_count());
+  assert(*min_size <= *primary_write_size);
       }
     }
     break;
@@ -8109,7 +8112,7 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
     p.primary_write_size = g_conf().get_osd_pool_default_primary_write_size(p.size, p.min_size);
   } else if (var == "primary_write_size") {
     if (p.has_flag(pg_pool_t::FLAG_NOSIZECHANGE)) {
-      ss << "pool primary write size change is disabled; you must unset nosizechange flag for the pool first";
+      ss << "pool primary_write_size change is disabled; you must unset nosizechange flag for the pool first";
       return -EPERM;
     }
     if (interr.length()) {
@@ -8117,7 +8120,7 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
       return -EINVAL;
     }
     if (n > p.size || n < p.min_size) {
-      ss << "pool primary write size must be between min_size, which is set to "
+      ss << "pool primary_write_size must be between min_size, which is set to "
         << (int)p.min_size << ", and size, which is set to " << (int)p.size;
       return -EINVAL;
     }
