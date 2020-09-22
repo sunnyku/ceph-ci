@@ -1482,6 +1482,40 @@ map<pg_shard_t, pg_info_t>::const_iterator PeeringState::find_best_info(
     return infos.end();
 
   auto best = infos.end();
+  bool can_ec_recovery = false;
+  eversion_t ec_recovery_target;
+
+  if (pool.info.require_rollback()) {
+    map<eversion_t, unsigned> counter;
+    for (auto p = infos.begin(); p != infos.end(); ++p) {
+      auto found = std::find_if(
+        counter.begin(),
+        counter.end(), 
+        [&] (const auto x) {
+          return x.first == p->second.last_update;
+        });
+      if (found == counter.end()) {
+        counter.insert({p->second.last_update, 1});
+      } else {
+        found->second++;
+      }
+    }
+
+    unsigned mostly_last_update_frequency = 0;
+    for (auto p = counter.begin(); p != counter.end(); ++p) {
+      if (p->second > mostly_last_update_frequency) {
+        mostly_last_update_frequency = p->second;
+        ec_recovery_target = p->first;
+      } else if (p->second == mostly_last_update_frequency) {
+        if (ec_recovery_target < p->first)
+          ec_recovery_target = p->first;
+      }
+    }
+
+    unsigned pw_size = get_osdmap()->get_pg_pool_primary_write_size(info.pgid.pgid);
+    if (pw_size <= mostly_last_update_frequency)
+      can_ec_recovery = true;
+  }
   // find osd with newest last_update (oldest for ec_pool).
   // if there are multiples, prefer
   //  - a longer tail, if it brings another peer into log contiguity
@@ -1505,12 +1539,18 @@ map<pg_shard_t, pg_info_t>::const_iterator PeeringState::find_best_info(
     }
     // Prefer newer last_update
     if (pool.info.require_rollback()) {
+      if (can_ec_recovery &&
+          ec_recovery_target == p->second.last_update) {
+        best = p;
+        continue;
+      } else {
       if (p->second.last_update > best->second.last_update)
 	continue;
       if (p->second.last_update < best->second.last_update) {
 	best = p;
 	continue;
       }
+    }
     } else {
       if (p->second.last_update < best->second.last_update)
 	continue;
@@ -1888,6 +1928,8 @@ void PeeringState::choose_async_recovery_ec(
         shard_info.stats.stats.sum.num_objects_missing;
       if (auth_version > candidate_version) {
         approx_missing_objects += auth_version - candidate_version;
+      } else {
+        approx_missing_objects += candidate_version - auth_version;
       }
       if (static_cast<uint64_t>(approx_missing_objects) >
          cct->_conf.get_val<uint64_t>("osd_async_recovery_min_cost")) {
