@@ -857,9 +857,6 @@ void ObjectListSnapsRequest<I>::handle_list_snaps(int r) {
       clone_end_snap_id = end_snap_id;
     } else if (!exists) {
       end_size = 0;
-    } else if (exists && end_size == 0 && start_snap_id == 0) {
-      ldout(cct, 20) << "whiteout detected" << dendl;
-      whiteout_detected = true;
     }
 
     if (exists) {
@@ -893,6 +890,7 @@ void ObjectListSnapsRequest<I>::handle_list_snaps(int r) {
         ldout(cct, 20) << "clearing truncate diff: " << trunc << dendl;
       }
 
+      bool maybe_whiteout_detected = (exists && start_snap_id == 0);
       for (auto& object_extent : m_object_extents) {
         interval_set<uint64_t> object_interval;
         object_interval.insert(object_extent.first, object_extent.second);
@@ -916,6 +914,7 @@ void ObjectListSnapsRequest<I>::handle_list_snaps(int r) {
             snapshot_delta[{end_snap_id, clone_end_snap_id}].insert(
               interval.first, interval.second,
               SnapshotExtent(SNAPSHOT_EXTENT_STATE_DATA, interval.second));
+            maybe_whiteout_detected = false;
           }
         } else {
           zero_interval.union_of(diff_interval);
@@ -932,8 +931,14 @@ void ObjectListSnapsRequest<I>::handle_list_snaps(int r) {
             snapshot_delta[{end_snap_id, end_snap_id}].insert(
               interval.first, interval.second,
               SnapshotExtent(SNAPSHOT_EXTENT_STATE_ZEROED, interval.second));
+            maybe_whiteout_detected = false;
           }
         }
+      }
+
+      if (!whiteout_detected && maybe_whiteout_detected) {
+        ldout(cct, 20) << "whiteout detected" << dendl;
+        whiteout_detected = true;
       }
     }
 
