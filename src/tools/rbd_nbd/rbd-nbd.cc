@@ -40,6 +40,7 @@
 #include <libnl3/netlink/genl/ctrl.h>
 #include <libnl3/netlink/genl/mngt.h>
 
+#include <experimental/filesystem>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -95,6 +96,21 @@ struct Config {
 
   std::string format;
   bool pretty_format = false;
+
+  std::string image_spec() const {
+    std::string spec = poolname + "/";
+
+    if (!nsname.empty()) {
+      spec += "/" + nsname;
+    }
+    spec += imgname;
+
+    if (!snapname.empty()) {
+      spec += "@" + snapname;
+    }
+
+    return spec;
+  }
 };
 
 static void usage()
@@ -738,19 +754,38 @@ public:
       }
       ifs >> *pid;
 
-      int r = get_mapped_info(*pid, cfg);
-      if (r < 0) {
-        continue;
-      }
+      do {
+        if (*pid <= 0) {
+          *pid = find_proc(cfg->devpath);
+          if (*pid <= 0) {
+            break;
+          }
+        }
 
-      return true;
+        if (get_mapped_info(*pid, cfg) >= 0) {
+          return true;
+        }
+        *pid = -1;
+      } while (true);
     }
   }
 
 private:
   int m_index = 0;
+  std::map<int, Config> m_mapped_info_cache;
 
   int get_mapped_info(int pid, Config *cfg) {
+    auto it = m_mapped_info_cache.find(pid);
+    if (it != m_mapped_info_cache.end()) {
+      if (it->second.devpath.empty()) {
+        return -EINVAL;
+      }
+      *cfg = it->second;
+      return 0;
+    }
+
+    m_mapped_info_cache[pid] = {};
+
     int r;
     std::string path = "/proc/" + stringify(pid) + "/cmdline";
     std::ifstream ifs;
@@ -761,6 +796,10 @@ private:
     if (!ifs.is_open())
       return -1;
     ifs >> cmdline;
+
+    if (cmdline.empty()) {
+      return -EINVAL;
+    }
 
     for (unsigned i = 0; i < cmdline.size(); i++) {
       char *arg = &cmdline[i];
@@ -788,7 +827,33 @@ private:
       return -ENOENT;
     }
 
+    m_mapped_info_cache.erase(pid);
+    if (!cfg->devpath.empty()) {
+      m_mapped_info_cache[pid] = *cfg;
+    }
+
     return 0;
+  }
+
+  int find_proc(const std::string &devpath) {
+    namespace fs = std::experimental::filesystem;
+    for (auto &entry : fs::directory_iterator("/proc")) {
+      if (!fs::is_directory(entry.status())) {
+        continue;
+      }
+
+      int pid = atoi(entry.path().filename().c_str());
+      if (pid <= 0 || entry.path().filename() != stringify(pid)) {
+        continue;
+      }
+
+      Config cfg;
+      if (get_mapped_info(pid, &cfg) >=0 && cfg.devpath == devpath) {
+        return pid;
+      }
+    }
+
+    return -1;
   }
 };
 
@@ -1811,10 +1876,6 @@ static int parse_args(vector<const char*>& args, std::ostream *err_msg,
         if (parse_imgpath(*args.begin(), cfg, err_msg) < 0) {
           return -EINVAL;
         }
-        if (!find_mapped_dev_by_spec(cfg)) {
-          *err_msg << "rbd-nbd: " << *args.begin() << " is not mapped";
-          return -ENOENT;
-        }
       }
       args.erase(args.begin());
       break;
@@ -1864,6 +1925,11 @@ static int rbd_nbd(int argc, const char *argv[])
         return -EINVAL;
       break;
     case Disconnect:
+      if (cfg.devpath.empty() && !find_mapped_dev_by_spec(&cfg)) {
+        cerr << "rbd-nbd: " << cfg.image_spec() << " is not mapped"
+             << std::endl;
+        return -ENOENT;
+      }
       r = do_unmap(&cfg);
       if (r < 0)
         return -EINVAL;
