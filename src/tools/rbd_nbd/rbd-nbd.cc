@@ -267,7 +267,10 @@ private:
   IOContext *wait_io_finish()
   {
     std::unique_lock l{lock};
-    cond.wait(l, [this] { return !io_finished.empty() || terminated; });
+    cond.wait(l, [this] {
+                   return !io_finished.empty() ||
+                          (io_pending.empty() && terminated);
+                 });
 
     if (io_finished.empty())
       return NULL;
@@ -278,16 +281,14 @@ private:
     return ret;
   }
 
-  void wait_clean()
+  void assert_clean()
   {
-    ceph_assert(!reader_thread.is_started());
     std::unique_lock l{lock};
-    cond.wait(l, [this] { return io_pending.empty(); });
 
-    while(!io_finished.empty()) {
-      std::unique_ptr<IOContext> free_ctx(io_finished.front());
-      io_finished.pop_front();
-    }
+    ceph_assert(!reader_thread.is_started());
+    ceph_assert(!writer_thread.is_started());
+    ceph_assert(io_pending.empty());
+    ceph_assert(io_finished.empty());
   }
 
   static void aio_callback(librbd::completion_t cb, void *arg)
@@ -435,7 +436,7 @@ signal:
 
   void writer_entry()
   {
-    while (!terminated) {
+    while (true) {
       dout(20) << __func__ << ": waiting for io request" << dendl;
       std::unique_ptr<IOContext> ctx(wait_io_finish());
       if (!ctx) {
@@ -621,7 +622,7 @@ public:
         quiesce_thread.join();
       }
 
-      wait_clean();
+      assert_clean();
 
       started = false;
     }
