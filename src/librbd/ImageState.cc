@@ -326,13 +326,28 @@ public:
     on_notify->complete(r);
   }
 
+  int quiesce_ret_val() const {
+    std::lock_guard locker{m_lock};
+
+    if (m_watchers.empty()) {
+      return 0;
+    }
+
+    // It is supposed to be called only after quiesce is complete and
+    // unquiesce is not called yet.
+    ceph_assert(m_blocked);
+    ceph_assert(m_handle_quiesce_cnt == 0);
+
+    return m_ret_val;
+  }
+
 private:
   enum EventType {QUIESCE, UNQUIESCE};
 
   CephContext *m_cct;
   asio::ContextWQ *m_work_queue;
 
-  ceph::mutex m_lock;
+  mutable ceph::mutex m_lock;
   std::map<uint64_t, QuiesceWatchCtx*> m_watchers;
   uint64_t m_next_handle = 0;
   Context *m_on_notify = nullptr;
@@ -1029,6 +1044,11 @@ void ImageState<I>::quiesce_complete(uint64_t handle, int r) {
   CephContext *cct = m_image_ctx->cct;
   ldout(cct, 20) << __func__ << ": handle=" << handle << " r=" << r << dendl;
   m_quiesce_watchers->quiesce_complete(handle, r);
+}
+
+template <typename I>
+int ImageState<I>::quiesce_ret_val() const {
+  return m_quiesce_watchers->quiesce_ret_val();
 }
 
 } // namespace librbd

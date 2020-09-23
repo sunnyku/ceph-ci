@@ -737,6 +737,9 @@ Context *ImageWatcher<I>::prepare_quiesce_request(
       auto it = m_async_complete.find(request);
       if (it != m_async_complete.end()) {
         r = it->second;
+      } else {
+        // quiesce is already complete but unqiesce not
+        r = m_image_ctx.state->quiesce_ret_val();
       }
       m_task_finisher->queue(new C_ResponseMessage(ack_ctx), r);
     }

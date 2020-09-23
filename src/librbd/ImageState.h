@@ -58,6 +58,7 @@ public:
   void notify_quiesce(Context *on_finish);
   void notify_unquiesce(Context *on_finish);
   void quiesce_complete(uint64_t handle, int r);
+  int quiesce_ret_val() const;
 
 private:
   enum State {
