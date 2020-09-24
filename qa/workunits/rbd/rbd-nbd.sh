@@ -64,7 +64,7 @@ function cleanup()
 
     set +e
 
-    mount | fgrep ${TEMPDIR}/mnt && umount ${TEMPDIR}/mnt
+    mount | fgrep ${TEMPDIR}/mnt && _sudo umount -f ${TEMPDIR}/mnt
 
     rm -Rf ${TEMPDIR}
     if [ -n "${DEV}" ]
@@ -301,21 +301,31 @@ rbd snap create ${POOL}/${IMAGE}@quiesce3
 _sudo dd if=${DATA} of=${TEMPDIR}/mnt/test bs=1M count=1 oflag=direct
 _sudo umount ${TEMPDIR}/mnt
 unmap_device ${DEV} ${PID}
+DEV=
 cat ${LOG_FILE}
 expect_false grep 'quiesce failed' ${LOG_FILE}
 
-# test 'persist'
-_sudo rbd-nbd map --persist --device ${DEV} ${POOL}/${IMAGE}
+# test reconnect
+DEV=`_sudo rbd-nbd map --try-netlink ${POOL}/${IMAGE}`
 get_pid
 _sudo mount ${DEV} ${TEMPDIR}/mnt
 _sudo kill ${PID}
-sleep 5
-_sudo rbd-nbd map --persist --device ${DEV} ${POOL}/${IMAGE}
+reconnected=
+for i in `seq 10`; do
+    if _sudo rbd-nbd map --reconnect --device ${DEV} ${POOL}/${IMAGE}; then
+        reconnected=1
+        break
+    fi
+    rbd-nbd list-mapped
+    ps auxww | grep rbd-nbd
+    sleep 1
+done
+test "${reconnected}" = 1
 get_pid
 ls ${TEMPDIR}/mnt/
 dd if=${TEMPDIR}/mnt/test of=/dev/null bs=1M count=1
 _sudo dd if=${DATA} of=${TEMPDIR}/mnt/test1 bs=1M count=1 oflag=direct
 _sudo umount ${TEMPDIR}/mnt
-unmap_device ${DEV}
+unmap_device ${DEV} ${PID}
 
 echo OK
