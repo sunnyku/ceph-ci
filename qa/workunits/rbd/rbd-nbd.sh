@@ -309,6 +309,7 @@ _sudo rbd-nbd map --persist --device ${DEV} ${POOL}/${IMAGE}
 get_pid
 _sudo mount ${DEV} ${TEMPDIR}/mnt
 _sudo kill ${PID}
+sleep 5
 _sudo rbd-nbd map --persist --device ${DEV} ${POOL}/${IMAGE}
 get_pid
 ls ${TEMPDIR}/mnt/
