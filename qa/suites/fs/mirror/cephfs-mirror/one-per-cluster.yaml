@@ -1,5 +1,5 @@
 meta:
 - desc: run one cephfs-mirror daemon on primary cluster
 tasks:
-- cephfs-mirror:
+- cephfs_mirror:
     client: client.mirror

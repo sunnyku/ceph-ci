@@ -1,6 +1,7 @@
 import json
 import errno
 import logging
+import os
 
 from io import StringIO
 
@@ -11,6 +12,7 @@ from teuthology.contextutil import safe_while
 log = logging.getLogger(__name__)
 
 class TestMirroring(CephFSTestCase):
+    CLIENTS_REQUIRED = 2
     MDSS_REQUIRED = 5
     REQUIRE_BACKUP_FILESYSTEM = True
 
@@ -19,8 +21,9 @@ class TestMirroring(CephFSTestCase):
     def setUp(self):
         super(TestMirroring, self).setUp()
         self.primary_fs_name = self.fs.name
-        self.secondary_fs_name = self.backup_fs.name
+        self.secondary_fs_name = "mirror_fs"  # self.backup_fs.name
         self.enable_mirroring_module()
+        self.mount_mirror = self.mounts[1]
 
     def tearDown(self):
         self.disable_mirroring_module()
@@ -28,6 +31,17 @@ class TestMirroring(CephFSTestCase):
 
     def enable_mirroring_module(self):
         self.mgr_cluster.mon_manager.raw_cluster_cmd("mgr", "module", "enable", TestMirroring.MODULE_NAME)
+        # verify via "module ls"
+        with safe_while(sleep=1, tries=30, action='wait for mirror module enable') as proceed:
+            while proceed():
+                try:
+                    res = self.mgr_cluster.mon_manager.raw_cluster_cmd("mgr", "module", "ls")
+                except CommandFailedError as ce:
+                    pass
+                else:
+                    self.assertTrue(TestMirroring.MODULE_NAME in json.loads(res)["enabled_modules"])
+                    return True
+        assert False  # mirroring mgr module must be enabled
 
     def disable_mirroring_module(self):
         self.mgr_cluster.mon_manager.raw_cluster_cmd("mgr", "module", "disable", TestMirroring.MODULE_NAME)
@@ -180,11 +194,11 @@ class TestMirroring(CephFSTestCase):
         log.debug(f'command return={res}')
         return json.loads(res)
 
-    def test_basic_mirror_commands(self):
+    def _test_basic_mirror_commands(self):
         self.enable_mirroring(self.primary_fs_name)
         self.disable_mirroring(self.primary_fs_name)
 
-    def test_mirror_peer_commands(self):
+    def _test_mirror_peer_commands(self):
         self.enable_mirroring(self.primary_fs_name)
 
         # add peer
@@ -194,7 +208,7 @@ class TestMirroring(CephFSTestCase):
 
         self.disable_mirroring(self.primary_fs_name)
 
-    def test_mirror_disable_with_peer(self):
+    def _test_mirror_disable_with_peer(self):
         self.enable_mirroring(self.primary_fs_name)
 
         # add peer
@@ -202,7 +216,7 @@ class TestMirroring(CephFSTestCase):
 
         self.disable_mirroring(self.primary_fs_name)
 
-    def test_matching_peer(self):
+    def _test_matching_peer(self):
         self.enable_mirroring(self.primary_fs_name)
 
         try:
@@ -234,7 +248,7 @@ class TestMirroring(CephFSTestCase):
 
         self.disable_mirroring(self.primary_fs_name)
 
-    def test_mirror_peer_add_existing(self):
+    def _test_mirror_peer_add_existing(self):
         self.enable_mirroring(self.primary_fs_name)
 
         # add peer
@@ -253,7 +267,7 @@ class TestMirroring(CephFSTestCase):
 
         self.disable_mirroring(self.primary_fs_name)
 
-    def test_peer_commands_with_mirroring_disabled(self):
+    def _test_peer_commands_with_mirroring_disabled(self):
         # try adding peer when mirroring is not enabled
         try:
             self.peer_add(self.primary_fs_name, "client.mirror_remote@ceph", self.secondary_fs_name)
@@ -272,7 +286,7 @@ class TestMirroring(CephFSTestCase):
         else:
             raise RuntimeError(-errno.EINVAL, 'expected peer_remove to fail')
 
-    def test_add_directory_with_mirroring_disabled(self):
+    def _test_add_directory_with_mirroring_disabled(self):
         # try adding a directory when mirroring is not enabled
         try:
             self.add_directory(self.primary_fs_name, "/d1")
@@ -282,7 +296,7 @@ class TestMirroring(CephFSTestCase):
         else:
             raise RuntimeError(-errno.EINVAL, 'expected directory add to fail')
 
-    def test_directory_commands(self):
+    def _test_directory_commands(self):
         self.mount_a.run_shell(["mkdir", "d1"])
         self.enable_mirroring(self.primary_fs_name)
         self.add_directory(self.primary_fs_name, '/d1')
@@ -304,7 +318,7 @@ class TestMirroring(CephFSTestCase):
         self.disable_mirroring(self.primary_fs_name)
         self.mount_a.run_shell(["rmdir", "d1"])
 
-    def test_add_non_existing_directory(self):
+    def _test_add_non_existing_directory(self):
         self.enable_mirroring(self.primary_fs_name)
         try:
             self.add_directory(self.primary_fs_name, '/d1')
@@ -315,7 +329,7 @@ class TestMirroring(CephFSTestCase):
             raise RuntimeError(-errno.EINVAL, 'expected directory add to fail')
         self.disable_mirroring(self.primary_fs_name)
 
-    def test_add_relative_directory_path(self):
+    def _test_add_relative_directory_path(self):
         self.enable_mirroring(self.primary_fs_name)
         try:
             self.add_directory(self.primary_fs_name, './d1')
@@ -326,7 +340,7 @@ class TestMirroring(CephFSTestCase):
             raise RuntimeError(-errno.EINVAL, 'expected directory add to fail')
         self.disable_mirroring(self.primary_fs_name)
 
-    def test_add_non_directory(self):
+    def _test_add_non_directory(self):
         self.mount_a.run_shell(["touch", "test"])
         self.enable_mirroring(self.primary_fs_name)
         try:
@@ -339,7 +353,7 @@ class TestMirroring(CephFSTestCase):
         self.disable_mirroring(self.primary_fs_name)
         self.mount_a.run_shell(["rm", "test"])
 
-    def test_add_directory_path_normalization(self):
+    def _test_add_directory_path_normalization(self):
         self.mount_a.run_shell(["mkdir", "-p", "d1/d2/d3"])
         self.enable_mirroring(self.primary_fs_name)
         self.add_directory(self.primary_fs_name, '/d1/d2/d3')
@@ -362,7 +376,7 @@ class TestMirroring(CephFSTestCase):
         self.disable_mirroring(self.primary_fs_name)
         self.mount_a.run_shell(["rm", "-rf", "d1"])
 
-    def test_add_ancestor_and_child_directory(self):
+    def _test_add_ancestor_and_child_directory(self):
         self.mount_a.run_shell(["mkdir", "-p", "d1/d2/d3"])
         self.mount_a.run_shell(["mkdir", "-p", "d1/d4"])
         self.enable_mirroring(self.primary_fs_name)
@@ -386,3 +400,62 @@ class TestMirroring(CephFSTestCase):
 
         self.disable_mirroring(self.primary_fs_name)
         self.mount_a.run_shell(["rm", "-rf", "d1"])
+
+    # snap mirroring
+
+    # filename has an absolute path prefix as well
+    def snap_mirror_create_file(self, filename, data):
+        self.mount_a.write_file(filename, data)
+
+    def snap_mirror_create_snap(self, src_dir, snap_name):
+        self.mount_a.run_shell(["mkdir", f"{src_dir}/.snap/{snap_name}"])
+
+    def snap_mirror_replicate_snap(self, src_dir, old_snap, new_snap):
+        log.debug(f'syncing between old:"{old_snap}" and new:"{new_snap}"')
+        self.mount_a.run_shell(["ceph_test_snap_mirror",
+                                "/etc/ceph/ceph.conf",
+                                "/etc/ceph/ceph.conf",
+                                src_dir,
+                                self.primary_fs_name,
+                                self.secondary_fs_name,
+                                "mirror",
+                                "mirror_remote",
+                                old_snap,
+                                new_snap])
+
+    def snap_mirror_verify_file(self, src_dir, snap, filename):
+        # filename as a prefix path
+        snap_filename = f"{src_dir}/.snap/{snap}{filename}"
+        stat_local = self.mount_a.stat(snap_filename, follow_symlinks=False)
+        stat_remote = self.mount_mirror.stat(snap_filename, follow_symlinks=False)
+        self.assertTrue(stat_local['st_uid'] == stat_remote['st_uid'])
+        self.assertTrue(stat_local['st_gid'] == stat_remote['st_gid'])
+        self.assertTrue(stat_local['st_mode'] == stat_remote['st_mode'])
+        self.assertTrue(stat_local['st_size'] == stat_remote['st_size'])
+
+        sha256_local = self.mount_a.run_shell(["sha256sum", snap_filename])
+        sha256_remote = self.mount_mirror.run_shell(["sha256sum", snap_filename])
+        self.assertTrue(sha256_local == sha256_remote)
+
+    def test_snap_mirroring(self):
+        pid = os.getpid()
+        snap_root_dir = f"pid_{pid}_snap_root_dir"
+        self.mount_a.run_shell(["mkdir", "-p", f"{snap_root_dir}"])
+        # self.enable_mirroring(self.primary_fs_name)
+        # self.add_directory(self.primary_fs_name, f"{snap_root_dir}")
+
+        # create basic data set
+        for fname in ["A", "B", "C"]:
+            # self.snap_mirror_create_file(f"{snap_root_dir}/{fname}", "f{fname}" * 65536)
+            data = "f{fname}" * 65536
+            self.mount_a.write_file(f"{snap_root_dir}/{fname}", data, perms="=700")
+        self.snap_mirror_create_snap(f"{snap_root_dir}", "snap1")
+        self.snap_mirror_replicate_snap(f"/{snap_root_dir}", "", "snap1")
+        for f in ["A", "B", "C"]:
+            self.snap_mirror_verify_file(f"{snap_root_dir}", "snap1", f"/{fname}")
+
+        # clean up
+        self.mount_a.run_shell(["rm", "-rf", snap_root_dir])
+        self.mount_mirror.run_shell(["rm", "-rf", snap_root_dir])
+        # self.remove_directory(self.primary_fs_name, f"/{snap_root_dir}")
+        # self.disable_mirroring(self.primary_fs_name)
